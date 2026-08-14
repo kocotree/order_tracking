@@ -1,0 +1,61 @@
+:root {
+  color-scheme: light;
+
+  --font-body: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  --font-number: "DIN Alternate", "Microsoft YaHei", "PingFang SC", sans-serif;
+
+  --page: #f4f5f7;
+  --surface: #ffffff;
+  --surface-soft: #f7f8fa;
+  --surface-quiet: #f2f4f7;
+  --ink: #343941;
+  --ink-strong: #20242b;
+  --muted: #687283;
+  --subtle: #959eac;
+  --line: #e5e8ed;
+  --line-strong: #d2d7df;
+
+  --erp-blue: #0d8fe9;
+  --erp-blue-dark: #087fd1;
+  --erp-blue-deep: #173f5f;
+  --erp-blue-soft: #e8f5ff;
+  --erp-blue-pale: #eef8ff;
+
+  --industrial-blue: var(--erp-blue);
+  --industrial-blue-strong: var(--erp-blue);
+  --industrial-blue-deep: var(--erp-blue-dark);
+  --industrial-blue-soft: var(--erp-blue-soft);
+  --industrial-blue-pale: var(--erp-blue-pale);
+
+  --danger: #d84f51;
+  --danger-bg: #fff0f0;
+  --warning: #a76c07;
+  --warning-bg: #fff6df;
+  --success: #35805d;
+  --success-bg: #eaf7ef;
+  --info: #1685cb;
+  --info-bg: #eaf6ff;
+
+  --shadow-raised: 0 8px 24px rgba(43, 56, 75, 0.06);
+  --shadow-float: 0 18px 46px rgba(32, 45, 62, 0.18);
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  --app-rail-width: 76px;
+  --page-sidebar-expanded-width: 204px;
+  --page-sidebar-width: var(--page-sidebar-expanded-width);
+  --sidebar-width: 280px;
+  --topbar-height: 58px;
+  --content-max: 1800px;
+}

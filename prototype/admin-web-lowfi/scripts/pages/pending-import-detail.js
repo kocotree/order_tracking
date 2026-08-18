@@ -74,7 +74,8 @@ function renderConfirmDialog(order) {
 
 export function renderPendingImportDetailPage(orderNo) {
   const order = getPendingImportDetail(orderNo);
-  const canImport = order.validationKey === "ready";
+  const isImported = order.statusKey === "imported";
+  const canImport = order.statusKey === "pending" && order.validationKey === "ready";
 
   return `
     <article class="order-detail-page pending-import-detail-page" data-pending-import-detail-page data-order-no="${escapeHTML(order.orderNo)}">
@@ -82,8 +83,8 @@ export function renderPendingImportDetailPage(orderNo) {
         <header class="detail-page-header">
           <button class="detail-back-button" type="button" data-import-back>${backIcon}<span>返回</span></button>
           <div class="detail-title-row pending-import-detail-actions">
-            <span class="status-badge is-${escapeHTML(order.tone)}">${escapeHTML(order.validationLabel)}</span>
-            <button class="detail-primary-button" type="button" data-import-confirm-open ${canImport ? "" : "disabled"} title="${canImport ? "确认导入当前订单" : "请先处理全部待处理资料"}">确认导入</button>
+            <span class="status-badge is-${isImported ? "success" : escapeHTML(order.tone)}">${isImported ? "已导入" : escapeHTML(order.validationLabel)}</span>
+            ${isImported ? "" : `<button class="detail-primary-button" type="button" data-import-confirm-open ${canImport ? "" : "disabled"} title="${canImport ? "确认导入当前订单" : "请先处理全部待处理资料"}">确认导入</button>`}
           </div>
         </header>
 

@@ -1,34 +1,36 @@
-import { shipmentListData } from "../mock-data.js";
+import { orderListData, shipmentDetailData, shipmentListData } from "../mock-data.js";
 import { escapeHTML } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
 
 const searchIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 
-const statusFilters = [
-  { key: "all", label: "全部" },
-  { key: "shipped", label: "已发货" },
-  { key: "void-pending", label: "作废申请中" },
-  { key: "voided", label: "已作废" },
-];
-
 function formatNumber(value) {
   return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
 }
 
+function getShipmentProductNames(shipment) {
+  const detailNames = shipmentDetailData[shipment.shipmentNo]?.lines?.map((line) => line.name) ?? [];
+  const orderNames = shipment.orderNos.map((orderNo) => orderListData.orders.find((order) => order.orderNo === orderNo)?.productName).filter(Boolean);
+  const names = [...new Set(detailNames.length > 0 ? detailNames : orderNames)];
+  if (names.length === 0) return "—";
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, 2).join("、")}等`;
+}
+
 function renderRows(shipments, rowStart = 0) {
   if (shipments.length === 0) {
-    return `<tr><td colspan="8"><div class="empty-state"><div><span class="empty-state-mark">0</span><strong>没有符合当前条件的发货单</strong><p>可以调整搜索词、状态、工厂或发货日期后重新查询。</p></div></div></td></tr>`;
+    return `<tr><td colspan="8"><div class="empty-state"><div><span class="empty-state-mark">0</span><strong>没有符合当前条件的发货单</strong><p>可以调整搜索词、工厂或发货日期后重新查询。</p></div></div></td></tr>`;
   }
 
   return shipments.map((shipment, index) => `
     <tr>
       <td class="order-sequence-cell">${rowStart + index + 1}</td>
-      <td class="shipment-order-cell">${shipment.orderNos.map((orderNo) => `<span>${escapeHTML(orderNo)}</span>`).join("、")}</td>
       <td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(shipment.shipmentNo)}">${escapeHTML(shipment.shipmentNo)}</button></td>
+      <td class="shipment-order-cell">${shipment.orderNos.map((orderNo) => `<span>${escapeHTML(orderNo)}</span>`).join("、")}</td>
       <td>${escapeHTML(shipment.factory)}</td>
-      <td>${escapeHTML(shipment.shipDate)}</td>
+      <td class="shipment-product-summary" title="${escapeHTML(getShipmentProductNames(shipment))}">${escapeHTML(getShipmentProductNames(shipment))}</td>
       <td class="shipment-number-cell">${escapeHTML(formatNumber(shipment.shippedQuantity))}</td>
-      <td><span class="status-badge is-${escapeHTML(shipment.tone)}">${escapeHTML(shipment.statusLabel)}</span></td>
+      <td>${escapeHTML(shipment.shipDate)}</td>
       <td><button class="order-view-button" type="button" data-shipment-detail="${escapeHTML(shipment.shipmentNo)}">详情</button></td>
     </tr>
   `).join("");
@@ -48,9 +50,6 @@ export function renderShipmentListPage() {
   return `
     <article class="order-list-page shipment-list-page" data-shipment-list-page>
       <section class="order-list-filter-card" aria-label="发货单筛选">
-        <div class="order-status-tabs" aria-label="发货单状态">
-          ${statusFilters.map((item, index) => `<button class="order-status-tab${index === 0 ? " is-active" : ""}" type="button" aria-pressed="${String(index === 0)}" data-shipment-status="${escapeHTML(item.key)}">${escapeHTML(item.label)}</button>`).join("")}
-        </div>
         <form class="order-filter-form" data-shipment-form>
           <div class="order-filter-row shipment-filter-row">
             <label class="order-list-search-field">
@@ -74,7 +73,7 @@ export function renderShipmentListPage() {
         <header class="order-list-card-header"><div class="order-list-heading"><h1 id="shipment-list-title">发货单列表</h1></div></header>
         <div class="table-scroll">
           <table class="orders-table shipment-list-table data-grid-table">
-            <thead><tr><th scope="col">序号</th>${renderSortableHeader("关联订单", "orderNos")}${renderSortableHeader("发货单号", "shipmentNo")}${renderSortableHeader("工厂", "factory")}${renderSortableHeader("发货日期", "shipDate")}${renderSortableHeader("发货数量", "shippedQuantity")}${renderSortableHeader("状态", "statusLabel")}<th scope="col">操作</th></tr></thead>
+            <thead><tr><th scope="col">序号</th>${renderSortableHeader("发货单号", "shipmentNo")}${renderSortableHeader("关联订单", "orderNos")}${renderSortableHeader("工厂", "factory")}${renderSortableHeader("产品名称", "productNames")}${renderSortableHeader("发货数量", "shippedQuantity")}${renderSortableHeader("发货日期", "shipDate")}<th scope="col">操作</th></tr></thead>
             <tbody data-shipment-body>${renderRows(shipmentListData.shipments)}</tbody>
           </table>
         </div>
@@ -89,6 +88,7 @@ function normalize(value) {
 }
 
 function shipmentSortValue(shipment, key) {
+  if (key === "productNames") return getShipmentProductNames(shipment);
   return key === "orderNos" ? shipment.orderNos.join("、") : shipment[key];
 }
 
@@ -101,7 +101,6 @@ export function bindShipmentListPage() {
   const dateToInput = page?.querySelector("[data-shipment-date-to]");
   const body = page?.querySelector("[data-shipment-body]");
   const pagination = page?.querySelector("[data-shipment-pagination]");
-  let activeStatus = "all";
   let currentPage = 1;
   let currentShipments = [];
   let sortState = { key: null, direction: "asc" };
@@ -121,8 +120,7 @@ export function bindShipmentListPage() {
     const dateFrom = dateFromInput?.value ?? "";
     const dateTo = dateToInput?.value ?? "";
     const filteredShipments = shipmentListData.shipments.filter((shipment) => (
-      (activeStatus === "all" || shipment.statusKey === activeStatus)
-      && (!keyword || [shipment.shipmentNo, ...shipment.orderNos].some((value) => normalize(value).includes(keyword)))
+      (!keyword || [shipment.shipmentNo, ...shipment.orderNos].some((value) => normalize(value).includes(keyword)))
       && (!factory || shipment.factory === factory)
       && (!dateFrom || shipment.shipDate >= dateFrom)
       && (!dateTo || shipment.shipDate <= dateTo)
@@ -138,16 +136,6 @@ export function bindShipmentListPage() {
   factorySelect?.addEventListener("change", applyFilters);
   dateFromInput?.addEventListener("change", applyFilters);
   dateToInput?.addEventListener("change", applyFilters);
-
-  page?.querySelectorAll("[data-shipment-status]").forEach((button) => button.addEventListener("click", () => {
-    activeStatus = button.dataset.shipmentStatus ?? "all";
-    page.querySelectorAll("[data-shipment-status]").forEach((item) => {
-      const active = item === button;
-      item.classList.toggle("is-active", active);
-      item.setAttribute("aria-pressed", String(active));
-    });
-    applyFilters();
-  }));
 
   page?.querySelector("[data-shipment-reset]")?.addEventListener("click", () => {
     form?.reset();

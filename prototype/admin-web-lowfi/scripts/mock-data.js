@@ -286,8 +286,8 @@ export const pendingImportData = {
     { orderNo: "E89", productName: "云朵软壳冲锋衣", category: "服装", tracker: "大葱", factory: "昱斌", validationKey: "needs-data", validationLabel: "资料待处理", tone: "warning", statusKey: "pending" },
     { orderNo: "E90", productName: "小热皮绒绒裤", category: "服装", tracker: "橄榄", factory: "宇情", validationKey: "ready", validationLabel: "可导入", tone: "success", statusKey: "pending" },
     { orderNo: "E91", productName: "乐园游会吊带包屁衣", category: "服装", tracker: "松子", factory: "昱斌、宇情", validationKey: "needs-data", validationLabel: "资料待处理", tone: "warning", statusKey: "pending" },
-    { orderNo: "E72", productName: "轻量防风长裤", category: "服装", tracker: "烧麦", factory: "盛泰", validationKey: "ready", validationLabel: "可导入", tone: "success", statusKey: "ignored" },
-    { orderNo: "E73", productName: "向阳遮阳帽", category: "帽子", tracker: "青椒", factory: "启宏", validationKey: "needs-data", validationLabel: "资料待处理", tone: "warning", statusKey: "ignored" },
+    { orderNo: "E72", productName: "轻量防风长裤", category: "服装", tracker: "烧麦", factory: "盛泰", validationKey: "ready", validationLabel: "导入时校验通过", tone: "success", statusKey: "imported" },
+    { orderNo: "E73", productName: "向阳遮阳帽", category: "帽子", tracker: "青椒", factory: "启宏", validationKey: "ready", validationLabel: "导入时校验通过", tone: "success", statusKey: "imported" },
   ],
 };
 
@@ -716,6 +716,13 @@ export function importPendingOrdersAsDrafts(orderNos) {
   });
 
   return importedOrders;
+}
+
+export function deletePendingImportOrder(orderNo) {
+  const order = pendingImportData.orders.find((item) => item.orderNo === orderNo);
+  if (!order || order.statusKey !== "pending") return false;
+  order.statusKey = "deleted";
+  return true;
 }
 
 export const repairListData = {

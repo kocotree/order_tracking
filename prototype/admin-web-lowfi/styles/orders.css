@@ -408,6 +408,10 @@
   vertical-align: middle;
 }
 
+.pending-import-table .order-delete-button {
+  margin-left: 16px;
+}
+
 .pending-import-select-column,
 .pending-import-select-cell {
   text-align: center;
@@ -440,19 +444,18 @@
 }
 
 .shipment-list-table {
-  min-width: 1060px;
+  min-width: 1080px;
   table-layout: fixed;
 }
 
 .shipment-list-table th:nth-child(1) { width: 58px; }
-.shipment-list-table th:nth-child(2) { width: 150px; }
-.shipment-list-table th:nth-child(3) { width: 168px; }
-.shipment-list-table th:nth-child(4) { width: 110px; }
-.shipment-list-table th:nth-child(5) { width: 120px; }
-.shipment-list-table th:nth-child(6) { width: 116px; }
-.shipment-list-table th:nth-child(7) { width: 116px; }
-.shipment-list-table th:nth-child(8) { width: 110px; }
-.shipment-list-table th:nth-child(9) { width: 92px; }
+.shipment-list-table th:nth-child(2) { width: 168px; }
+.shipment-list-table th:nth-child(3) { width: 150px; }
+.shipment-list-table th:nth-child(4) { width: 100px; }
+.shipment-list-table th:nth-child(5) { width: 260px; }
+.shipment-list-table th:nth-child(6) { width: 112px; }
+.shipment-list-table th:nth-child(7) { width: 120px; }
+.shipment-list-table th:nth-child(8) { width: 92px; }
 
 .shipment-list-table td {
   padding-top: 14px;
@@ -463,6 +466,12 @@
 .shipment-order-cell span {
   color: var(--ink-strong);
   font-weight: 700;
+}
+
+.shipment-product-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shipment-number-cell {

@@ -1,4 +1,4 @@
-import { importPendingOrdersAsDrafts, pendingImportData } from "../mock-data.js";
+import { deletePendingImportOrder, importPendingOrdersAsDrafts, pendingImportData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
 
@@ -16,7 +16,7 @@ function renderMultiSelectOptions(values, attribute) {
 
 function renderRows(orders, rowStart = 0, selectedOrderNos = new Set()) {
   if (orders.length === 0) {
-    return `<tr><td colspan="9"><div class="empty-state"><div><span class="empty-state-mark">0</span><strong>没有符合当前条件的待导入订单</strong><p>可以调整搜索词或筛选条件后重新查询。</p></div></div></td></tr>`;
+    return `<tr><td colspan="9"><div class="empty-state"><div><span class="empty-state-mark">0</span><strong>没有符合当前条件的订单</strong><p>可以调整搜索词或筛选条件后重新查询。</p></div></div></td></tr>`;
   }
 
   return orders.map((order, index) => {
@@ -32,7 +32,7 @@ function renderRows(orders, rowStart = 0, selectedOrderNos = new Set()) {
       <td class="tracker-cell"><span class="tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></td>
       <td>${escapeHTML(order.factory)}</td>
       <td><span class="status-badge is-${escapeHTML(order.tone)}">${escapeHTML(order.validationLabel)}</span></td>
-      <td><button class="order-view-button" type="button" data-import-detail="${escapeHTML(order.orderNo)}">详情</button></td>
+      <td><button class="order-view-button" type="button" data-import-detail="${escapeHTML(order.orderNo)}">详情</button>${order.statusKey === "pending" ? `<button class="order-delete-button" type="button" data-delete-pending-import="${escapeHTML(order.orderNo)}">删除</button>` : ""}</td>
     </tr>
   `;
   }).join("");
@@ -64,6 +64,22 @@ function renderBatchImportDialog() {
   `;
 }
 
+function renderDeletePendingImportDialog() {
+  return `
+    <div class="detail-confirm-layer" hidden data-delete-pending-import-layer>
+      <button class="detail-confirm-backdrop" type="button" aria-label="取消删除待导入订单" data-delete-pending-import-cancel></button>
+      <section class="detail-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-pending-import-title" aria-describedby="delete-pending-import-description">
+        <h2 id="delete-pending-import-title">确认删除待导入订单</h2>
+        <p id="delete-pending-import-description">确认删除订单 <strong data-delete-pending-import-label></strong>？删除后不会再次出现在待处理列表中。</p>
+        <div class="detail-confirm-actions">
+          <button class="detail-outline-button" type="button" data-delete-pending-import-cancel>取消</button>
+          <button class="order-delete-confirm-button" type="button" data-delete-pending-import-confirm>确认删除</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 export function renderPendingImportListPage() {
   const factories = [...new Set(pendingImportData.orders.flatMap((item) => item.factory.split(/[、,，]/).map((value) => value.trim())))].sort();
   const trackers = [...new Set(pendingImportData.orders.map((item) => item.tracker))].sort();
@@ -73,7 +89,7 @@ export function renderPendingImportListPage() {
       <section class="order-list-filter-card" aria-label="待导入订单筛选">
         <div class="order-status-tabs" aria-label="待导入订单状态">
           <button class="order-status-tab is-active" type="button" aria-pressed="true" data-import-status="pending">待处理</button>
-          <button class="order-status-tab" type="button" aria-pressed="false" data-import-status="ignored">已忽略</button>
+          <button class="order-status-tab" type="button" aria-pressed="false" data-import-status="imported">已导入</button>
         </div>
         <form class="order-filter-form" data-import-form>
           <div class="order-filter-row pending-import-filter-row">
@@ -113,6 +129,7 @@ export function renderPendingImportListPage() {
         <div class="order-list-footer"><span>每页展示 10 条待导入订单。</span><nav class="order-pagination" aria-label="待导入订单分页" data-import-pagination></nav></div>
       </section>
       ${renderBatchImportDialog()}
+      ${renderDeletePendingImportDialog()}
     </article>
   `;
 }
@@ -146,7 +163,10 @@ export function bindPendingImportListPage() {
   const batchImportLayer = page?.querySelector("[data-batch-import-layer]");
   const batchImportCount = page?.querySelector("[data-batch-import-count]");
   const batchImportOrders = page?.querySelector("[data-batch-import-orders]");
+  const deleteLayer = page?.querySelector("[data-delete-pending-import-layer]");
+  const deleteOrderLabel = page?.querySelector("[data-delete-pending-import-label]");
   let activeStatus = "pending";
+  let pendingDeleteOrderNo = "";
   let currentPage = 1;
   let currentOrders = [];
   let currentPageOrders = [];
@@ -208,6 +228,12 @@ export function bindPendingImportListPage() {
     batchImportButton?.focus();
   };
 
+  const closeDeleteDialog = () => {
+    if (deleteLayer) deleteLayer.hidden = true;
+    document.body.classList.remove("has-dialog-open");
+    pendingDeleteOrderNo = "";
+  };
+
   form?.addEventListener("submit", (event) => { event.preventDefault(); applyFilters(); });
   categorySelect?.addEventListener("change", applyFilters);
   validationSelect?.addEventListener("change", applyFilters);
@@ -263,6 +289,30 @@ export function bindPendingImportListPage() {
   });
 
   page?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-delete-pending-import-cancel]")) {
+      closeDeleteDialog();
+      return;
+    }
+
+    const deleteOrderNo = event.target.closest("[data-delete-pending-import]")?.dataset.deletePendingImport;
+    if (deleteOrderNo) {
+      pendingDeleteOrderNo = deleteOrderNo;
+      if (deleteOrderLabel) deleteOrderLabel.textContent = deleteOrderNo;
+      if (deleteLayer) deleteLayer.hidden = false;
+      document.body.classList.add("has-dialog-open");
+      deleteLayer?.querySelector("[data-delete-pending-import-confirm]")?.focus();
+      return;
+    }
+
+    if (event.target.closest("[data-delete-pending-import-confirm]")) {
+      const deleted = deletePendingImportOrder(pendingDeleteOrderNo);
+      const deletedOrderNo = pendingDeleteOrderNo;
+      closeDeleteDialog();
+      applyFilters();
+      showToast(deleted ? "删除成功" : "无法删除", deleted ? `${deletedOrderNo} 已从待处理列表删除。` : "该订单不存在或已不再处于待处理状态。");
+      return;
+    }
+
     const nextSortState = getNextSortState(event, sortState);
     if (nextSortState) {
       sortState = nextSortState;
@@ -294,6 +344,7 @@ export function bindPendingImportListPage() {
 
   page?.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && batchImportLayer && !batchImportLayer.hidden) closeBatchImportDialog();
+    if (event.key === "Escape" && deleteLayer && !deleteLayer.hidden) closeDeleteDialog();
   });
 
   applyFilters();

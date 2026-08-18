@@ -1,19 +1,45 @@
 (function registerShipmentDetailPage() {
-  function renderShipmentLines(lines, formatNumber) {
+  function renderShipmentLines(lines, icons, formatNumber) {
+    const groups = Object.entries(
+      lines.reduce((result, line) => {
+        (result[line.orderNo] ??= []).push(line);
+        return result;
+      }, {}),
+    );
+
     return `
-      <div class="shipment-line-table">
-        <div class="shipment-line-table__head">
-          <span>产品名称</span><span>颜色规格</span><span>发货数量</span>
-        </div>
-        ${lines
+      <div class="shipment-order-list">
+        ${groups
           .map(
-            (line) => `
-              <div class="shipment-line-row">
-                <div><strong>${line.productName}</strong></div>
-                <span>${line.colorSpec}</span>
-                <b>${formatNumber(line.quantity)}</b>
-              </div>
-            `,
+            ([orderNo, orderLines]) => {
+              const subtotal = orderLines.reduce((total, line) => total + line.quantity, 0);
+              return `
+                <details class="shipment-order-card">
+                  <summary>
+                    <div><strong>${orderNo}</strong><small>${orderLines.length} 个产品规格</small></div>
+                    <b>合计 ${formatNumber(subtotal)}</b>
+                    <i class="shipment-package-card__chevron">${icons.chevron}</i>
+                  </summary>
+                  <div class="shipment-line-table">
+                  <div class="shipment-line-table__head">
+                    <span>序号</span><span>产品名称</span><span>颜色规格</span><span>数量</span>
+                  </div>
+                  ${orderLines
+                    .map(
+                      (line, index) => `
+                        <div class="shipment-line-row">
+                          <span class="table-sequence">${index + 1}</span>
+                          <div><strong>${line.productName}</strong></div>
+                          <span class="table-color-spec">${line.colorSpec}</span>
+                          <b>${formatNumber(line.quantity)}</b>
+                        </div>
+                      `,
+                    )
+                    .join("")}
+                  </div>
+                </details>
+              `;
+            },
           )
           .join("")}
       </div>
@@ -23,29 +49,31 @@
   function renderBox(box, icons, formatNumber) {
     const subtotal = box.items.reduce((total, item) => total + item.quantity, 0);
     return `
-      <article class="shipment-package-card">
-        <header>
+      <details class="shipment-package-card">
+        <summary>
           <span class="shipment-package-card__icon">${icons.box}</span>
           <div><strong>箱号 ${box.boxNo}</strong><small>${box.items.length} 个产品规格</small></div>
           <b>合计 ${formatNumber(subtotal)}</b>
-        </header>
+          <i class="shipment-package-card__chevron">${icons.chevron}</i>
+        </summary>
         <div class="shipment-item-table">
           <div class="shipment-item-table__head">
-            <span>产品名称</span><span>颜色规格</span><span>装箱数量</span>
+            <span>序号</span><span>产品名称</span><span>颜色规格</span><span>数量</span>
           </div>
           ${box.items
             .map(
-              (item) => `
+              (item, index) => `
                 <div class="shipment-item-row">
-                  <div><strong>${item.productName}</strong></div>
-                  <span>${item.colorSpec}</span>
+                  <span class="table-sequence">${index + 1}</span>
+                  <div><strong>${item.productName} ${item.orderNo}</strong></div>
+                  <span class="table-color-spec">${item.colorSpec}</span>
                   <b>${formatNumber(item.quantity)}</b>
                 </div>
               `,
             )
             .join("")}
         </div>
-      </article>
+      </details>
     `;
   }
 
@@ -55,7 +83,7 @@
         (log) => `
           <li class="shipment-log-item">
             <i aria-hidden="true"></i>
-            <div><strong>${log.action}</strong><span>${log.date} · ${log.operator} · ${log.source}</span></div>
+            <div><strong>${log.action}</strong><span>${log.date} · ${log.operator}</span></div>
           </li>
         `,
       )
@@ -96,8 +124,8 @@
           </section>
 
           <section class="shipment-detail-section">
-            <header><h2>发货明细</h2><span>${shipment.lines.length} 个规格</span></header>
-            ${renderShipmentLines(shipment.lines, helpers.formatNumber)}
+            <header><h2>发货明细</h2></header>
+            ${renderShipmentLines(shipment.lines, icons, helpers.formatNumber)}
           </section>
 
           <section class="shipment-detail-section">

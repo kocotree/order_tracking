@@ -8,10 +8,18 @@
 
   function renderNotificationRow(item, state) {
     const enabled = state[item.key];
+    const permissionDenied = state.notificationPermissionDenied.includes(item.key);
     return `
-      <div class="profile-notification-row">
-        <span><strong>${item.title}</strong><small>${item.description}</small></span>
-        <button type="button" class="profile-switch ${enabled ? "is-on" : ""}" role="switch" aria-checked="${enabled}" data-notification-key="${item.key}" aria-label="${item.title}"><i></i></button>
+      <div class="profile-notification-row ${permissionDenied ? "has-permission-warning" : ""}">
+        <span>
+          <strong>${item.title}</strong>
+          <small>${item.description}</small>
+          ${permissionDenied ? `<em>微信通知未开启</em>` : ""}
+        </span>
+        <div class="profile-notification-action">
+          ${permissionDenied ? `<button type="button" class="profile-permission-button" data-enable-notification="${item.key}">去开启</button>` : ""}
+          <button type="button" class="profile-switch ${enabled ? "is-on" : ""}" role="switch" aria-checked="${enabled}" data-notification-key="${item.key}" aria-label="${item.title}"><i></i></button>
+        </div>
       </div>
     `;
   }
@@ -22,6 +30,15 @@
       button.addEventListener("click", () => {
         const key = button.dataset.notificationKey;
         state[key] = !state[key];
+        if (state[key]) state.notificationPermissionDenied = state.notificationPermissionDenied.filter((item) => item !== key);
+        render();
+      });
+    });
+    document.querySelectorAll("[data-enable-notification]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const key = button.dataset.enableNotification;
+        state.notificationPermissionDenied = state.notificationPermissionDenied.filter((item) => item !== key);
+        state[key] = true;
         render();
       });
     });
@@ -45,9 +62,8 @@
           <section class="profile-hero">
             <div class="profile-avatar" aria-label="煎饼的头像">煎</div>
             <div class="profile-identity">
-              <div><h2>煎饼</h2><span>账号正常</span></div>
+              <div><h2>煎饼</h2></div>
               <p>最高管理员</p>
-              <small><i>${icons.check}</i>已绑定微信</small>
             </div>
           </section>
 
@@ -61,11 +77,10 @@
           </section>
 
           <section class="profile-card">
-            <header><h2>业务通知设置</h2></header>
+            <header><h2>通知设置</h2></header>
             <div class="profile-notification-list">
               ${notifications.map((item) => renderNotificationRow(item, state)).join("")}
             </div>
-            <p class="profile-notification-note">${icons.info}<span>关闭微信通知后，系统内的红点和待办仍会保留。</span></p>
           </section>
         </main>
 

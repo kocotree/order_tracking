@@ -45,22 +45,28 @@
     const shippedPercent = factory.allocated ? Math.round((factory.shipped / factory.allocated) * 100) : 0;
     const unshipped = Math.max(factory.allocated - factory.shipped, 0);
     return `
-      <article class="factory-progress-card">
-        <div class="factory-progress-card__top"><h3>${factory.name}</h3><strong>${shippedPercent}%</strong></div>
-        <div class="factory-progress-card__numbers">
-          <span>下单 <b>${formatNumber(factory.allocated)}</b></span>
-          <span>已发 <b>${formatNumber(factory.shipped)}</b></span>
-          <span>未发 <b>${formatNumber(unshipped)}</b></span>
-        </div>
-        <div class="progress-track factory-progress-track"><i style="width:${shippedPercent}%"></i></div>
+      <details class="factory-progress-card">
+        <summary>
+          <div class="factory-progress-card__top">
+            <h3>${factory.name}</h3>
+            <span class="factory-progress-card__percent"><strong>${shippedPercent}%</strong><i aria-hidden="true">›</i></span>
+          </div>
+          <div class="factory-progress-card__numbers">
+            <span>下单 <b>${formatNumber(factory.allocated)}</b></span>
+            <span>已发 <b>${formatNumber(factory.shipped)}</b></span>
+            <span>未发 <b>${formatNumber(unshipped)}</b></span>
+          </div>
+          <div class="progress-track factory-progress-track"><i style="width:${shippedPercent}%"></i></div>
+        </summary>
         <div class="factory-product-table">
           <div class="factory-product-table__head">
-            <span>产品名称</span><span>颜色规格</span><span>已出/下单</span>
+            <span>序号</span><span>产品名称</span><span>颜色规格</span><span>已出/下单</span>
           </div>
           ${factory.products
             .map(
-              (product) => `
+              (product, index) => `
                 <div class="factory-product-row">
+                  <span class="table-sequence">${index + 1}</span>
                   <strong>${product.productName}</strong>
                   <span>${product.colorCode}</span>
                   <b>${formatNumber(product.shipped)} / ${formatNumber(product.ordered)}</b>
@@ -69,7 +75,7 @@
             )
             .join("")}
         </div>
-      </article>
+      </details>
     `;
   }
 

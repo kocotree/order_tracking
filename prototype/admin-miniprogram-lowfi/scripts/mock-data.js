@@ -112,28 +112,6 @@
       orderDate: "2026-08-06",
       updatedAt: "2026-08-15T10:15:00",
     },
-    {
-      id: "order-064",
-      orderNo: "064#",
-      productName: "夏日防晒冰袖",
-      specs: "天空蓝/均码、樱粉/均码",
-      tracker: "松子",
-      factories: ["启宏"],
-      contractShipDate: "2026-08-06",
-      contractShipDateLabel: "08月06日",
-      overdueDays: 0,
-      shipped: 0,
-      total: 2200,
-      progress: 0,
-      detailProducts: [
-        { productName: "夏日防晒冰袖", colorCode: "天空蓝/均码", shipped: 0, ordered: 1100 },
-        { productName: "夏日防晒冰袖", colorCode: "樱粉/均码", shipped: 0, ordered: 1100 },
-      ],
-      status: "cancelled",
-      statusLabel: "已取消",
-      orderDate: "2026-07-18",
-      updatedAt: "2026-08-07T09:30:00",
-    },
   ];
 
   const statusOptions = [
@@ -142,7 +120,6 @@
     ["shipping", "发货中"],
     ["completed", "已完成"],
     ["draft", "草稿"],
-    ["cancelled", "已取消"],
   ];
 
   const sortOptions = [

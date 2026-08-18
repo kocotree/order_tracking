@@ -40,7 +40,8 @@
     notifyNewOrder: true,
     notifyDue: true,
     notifyShipment: true,
-    notifyRepair: true,
+    notifyRepair: false,
+    notificationPermissionDenied: ["notifyRepair"],
   };
 
   function formatNumber(value) {

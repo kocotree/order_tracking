@@ -5,8 +5,7 @@
       const matchesKeyword =
         !keyword ||
         order.orderNo.toLowerCase().includes(keyword) ||
-        order.productName.toLowerCase().includes(keyword) ||
-        order.specs.toLowerCase().includes(keyword);
+        order.productName.toLowerCase().includes(keyword);
       const matchesStatus = state.status === "all" || order.status === state.status;
       const matchesFactory = !state.factories.length || order.factories.some((factory) => state.factories.includes(factory));
       const matchesTracker = state.tracker === "all" || order.tracker === state.tracker;
@@ -23,7 +22,7 @@
       if (state.sort === "updated-newest") return b.updatedAt.localeCompare(a.updatedAt);
 
       const urgency = (order) => {
-        if (order.overdueDays > 0 && !["completed", "cancelled"].includes(order.status)) return 0;
+        if (order.overdueDays > 0 && order.status !== "completed") return 0;
         if (["pending", "shipping"].includes(order.status)) return 1;
         if (order.status === "draft") return 2;
         return 3;
@@ -33,8 +32,9 @@
   }
 
   function renderOrderCard(order, index, icons, formatNumber) {
+    const unshipped = Math.max(order.total - order.shipped, 0);
     return `
-      <article class="order-card" style="--card-index:${index}">
+      <article class="order-card" style="--card-index:${index}" role="button" tabindex="0" aria-label="查看订单 ${order.orderNo} 详情" data-order-id="${order.id}">
         <div class="order-card__heading">
           <div>
             <p class="order-card__number">${order.orderNo}</p>
@@ -57,21 +57,16 @@
           <strong>${order.contractShipDateLabel}</strong>
         </div>
 
-        <div class="order-card__progress">
-          <div class="progress-line">
-            <span>发货进度</span>
-            <div class="progress-track"><i style="width:${order.progress}%"></i></div>
-            <strong>${order.progress}%</strong>
-          </div>
-          <div class="quantity-line">
-            <span>已发 / 订单数</span>
-            <strong>${formatNumber(order.shipped)} / ${formatNumber(order.total)}</strong>
-          </div>
+        <div class="order-card__quantities">
+          <div><span>下单</span><strong>${formatNumber(order.total)}</strong></div>
+          <div><span>已发</span><strong>${formatNumber(order.shipped)}</strong></div>
+          <div><span>未发</span><strong class="${unshipped > 0 ? "pending-value--warn" : ""}">${formatNumber(unshipped)}</strong></div>
         </div>
 
-        <button class="order-card__link" type="button" aria-label="查看订单 ${order.orderNo} 详情" data-order-id="${order.id}">
-          <span>查看详情</span>${icons.chevron}
-        </button>
+        <div class="order-card__progress">
+          <div class="progress-track"><i style="width:${order.progress}%"></i></div>
+          <strong>${order.progress}%</strong>
+        </div>
       </article>
     `;
   }
@@ -93,21 +88,12 @@
               <span>订单状态</span>
               <select id="filter-status">${helpers.selectOptions(data.statusOptions, state.status)}</select>
             </label>
-            <fieldset class="field factory-field">
-              <legend>工厂（可多选）</legend>
-              <div class="factory-options">
-                ${factories
-                  .map(
-                    (name) => `
-                      <label>
-                        <input class="factory-option" type="checkbox" value="${name}" ${state.factories.includes(name) ? "checked" : ""} />
-                        <span>${name}</span>
-                      </label>
-                    `,
-                  )
-                  .join("")}
-              </div>
-            </fieldset>
+            <label class="field">
+              <span>工厂</span>
+              <select id="filter-factory">
+                ${helpers.selectOptions([["all", "全部工厂"], ...factories.map((name) => [name, name])], state.factories[0] ?? "all")}
+              </select>
+            </label>
             <label class="field">
               <span>跟单人员</span>
               <select id="filter-tracker">
@@ -180,7 +166,8 @@
 
     document.querySelector("#apply-filter")?.addEventListener("click", () => {
       state.status = document.querySelector("#filter-status").value;
-      state.factories = [...document.querySelectorAll(".factory-option:checked")].map((input) => input.value);
+      const factory = document.querySelector("#filter-factory").value;
+      state.factories = factory === "all" ? [] : [factory];
       state.tracker = document.querySelector("#filter-tracker").value;
       state.dueStart = document.querySelector("#filter-date-start").value;
       state.dueEnd = document.querySelector("#filter-date-end").value;
@@ -204,8 +191,14 @@
       render();
     });
 
-    document.querySelectorAll("[data-order-id]").forEach((button) => {
-      button.addEventListener("click", () => navigate("order-detail", { selectedOrderId: button.dataset.orderId }));
+    document.querySelectorAll("[data-order-id]").forEach((card) => {
+      const openOrder = () => navigate("order-detail", { selectedOrderId: card.dataset.orderId });
+      card.addEventListener("click", openOrder);
+      card.addEventListener("keydown", (event) => {
+        if (!["Enter", " "].includes(event.key)) return;
+        event.preventDefault();
+        openOrder();
+      });
     });
 
     document.querySelector("[data-page-target='shipments']")?.addEventListener("click", () => navigate("shipments"));
@@ -242,7 +235,7 @@
           <div class="search-row">
             <label class="search-box">
               ${icons.search}
-              <input id="order-search" type="search" value="${state.keyword}" placeholder="订单编号、产品名称或颜色/规格" autocomplete="off" />
+              <input id="order-search" type="search" value="${state.keyword}" placeholder="订单编号、产品名称" autocomplete="off" />
             </label>
             <button type="button" class="filter-button" id="open-filter">
               ${icons.filter}<span>筛选</span>${activeFilterCount ? `<b>${activeFilterCount}</b>` : ""}
@@ -251,7 +244,7 @@
         </header>
 
         <section class="order-list" aria-label="订单列表">
-          <div class="result-summary"><span>共 ${visibleOrders.length} 个订单</span><em>${data.sortOptions.find(([key]) => key === state.sort)?.[1] ?? ""}</em></div>
+          <div class="result-summary"><span>共 ${visibleOrders.length} 个订单</span></div>
           ${
             visibleOrders.length
               ? visibleOrders.map((order, index) => renderOrderCard(order, index, icons, helpers.formatNumber)).join("")

@@ -3,6 +3,7 @@
     const keyword = state.repairKeyword.trim().toLowerCase();
     return [...data.repairRecords]
       .filter((repair) => {
+        if (repair.archived === true) return false;
         const matchesKeyword = !keyword || repair.factory.toLowerCase().includes(keyword);
         const matchesFactory = !state.repairFactories.length || state.repairFactories.includes(repair.factory);
         const matchesStart = !state.repairDateStart || repair.returnDate >= state.repairDateStart;
@@ -12,35 +13,41 @@
       .sort((a, b) => b.returnDate.localeCompare(a.returnDate));
   }
 
-  function renderRepairCard(repair, index, icons, formatNumber) {
+  function getProductSummary(repair, repairDetails) {
+    const productNames = [...new Set((repairDetails[repair.repairNo]?.qualityLines ?? []).map((line) => line.productName))];
+    if (!productNames.length) return "暂无产品信息";
+    return productNames.length === 1 ? productNames[0] : `${productNames[0]}等${productNames.length}款`;
+  }
+
+  function renderRepairCard(repair, index, icons, formatNumber, repairDetails) {
     const returnedQuantity = repair.repairedQuantity + repair.scrappedQuantity;
+    const pendingQuantity = Math.max(repair.warehouseReturnQuantity - returnedQuantity, 0);
     const progress = repair.warehouseReturnQuantity
       ? Math.min(100, Math.round((returnedQuantity / repair.warehouseReturnQuantity) * 100))
       : 0;
+    const productSummary = getProductSummary(repair, repairDetails);
     return `
       <button class="repair-progress-card" type="button" data-repair-no="${repair.repairNo}" style="--card-index:${index}" aria-label="查看 ${repair.factory} 返修进度详情">
         <span class="repair-progress-card__heading">
-          <span><small>工厂</small><strong>${repair.factory}</strong></span>
-          <span class="repair-progress-card__detail">详情${icons.chevron}</span>
+          <span><small>工厂</small><strong>${repair.factory}</strong><em>${productSummary}</em></span>
+          <span class="repair-progress-card__pending"><small>待返回</small><strong>${formatNumber(pendingQuantity)}件</strong></span>
         </span>
-        <span class="repair-progress-card__date"><i>${icons.calendar}</i><small>退回日期</small><strong>${repair.returnDate}</strong></span>
         <span class="repair-progress-card__progress">
           <span><small>返回进度</small><strong>${formatNumber(returnedQuantity)} / ${formatNumber(repair.warehouseReturnQuantity)}</strong><em>${progress}%</em></span>
           <i><b style="width:${progress}%"></b></i>
         </span>
         <span class="repair-progress-card__stats">
-          <span><small>仓库退回总数量</small><strong>${formatNumber(repair.warehouseReturnQuantity)}</strong></span>
-          <span><small>返回总数量</small><strong>${formatNumber(returnedQuantity)}</strong></span>
           <span><small>返修数量</small><strong>${formatNumber(repair.repairedQuantity)}</strong></span>
           <span><small>报废数量</small><strong>${formatNumber(repair.scrappedQuantity)}</strong></span>
         </span>
+        <span class="repair-progress-card__date"><i>${icons.calendar}</i><small>退回日期</small><strong>${repair.returnDate}</strong></span>
         <span class="repair-progress-card__number"><small>返修单号</small><strong>${repair.repairNo}</strong></span>
       </button>
     `;
   }
 
   function renderFilterSheet(context, factories) {
-    const { icons, state } = context;
+    const { icons, state, helpers } = context;
     if (!state.repairFilterOpen) return "";
     return `
       <div class="sheet-layer" data-close-repair-sheet>
@@ -51,21 +58,12 @@
             <button type="button" class="icon-button" data-close-repair-sheet aria-label="关闭筛选">${icons.close}</button>
           </header>
           <div class="filter-sheet__body">
-            <fieldset class="field factory-field">
-              <legend>工厂（可多选）</legend>
-              <div class="factory-options">
-                ${factories
-                  .map(
-                    (factory) => `
-                      <label>
-                        <input class="repair-factory-option" type="checkbox" value="${factory}" ${state.repairFactories.includes(factory) ? "checked" : ""} />
-                        <span>${factory}</span>
-                      </label>
-                    `,
-                  )
-                  .join("")}
-              </div>
-            </fieldset>
+            <label class="field">
+              <span>工厂</span>
+              <select id="repair-filter-factory">
+                ${helpers.selectOptions([["all", "全部工厂"], ...factories.map((factory) => [factory, factory])], state.repairFactories[0] ?? "all")}
+              </select>
+            </label>
             <fieldset class="field date-field">
               <legend>退回日期范围</legend>
               <div>
@@ -113,7 +111,8 @@
     });
 
     document.querySelector("#apply-repair-filter")?.addEventListener("click", () => {
-      state.repairFactories = [...document.querySelectorAll(".repair-factory-option:checked")].map((input) => input.value);
+      const factory = document.querySelector("#repair-filter-factory").value;
+      state.repairFactories = factory === "all" ? [] : [factory];
       state.repairDateStart = document.querySelector("#repair-date-start").value;
       state.repairDateEnd = document.querySelector("#repair-date-end").value;
       state.repairFilterOpen = false;
@@ -171,10 +170,10 @@
         </header>
 
         <section class="repair-progress-list" aria-label="返修进度列表">
-          <div class="result-summary"><span>共 ${visibleRepairs.length} 张返修单</span><em>按退回日期倒序</em></div>
+          <div class="result-summary"><span>共 ${visibleRepairs.length} 家工厂</span><em>按退回日期倒序</em></div>
           ${
             visibleRepairs.length
-              ? visibleRepairs.map((repair, index) => renderRepairCard(repair, index, icons, helpers.formatNumber)).join("")
+              ? visibleRepairs.map((repair, index) => renderRepairCard(repair, index, icons, helpers.formatNumber, data.repairDetails)).join("")
               : `<div class="empty-state"><span>${icons.search}</span><h2>没有符合条件的返修记录</h2><p>可以调整工厂名称或筛选条件后再试。</p><button id="clear-repair-filters" type="button">清除筛选</button></div>`
           }
         </section>

@@ -52,15 +52,20 @@
             ${productLines
               .map((line) => {
                 const returnedQuantity = line.repairedQuantity + line.scrappedQuantity;
+                const progress = line.warehouseReturnQuantity
+                  ? Math.min(100, Math.round((returnedQuantity / line.warehouseReturnQuantity) * 100))
+                  : 0;
                 return `
                   <div class="repair-return-line">
                     <strong>${line.colorSpec}</strong>
                     <dl>
                       <div><dt>返修</dt><dd>${formatNumber(line.repairedQuantity)}</dd></div>
                       <div><dt>报废</dt><dd>${formatNumber(line.scrappedQuantity)}</dd></div>
-                      <div><dt>返回</dt><dd>${formatNumber(returnedQuantity)}</dd></div>
-                      <div><dt>仓库退回</dt><dd>${formatNumber(line.warehouseReturnQuantity)}</dd></div>
                     </dl>
+                    <div class="repair-return-line__progress">
+                      <span><small>返回进度</small><strong>${formatNumber(returnedQuantity)} / ${formatNumber(line.warehouseReturnQuantity)}</strong><em>${progress}%</em></span>
+                      <i><b style="width:${progress}%"></b></i>
+                    </div>
                   </div>
                 `;
               })
@@ -125,8 +130,13 @@
   }
 
   function mount(context) {
-    const { app, data, icons, state, helpers } = context;
-    const repair = data.repairRecords.find((record) => record.repairNo === state.selectedRepairNo) ?? data.repairRecords[0];
+    const { app, data, icons, state, helpers, navigate } = context;
+    const visibleRepairs = data.repairRecords.filter((record) => record.archived !== true);
+    const repair = visibleRepairs.find((record) => record.repairNo === state.selectedRepairNo) ?? visibleRepairs[0];
+    if (!repair) {
+      navigate("repairs");
+      return;
+    }
     const detail = data.repairDetails[repair.repairNo];
     const returnedQuantity = repair.repairedQuantity + repair.scrappedQuantity;
     const progress = repair.warehouseReturnQuantity
@@ -159,8 +169,6 @@
             <div class="repair-detail-summary__stats">
               <p><span>返修数量</span><strong>${helpers.formatNumber(repair.repairedQuantity)}</strong></p>
               <p><span>报废数量</span><strong>${helpers.formatNumber(repair.scrappedQuantity)}</strong></p>
-              <p><span>仓库退回总数量</span><strong>${helpers.formatNumber(repair.warehouseReturnQuantity)}</strong></p>
-              <p><span>返回总数量</span><strong>${helpers.formatNumber(returnedQuantity)}</strong></p>
             </div>
             <div class="repair-detail-summary__progress">
               <span><small>返回进度</small><strong>${helpers.formatNumber(returnedQuantity)} / ${helpers.formatNumber(repair.warehouseReturnQuantity)}</strong><em>${progress}%</em></span>

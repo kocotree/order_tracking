@@ -97,14 +97,25 @@
 .order-card {
   position: relative;
   margin-bottom: 12px;
-  padding: 18px 16px 0;
+  padding: 18px 16px 16px;
   overflow: hidden;
   border: 1px solid #e2e7ed;
   border-radius: 16px;
   background: var(--white);
   box-shadow: var(--shadow);
+  cursor: pointer;
   animation: card-in 420ms both;
   animation-delay: calc(var(--card-index) * 45ms);
+}
+
+.order-card:active {
+  border-color: #bdd8ff;
+  background: #fbfdff;
+}
+
+.order-card:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .order-card h2 {
@@ -162,61 +173,59 @@
   color: var(--danger);
 }
 
-.order-card__progress {
-  margin-top: 14px;
-}
-
-.progress-line {
+.order-card__quantities {
   display: grid;
-  grid-template-columns: auto minmax(80px, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-}
-
-.progress-line strong {
-  min-width: 34px;
-  color: var(--blue);
-  font-size: 16px;
-  text-align: right;
-}
-
-.quantity-line {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-top: 10px;
-  font-size: 13px;
-}
-
-.quantity-line strong {
-  font-size: 17px;
-  font-variant-numeric: tabular-nums;
-}
-
-.order-card__link {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
-  width: calc(100% + 32px);
-  height: 41px;
-  margin: 14px -16px 0;
-  padding: 0 14px;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 11px;
+  padding: 10px 0;
   border-top: 1px solid var(--line);
-  background: #fbfcfd;
-  color: #55616f;
-  font-size: 12px;
-  font-weight: 700;
+  border-bottom: 1px solid var(--line);
 }
 
-.order-card__link:active {
-  background: var(--blue-soft);
+.order-card__quantities > div {
+  display: grid;
+  gap: 3px;
+  padding: 0 10px;
+  border-left: 1px solid #edf0f3;
+}
+
+.order-card__quantities > div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.order-card__quantities span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.order-card__quantities strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.pending-value--warn {
+  color: var(--danger);
+}
+
+.order-card__progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.order-card__progress .progress-track {
+  height: 6px;
+}
+
+.order-card__progress > strong {
   color: var(--blue);
-}
-
-.order-card__link svg {
-  width: 17px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .tabbar {

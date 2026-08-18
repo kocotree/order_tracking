@@ -105,12 +105,59 @@
   background: var(--white);
 }
 
+.shipment-order-list {
+  display: grid;
+  gap: 11px;
+  padding: 12px;
+}
+
+.shipment-order-card {
+  overflow: hidden;
+  border: 1px solid #e2e7ed;
+  border-radius: 13px;
+  background: #fbfcfd;
+}
+
+.shipment-order-card > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 54px;
+  padding: 9px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.shipment-order-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.shipment-order-card > summary div {
+  display: grid;
+  gap: 3px;
+}
+
+.shipment-order-card > summary strong {
+  font-size: 13px;
+}
+
+.shipment-order-card > summary small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.shipment-order-card > summary b {
+  color: var(--blue-deep);
+  font-size: 12px;
+}
+
 .shipment-line-table__head,
 .shipment-line-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) 80px 62px;
+  grid-template-columns: 22px minmax(0, 1fr) 68px 56px;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   padding: 9px 12px;
 }
 
@@ -121,9 +168,15 @@
   font-weight: 650;
 }
 
-.shipment-line-table__head span:nth-child(2),
-.shipment-line-row > span {
+.shipment-line-table__head span:first-child,
+.shipment-line-row .table-sequence,
+.shipment-line-table__head span:nth-child(3),
+.shipment-line-row .table-color-spec {
   text-align: center;
+}
+
+.shipment-line-row .table-sequence {
+  color: var(--muted);
 }
 
 .shipment-line-table__head span:last-child,
@@ -145,13 +198,12 @@
 }
 
 .shipment-line-row strong {
-  overflow: hidden;
   font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.45;
+  white-space: normal;
 }
 
-.shipment-line-row > span {
+.shipment-line-row .table-color-spec {
   color: #4f5b69;
 }
 
@@ -172,13 +224,19 @@
   background: #fbfcfd;
 }
 
-.shipment-package-card > header {
+.shipment-package-card > summary {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 9px;
   min-height: 54px;
   padding: 9px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.shipment-package-card > summary::-webkit-details-marker {
+  display: none;
 }
 
 .shipment-package-card__icon {
@@ -195,23 +253,38 @@
   width: 18px;
 }
 
-.shipment-package-card > header div {
+.shipment-package-card > summary div {
   display: grid;
   gap: 3px;
 }
 
-.shipment-package-card > header strong {
+.shipment-package-card > summary strong {
   font-size: 13px;
 }
 
-.shipment-package-card > header small {
+.shipment-package-card > summary small {
   color: var(--muted);
   font-size: 11px;
 }
 
-.shipment-package-card > header b {
+.shipment-package-card > summary b {
   color: var(--blue-deep);
   font-size: 12px;
+}
+
+.shipment-package-card__chevron {
+  display: grid;
+  color: #8c98a6;
+  transition: transform 160ms ease;
+}
+
+.shipment-package-card__chevron svg {
+  width: 16px;
+}
+
+.shipment-package-card[open] .shipment-package-card__chevron,
+.shipment-order-card[open] .shipment-package-card__chevron {
+  transform: rotate(90deg);
 }
 
 .shipment-item-table {
@@ -222,9 +295,9 @@
 .shipment-item-table__head,
 .shipment-item-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) 80px 62px;
+  grid-template-columns: 22px minmax(0, 1fr) 68px 56px;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   padding: 9px 11px;
 }
 
@@ -234,9 +307,15 @@
   font-weight: 650;
 }
 
-.shipment-item-table__head span:nth-child(2),
-.shipment-item-row > span {
+.shipment-item-table__head span:first-child,
+.shipment-item-row .table-sequence,
+.shipment-item-table__head span:nth-child(3),
+.shipment-item-row .table-color-spec {
   text-align: center;
+}
+
+.shipment-item-row .table-sequence {
+  color: var(--muted);
 }
 
 .shipment-item-table__head span:last-child,
@@ -258,13 +337,12 @@
 }
 
 .shipment-item-row strong {
-  overflow: hidden;
   font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.45;
+  white-space: normal;
 }
 
-.shipment-item-row > span {
+.shipment-item-row .table-color-spec {
   color: #4f5b69;
 }
 

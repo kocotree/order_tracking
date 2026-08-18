@@ -24,7 +24,7 @@
 
 .repair-progress-card__heading,
 .repair-progress-card__heading > span,
-.repair-progress-card__detail,
+.repair-progress-card__pending,
 .repair-progress-card__date,
 .repair-progress-card__progress,
 .repair-progress-card__progress > span,
@@ -44,6 +44,7 @@
 .repair-progress-card__heading > span:first-child {
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .repair-progress-card small {
@@ -58,18 +59,28 @@
   line-height: 1.3;
 }
 
-.repair-progress-card__detail {
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 2px;
-  margin-top: 15px;
-  color: var(--blue);
+.repair-progress-card__heading em {
+  overflow: hidden;
+  color: #596675;
   font-size: 12px;
-  font-weight: 750;
+  font-style: normal;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.repair-progress-card__detail svg {
-  width: 16px;
+.repair-progress-card__pending {
+  align-items: flex-end;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding-top: 1px;
+}
+
+.repair-progress-card__pending strong {
+  color: #ef5b62;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
 }
 
 .repair-progress-card__date {
@@ -150,10 +161,6 @@
 
 .repair-progress-card__stats > span:nth-child(even) {
   border-left: 1px solid var(--line);
-}
-
-.repair-progress-card__stats > span:nth-child(n + 3) {
-  border-top: 1px solid var(--line);
 }
 
 .repair-progress-card__stats strong {

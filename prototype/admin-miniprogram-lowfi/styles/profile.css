@@ -74,45 +74,11 @@
   font-size: 21px;
 }
 
-.profile-identity > div span {
-  padding: 4px 7px;
-  border-radius: 7px;
-  background: var(--success-soft);
-  color: var(--success);
-  font-size: 10px;
-  font-weight: 750;
-}
-
 .profile-identity p {
-  margin: 6px 0 8px;
+  margin: 6px 0 0;
   color: #566273;
   font-size: 13px;
   font-weight: 650;
-}
-
-.profile-identity > small {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--blue-deep);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.profile-identity > small i {
-  display: grid;
-  width: 15px;
-  height: 15px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--blue-soft);
-  font-style: normal;
-}
-
-.profile-identity > small svg {
-  width: 11px;
-  height: 11px;
-  stroke-width: 2.2;
 }
 
 .profile-card {
@@ -200,6 +166,27 @@
   line-height: 1.4;
 }
 
+.profile-notification-row em {
+  color: #e47a16;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.profile-notification-action {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.profile-permission-button {
+  padding: 4px 0;
+  color: var(--blue-deep);
+  font-size: 11px;
+  font-weight: 750;
+}
+
 .profile-switch {
   position: relative;
   flex: 0 0 auto;
@@ -229,24 +216,4 @@
 
 .profile-switch.is-on i {
   transform: translateX(19px);
-}
-
-.profile-notification-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin: 0;
-  padding: 11px 17px 13px;
-  border-top: 1px solid var(--line);
-  background: #fbfcfd;
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.5;
-}
-
-.profile-notification-note svg {
-  flex: 0 0 auto;
-  width: 15px;
-  margin-top: 1px;
-  color: var(--blue);
 }

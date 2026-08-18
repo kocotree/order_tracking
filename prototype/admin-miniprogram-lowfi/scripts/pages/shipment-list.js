@@ -17,12 +17,12 @@
   }
 
   function renderShipmentCard(shipment, index, icons, formatNumber) {
-    const productNames = [...new Set(shipment.lines.map((line) => line.productName))];
-    const productSummary = productNames.length > 2 ? `${productNames.slice(0, 2).join("、")}等${productNames.length}款` : productNames.join("、");
+    const products = [...new Set(shipment.lines.map((line) => `${line.productName} ${line.orderNo}`))];
+    const productSummary = products.length > 2 ? `${products.slice(0, 2).join("、")}等${products.length}款` : products.join("、");
     return `
       <button class="shipment-record-card" type="button" data-shipment-no="${shipment.no}" style="--card-index:${index}" aria-label="查看发货单 ${shipment.no} 详情">
         <span class="shipment-record-card__heading">
-          <span><small>产品名称</small><strong>${productSummary}</strong></span>
+          <span><strong>${productSummary}</strong></span>
           <span class="shipment-record-card__detail">详情${icons.chevron}</span>
         </span>
         <span class="shipment-record-card__meta">
@@ -32,7 +32,6 @@
         <span class="shipment-record-card__stats">
           <span><small>发货数量</small><strong>${formatNumber(shipment.totalQuantity)}</strong></span>
           <span><small>总箱数</small><strong>${shipment.boxes.length}</strong></span>
-          <span><small>关联订单</small><strong>${shipment.orderNos.join("、")}</strong></span>
         </span>
         <span class="shipment-record-card__number"><small>发货单号</small><strong>${shipment.no}</strong></span>
       </button>
@@ -40,7 +39,7 @@
   }
 
   function renderFilterSheet(context, factories) {
-    const { icons, state } = context;
+    const { icons, state, helpers } = context;
     if (!state.shipmentFilterOpen) return "";
     return `
       <div class="sheet-layer" data-close-shipment-sheet>
@@ -51,21 +50,12 @@
             <button type="button" class="icon-button" data-close-shipment-sheet aria-label="关闭筛选">${icons.close}</button>
           </header>
           <div class="filter-sheet__body">
-            <fieldset class="field factory-field">
-              <legend>工厂（可多选）</legend>
-              <div class="factory-options">
-                ${factories
-                  .map(
-                    (factory) => `
-                      <label>
-                        <input class="shipment-factory-option" type="checkbox" value="${factory}" ${state.shipmentFactories.includes(factory) ? "checked" : ""} />
-                        <span>${factory}</span>
-                      </label>
-                    `,
-                  )
-                  .join("")}
-              </div>
-            </fieldset>
+            <label class="field">
+              <span>工厂</span>
+              <select id="shipment-filter-factory">
+                ${helpers.selectOptions([["all", "全部工厂"], ...factories.map((factory) => [factory, factory])], state.shipmentFactories[0] ?? "all")}
+              </select>
+            </label>
             <fieldset class="field date-field">
               <legend>发货日期范围</legend>
               <div>
@@ -113,7 +103,8 @@
     });
 
     document.querySelector("#apply-shipment-filter")?.addEventListener("click", () => {
-      state.shipmentFactories = [...document.querySelectorAll(".shipment-factory-option:checked")].map((input) => input.value);
+      const factory = document.querySelector("#shipment-filter-factory").value;
+      state.shipmentFactories = factory === "all" ? [] : [factory];
       state.shipmentDateStart = document.querySelector("#shipment-date-start").value;
       state.shipmentDateEnd = document.querySelector("#shipment-date-end").value;
       state.shipmentFilterOpen = false;

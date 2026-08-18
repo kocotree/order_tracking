@@ -1,35 +1,36 @@
 (function registerTaskList() {
   function getVisibleTasks(data, state) {
-    const keyword = state.keyword.trim().toLowerCase();
-    const filtered = data.tasks.filter(function (task) {
-      const matchesKeyword =
+    var keyword = state.keyword.trim().toLowerCase();
+    var filtered = data.tasks.filter(function (task) {
+      var matchesKeyword =
         !keyword ||
         task.orderNo.toLowerCase().includes(keyword) ||
-        task.productName.toLowerCase().includes(keyword) ||
-        task.spec.toLowerCase().includes(keyword);
-      const matchesStatus = state.status === "all" || task.status === state.status;
-      const matchesStart = !state.dueStart || task.contractShipDate >= state.dueStart;
-      const matchesEnd = !state.dueEnd || task.contractShipDate <= state.dueEnd;
+        task.productSummary.toLowerCase().includes(keyword) ||
+        task.specSummary.toLowerCase().includes(keyword);
+      var matchesStatus = state.status === "all" || task.status === state.status;
+      var matchesStart = !state.dueStart || task.contractShipDate >= state.dueStart;
+      var matchesEnd = !state.dueEnd || task.contractShipDate <= state.dueEnd;
       return matchesKeyword && matchesStatus && matchesStart && matchesEnd;
     });
 
     return filtered.sort(function (a, b) {
-      // Overdue + not completed first
+      // Overdue + not completed → first
       var aUrgency = a.overdueDays > 0 && a.status !== "completed" ? 0 : a.status === "completed" ? 2 : 1;
       var bUrgency = b.overdueDays > 0 && b.status !== "completed" ? 0 : b.status === "completed" ? 2 : 1;
       if (aUrgency !== bUrgency) return aUrgency - bUrgency;
-      // Then by contract ship date
       return a.contractShipDate.localeCompare(b.contractShipDate);
     });
   }
 
   function renderTaskCard(task, index, icons, formatNumber) {
+    var summaryHtml = escapeHtml(task.productSummary);
+
     return (
       '<article class="order-card" style="--card-index:' + index + '">' +
         '<div class="order-card__heading">' +
           '<div>' +
             '<p class="order-card__number">' + escapeHtml(task.orderNo) + '</p>' +
-            '<h2>' + escapeHtml(task.productName) + '</h2>' +
+            '<h2>' + summaryHtml + '</h2>' +
           '</div>' +
           '<div class="order-card__badges">' +
             '<span class="status status--' + task.status + '">' + escapeHtml(task.statusLabel) + '</span>' +
@@ -37,16 +38,10 @@
           '</div>' +
         '</div>' +
 
-        '<div class="order-card__spec">' +
-          '<span class="fact-icon">' + icons.box + '</span>' +
-          '<span class="fact-label">规格</span>' +
-          '<strong>' + escapeHtml(task.spec) + '</strong>' +
-        '</div>' +
-
         '<div class="order-card__due' + (task.overdueDays > 0 && task.status !== "completed" ? " order-card__due--overdue" : "") + '">' +
           '<span class="fact-icon">' + icons.calendar + '</span>' +
           '<span>合同出货时间</span>' +
-          '<strong>' + task.contractShipDateLabel + '</strong>' +
+          '<strong>' + escapeHtml(task.contractShipDateLabel) + '</strong>' +
         '</div>' +
 
         '<div class="order-card__progress">' +
@@ -57,11 +52,11 @@
           '</div>' +
           '<div class="quantity-line">' +
             '<span>已发 / 下单</span>' +
-            '<strong>' + formatNumber(task.shipped) + ' / ' + formatNumber(task.allocated) + '</strong>' +
+            '<strong>' + formatNumber(task.totalShipped) + ' / ' + formatNumber(task.totalAllocated) + '</strong>' +
           '</div>' +
           '<div class="quantity-line quantity-line--pending">' +
             '<span><strong class="pending-label">未发数量</strong></span>' +
-            '<strong class="pending-value' + (task.pending > 0 ? " pending-value--warn" : "") + '">' + formatNumber(task.pending) + '</strong>' +
+            '<strong class="pending-value' + (task.totalPending > 0 ? " pending-value--warn" : "") + '">' + formatNumber(task.totalPending) + '</strong>' +
           '</div>' +
         '</div>' +
 
@@ -126,6 +121,9 @@
               ? visible.map(function (task, index) { return renderTaskCard(task, index, icons, formatNumber); }).join("")
               : '<div class="empty-state"><span>' + icons.search + '</span><h2>没有符合条件的任务</h2><p>可以调整搜索词或筛选条件后再试。</p><button id="clear-all" type="button">清除筛选</button></div>'
             ) +
+            '<div class="create-shipment-bar">' +
+              '<button type="button" class="primary-button create-shipment-btn" id="create-shipment-btn">创建发货单</button>' +
+            '</div>' +
           '</section>' +
 
           '<nav class="tabbar" aria-label="工厂小程序一级导航">' +
@@ -222,9 +220,16 @@
         render();
       });
 
+      document.querySelector("#create-shipment-btn")?.addEventListener("click", function () {
+        var page = window.FactoryPages["create-shipment"];
+        if (page && page.mount) page.mount(app);
+      });
+
       document.querySelectorAll("[data-task-id]").forEach(function (button) {
         button.addEventListener("click", function () {
-          showToast("任务详情 — 后续逐页确认");
+          var taskId = button.dataset.taskId;
+          var page = window.FactoryPages["task-detail"];
+          if (page && page.mount) page.mount(app, taskId);
         });
       });
 

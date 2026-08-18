@@ -9,6 +9,8 @@
     truck: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h11v11H3zM14 10h4l3 4v3h-7z"></path><circle cx="7" cy="18" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg>',
     profile: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4"></circle><path d="M4 22a8 8 0 0 1 16 0"></path></svg>',
     close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg>',
+    back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>',
     box: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 8 8-4 8 4-8 4z"></path><path d="M4 8v9l8 4 8-4V8M12 12v9"></path></svg>',
+    camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/><path d="M3 7h4l2-3h6l2 3h4v13H3V7Z"/></svg>',
   };
 })();

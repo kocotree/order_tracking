@@ -79,7 +79,7 @@
 
 /* ── Order / Task List ── */
 .order-list {
-  padding: 13px 14px 22px;
+  padding: 11px 14px 154px;
 }
 
 .result-summary {
@@ -100,19 +100,33 @@
 .order-card {
   position: relative;
   margin-bottom: 12px;
-  padding: 18px 16px 0;
+  padding: 15px;
   overflow: hidden;
   border: 1px solid #e2e7ed;
   border-radius: 16px;
   background: var(--white);
   box-shadow: var(--shadow);
+  cursor: pointer;
   animation: card-in 420ms both;
   animation-delay: calc(var(--card-index) * 45ms);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 120ms ease;
+}
+
+.order-card:focus-visible {
+  border-color: var(--blue);
+  outline: 3px solid rgb(22 119 255 / 16%);
+  outline-offset: 1px;
+}
+
+.order-card:active {
+  border-color: #cfe0f8;
+  box-shadow: 0 4px 14px rgb(34 53 76 / 9%);
+  transform: scale(.995);
 }
 
 .order-card h2 {
-  margin: 8px 0 0;
-  font-size: 17px;
+  margin: 6px 0 0;
+  font-size: 16px;
   font-weight: 750;
   line-height: 1.4;
 }
@@ -127,7 +141,7 @@
 .order-card__number {
   margin: 0;
   font-family: "DIN Alternate", "Avenir Next", sans-serif;
-  font-size: 25px;
+  font-size: 22px;
   font-weight: 800;
   letter-spacing: 0.02em;
   line-height: 1;
@@ -207,8 +221,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 13px;
-  padding-top: 12px;
+  margin-top: 11px;
+  padding-top: 10px;
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 13px;
@@ -225,83 +239,60 @@
   color: var(--danger);
 }
 
-/* Progress */
-.order-card__progress {
-  margin-top: 14px;
-}
-
-.progress-line {
+/* Quantity summary and progress */
+.order-card__quantities {
   display: grid;
-  grid-template-columns: auto minmax(80px, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 11px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
-.progress-line strong {
-  min-width: 34px;
-  color: var(--blue);
-  font-size: 16px;
-  text-align: right;
+.order-card__quantities > div {
+  display: grid;
+  gap: 3px;
+  padding: 0 10px;
+  border-left: 1px solid #edf0f3;
 }
 
-.quantity-line {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-top: 10px;
-  font-size: 13px;
+.order-card__quantities > div:first-child {
+  padding-left: 0;
+  border-left: 0;
 }
 
-.quantity-line strong {
-  font-size: 17px;
-  font-variant-numeric: tabular-nums;
-}
-
-.quantity-line--pending {
-  margin-top: 6px;
-  padding-top: 8px;
-  border-top: 1px dashed #e8ecf1;
-}
-
-.pending-label {
+.order-card__quantities span {
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11px;
 }
 
-.pending-value {
+.order-card__quantities strong {
   font-size: 18px;
-  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
 }
 
 .pending-value--warn {
   color: var(--danger);
 }
 
-.order-card__link {
-  display: flex;
+.order-card__progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
   align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
-  width: calc(100% + 32px);
-  height: 41px;
-  margin: 14px -16px 0;
-  padding: 0 14px;
-  border-top: 1px solid var(--line);
-  background: #fbfcfd;
-  color: #55616f;
-  font-size: 12px;
-  font-weight: 700;
+  gap: 9px;
+  margin-top: 10px;
 }
 
-.order-card__link:active {
-  background: var(--blue-soft);
+.order-card__progress .progress-track {
+  height: 6px;
+}
+
+.order-card__progress > strong {
   color: var(--blue);
-}
-
-.order-card__link svg {
-  width: 17px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 /* ── Tabbar ── */
@@ -579,12 +570,22 @@
 
 /* ── Create Shipment Button ── */
 .create-shipment-bar {
-  padding: 8px 0 0;
+  position: fixed;
+  z-index: 35;
+  bottom: calc(66px + env(safe-area-inset-bottom));
+  left: 50%;
+  width: min(100%, 430px);
+  padding: 10px 14px;
+  border-top: 1px solid #e3e7ec;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 -6px 18px rgb(39 52 69 / 7%);
+  backdrop-filter: blur(18px);
+  transform: translateX(-50%);
 }
 
 .create-shipment-btn {
   width: 100%;
-  height: 48px;
+  height: 46px;
   border-radius: 12px;
   font-size: 16px;
   font-weight: 750;

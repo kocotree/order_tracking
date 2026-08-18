@@ -99,6 +99,7 @@
   ];
 
   const statusOptions = [
+    ["incomplete", "未完成"],
     ["all", "全部状态"],
     ["pending", "待发货"],
     ["shipping", "发货中"],

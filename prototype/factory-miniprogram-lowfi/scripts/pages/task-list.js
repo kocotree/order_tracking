@@ -7,7 +7,9 @@
         task.orderNo.toLowerCase().includes(keyword) ||
         task.productSummary.toLowerCase().includes(keyword) ||
         task.specSummary.toLowerCase().includes(keyword);
-      var matchesStatus = state.status === "all" || task.status === state.status;
+      var matchesStatus =
+        state.status === "all" ||
+        (state.status === "incomplete" ? task.status !== "completed" : task.status === state.status);
       var matchesStart = !state.dueStart || task.contractShipDate >= state.dueStart;
       var matchesEnd = !state.dueEnd || task.contractShipDate <= state.dueEnd;
       return matchesKeyword && matchesStatus && matchesStart && matchesEnd;
@@ -26,7 +28,7 @@
     var summaryHtml = escapeHtml(task.productSummary);
 
     return (
-      '<article class="order-card" style="--card-index:' + index + '">' +
+      '<article class="order-card" style="--card-index:' + index + '" role="button" tabindex="0" aria-label="查看任务 ' + escapeHtml(task.orderNo) + ' 详情" data-task-id="' + task.id + '">' +
         '<div class="order-card__heading">' +
           '<div>' +
             '<p class="order-card__number">' + escapeHtml(task.orderNo) + '</p>' +
@@ -44,25 +46,16 @@
           '<strong>' + escapeHtml(task.contractShipDateLabel) + '</strong>' +
         '</div>' +
 
-        '<div class="order-card__progress">' +
-          '<div class="progress-line">' +
-            '<span>发货进度</span>' +
-            '<div class="progress-track"><i style="width:' + task.progress + '%"></i></div>' +
-            '<strong>' + task.progress + '%</strong>' +
-          '</div>' +
-          '<div class="quantity-line">' +
-            '<span>已发 / 下单</span>' +
-            '<strong>' + formatNumber(task.totalShipped) + ' / ' + formatNumber(task.totalAllocated) + '</strong>' +
-          '</div>' +
-          '<div class="quantity-line quantity-line--pending">' +
-            '<span><strong class="pending-label">未发数量</strong></span>' +
-            '<strong class="pending-value' + (task.totalPending > 0 ? " pending-value--warn" : "") + '">' + formatNumber(task.totalPending) + '</strong>' +
-          '</div>' +
+        '<div class="order-card__quantities">' +
+          '<div><span>下单</span><strong>' + formatNumber(task.totalAllocated) + '</strong></div>' +
+          '<div><span>已发</span><strong>' + formatNumber(task.totalShipped) + '</strong></div>' +
+          '<div><span>未发</span><strong class="' + (task.totalPending > 0 ? "pending-value--warn" : "") + '">' + formatNumber(task.totalPending) + '</strong></div>' +
         '</div>' +
 
-        '<button class="order-card__link" type="button" aria-label="查看任务 ' + escapeHtml(task.orderNo) + ' 详情" data-task-id="' + task.id + '">' +
-          '<span>查看详情</span>' + icons.chevron +
-        '</button>' +
+        '<div class="order-card__progress">' +
+          '<div class="progress-track"><i style="width:' + task.progress + '%"></i></div>' +
+          '<strong>' + task.progress + '%</strong>' +
+        '</div>' +
       '</article>'
     );
   }
@@ -82,7 +75,7 @@
     var icons = window.FactoryIcons;
     var state = {
       keyword: "",
-      status: "all",
+      status: "incomplete",
       dueStart: "",
       dueEnd: "",
       filterOpen: false,
@@ -91,7 +84,7 @@
     function render() {
       var visible = getVisibleTasks(data, state);
       var activeFilterCount = [
-        state.status !== "all",
+        state.status !== "incomplete",
         Boolean(state.dueStart),
         Boolean(state.dueEnd),
       ].filter(Boolean).length;
@@ -198,7 +191,7 @@
       });
 
       document.querySelector("#reset-filter")?.addEventListener("click", function () {
-        state.status = "all";
+        state.status = "incomplete";
         state.dueStart = "";
         state.dueEnd = "";
         render();
@@ -214,7 +207,7 @@
 
       document.querySelector("#clear-all")?.addEventListener("click", function () {
         state.keyword = "";
-        state.status = "all";
+        state.status = "incomplete";
         state.dueStart = "";
         state.dueEnd = "";
         render();
@@ -225,11 +218,19 @@
         if (page && page.mount) page.mount(app);
       });
 
-      document.querySelectorAll("[data-task-id]").forEach(function (button) {
-        button.addEventListener("click", function () {
-          var taskId = button.dataset.taskId;
+      document.querySelectorAll(".order-card[data-task-id]").forEach(function (card) {
+        function openTaskDetail() {
+          var taskId = card.dataset.taskId;
           var page = window.FactoryPages["task-detail"];
           if (page && page.mount) page.mount(app, taskId);
+        }
+
+        card.addEventListener("click", openTaskDetail);
+        card.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openTaskDetail();
+          }
         });
       });
 

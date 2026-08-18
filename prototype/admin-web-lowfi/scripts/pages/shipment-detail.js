@@ -218,9 +218,9 @@ export function renderShipmentDetailPage(shipmentNo) {
         <div class="detail-overview-content">
           <dl class="shipment-summary-grid" aria-label="发货单概览">
             <div><dt>关联订单</dt><dd>${shipment.orderNos.map((orderNo) => escapeHTML(orderNo)).join("、")}</dd></div>
+            <div><dt>发货时间</dt><dd>${escapeHTML(shipmentTime)}</dd></div>
             <div><dt>发货数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(shipment.shippedQuantity))}</dd></div>
             <div><dt>总箱数</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(detail.totalBoxes))}</dd></div>
-            <div><dt>发货时间</dt><dd>${escapeHTML(shipmentTime)}</dd></div>
           </dl>
         </div>
       </section>

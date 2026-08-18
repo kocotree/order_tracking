@@ -13,7 +13,6 @@
     selectedOrderId: null,
     selectedShipmentNo: null,
     shipmentBackPage: "order-detail",
-    completionDialogOpen: false,
     keyword: "",
     status: "all",
     factories: [],

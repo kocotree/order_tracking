@@ -84,27 +84,9 @@
     `;
   }
 
-  function renderCompletionDialog(order, state, icons) {
-    if (!state.completionDialogOpen) return "";
-    return `
-      <div class="confirm-layer" data-close-completion>
-        <section class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="completion-title">
-          <span class="confirm-dialog__icon">${icons.check}</span>
-          <h2 id="completion-title">确认订单完成？</h2>
-          <p>确认后订单 ${order.orderNo} 将不再继续发货，并记录当前多发或少发结果。</p>
-          <div>
-            <button type="button" class="secondary-button" data-close-completion>取消</button>
-            <button type="button" class="primary-button" id="confirm-completion">确认完成</button>
-          </div>
-        </section>
-      </div>
-    `;
-  }
-
-  function bindEvents(context, order) {
-    const { state, render, navigate } = context;
+  function bindEvents(context) {
+    const { navigate } = context;
     document.querySelector("#back-to-orders")?.addEventListener("click", () => {
-      state.completionDialogOpen = false;
       navigate("orders");
     });
 
@@ -116,38 +98,12 @@
         }),
       );
     });
-
-    document.querySelector("#complete-order:not(:disabled)")?.addEventListener("click", () => {
-      state.completionDialogOpen = true;
-      render();
-    });
-
-    document.querySelectorAll("[data-close-completion]").forEach((element) => {
-      element.addEventListener("click", (event) => {
-        if (event.target.closest(".confirm-dialog") && !event.target.closest("[data-close-completion]")) return;
-        state.completionDialogOpen = false;
-        render();
-      });
-    });
-
-    document.querySelector("#confirm-completion")?.addEventListener("click", () => {
-      order.status = "completed";
-      order.statusLabel = "已完成";
-      order.overdueDays = 0;
-      state.completionDialogOpen = false;
-      render();
-    });
   }
 
   function mount(context) {
     const { app, data, icons, state, helpers } = context;
     const order = data.orders.find((item) => item.id === state.selectedOrderId) ?? data.orders[0];
     const detail = getOrderDetail(order, data.detailOverrides);
-    const canComplete =
-      !["draft", "cancelled", "completed"].includes(order.status) && detail.pendingCancellationCount === 0;
-    const blockedReason = detail.pendingCancellationCount
-      ? `仍有 ${detail.pendingCancellationCount} 张待处理作废申请`
-      : "全部发货记录核对完成后可确认";
 
     app.innerHTML = `
       <div class="detail-page">
@@ -203,23 +159,12 @@
               }
             </div>
           </section>
-
-          <div class="completion-hint ${canComplete ? "is-ready" : ""}">
-            ${icons.info}<span>${order.status === "completed" ? "订单已确认完成" : canComplete ? "已满足订单完成检查条件" : blockedReason}</span>
-          </div>
         </div>
-
-        <footer class="completion-bar">
-          <button type="button" id="complete-order" ${canComplete ? "" : "disabled"}>
-            ${order.status === "completed" ? "订单已完成" : "确认订单完成"}
-          </button>
-        </footer>
       </div>
-      ${renderCompletionDialog(order, state, icons)}
       <div class="prototype-toast" role="status"></div>
     `;
 
-    bindEvents(context, order);
+    bindEvents(context);
   }
 
   window.AdminPrototypePages ??= {};

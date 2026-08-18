@@ -1,235 +1,253 @@
 (function registerTaskList() {
-  const render = function (container) {
-    container.innerHTML = '<div class="page-shell" id="task-page"></div>';
-    const shell = container.querySelector("#task-page");
-    const data = window.FactoryPrototypeData;
-    let tasks = [...data.tasks];
-    let statusFilter = "all";
-    let searchQuery = "";
-    let dateRangeStart = "";
-    let dateRangeEnd = "";
+  function getVisibleTasks(data, state) {
+    const keyword = state.keyword.trim().toLowerCase();
+    const filtered = data.tasks.filter(function (task) {
+      const matchesKeyword =
+        !keyword ||
+        task.orderNo.toLowerCase().includes(keyword) ||
+        task.productName.toLowerCase().includes(keyword) ||
+        task.spec.toLowerCase().includes(keyword);
+      const matchesStatus = state.status === "all" || task.status === state.status;
+      const matchesStart = !state.dueStart || task.contractShipDate >= state.dueStart;
+      const matchesEnd = !state.dueEnd || task.contractShipDate <= state.dueEnd;
+      return matchesKeyword && matchesStatus && matchesStart && matchesEnd;
+    });
 
-    const sortByPriority = function (list) {
-      const now = new Date();
-      list.sort(function (a, b) {
-        var aIsOverdue = a.overdueDays > 0 ? 1 : 0;
-        var bIsOverdue = b.overdueDays > 0 ? 1 : 0;
-        if (aIsOverdue !== bIsOverdue) return bIsOverdue - aIsOverdue;
-        var aDone = a.status === "completed" ? 1 : 0;
-        var bDone = b.status === "completed" ? 1 : 0;
-        if (aDone !== bDone) return aDone - bDone;
-        return new Date(a.contractShipDate) - new Date(b.contractShipDate);
-      });
-      return list;
-    };
+    return filtered.sort(function (a, b) {
+      // Overdue + not completed first
+      var aUrgency = a.overdueDays > 0 && a.status !== "completed" ? 0 : a.status === "completed" ? 2 : 1;
+      var bUrgency = b.overdueDays > 0 && b.status !== "completed" ? 0 : b.status === "completed" ? 2 : 1;
+      if (aUrgency !== bUrgency) return aUrgency - bUrgency;
+      // Then by contract ship date
+      return a.contractShipDate.localeCompare(b.contractShipDate);
+    });
+  }
 
-    const applyFilters = function () {
-      var list = tasks.filter(function (t) {
-        if (statusFilter !== "all" && t.status !== statusFilter) return false;
-        if (searchQuery) {
-          var q = searchQuery.toLowerCase();
-          if (
-            t.orderNo.toLowerCase().indexOf(q) === -1 &&
-            t.productName.toLowerCase().indexOf(q) === -1 &&
-            t.spec.toLowerCase().indexOf(q) === -1
-          ) return false;
-        }
-        if (dateRangeStart && t.contractShipDate < dateRangeStart) return false;
-        if (dateRangeEnd && t.contractShipDate > dateRangeEnd) return false;
-        return true;
-      });
-      return sortByPriority(list);
-    };
-
-    const renderFilterBar = function () {
-      var el = document.createElement("div");
-      el.className = "filter-bar";
-      el.innerHTML =
-        '<div class="filter-bar__row">' +
-          '<div class="search-box" id="search-box">' +
-            '<span class="search-box__icon">' + window.FactoryIcons.search + '</span>' +
-            '<input type="text" class="search-box__input" id="search-input" placeholder="搜索订单编号或产品名称" value="' + window.FactoryShared.escapeHtml(searchQuery) + '" />' +
-            (searchQuery ? '<button class="search-box__clear" id="search-clear">' + window.FactoryIcons.close + '</button>' : '') +
+  function renderTaskCard(task, index, icons, formatNumber) {
+    return (
+      '<article class="order-card" style="--card-index:' + index + '">' +
+        '<div class="order-card__heading">' +
+          '<div>' +
+            '<p class="order-card__number">' + escapeHtml(task.orderNo) + '</p>' +
+            '<h2>' + escapeHtml(task.productName) + '</h2>' +
+          '</div>' +
+          '<div class="order-card__badges">' +
+            '<span class="status status--' + task.status + '">' + escapeHtml(task.statusLabel) + '</span>' +
+            (task.overdueDays > 0 && task.status !== "completed" ? '<span class="overdue">逾期' + task.overdueDays + '天</span>' : "") +
           '</div>' +
         '</div>' +
-        '<div class="filter-bar__row filter-bar__row--second">' +
-          '<select class="filter-select" id="status-select">' +
-            data.statusOptions.map(function (s) {
-              return '<option value="' + s[0] + '"' + (s[0] === statusFilter ? " selected" : "") + ">" + s[1] + "</option>";
-            }).join("") +
-          '</select>' +
-          '<input type="date" class="filter-date" id="date-start" value="' + dateRangeStart + '" title="合同出货时间起" />' +
-          '<span class="filter-date__sep">至</span>' +
-          '<input type="date" class="filter-date" id="date-end" value="' + dateRangeEnd + '" title="合同出货时间止" />' +
-        '</div>';
-      return el;
+
+        '<div class="order-card__spec">' +
+          '<span class="fact-icon">' + icons.box + '</span>' +
+          '<span class="fact-label">规格</span>' +
+          '<strong>' + escapeHtml(task.spec) + '</strong>' +
+        '</div>' +
+
+        '<div class="order-card__due' + (task.overdueDays > 0 && task.status !== "completed" ? " order-card__due--overdue" : "") + '">' +
+          '<span class="fact-icon">' + icons.calendar + '</span>' +
+          '<span>合同出货时间</span>' +
+          '<strong>' + task.contractShipDateLabel + '</strong>' +
+        '</div>' +
+
+        '<div class="order-card__progress">' +
+          '<div class="progress-line">' +
+            '<span>发货进度</span>' +
+            '<div class="progress-track"><i style="width:' + task.progress + '%"></i></div>' +
+            '<strong>' + task.progress + '%</strong>' +
+          '</div>' +
+          '<div class="quantity-line">' +
+            '<span>已发 / 下单</span>' +
+            '<strong>' + formatNumber(task.shipped) + ' / ' + formatNumber(task.allocated) + '</strong>' +
+          '</div>' +
+          '<div class="quantity-line quantity-line--pending">' +
+            '<span><strong class="pending-label">未发数量</strong></span>' +
+            '<strong class="pending-value' + (task.pending > 0 ? " pending-value--warn" : "") + '">' + formatNumber(task.pending) + '</strong>' +
+          '</div>' +
+        '</div>' +
+
+        '<button class="order-card__link" type="button" aria-label="查看任务 ' + escapeHtml(task.orderNo) + ' 详情" data-task-id="' + task.id + '">' +
+          '<span>查看详情</span>' + icons.chevron +
+        '</button>' +
+      '</article>'
+    );
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement("div");
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+  }
+
+  function formatNumber(n) {
+    return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  function mount(app) {
+    var data = window.FactoryPrototypeData;
+    var icons = window.FactoryIcons;
+    var state = {
+      keyword: "",
+      status: "all",
+      dueStart: "",
+      dueEnd: "",
+      filterOpen: false,
     };
 
-    const renderTaskCard = function (task) {
-      var card = document.createElement("button");
-      card.className = "task-card" + (task.overdueDays > 0 ? " task-card--overdue" : "");
-      card.setAttribute("data-task-id", task.id);
-      card.addEventListener("click", function () {
-        window.FactoryShared.showToast("任务详情 — 后续逐页确认");
+    function render() {
+      var visible = getVisibleTasks(data, state);
+      var activeFilterCount = [
+        state.status !== "all",
+        Boolean(state.dueStart),
+        Boolean(state.dueEnd),
+      ].filter(Boolean).length;
+
+      app.innerHTML =
+        '<div class="page-shell">' +
+          '<header class="page-header">' +
+            '<div class="mini-titlebar">' +
+              '<span class="titlebar-spacer" aria-hidden="true"></span>' +
+              '<h1>任务</h1>' +
+              '<div class="wechat-capsule" aria-hidden="true"><b>•••</b><i></i><span></span></div>' +
+            '</div>' +
+            '<div class="search-row">' +
+              '<label class="search-box">' +
+                icons.search +
+                '<input id="task-search" type="search" value="' + escapeHtml(state.keyword) + '" placeholder="订单编号或产品名称" autocomplete="off" />' +
+              '</label>' +
+              '<button type="button" class="filter-button" id="open-filter">' +
+                icons.filter + '<span>筛选</span>' + (activeFilterCount ? '<b>' + activeFilterCount + '</b>' : "") +
+              '</button>' +
+            '</div>' +
+          '</header>' +
+
+          '<section class="order-list" aria-label="任务列表">' +
+            '<div class="result-summary"><span>共 ' + visible.length + ' 个任务</span></div>' +
+            (visible.length
+              ? visible.map(function (task, index) { return renderTaskCard(task, index, icons, formatNumber); }).join("")
+              : '<div class="empty-state"><span>' + icons.search + '</span><h2>没有符合条件的任务</h2><p>可以调整搜索词或筛选条件后再试。</p><button id="clear-all" type="button">清除筛选</button></div>'
+            ) +
+          '</section>' +
+
+          '<nav class="tabbar" aria-label="工厂小程序一级导航">' +
+            '<button type="button" class="tabbar__item is-active">' + icons.tasks + '<span>任务</span></button>' +
+            '<button type="button" class="tabbar__item" data-prototype-target="发货记录">' + icons.truck + '<span>发货记录</span></button>' +
+            '<button type="button" class="tabbar__item" data-prototype-target="我的">' + icons.profile + '<span>我的</span></button>' +
+          '</nav>' +
+        '</div>' +
+        renderFilterSheet() +
+        '<div class="prototype-toast" role="status"></div>';
+
+      bindEvents();
+    }
+
+    function renderFilterSheet() {
+      if (!state.filterOpen) return "";
+      return (
+        '<div class="sheet-layer" data-close-sheet>' +
+          '<section class="filter-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-title">' +
+            '<div class="sheet-handle" aria-hidden="true"></div>' +
+            '<header class="filter-sheet__header">' +
+              '<div><p>工厂小程序</p><h2 id="filter-title">筛选任务</h2></div>' +
+              '<button type="button" class="icon-button" data-close-sheet aria-label="关闭筛选">' + icons.close + '</button>' +
+            '</header>' +
+            '<div class="filter-sheet__body">' +
+              '<label class="field">' +
+                '<span>任务状态</span>' +
+                '<select id="filter-status">' +
+                  data.statusOptions.map(function (s) {
+                    return '<option value="' + s[0] + '"' + (s[0] === state.status ? " selected" : "") + '>' + s[1] + '</option>';
+                  }).join("") +
+                '</select>' +
+              '</label>' +
+              '<fieldset class="field date-field">' +
+                '<legend>合同出货时间范围</legend>' +
+                '<div>' +
+                  '<input id="filter-date-start" type="date" value="' + state.dueStart + '" aria-label="合同出货开始日期" />' +
+                  '<span>至</span>' +
+                  '<input id="filter-date-end" type="date" value="' + state.dueEnd + '" aria-label="合同出货结束日期" />' +
+                '</div>' +
+              '</fieldset>' +
+            '</div>' +
+            '<footer class="filter-sheet__actions">' +
+              '<button type="button" class="secondary-button" id="reset-filter">重置</button>' +
+              '<button type="button" class="primary-button" id="apply-filter">查看结果</button>' +
+            '</footer>' +
+          '</section>' +
+        '</div>'
+      );
+    }
+
+    function bindEvents() {
+      document.querySelector("#task-search")?.addEventListener("input", function (event) {
+        state.keyword = event.target.value;
+        render();
+        var input = document.querySelector("#task-search");
+        input?.focus();
+        input?.setSelectionRange(state.keyword.length, state.keyword.length);
       });
 
-      var statusBadge = "";
-      if (task.overdueDays > 0) {
-        statusBadge += '<span class="badge badge--overdue">逾期' + task.overdueDays + "天</span>";
-      }
-      statusBadge += '<span class="badge badge--' + task.status + '">' + task.statusLabel + "</span>";
+      document.querySelector("#open-filter")?.addEventListener("click", function () {
+        state.filterOpen = true;
+        render();
+      });
 
-      card.innerHTML =
-        '<div class="task-card__head">' +
-          '<div class="task-card__order">' +
-            '<span class="task-card__order-no">' + window.FactoryShared.escapeHtml(task.orderNo) + '</span>' +
-            (task.overdueDays > 0 ? '<span class="task-card__icon overdue-icon">' + window.FactoryIcons.overdue + "</span>" : "") +
-          '</div>' +
-          '<div class="task-card__badges">' + statusBadge + "</div>" +
-        "</div>" +
-        '<div class="task-card__product">' +
-          '<span class="task-card__name">' + window.FactoryShared.escapeHtml(task.productName) + '</span>' +
-          '<span class="task-card__spec">' + window.FactoryShared.escapeHtml(task.spec) + "</span>" +
-        "</div>" +
-        '<div class="task-card__meta">' +
-          '<span class="task-card__due">合同出货：<em>' + task.contractShipDateLabel + "</em></span>" +
-        "</div>" +
-        '<div class="task-card__qty">' +
-          '<div class="qty-item"><span class="qty-item__label">下单</span><span class="qty-item__value">' + task.allocated + "</span></div>" +
-          '<div class="qty-item"><span class="qty-item__label">已发</span><span class="qty-item__value">' + task.shipped + "</span></div>" +
-          '<div class="qty-item"><span class="qty-item__label">未发</span><span class="qty-item__value' + (task.pending > 0 ? " qty-item__value--warn" : "") + '">' + task.pending + "</span></div>" +
-        "</div>" +
-        '<div class="task-card__progress">' +
-          '<div class="progress-track"><i style="width:' + task.progress + '%"></i></div>' +
-        "</div>";
-      return card;
-    };
+      document.querySelectorAll("[data-close-sheet]").forEach(function (element) {
+        element.addEventListener("click", function (event) {
+          if (event.target.closest(".filter-sheet") && !event.target.closest(".icon-button")) return;
+          state.filterOpen = false;
+          render();
+        });
+      });
 
-    const renderList = function () {
-      var listEl = document.getElementById("task-list");
-      if (!listEl) return;
-      var filtered = applyFilters();
-      listEl.innerHTML = "";
-      if (filtered.length === 0) {
-        listEl.innerHTML = '<div class="empty-state"><p>没有匹配的任务</p></div>';
+      document.querySelector("#reset-filter")?.addEventListener("click", function () {
+        state.status = "all";
+        state.dueStart = "";
+        state.dueEnd = "";
+        render();
+      });
+
+      document.querySelector("#apply-filter")?.addEventListener("click", function () {
+        state.status = document.querySelector("#filter-status").value;
+        state.dueStart = document.querySelector("#filter-date-start").value;
+        state.dueEnd = document.querySelector("#filter-date-end").value;
+        state.filterOpen = false;
+        render();
+      });
+
+      document.querySelector("#clear-all")?.addEventListener("click", function () {
+        state.keyword = "";
+        state.status = "all";
+        state.dueStart = "";
+        state.dueEnd = "";
+        render();
+      });
+
+      document.querySelectorAll("[data-task-id]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          showToast("任务详情 — 后续逐页确认");
+        });
+      });
+
+      document.querySelectorAll("[data-prototype-target]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          showToast(button.dataset.prototypeTarget + "页面将在逐项确认后制作");
+        });
+      });
+    }
+
+    function showToast(msg) {
+      var existing = document.querySelector(".prototype-toast");
+      if (existing) {
+        existing.textContent = msg;
+        existing.classList.remove("is-visible");
+        void existing.offsetWidth;
+        existing.classList.add("is-visible");
         return;
       }
-      filtered.forEach(function (t) {
-        listEl.appendChild(renderTaskCard(t));
-      });
-    };
-
-    const renderPage = function () {
-      shell.innerHTML = "";
-
-      // Header
-      var header = document.createElement("header");
-      header.className = "page-header";
-      header.innerHTML =
-        '<div class="mini-titlebar">' +
-          '<div class="wechat-capsule"><b>…</b><i></i><span></span></div>' +
-          "<h1>任务</h1>" +
-          '<div style="width:88px"></div>' +
-        "</div>";
-      shell.appendChild(header);
-
-      // Filter bar
-      shell.appendChild(renderFilterBar());
-
-      // Task count
-      var countBar = document.createElement("div");
-      countBar.className = "count-bar";
-      var filtered = applyFilters();
-      countBar.textContent = "共 " + filtered.length + " 个任务";
-      shell.appendChild(countBar);
-
-      // Task list
-      var listContainer = document.createElement("div");
-      listContainer.id = "task-list";
-      listContainer.className = "task-list";
-      shell.appendChild(listContainer);
-      renderList();
-
-      // Bottom nav
-      var nav = document.createElement("nav");
-      nav.className = "bottom-nav";
-      nav.innerHTML =
-        '<button class="nav-item nav-item--active" id="nav-tasks">' +
-          '<span class="nav-item__icon">' + window.FactoryIcons.task + '</span>' +
-          '<span class="nav-item__label">任务</span>' +
-        "</button>" +
-        '<button class="nav-item" id="nav-shipments">' +
-          '<span class="nav-item__icon" id="nav-shipments-icon">' +
-            '<svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>' +
-          "</span>" +
-          '<span class="nav-item__label">发货记录</span>' +
-        "</button>" +
-        '<button class="nav-item" id="nav-profile">' +
-          '<span class="nav-item__icon">' +
-            '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 00-16 0"/></svg>' +
-          "</span>" +
-          '<span class="nav-item__label">我的</span>' +
-        "</button>";
-
-      // Nav events
-      nav.querySelector("#nav-shipments").addEventListener("click", function () {
-        window.FactoryShared.showToast("发货记录 — 后续逐页确认");
-      });
-      nav.querySelector("#nav-profile").addEventListener("click", function () {
-        window.FactoryShared.showToast("我的 — 后续逐页确认");
-      });
-
-      shell.appendChild(nav);
-
-      // Bind filter events
-      var searchInput = document.getElementById("search-input");
-      var statusSelect = document.getElementById("status-select");
-      var dateStart = document.getElementById("date-start");
-      var dateEnd = document.getElementById("date-end");
-      var searchClear = document.getElementById("search-clear");
-
-      var debounceTimer = null;
-      var onFilterChange = function () {
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(function () {
-          searchQuery = searchInput.value.trim();
-          statusFilter = statusSelect.value;
-          dateRangeStart = dateStart.value;
-          dateRangeEnd = dateEnd.value;
-          renderPage();
-        }, 150);
-      };
-
-      searchInput.addEventListener("input", onFilterChange);
-      statusSelect.addEventListener("change", onFilterChange);
-      dateStart.addEventListener("change", onFilterChange);
-      dateEnd.addEventListener("change", onFilterChange);
-
-      if (searchClear) {
-        searchClear.addEventListener("click", function () {
-          searchInput.value = "";
-          searchQuery = "";
-          renderPage();
-        });
-      }
-    };
-
-    renderPage();
-  };
-
-  window.FactoryShared = {
-    escapeHtml: function (str) {
-      var div = document.createElement("div");
-      div.appendChild(document.createTextNode(str));
-      return div.innerHTML;
-    },
-    showToast: function (msg) {
-      var existing = document.querySelector(".prototype-toast");
-      if (existing) existing.remove();
       var toast = document.createElement("div");
       toast.className = "prototype-toast";
       toast.textContent = msg;
-      document.querySelector(".mini-program").appendChild(toast);
+      app.appendChild(toast);
       requestAnimationFrame(function () {
         toast.classList.add("is-visible");
         setTimeout(function () {
@@ -237,9 +255,11 @@
           setTimeout(function () { toast.remove(); }, 200);
         }, 1800);
       });
-    },
-  };
+    }
 
-  window.FactoryPages = window.FactoryPages || {};
-  window.FactoryPages["task-list"] = { render: render };
+    render();
+  }
+
+  window.FactoryPages ??= {};
+  window.FactoryPages["task-list"] = { mount: mount };
 })();

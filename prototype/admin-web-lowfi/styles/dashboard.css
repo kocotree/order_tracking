@@ -216,7 +216,7 @@
   width: 5px;
   height: 5px;
   margin-top: 6px;
-  background: #20242b;
+  background: var(--erp-blue);
   border-radius: 50%;
 }
 
@@ -268,10 +268,6 @@
 .orders-heading .section-title {
   flex: none;
   font-size: 18px;
-}
-
-.orders-heading .section-description {
-  margin: 0;
 }
 
 .table-scroll {
@@ -397,13 +393,6 @@
   font-family: var(--font-number);
   font-size: 11px;
   text-align: right;
-}
-
-.table-footnote {
-  padding: 10px 14px;
-  color: var(--subtle);
-  font-size: 10px;
-  background: var(--surface-soft);
 }
 
 @media (max-width: 1180px) {

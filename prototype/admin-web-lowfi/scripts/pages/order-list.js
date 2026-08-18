@@ -1,5 +1,6 @@
-import { orderListData } from "../mock-data.js";
-import { escapeHTML } from "../components/app-shell.js";
+import { orderDetailData, orderListData } from "../mock-data.js";
+import { escapeHTML, showToast } from "../components/app-shell.js";
+import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
 
 const searchIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 const chevronIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 9 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -38,7 +39,7 @@ function renderMultiSelectOptions(values, dataAttribute) {
     .join("");
 }
 
-function renderProgress(label, percent, text) {
+function renderProgress(label, percent) {
   return `
     <div class="list-progress-cell">
       <div class="list-progress-line">
@@ -47,7 +48,6 @@ function renderProgress(label, percent, text) {
         </span>
         <span class="list-progress-percent">${escapeHTML(percent)}%</span>
       </div>
-      <span class="list-progress-quantity">${escapeHTML(text)}</span>
     </div>
   `;
 }
@@ -56,7 +56,7 @@ function renderOrderRows(orders, rowStart = 0) {
   if (orders.length === 0) {
     return `
       <tr>
-        <td colspan="10">
+        <td colspan="11">
           <div class="empty-state">
             <div>
               <span class="empty-state-mark">0</span>
@@ -84,17 +84,37 @@ function renderOrderRows(orders, rowStart = 0) {
           <td class="tracker-cell"><span class="tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></td>
           <td>${escapeHTML(order.factory)}</td>
           <td>${escapeHTML(order.nearestDue)}</td>
-          <td>${renderProgress("发货进度", order.shippedPercent, order.shippedText)}</td>
+          <td>${renderProgress("发货进度", order.shippedPercent)}</td>
+          <td class="order-shipment-count">${escapeHTML(order.shippedText)}</td>
           <td class="order-status-cell">
             <span class="status-badge is-${escapeHTML(order.overdueDays > 0 ? "danger" : order.tone)}">${escapeHTML(order.overdueDays > 0 ? "已逾期" : order.statusLabel)}</span>
           </td>
           <td>
-            <button class="order-view-button" type="button" data-order-detail="${escapeHTML(order.orderNo)}">查看</button>
+            <div class="order-row-actions">
+              <button class="order-view-button" type="button" data-order-detail="${escapeHTML(order.orderNo)}">详情</button>
+              ${order.statusKey === "draft" ? `<button class="order-delete-button" type="button" data-delete-order="${escapeHTML(order.orderNo)}">删除</button>` : ""}
+            </div>
           </td>
         </tr>
       `,
     )
     .join("");
+}
+
+function renderDeleteOrderDialog() {
+  return `
+    <div class="detail-confirm-layer" hidden data-order-delete-layer>
+      <button class="detail-confirm-backdrop" type="button" aria-label="取消删除订单" data-order-delete-cancel></button>
+      <section class="detail-confirm-dialog order-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="order-delete-title" aria-describedby="order-delete-description">
+        <h2 id="order-delete-title">删除订单</h2>
+        <p id="order-delete-description">确认删除草稿订单 <strong data-order-delete-label></strong>？删除后无法恢复。</p>
+        <div class="detail-confirm-actions">
+          <button class="detail-outline-button" type="button" data-order-delete-cancel>取消</button>
+          <button class="order-delete-confirm-button" type="button" data-order-delete-confirm>确认删除</button>
+        </div>
+      </section>
+    </div>
+  `;
 }
 
 function renderPagination(currentPage, totalPages, totalItems) {
@@ -198,34 +218,22 @@ export function renderOrderListPage() {
           <div class="order-list-heading">
             <h1 id="order-list-title">订单列表</h1>
           </div>
-          <div class="order-list-header-actions">
-            <p>草稿优先，其余逾期未完成优先并按最近合同出货时间排序</p>
-            <label class="order-sort-field order-table-sort-field">
-              <span class="sr-only">排序方式</span>
-              <select data-list-sort>
-                <option value="default">默认紧急程度</option>
-                <option value="due-asc">合同出货时间升序</option>
-                <option value="due-desc">合同出货时间降序</option>
-                <option value="order-date-desc">订单日期最新</option>
-                <option value="updated-desc">更新时间最新</option>
-              </select>
-            </label>
-          </div>
         </header>
 
         <div class="table-scroll">
-          <table class="orders-table order-list-table">
+          <table class="orders-table order-list-table data-grid-table">
             <thead>
               <tr>
                 <th class="order-sequence-column" scope="col">序号</th>
-                <th scope="col">订单编号</th>
-                <th scope="col">产品名称</th>
-                <th scope="col">分类</th>
-                <th scope="col">跟单人员</th>
-                <th scope="col">工厂</th>
-                <th scope="col">最近合同出货时间</th>
-                <th scope="col">发货进度</th>
-                <th scope="col">状态</th>
+                ${renderSortableHeader("订单编号", "orderNo")}
+                ${renderSortableHeader("产品名称", "productName")}
+                ${renderSortableHeader("分类", "category")}
+                ${renderSortableHeader("跟单人员", "tracker")}
+                ${renderSortableHeader("工厂", "factory")}
+                ${renderSortableHeader("合同出货时间", "nearestDue")}
+                ${renderSortableHeader("发货进度", "shippedPercent")}
+                ${renderSortableHeader("已发/订单数", "shippedQuantity")}
+                ${renderSortableHeader("状态", "status")}
                 <th scope="col">操作</th>
               </tr>
             </thead>
@@ -239,6 +247,7 @@ export function renderOrderListPage() {
           <nav class="order-pagination" aria-label="订单分页" data-list-pagination></nav>
         </div>
       </section>
+      ${renderDeleteOrderDialog()}
     </article>
   `;
 }
@@ -278,6 +287,12 @@ function sortOrders(orders, sortKey) {
   });
 }
 
+function orderSortValue(order, key) {
+  if (key === "status") return order.overdueDays > 0 ? "已逾期" : order.statusLabel;
+  if (key === "shippedQuantity") return Number(String(order.shippedText).replace(/,/g, "").split("/")[0]) || 0;
+  return order[key];
+}
+
 export function bindOrderListPage() {
   const page = document.querySelector("[data-order-list-page]");
   const form = page?.querySelector("[data-order-list-form]");
@@ -297,10 +312,20 @@ export function bindOrderListPage() {
   const sortSelect = page?.querySelector("[data-list-sort]");
   const tableBody = page?.querySelector("[data-order-list-body]");
   const pagination = page?.querySelector("[data-list-pagination]");
+  const deleteLayer = page?.querySelector("[data-order-delete-layer]");
+  const deleteOrderLabel = page?.querySelector("[data-order-delete-label]");
   let activeStatus = "all";
   let currentPage = 1;
   let currentOrders = [];
+  let tableSortState = { key: null, direction: "asc" };
+  let pendingDeleteOrderNo = "";
   const pageSize = 10;
+
+  const closeDeleteDialog = () => {
+    if (deleteLayer) deleteLayer.hidden = true;
+    document.body.classList.remove("has-dialog-open");
+    pendingDeleteOrderNo = "";
+  };
 
   const closeFactoryMenu = () => {
     factoryMenu?.classList.remove("is-open");
@@ -362,7 +387,9 @@ export function bindOrderListPage() {
       return matchesKeyword && matchesCategory && matchesStatus && matchesFactory && matchesTracker && matchesFrom && matchesTo && matchesOverdue;
     });
 
-    currentOrders = sortOrders(filteredOrders, sortKey);
+    currentOrders = tableSortState.key
+      ? sortRows(filteredOrders, tableSortState, orderSortValue)
+      : sortOrders(filteredOrders, sortKey);
     if (resetPage) currentPage = 1;
     renderCurrentPage();
   };
@@ -384,8 +411,14 @@ export function bindOrderListPage() {
     });
   });
 
-  [categorySelect, dueFromInput, dueToInput, overdueInput, sortSelect].forEach((control) => {
+  [categorySelect, dueFromInput, dueToInput, overdueInput].forEach((control) => {
     control?.addEventListener("change", () => applyFilters());
+  });
+
+  sortSelect?.addEventListener("change", () => {
+    tableSortState = { key: null, direction: "asc" };
+    updateSortHeaders(page, tableSortState);
+    applyFilters();
   });
 
   factoryOptions.forEach((option) => {
@@ -412,6 +445,8 @@ export function bindOrderListPage() {
     });
     updateFactoryLabel();
     updateTrackerLabel();
+    tableSortState = { key: null, direction: "asc" };
+    updateSortHeaders(page, tableSortState);
     activeStatus = "all";
     page.querySelectorAll("[data-status-filter]").forEach((item) => {
       const isActive = item.dataset.statusFilter === "all";
@@ -422,6 +457,49 @@ export function bindOrderListPage() {
   });
 
   page?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-order-delete-cancel]")) {
+      closeDeleteDialog();
+      return;
+    }
+
+    const deleteOrderNo = event.target.closest("[data-delete-order]")?.dataset.deleteOrder;
+    if (deleteOrderNo) {
+      const order = orderListData.orders.find((item) => item.orderNo === deleteOrderNo);
+      if (order?.statusKey !== "draft") {
+        showToast("无法删除", "只有草稿订单可以删除。");
+        return;
+      }
+      pendingDeleteOrderNo = deleteOrderNo;
+      if (deleteOrderLabel) deleteOrderLabel.textContent = deleteOrderNo;
+      if (deleteLayer) deleteLayer.hidden = false;
+      document.body.classList.add("has-dialog-open");
+      deleteLayer?.querySelector("[data-order-delete-confirm]")?.focus();
+      return;
+    }
+
+    if (event.target.closest("[data-order-delete-confirm]")) {
+      const deleteIndex = orderListData.orders.findIndex((item) => item.orderNo === pendingDeleteOrderNo && item.statusKey === "draft");
+      if (deleteIndex < 0) {
+        closeDeleteDialog();
+        showToast("无法删除", "该订单不存在或已不再是草稿状态。");
+        return;
+      }
+      const [deletedOrder] = orderListData.orders.splice(deleteIndex, 1);
+      delete orderDetailData[deletedOrder.orderNo];
+      closeDeleteDialog();
+      applyFilters(false);
+      showToast("删除成功", `${deletedOrder.orderNo} 草稿订单已删除。`);
+      return;
+    }
+
+    const nextSortState = getNextSortState(event, tableSortState);
+    if (nextSortState) {
+      tableSortState = nextSortState;
+      updateSortHeaders(page, tableSortState);
+      applyFilters();
+      return;
+    }
+
     const factoryButton = event.target.closest("[data-list-factory-trigger]");
     if (factoryButton) {
       const isOpen = factoryMenu?.classList.toggle("is-open") ?? false;
@@ -462,6 +540,10 @@ export function bindOrderListPage() {
 
     if (!event.target.closest("[data-list-factory]")) closeFactoryMenu();
     if (!event.target.closest("[data-list-tracker]")) closeTrackerMenu();
+  });
+
+  page?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && deleteLayer && !deleteLayer.hidden) closeDeleteDialog();
   });
 
   applyFilters();

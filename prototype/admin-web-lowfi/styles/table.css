@@ -1,0 +1,131 @@
+.data-grid-table {
+  border-collapse: collapse;
+}
+
+.data-grid-table th,
+.data-grid-table td {
+  box-sizing: border-box;
+  border: 1px solid #dde1e7;
+}
+
+.data-grid-table thead tr,
+.data-grid-table th {
+  height: 40px;
+}
+
+.data-grid-table th {
+  padding-top: 0;
+  padding-bottom: 0;
+  vertical-align: middle;
+}
+
+.data-grid-table tbody tr,
+.data-grid-table tbody td {
+  height: 40px;
+}
+
+.data-grid-table tbody td {
+  overflow: hidden;
+  padding-top: 0;
+  padding-bottom: 0;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.data-grid-table .empty-state {
+  white-space: normal;
+}
+
+.data-grid-table th,
+.data-grid-table td,
+.data-grid-table button,
+.data-grid-table .category-tag,
+.data-grid-table .tracker-tag,
+.data-grid-table .status-badge,
+.data-grid-table .factory-contract-badge,
+.data-grid-table .list-progress-percent,
+.data-grid-table .list-progress-quantity,
+.data-grid-table .progress-cell span,
+.data-grid-table .product-cell strong,
+.data-grid-table .order-product-summary strong,
+.data-grid-table .product-name-cell,
+.data-grid-table .factory-name,
+.data-grid-table .detail-product-name,
+.data-grid-table .packing-total-cell,
+.data-grid-table .factory-row-actions .text-button {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.data-grid-table tbody tr:last-child td {
+  border-bottom: 1px solid #dde1e7;
+}
+
+.data-grid-table .packing-box-number {
+  font-size: 13px !important;
+  font-weight: 700;
+}
+
+.data-grid-sort-button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  height: 39px;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.data-grid-sort-button:focus-visible {
+  color: var(--erp-blue-dark);
+  outline: 2px solid rgba(16, 143, 222, 0.24);
+  outline-offset: 2px;
+}
+
+.data-grid-sort-arrows {
+  display: inline-grid;
+  flex: none;
+  gap: 2px;
+  place-items: center;
+  width: 9px;
+}
+
+.data-grid-sort-arrow {
+  width: 0;
+  height: 0;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+}
+
+.data-grid-sort-arrow.is-up {
+  border-bottom: 5px solid #b8c0ca;
+}
+
+.data-grid-sort-arrow.is-down {
+  border-top: 5px solid #b8c0ca;
+}
+
+[data-sort-header].is-sorted .data-grid-sort-arrow.is-up {
+  border-bottom-color: var(--erp-blue);
+}
+
+[data-sort-header].is-sorted .data-grid-sort-arrow.is-down {
+  border-top-color: #c9d0d8;
+}
+
+[data-sort-header].is-sorted.is-sort-desc .data-grid-sort-arrow.is-up {
+  border-bottom-color: #c9d0d8;
+}
+
+[data-sort-header].is-sorted.is-sort-desc .data-grid-sort-arrow.is-down {
+  border-top-color: var(--erp-blue);
+}

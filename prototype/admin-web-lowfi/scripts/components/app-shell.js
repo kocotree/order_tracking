@@ -4,6 +4,7 @@ const icons = {
   orders: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 4h10v3H7zM5 7h14v13H5zM8 11h8M8 15h5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   import: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 16v4h14v-4" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   shipment: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm10 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  repair: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 5h10l2 3-7 4-7-4 2-3Zm-2 3v9l7 4 7-4V8M12 12v9M8 15h2m4 0h2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   products: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7.5 12 4l8 3.5-8 3.5-8-3.5ZM4 7.5V16l8 4 8-4V7.5M12 11v9" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
   factory: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20V9l6 3V8l6 3V5h4v15H4ZM8 16h1M13 16h1M18 16h1" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   people: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.5 19a5.5 5.5 0 0 1 11 0M16 11a2.5 2.5 0 1 0 0-5M16 14c2.6 0 4.5 1.8 4.5 4" stroke-width="1.6" stroke-linecap="round"/></svg>`,
@@ -15,9 +16,9 @@ let toastTimer;
 const railModules = [
   { id: "dashboard", label: "订单看板", icon: "dashboard", route: "/dashboard" },
   { id: "orders", label: "订单与发货", icon: "orders", route: "/orders" },
-  { id: "products", label: "产品资料", icon: "products" },
-  { id: "factory", label: "工厂资料", icon: "factory" },
-  { id: "people", label: "人员管理", icon: "people" },
+  { id: "products", label: "产品资料", icon: "products", route: "/products" },
+  { id: "factory", label: "工厂资料", icon: "factory", route: "/factories" },
+  { id: "people", label: "人员管理", icon: "people", route: "/people" },
 ];
 
 export function escapeHTML(value) {
@@ -130,11 +131,11 @@ export function renderAppShell({
               <span class="topbar-icon">${icons.bell}</span>
               <span class="notification-dot">${notifications.length}</span>
             </button>
-            <div class="user-chip" aria-label="当前用户：煎饼，管理员">
+            <div class="user-chip" aria-label="当前用户：煎饼，最高管理员">
               <span class="user-avatar">煎</span>
               <span class="user-copy">
                 <span class="user-name">煎饼</span>
-                <span class="user-role">管理员</span>
+                <span class="user-role">最高管理员</span>
               </span>
             </div>
 

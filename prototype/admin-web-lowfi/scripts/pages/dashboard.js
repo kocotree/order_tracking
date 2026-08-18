@@ -1,5 +1,6 @@
 import { dashboardData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
+import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
 
 const searchIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 
@@ -85,6 +86,21 @@ function renderOrderRows(orders) {
     .join("");
 }
 
+function orderSortValue(order, key) {
+  const values = {
+    orderNo: order.orderNo,
+    productName: order.productName,
+    category: order.category,
+    tracker: order.tracker,
+    factory: order.factory,
+    nearestDue: order.nearestDue,
+    progress: order.progress,
+    progressText: Number(String(order.progressText).replace(/,/g, "").split("/")[0]) || 0,
+    status: order.status,
+  };
+  return values[key];
+}
+
 export function renderDashboardPage() {
   return `
     <article class="dashboard-page" data-dashboard-page>
@@ -124,24 +140,23 @@ export function renderDashboardPage() {
         <header class="section-header">
           <div class="orders-heading">
             <h2 class="section-title" id="orders-title">订单</h2>
-            <p class="section-description">逾期优先，其余按最近合同出货时间排序</p>
           </div>
           <button class="text-button" type="button" data-route="/orders">查看全部订单</button>
         </header>
         <div class="table-scroll">
-          <table class="orders-table">
+          <table class="orders-table data-grid-table">
             <thead>
               <tr>
                 <th class="order-sequence-column" scope="col">序号</th>
-                <th scope="col">订单编号</th>
-                <th scope="col">产品名称</th>
-                <th scope="col">分类</th>
-                <th scope="col">跟单人员</th>
-                <th scope="col">工厂</th>
-                <th scope="col">最近合同出货时间</th>
-                <th scope="col">发货进度</th>
-                <th scope="col">已发 / 订单数</th>
-                <th scope="col">状态</th>
+                ${renderSortableHeader("订单编号", "orderNo")}
+                ${renderSortableHeader("产品名称", "productName")}
+                ${renderSortableHeader("分类", "category")}
+                ${renderSortableHeader("跟单人员", "tracker")}
+                ${renderSortableHeader("工厂", "factory")}
+                ${renderSortableHeader("合同出货时间", "nearestDue")}
+                ${renderSortableHeader("发货进度", "progress")}
+                ${renderSortableHeader("已发 / 订单数", "progressText")}
+                ${renderSortableHeader("状态", "status")}
               </tr>
             </thead>
             <tbody data-order-table-body>
@@ -149,7 +164,6 @@ export function renderDashboardPage() {
             </tbody>
           </table>
         </div>
-        <div class="table-footnote">原型数据仅用于验证信息层级，不代表真实业务数据。</div>
       </section>
     </article>
   `;
@@ -167,18 +181,24 @@ function matchesKeyword(item, keyword) {
 }
 
 export function bindDashboardPage() {
+  const page = document.querySelector("[data-dashboard-page]");
   const form = document.querySelector("[data-order-search-form]");
   const input = document.querySelector("[data-order-search-input]");
   const clearButton = document.querySelector("[data-search-clear]");
   const orderTableBody = document.querySelector("[data-order-table-body]");
   const summary = document.querySelector("[data-search-summary]");
+  let currentOrders = [...dashboardData.orders];
+  let sortState = { key: null, direction: "asc" };
+
+  const renderOrders = () => {
+    if (orderTableBody) orderTableBody.innerHTML = renderOrderRows(sortRows(currentOrders, sortState, orderSortValue));
+  };
 
   const applySearch = () => {
     const rawKeyword = input?.value ?? "";
     const keyword = normalizeKeyword(rawKeyword);
-    const filteredOrders = dashboardData.orders.filter((item) => matchesKeyword(item, keyword));
-
-    if (orderTableBody) orderTableBody.innerHTML = renderOrderRows(filteredOrders);
+    currentOrders = dashboardData.orders.filter((item) => matchesKeyword(item, keyword));
+    renderOrders();
 
     clearButton?.classList.toggle("is-visible", Boolean(rawKeyword));
     if (!summary) return;
@@ -190,7 +210,7 @@ export function bindDashboardPage() {
     }
 
     summary.classList.add("is-visible");
-    summary.textContent = `“${rawKeyword.trim()}”找到 ${filteredOrders.length} 个订单。`;
+    summary.textContent = `“${rawKeyword.trim()}”找到 ${currentOrders.length} 个订单。`;
   };
 
   form?.addEventListener("submit", (event) => {
@@ -209,7 +229,15 @@ export function bindDashboardPage() {
     applySearch();
   });
 
-  document.querySelector("[data-dashboard-page]")?.addEventListener("click", (event) => {
+  page?.addEventListener("click", (event) => {
+    const nextSortState = getNextSortState(event, sortState);
+    if (nextSortState) {
+      sortState = nextSortState;
+      updateSortHeaders(page, sortState);
+      renderOrders();
+      return;
+    }
+
     const destination = event.target.closest("[data-destination]")?.dataset.destination;
     if (destination) {
       showToast("目标页面待设计", `${destination}将在对应页面完成后开放。`);

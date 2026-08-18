@@ -1,5 +1,6 @@
 import { orderDetailData, orderListData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
+import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
 
 const backIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const productIcon = `<svg viewBox="0 0 28 34" fill="none" aria-hidden="true"><path d="m9 5 5-2 5 2 5 6-4 3v15H8V14l-4-3 5-6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M11 5c.6 2 1.6 3 3 3s2.4-1 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
@@ -13,7 +14,6 @@ function buildFallbackDetail(orderNo) {
   const factories = sourceOrder.factory.split(/[、,，]/).map((value) => value.trim());
   const totalQuantity = Number(sourceOrder.shippedText.split("/")[1]?.replaceAll(",", "").trim()) || 0;
   const shippedQuantity = Number(sourceOrder.shippedText.split("/")[0]?.replaceAll(",", "").trim()) || 0;
-  const receivedQuantity = Number(sourceOrder.receivedText.split("/")[0]?.replaceAll(",", "").trim()) || 0;
 
   return {
     ...sourceOrder,
@@ -23,7 +23,6 @@ function buildFallbackDetail(orderNo) {
     tone: sourceOrder.overdueDays > 0 ? "danger" : sourceOrder.tone,
     totalQuantity,
     shippedQuantity,
-    receivedQuantity,
     pendingQuantity: Math.max(totalQuantity - shippedQuantity, 0),
     remark: "—",
     products: [{
@@ -39,7 +38,6 @@ function buildFallbackDetail(orderNo) {
       contractNo: `${sourceOrder.orderDate.replaceAll("-", "")}-KK-${String(index + 1).padStart(2, "0")}`,
       allocated: Math.round(totalQuantity / factories.length),
       shipped: Math.round(shippedQuantity / factories.length),
-      received: Math.round(receivedQuantity / factories.length),
       statusLabel: sourceOrder.statusLabel,
       tone: sourceOrder.tone,
       contractReady: true,
@@ -50,7 +48,6 @@ function buildFallbackDetail(orderNo) {
           quantity: Math.round(totalQuantity / factories.length),
           price: "",
           shipped: Math.round(shippedQuantity / factories.length),
-          received: Math.round(receivedQuantity / factories.length),
         },
       ],
     })),
@@ -67,7 +64,7 @@ function buildProductFactoryRows(order) {
   return order.products.flatMap((product) => {
     const factoryRows = order.factories.flatMap((factory) =>
       factory.lines
-        .filter((line) => line.colorSpec === product.colorSpec)
+        .filter((line) => (!line.code || line.code === product.code) && line.colorSpec === product.colorSpec)
         .map((line) => ({
           ...product,
           factory: factory.name,
@@ -113,7 +110,7 @@ function renderProductRows(rows) {
 
 function renderShipmentRows(shipments) {
   if (shipments.length === 0) {
-    return `<tr><td colspan="7"><div class="detail-empty-row">当前订单暂无关联发货单</div></td></tr>`;
+    return `<tr><td colspan="6"><div class="detail-empty-row">当前订单暂无关联发货单</div></td></tr>`;
   }
 
   return shipments
@@ -125,12 +122,20 @@ function renderShipmentRows(shipments) {
           <td>${escapeHTML(shipment.factory)}</td>
           <td>${escapeHTML(shipment.shipDate)}</td>
           <td class="detail-number">${escapeHTML(formatNumber(shipment.declared))}</td>
-          <td class="detail-number">${typeof shipment.received === "number" ? escapeHTML(formatNumber(shipment.received)) : escapeHTML(shipment.received)}</td>
           <td><span class="status-badge is-${escapeHTML(shipment.tone)}">${escapeHTML(shipment.statusLabel)}</span></td>
         </tr>
       `,
     )
     .join("");
+}
+
+function productSortValue(product, key) {
+  if (key === "progress") return product.quantity ? product.shippedQuantity / product.quantity : 0;
+  return product[key];
+}
+
+function shipmentSortValue(shipment, key) {
+  return shipment[key];
 }
 
 function renderPublishDialog(order) {
@@ -149,10 +154,101 @@ function renderPublishDialog(order) {
   `;
 }
 
+function getContractSigningDate(factory) {
+  if (factory.contractSignDate) return factory.contractSignDate;
+  const match = String(factory.contractNo ?? "").match(/^(\d{4})(\d{2})(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function hasExportedContract(factory) {
+  return Boolean(factory.contractNo && factory.contractNo !== "—");
+}
+
+function renderContractConfirmDialog(order, factory) {
+  const exported = hasExportedContract(factory);
+  const signingDate = getContractSigningDate(factory);
+  return `
+    <section class="detail-confirm-dialog contract-export-dialog" role="dialog" aria-modal="true" aria-labelledby="contract-export-title">
+      <header class="contract-export-header">
+        <h2 id="contract-export-title">导出加工合同</h2>
+        <button class="contract-export-close" type="button" aria-label="关闭导出加工合同弹窗" data-contract-export-close>×</button>
+      </header>
+      <div class="contract-export-body">
+        <dl class="contract-export-summary">
+          <div><dt>订单编号</dt><dd>${escapeHTML(order.orderNo)}</dd></div>
+          <div><dt>工厂</dt><dd>${escapeHTML(factory.name)}</dd></div>
+          <div><dt>合同资料</dt><dd><span class="contract-ready-badge is-${factory.contractReady ? "ready" : "missing"}">${factory.contractReady ? "完整" : "待补充"}</span></dd></div>
+          <div><dt>合同编号</dt><dd>${exported ? escapeHTML(factory.contractNo) : "首次导出后生成"}</dd></div>
+        </dl>
+        <label class="contract-date-field">
+          <span>签订日期</span>
+          <input type="date" value="${escapeHTML(signingDate)}" data-contract-signing-date ${exported ? "readonly" : ""} />
+        </label>
+        ${factory.contractReady ? "" : `<p class="contract-export-warning">该工厂的合同资料不完整，暂不能导出。请先在工厂资料中补全工厂代码、单位全称、单位地址和法定代表人。</p>`}
+      </div>
+      <div class="detail-confirm-actions contract-export-actions">
+        <button class="detail-outline-button" type="button" data-contract-export-close>取消</button>
+        <button class="detail-primary-button" type="button" data-contract-export-submit="${escapeHTML(factory.name)}" ${factory.contractReady ? "" : "disabled"}>确认导出</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderContractFactoryListDialog(order) {
+  const rows = order.factories.map((factory) => {
+    const exported = hasExportedContract(factory);
+    return `
+      <tr>
+        <td><strong>${escapeHTML(factory.name)}</strong></td>
+        <td><span class="contract-ready-badge is-${factory.contractReady ? "ready" : "missing"}">${factory.contractReady ? "完整" : "待补充"}</span></td>
+        <td>${exported ? escapeHTML(factory.contractNo) : "—"}</td>
+        <td>${exported ? escapeHTML(getContractSigningDate(factory)) : "—"}</td>
+        <td><button class="detail-text-button" type="button" data-contract-select-factory="${escapeHTML(factory.name)}" ${factory.contractReady ? "" : "disabled"}>导出</button></td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+    <section class="detail-confirm-dialog contract-export-dialog is-factory-list" role="dialog" aria-modal="true" aria-labelledby="contract-export-title">
+      <header class="contract-export-header">
+        <h2 id="contract-export-title">导出加工合同</h2>
+        <button class="contract-export-close" type="button" aria-label="关闭导出加工合同弹窗" data-contract-export-close>×</button>
+      </header>
+      <div class="contract-export-body">
+        <p class="contract-export-intro">订单 ${escapeHTML(order.orderNo)} 包含多个工厂，请选择需要导出合同的工厂。</p>
+        <div class="contract-factory-table-wrap">
+          <table class="contract-factory-table">
+            <thead><tr><th>工厂</th><th>合同资料</th><th>合同编号</th><th>签订日期</th><th>操作</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderContractExportLayer(order) {
+  const dialog = order.factories.length === 1
+    ? renderContractConfirmDialog(order, order.factories[0])
+    : renderContractFactoryListDialog(order);
+  return `
+    <div class="detail-confirm-layer" hidden data-contract-export-layer>
+      <button class="detail-confirm-backdrop" type="button" aria-label="取消导出加工合同" data-contract-export-close></button>
+      <div class="contract-export-dialog-root" data-contract-export-dialog-root>${dialog}</div>
+    </div>
+  `;
+}
+
 export function renderOrderDetailPage(orderNo) {
   const order = getOrderDetail(orderNo);
   const productFactoryRows = buildProductFactoryRows(order);
   const isDraft = order.statusKey === "draft";
+  const canExportContract = order.factories.length > 0 && Number(order.shippedQuantity) === 0;
 
   return `
     <article class="order-detail-page" data-order-detail-page data-order-no="${escapeHTML(order.orderNo)}">
@@ -161,6 +257,7 @@ export function renderOrderDetailPage(orderNo) {
           <button class="detail-back-button" type="button" data-order-back>${backIcon}<span>返回</span></button>
           <div class="detail-title-row order-detail-actions">
             <span class="status-badge is-${escapeHTML(order.tone)}">${escapeHTML(order.statusLabel)}</span>
+            <button class="detail-outline-button" type="button" data-contract-export-open ${canExportContract ? "" : "disabled"} title="${canExportContract ? "导出加工合同" : "只有已发数量为0的订单才能导出加工合同"}">导出加工合同</button>
             ${isDraft ? `<button class="detail-primary-button" type="button" data-publish-confirm-open>发布订单</button>` : ""}
           </div>
         </header>
@@ -169,7 +266,7 @@ export function renderOrderDetailPage(orderNo) {
           <dl class="detail-summary-grid" aria-label="订单概览">
             <div><dt>分类</dt><dd><span class="category-tag is-${order.category === "帽子" ? "hat" : "clothing"}">${escapeHTML(order.category)}</span></dd></div>
             <div><dt>跟单人员</dt><dd><span class="tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></dd></div>
-            <div><dt>最近合同出货时间</dt><dd class="detail-due-date">${escapeHTML(order.nearestDue)}</dd></div>
+            <div><dt>合同出货时间</dt><dd class="detail-due-date">${escapeHTML(order.nearestDue)}</dd></div>
             <div><dt>订单数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.totalQuantity))}</dd></div>
             <div><dt>已出数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.shippedQuantity))}</dd></div>
             <div><dt>未出数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.pendingQuantity))}</dd></div>
@@ -182,22 +279,22 @@ export function renderOrderDetailPage(orderNo) {
           <h2>订单明细</h2>
         </header>
         <div class="detail-table-scroll">
-          <table class="detail-data-table product-detail-table">
+          <table class="detail-data-table product-detail-table data-grid-table" data-sort-table="order-products">
             <thead>
               <tr>
                 <th scope="col">序号</th>
                 <th scope="col">图片</th>
-                <th scope="col">产品编码</th>
-                <th scope="col">产品名称</th>
-                <th scope="col">颜色/规格</th>
-                <th scope="col">工厂</th>
-                <th scope="col">下单数量</th>
-                <th scope="col">已出数量</th>
-                <th scope="col">未出数量</th>
-                <th scope="col">发货进度</th>
+                ${renderSortableHeader("产品编码", "code")}
+                ${renderSortableHeader("产品名称", "name")}
+                ${renderSortableHeader("颜色/规格", "colorSpec")}
+                ${renderSortableHeader("工厂", "factory")}
+                ${renderSortableHeader("下单数量", "quantity")}
+                ${renderSortableHeader("已出数量", "shippedQuantity")}
+                ${renderSortableHeader("未出数量", "pendingQuantity")}
+                ${renderSortableHeader("发货进度", "progress")}
               </tr>
             </thead>
-            <tbody>${renderProductRows(productFactoryRows)}</tbody>
+            <tbody data-order-products-body>${renderProductRows(productFactoryRows)}</tbody>
           </table>
         </div>
       </section>
@@ -207,23 +304,23 @@ export function renderOrderDetailPage(orderNo) {
           <h2>关联发货单</h2>
         </header>
         <div class="detail-table-scroll">
-          <table class="detail-data-table shipment-detail-table">
+          <table class="detail-data-table shipment-detail-table data-grid-table" data-sort-table="order-shipments">
             <thead>
               <tr>
                 <th scope="col">序号</th>
-                <th scope="col">发货单号</th>
-                <th scope="col">工厂</th>
-                <th scope="col">发货日期</th>
-                <th scope="col">申报数量</th>
-                <th scope="col">实际收到</th>
-                <th scope="col">状态</th>
+                ${renderSortableHeader("发货单号", "no")}
+                ${renderSortableHeader("工厂", "factory")}
+                ${renderSortableHeader("发货日期", "shipDate")}
+                ${renderSortableHeader("发货数量", "declared")}
+                ${renderSortableHeader("状态", "statusLabel")}
               </tr>
             </thead>
-            <tbody>${renderShipmentRows(order.shipments)}</tbody>
+            <tbody data-order-shipments-body>${renderShipmentRows(order.shipments)}</tbody>
           </table>
         </div>
       </section>
       ${isDraft ? renderPublishDialog(order) : ""}
+      ${renderContractExportLayer(order)}
     </article>
   `;
 }
@@ -232,11 +329,26 @@ export function bindOrderDetailPage(orderNo) {
   const page = document.querySelector("[data-order-detail-page]");
   const publishLayer = page?.querySelector("[data-publish-confirm-layer]");
   const publishButton = page?.querySelector("[data-publish-confirm-open]");
+  const contractLayer = page?.querySelector("[data-contract-export-layer]");
+  const contractButton = page?.querySelector("[data-contract-export-open]");
+  const contractDialogRoot = page?.querySelector("[data-contract-export-dialog-root]");
+  const order = getOrderDetail(orderNo);
+  const productRows = buildProductFactoryRows(order);
+  const sortStates = {
+    "order-products": { key: null, direction: "asc" },
+    "order-shipments": { key: null, direction: "asc" },
+  };
 
   const closePublishDialog = () => {
     if (publishLayer) publishLayer.hidden = true;
     document.body.classList.remove("has-dialog-open");
     publishButton?.focus();
+  };
+
+  const closeContractDialog = () => {
+    if (contractLayer) contractLayer.hidden = true;
+    document.body.classList.remove("has-dialog-open");
+    contractButton?.focus();
   };
 
   page?.querySelector("[data-order-back]")?.addEventListener("click", () => {
@@ -248,6 +360,22 @@ export function bindOrderDetailPage(orderNo) {
     publishLayer.hidden = false;
     document.body.classList.add("has-dialog-open");
     publishLayer.querySelector("[data-publish-confirm-submit]")?.focus();
+  });
+
+  contractButton?.addEventListener("click", () => {
+    if (!contractLayer) return;
+    if (Number(order.shippedQuantity) !== 0) {
+      showToast("无法导出", "只有已发数量为0的订单才能导出加工合同。");
+      return;
+    }
+    if (contractDialogRoot) {
+      contractDialogRoot.innerHTML = order.factories.length === 1
+        ? renderContractConfirmDialog(order, order.factories[0])
+        : renderContractFactoryListDialog(order);
+    }
+    contractLayer.hidden = false;
+    document.body.classList.add("has-dialog-open");
+    contractLayer.querySelector("[data-contract-select-factory], [data-contract-export-submit], [data-contract-export-close]")?.focus();
   });
 
   page?.querySelectorAll("[data-publish-confirm-cancel]").forEach((button) => {
@@ -282,11 +410,64 @@ export function bindOrderDetailPage(orderNo) {
   });
 
   page?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-contract-export-close]")) {
+      closeContractDialog();
+      return;
+    }
+
+    const selectedFactoryName = event.target.closest("[data-contract-select-factory]")?.dataset.contractSelectFactory;
+    if (selectedFactoryName && contractDialogRoot) {
+      const factory = order.factories.find((item) => item.name === selectedFactoryName);
+      if (factory) {
+        contractDialogRoot.innerHTML = renderContractConfirmDialog(order, factory);
+        contractDialogRoot.querySelector("[data-contract-export-submit], [data-contract-export-close]")?.focus();
+      }
+      return;
+    }
+
+    const exportFactoryName = event.target.closest("[data-contract-export-submit]")?.dataset.contractExportSubmit;
+    if (exportFactoryName) {
+      if (Number(order.shippedQuantity) !== 0) {
+        closeContractDialog();
+        showToast("无法导出", "该订单已经产生发货记录，不能导出加工合同。");
+        return;
+      }
+      const factory = order.factories.find((item) => item.name === exportFactoryName);
+      if (!factory?.contractReady) return;
+      const signingDate = contractDialogRoot?.querySelector("[data-contract-signing-date]")?.value;
+      if (!signingDate) {
+        showToast("无法导出", "请先填写合同签订日期。");
+        return;
+      }
+      factory.contractSignDate = signingDate;
+      closeContractDialog();
+      showToast("合同已生成", `${orderNo} · ${factory.name} 的加工合同 Excel 已生成。`);
+      return;
+    }
+
+    const sortTable = event.target.closest("[data-sort-key]")?.closest("[data-sort-table]");
+    const sortScope = sortTable?.dataset.sortTable;
+    if (sortScope && sortStates[sortScope]) {
+      const nextSortState = getNextSortState(event, sortStates[sortScope]);
+      sortStates[sortScope] = nextSortState;
+      updateSortHeaders(sortTable, nextSortState);
+      if (sortScope === "order-products") {
+        const body = page.querySelector("[data-order-products-body]");
+        if (body) body.innerHTML = renderProductRows(sortRows(productRows, nextSortState, productSortValue));
+      } else {
+        const body = page.querySelector("[data-order-shipments-body]");
+        if (body) body.innerHTML = renderShipmentRows(sortRows(order.shipments, nextSortState, shipmentSortValue));
+      }
+      return;
+    }
+
     const shipmentNo = event.target.closest("[data-shipment-detail]")?.dataset.shipmentDetail;
-    if (shipmentNo) showToast("发货单详情待设计", `${shipmentNo} 将在发货单详情页中展示装箱和收货信息。`);
+    if (shipmentNo) window.location.hash = `/shipments/${encodeURIComponent(shipmentNo)}`;
   });
 
   page?.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && publishLayer && !publishLayer.hidden) closePublishDialog();
+    if (event.key !== "Escape") return;
+    if (contractLayer && !contractLayer.hidden) closeContractDialog();
+    else if (publishLayer && !publishLayer.hidden) closePublishDialog();
   });
 }

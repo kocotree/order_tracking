@@ -354,7 +354,7 @@
 }
 
 .order-list-table {
-  min-width: 1052px;
+  min-width: 1132px;
   table-layout: fixed;
 }
 
@@ -365,9 +365,10 @@
 .order-list-table th:nth-child(5) { width: 84px; }
 .order-list-table th:nth-child(6) { width: 110px; }
 .order-list-table th:nth-child(7) { width: 142px; }
-.order-list-table th:nth-child(8) { width: 190px; }
-.order-list-table th:nth-child(9) { width: 96px; }
-.order-list-table th:nth-child(10) { width: 64px; }
+.order-list-table th:nth-child(8) { width: 160px; }
+.order-list-table th:nth-child(9) { width: 110px; }
+.order-list-table th:nth-child(10) { width: 96px; }
+.order-list-table th:nth-child(11) { width: 104px; }
 
 .pending-import-filter-row .order-list-search-field {
   flex: 2.4 1 310px;
@@ -428,6 +429,50 @@
 
 .pending-import-table tbody tr.is-selected td {
   background: var(--erp-blue-pale);
+}
+
+.shipment-filter-row .order-list-search-field {
+  flex: 2.4 1 320px;
+}
+
+.shipment-filter-row .shipment-factory-field {
+  flex: 1 1 150px;
+}
+
+.shipment-list-table {
+  min-width: 1060px;
+  table-layout: fixed;
+}
+
+.shipment-list-table th:nth-child(1) { width: 58px; }
+.shipment-list-table th:nth-child(2) { width: 150px; }
+.shipment-list-table th:nth-child(3) { width: 168px; }
+.shipment-list-table th:nth-child(4) { width: 110px; }
+.shipment-list-table th:nth-child(5) { width: 120px; }
+.shipment-list-table th:nth-child(6) { width: 116px; }
+.shipment-list-table th:nth-child(7) { width: 116px; }
+.shipment-list-table th:nth-child(8) { width: 110px; }
+.shipment-list-table th:nth-child(9) { width: 92px; }
+
+.shipment-list-table td {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  vertical-align: middle;
+}
+
+.shipment-order-cell span {
+  color: var(--ink-strong);
+  font-weight: 700;
+}
+
+.shipment-number-cell {
+  font-family: var(--font-number);
+  font-weight: 700;
+}
+
+.order-shipment-count {
+  font-family: var(--font-number);
+  font-weight: 700;
 }
 
 .order-list-table td {
@@ -498,6 +543,50 @@
 .order-view-button:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.order-row-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.order-delete-button {
+  padding: 4px 0;
+  color: #d84949;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.order-delete-button:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.order-delete-dialog {
+  width: min(430px, calc(100vw - 40px));
+}
+
+.order-delete-confirm-button {
+  height: 34px;
+  padding: 0 14px;
+  color: #ffffff;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  background: #d84949;
+  border: 1px solid #d84949;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.order-delete-confirm-button:hover {
+  background: #bd3939;
+  border-color: #bd3939;
 }
 
 .order-list-footer {
@@ -598,7 +687,9 @@
   .pending-import-filter-row .order-select-field,
   .pending-import-filter-row .order-multiselect,
   .pending-import-filter-row .order-tracker-multiselect,
-  .pending-import-filter-row .order-validation-field {
+  .pending-import-filter-row .order-validation-field,
+  .shipment-filter-row .order-list-search-field,
+  .shipment-filter-row .shipment-factory-field {
     flex: none;
   }
 

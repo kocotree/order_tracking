@@ -1,5 +1,6 @@
 import { importPendingOrdersAsDrafts, pendingImportData, pendingImportDetailData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
+import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
 
 const backIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const productIcon = `<svg viewBox="0 0 28 34" fill="none" aria-hidden="true"><path d="m9 5 5-2 5 2 5 6-4 3v15H8V14l-4-3 5-6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M11 5c.6 2 1.6 3 3 3s2.4-1 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
@@ -49,6 +50,12 @@ function renderProductRows(products) {
   }).join("");
 }
 
+function productSortValue(product, key) {
+  if (key === "shippedQuantity" || key === "progress") return 0;
+  if (key === "pendingQuantity") return product.quantity;
+  return product[key];
+}
+
 function renderConfirmDialog(order) {
   return `
     <div class="detail-confirm-layer" hidden data-import-confirm-layer>
@@ -84,7 +91,7 @@ export function renderPendingImportDetailPage(orderNo) {
           <dl class="detail-summary-grid" aria-label="待导入订单概览">
             <div><dt>分类</dt><dd><span class="category-tag is-${order.category === "帽子" ? "hat" : "clothing"}">${escapeHTML(order.category)}</span></dd></div>
             <div><dt>跟单人员</dt><dd><span class="tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></dd></div>
-            <div><dt>最近合同出货时间</dt><dd class="detail-due-date">${escapeHTML(order.nearestDue)}</dd></div>
+            <div><dt>合同出货时间</dt><dd class="detail-due-date">${escapeHTML(order.nearestDue)}</dd></div>
             <div><dt>订单数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.totalQuantity))}</dd></div>
             <div><dt>已出数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.shippedQuantity))}</dd></div>
             <div><dt>未出数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.pendingQuantity))}</dd></div>
@@ -95,9 +102,9 @@ export function renderPendingImportDetailPage(orderNo) {
       <section class="section-card detail-section-card">
         <header class="detail-section-header"><h2>订单明细</h2></header>
         <div class="detail-table-scroll">
-          <table class="detail-data-table product-detail-table pending-import-detail-table">
-            <thead><tr><th scope="col">序号</th><th scope="col">图片</th><th scope="col">产品编码</th><th scope="col">产品名称</th><th scope="col">颜色/规格</th><th scope="col">工厂</th><th scope="col">下单数量</th><th scope="col">已出数量</th><th scope="col">未出数量</th><th scope="col">发货进度</th><th scope="col">校验结果</th></tr></thead>
-            <tbody>${renderProductRows(order.products)}</tbody>
+          <table class="detail-data-table product-detail-table pending-import-detail-table data-grid-table" data-sort-table="pending-products">
+            <thead><tr><th scope="col">序号</th><th scope="col">图片</th>${renderSortableHeader("产品编码", "code")}${renderSortableHeader("产品名称", "name")}${renderSortableHeader("颜色/规格", "colorSpec")}${renderSortableHeader("工厂", "factory")}${renderSortableHeader("下单数量", "quantity")}${renderSortableHeader("已出数量", "shippedQuantity")}${renderSortableHeader("未出数量", "pendingQuantity")}${renderSortableHeader("发货进度", "progress")}${renderSortableHeader("校验结果", "validationLabel")}</tr></thead>
+            <tbody data-pending-products-body>${renderProductRows(order.products)}</tbody>
           </table>
         </div>
       </section>
@@ -110,6 +117,8 @@ export function bindPendingImportDetailPage(orderNo) {
   const page = document.querySelector("[data-pending-import-detail-page]");
   const layer = page?.querySelector("[data-import-confirm-layer]");
   const openButton = page?.querySelector("[data-import-confirm-open]");
+  const order = getPendingImportDetail(orderNo);
+  let sortState = { key: null, direction: "asc" };
 
   const closeDialog = () => {
     if (layer) layer.hidden = true;
@@ -134,6 +143,15 @@ export function bindPendingImportDetailPage(orderNo) {
     window.setTimeout(() => {
       showToast("订单导入成功", `${orderNo} 已生成正式草稿订单。`);
     }, 50);
+  });
+  page?.addEventListener("click", (event) => {
+    const nextSortState = getNextSortState(event, sortState);
+    if (!nextSortState) return;
+    sortState = nextSortState;
+    const table = event.target.closest("[data-sort-table]");
+    updateSortHeaders(table, sortState);
+    const body = page.querySelector("[data-pending-products-body]");
+    if (body) body.innerHTML = renderProductRows(sortRows(order.products, sortState, productSortValue));
   });
   page?.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && layer && !layer.hidden) closeDialog();

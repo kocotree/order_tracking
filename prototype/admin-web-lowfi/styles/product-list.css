@@ -1,0 +1,110 @@
+.product-list-page {
+  display: grid;
+  gap: 14px;
+  animation: page-in 260ms ease-out both;
+}
+
+.product-search-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.product-search-field {
+  flex: 1;
+  max-width: 620px;
+}
+
+.product-list-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.product-list-table {
+  width: 100%;
+  min-width: 860px;
+  color: var(--ink);
+  font-size: 14px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.product-list-table th,
+.product-list-table td {
+  padding-right: 14px;
+  padding-left: 14px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.product-list-table th {
+  padding-top: 9px;
+  padding-bottom: 9px;
+  color: #37404b;
+  font-weight: 800;
+  white-space: nowrap;
+  background: #f1f3f6;
+  border-top: 1px solid #dde1e7;
+  border-bottom: 1px solid #dde1e7;
+}
+
+.product-list-table td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.product-list-table tbody tr:hover td {
+  background: #f7fbfe;
+}
+
+.product-list-table th:nth-child(1) { width: 74px; }
+.product-list-table th:nth-child(2) { width: 140px; }
+.product-list-table th:nth-child(3) { width: 90px; }
+.product-list-table th:nth-child(4) { width: 240px; }
+.product-list-table th:nth-child(5) { width: 260px; }
+.product-list-table th:nth-child(6) { width: 190px; }
+
+.product-sequence {
+  color: var(--subtle);
+  font-family: var(--font-number);
+}
+
+.product-list-thumb {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 32px;
+  color: #8c98a6;
+  background: #f0f2f5;
+  border: 1px solid #dfe3e8;
+  border-radius: 4px;
+}
+
+.product-list-thumb svg {
+  width: 18px;
+  height: 22px;
+}
+
+.product-item-no,
+.product-code-cell {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.product-name-cell {
+  color: var(--ink-strong);
+  font-weight: 750;
+}
+
+@media (max-width: 760px) {
+  .product-search-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .product-search-field {
+    width: 100%;
+    max-width: none;
+  }
+
+}

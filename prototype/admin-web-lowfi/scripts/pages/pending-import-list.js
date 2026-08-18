@@ -1,5 +1,6 @@
 import { importPendingOrdersAsDrafts, pendingImportData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
+import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
 
 const searchIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 const chevronIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 9 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -31,7 +32,7 @@ function renderRows(orders, rowStart = 0, selectedOrderNos = new Set()) {
       <td class="tracker-cell"><span class="tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></td>
       <td>${escapeHTML(order.factory)}</td>
       <td><span class="status-badge is-${escapeHTML(order.tone)}">${escapeHTML(order.validationLabel)}</span></td>
-      <td><button class="order-view-button" type="button" data-import-detail="${escapeHTML(order.orderNo)}">查看详情</button></td>
+      <td><button class="order-view-button" type="button" data-import-detail="${escapeHTML(order.orderNo)}">详情</button></td>
     </tr>
   `;
   }).join("");
@@ -104,8 +105,8 @@ export function renderPendingImportListPage() {
           </div>
         </header>
         <div class="table-scroll">
-          <table class="orders-table pending-import-table">
-            <thead><tr><th class="pending-import-select-column" scope="col"><input type="checkbox" aria-label="全选当前页可导入订单" data-import-select-page /></th><th scope="col">序号</th><th scope="col">订单编号</th><th scope="col">产品名称</th><th scope="col">分类</th><th scope="col">跟单人员</th><th scope="col">工厂</th><th scope="col">校验状态</th><th scope="col">操作</th></tr></thead>
+          <table class="orders-table pending-import-table data-grid-table">
+            <thead><tr><th class="pending-import-select-column" scope="col"><input type="checkbox" aria-label="全选当前页可导入订单" data-import-select-page /></th><th scope="col">序号</th>${renderSortableHeader("订单编号", "orderNo")}${renderSortableHeader("产品名称", "productName")}${renderSortableHeader("分类", "category")}${renderSortableHeader("跟单人员", "tracker")}${renderSortableHeader("工厂", "factory")}${renderSortableHeader("校验状态", "validationLabel")}<th scope="col">操作</th></tr></thead>
             <tbody data-import-body>${renderRows(pendingImportData.orders.filter((item) => item.statusKey === "pending"))}</tbody>
           </table>
         </div>
@@ -118,6 +119,10 @@ export function renderPendingImportListPage() {
 
 function normalize(value) {
   return String(value).trim().toLocaleLowerCase("zh-CN");
+}
+
+function pendingOrderSortValue(order, key) {
+  return order[key];
 }
 
 export function bindPendingImportListPage() {
@@ -145,6 +150,7 @@ export function bindPendingImportListPage() {
   let currentPage = 1;
   let currentOrders = [];
   let currentPageOrders = [];
+  let sortState = { key: null, direction: "asc" };
   const selectedOrderNos = new Set();
   const pageSize = 10;
 
@@ -180,7 +186,7 @@ export function bindPendingImportListPage() {
     const validation = validationSelect?.value ?? "";
     const factories = selected(factoryOptions);
     const trackers = selected(trackerOptions);
-    currentOrders = pendingImportData.orders.filter((order) => {
+    const filteredOrders = pendingImportData.orders.filter((order) => {
       const orderFactories = order.factory.split(/[、,，]/).map((value) => value.trim());
       return order.statusKey === activeStatus
         && (!keyword || [order.orderNo, order.productName].some((value) => normalize(value).includes(keyword)))
@@ -189,6 +195,9 @@ export function bindPendingImportListPage() {
         && (factories.length === 0 || factories.some((factory) => orderFactories.includes(factory)))
         && (trackers.length === 0 || trackers.includes(order.tracker));
     });
+    currentOrders = sortState.key
+      ? sortRows(filteredOrders, sortState, pendingOrderSortValue)
+      : filteredOrders.sort((a, b) => Number(b.validationKey === "ready") - Number(a.validationKey === "ready"));
     currentPage = 1;
     renderPage();
   };
@@ -216,6 +225,8 @@ export function bindPendingImportListPage() {
     [...factoryOptions, ...trackerOptions].forEach((option) => { option.checked = false; });
     updateLabel(factoryLabel, [], "全部工厂", "个工厂");
     updateLabel(trackerLabel, [], "全部跟单人员", "位跟单人员");
+    sortState = { key: null, direction: "asc" };
+    updateSortHeaders(page, sortState);
     applyFilters();
   });
 
@@ -226,7 +237,11 @@ export function bindPendingImportListPage() {
         if (selectPageInput.checked) selectedOrderNos.add(order.orderNo);
         else selectedOrderNos.delete(order.orderNo);
       });
-    renderPage();
+    body?.querySelectorAll("[data-import-select]:not(:disabled)").forEach((input) => {
+      input.checked = selectPageInput.checked;
+      input.closest("tr")?.classList.toggle("is-selected", input.checked);
+    });
+    updateSelectionControls();
   });
 
   batchImportButton?.addEventListener("click", () => {
@@ -248,6 +263,14 @@ export function bindPendingImportListPage() {
   });
 
   page?.addEventListener("click", (event) => {
+    const nextSortState = getNextSortState(event, sortState);
+    if (nextSortState) {
+      sortState = nextSortState;
+      updateSortHeaders(page, sortState);
+      applyFilters();
+      return;
+    }
+
     if (event.target.closest("[data-import-factory-trigger]")) { const open = factoryMenu?.classList.toggle("is-open") ?? false; factoryMenu?.setAttribute("aria-hidden", String(!open)); factoryTrigger?.setAttribute("aria-expanded", String(open)); closeMenu(trackerMenu, trackerTrigger); return; }
     if (event.target.closest("[data-import-tracker-trigger]")) { const open = trackerMenu?.classList.toggle("is-open") ?? false; trackerMenu?.setAttribute("aria-hidden", String(!open)); trackerTrigger?.setAttribute("aria-expanded", String(open)); closeMenu(factoryMenu, factoryTrigger); return; }
     const orderNo = event.target.closest("[data-import-detail]")?.dataset.importDetail;
@@ -265,7 +288,8 @@ export function bindPendingImportListPage() {
     if (!orderNo) return;
     if (event.target.checked) selectedOrderNos.add(orderNo);
     else selectedOrderNos.delete(orderNo);
-    renderPage();
+    event.target.closest("tr")?.classList.toggle("is-selected", event.target.checked);
+    updateSelectionControls();
   });
 
   page?.addEventListener("keydown", (event) => {

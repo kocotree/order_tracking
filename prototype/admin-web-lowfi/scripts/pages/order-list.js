@@ -11,7 +11,6 @@ const statusFilters = [
   { key: "shipping", label: "发货中" },
   { key: "completed", label: "已完成" },
   { key: "draft", label: "草稿" },
-  { key: "cancelled", label: "已取消" },
 ];
 
 function renderStatusTabs() {
@@ -275,7 +274,7 @@ function sortOrders(orders, sortKey) {
 
   const priority = (item) => {
     if (item.statusKey === "draft") return 0;
-    if (item.overdueDays > 0 && !["completed", "cancelled"].includes(item.statusKey)) return 1;
+    if (item.overdueDays > 0 && item.statusKey !== "completed") return 1;
     if (["pending", "shipping"].includes(item.statusKey)) return 2;
     return 3;
   };

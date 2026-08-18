@@ -1,5 +1,5 @@
 import { repairListData } from "../mock-data.js";
-import { escapeHTML } from "../components/app-shell.js";
+import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
 
 const searchIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
@@ -35,7 +35,12 @@ function renderRows(repairs, rowStart = 0) {
       <td class="repair-number-cell">${escapeHTML(formatNumber(returnedTotal))}</td>
       <td class="repair-number-cell">${escapeHTML(formatNumber(repair.warehouseReturnQuantity))}</td>
       <td>${escapeHTML(repair.returnedAt.slice(0, 10))}</td>
-      <td><button class="order-view-button" type="button" data-repair-detail="${escapeHTML(repair.repairNo)}">详情</button></td>
+      <td>
+        <div class="order-row-actions">
+          <button class="order-view-button" type="button" data-repair-detail="${escapeHTML(repair.repairNo)}">详情</button>
+              ${repair.statusKey === "completed" ? `<button class="order-view-button repair-archive-button" type="button" data-repair-archive="${escapeHTML(repair.repairNo)}">归档</button>` : ""}
+        </div>
+      </td>
     </tr>
   `;
   }).join("");
@@ -52,6 +57,22 @@ function renderPagination(currentPage, totalPages, totalItems) {
 
 function normalize(value) {
   return String(value).trim().toLocaleLowerCase("zh-CN");
+}
+
+function renderArchiveDialog() {
+  return `
+    <div class="detail-confirm-layer" hidden data-repair-archive-layer>
+      <button class="detail-confirm-backdrop" type="button" aria-label="取消归档返修单" data-repair-archive-cancel></button>
+      <section class="detail-confirm-dialog order-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="repair-archive-title" aria-describedby="repair-archive-description">
+        <h2 id="repair-archive-title">归档返修单</h2>
+        <p id="repair-archive-description">确认归档返修单 <strong data-repair-archive-label></strong>？归档后管理员和工厂小程序均不再显示。</p>
+        <div class="detail-confirm-actions">
+          <button class="detail-outline-button" type="button" data-repair-archive-cancel>取消</button>
+          <button class="order-primary-button" type="button" data-repair-archive-confirm>确认归档</button>
+        </div>
+      </section>
+    </div>
+  `;
 }
 
 export function renderRepairListPage() {
@@ -108,6 +129,7 @@ export function renderRepairListPage() {
         </div>
         <div class="order-list-footer"><span>每页展示 10 条返修单。</span><nav class="order-pagination" aria-label="返修单分页" data-repair-pagination></nav></div>
       </section>
+      ${renderArchiveDialog()}
     </article>
   `;
 }
@@ -124,10 +146,19 @@ export function bindRepairListPage() {
   const dateToInput = page?.querySelector("[data-repair-date-to]");
   const body = page?.querySelector("[data-repair-list-body]");
   const pagination = page?.querySelector("[data-repair-pagination]");
+  const archiveLayer = page?.querySelector("[data-repair-archive-layer]");
+  const archiveLabel = page?.querySelector("[data-repair-archive-label]");
   let sortState = { key: null, direction: "asc" };
   let currentPage = 1;
   let currentRepairs = [];
+  let pendingArchiveRepairNo = "";
   const pageSize = 10;
+
+  const closeArchiveDialog = () => {
+    if (archiveLayer) archiveLayer.hidden = true;
+    document.body.classList.remove("has-dialog-open");
+    pendingArchiveRepairNo = "";
+  };
 
   const closeFactoryMenu = () => {
     factoryMenu?.classList.remove("is-open");
@@ -153,7 +184,8 @@ export function bindRepairListPage() {
     const dateFrom = dateFromInput?.value ?? "";
     const dateTo = dateToInput?.value ?? "";
     const filtered = repairListData.repairs.filter((repair) => (
-      (!keyword || normalize(repair.repairNo).includes(keyword) || normalize(repair.factory).includes(keyword))
+      repair.archived !== true
+      && (!keyword || normalize(repair.repairNo).includes(keyword) || normalize(repair.factory).includes(keyword))
       && (!factories.length || factories.includes(repair.factory))
       && (!dateFrom || repair.returnedAt.slice(0, 10) >= dateFrom)
       && (!dateTo || repair.returnedAt.slice(0, 10) <= dateTo)
@@ -187,6 +219,22 @@ export function bindRepairListPage() {
   page?.querySelector("[data-repair-create]")?.addEventListener("click", () => {
     window.location.hash = "/repairs/new";
   });
+  page?.querySelectorAll("[data-repair-archive-cancel]").forEach((button) => button.addEventListener("click", closeArchiveDialog));
+  page?.querySelector("[data-repair-archive-confirm]")?.addEventListener("click", () => {
+    const repair = repairListData.repairs.find((item) => item.repairNo === pendingArchiveRepairNo);
+    if (!repair || repair.statusKey !== "completed") {
+      closeArchiveDialog();
+      showToast("无法归档", "只有已完成的返修单可以归档。");
+      return;
+    }
+    repair.archived = true;
+    repair.archivedAt = new Date().toISOString();
+    repair.archivedBy = "煎饼";
+    const archivedRepairNo = repair.repairNo;
+    closeArchiveDialog();
+    applyFilters();
+    showToast("归档成功", `${archivedRepairNo} 已从三端返修列表隐藏。`);
+  });
   page?.addEventListener("click", (event) => {
     const factoryButton = event.target.closest("[data-repair-factory-trigger]");
     if (factoryButton) {
@@ -200,6 +248,19 @@ export function bindRepairListPage() {
       sortState = nextSortState;
       updateSortHeaders(page, sortState);
       applyFilters();
+      return;
+    }
+    const archiveRepairNo = event.target.closest("[data-repair-archive]")?.dataset.repairArchive;
+    if (archiveRepairNo) {
+      const repair = repairListData.repairs.find((item) => item.repairNo === archiveRepairNo);
+      if (!repair || repair.statusKey !== "completed") {
+        showToast("无法归档", "只有已完成的返修单可以归档。");
+        return;
+      }
+      pendingArchiveRepairNo = archiveRepairNo;
+      if (archiveLabel) archiveLabel.textContent = archiveRepairNo;
+      if (archiveLayer) archiveLayer.hidden = false;
+      document.body.classList.add("has-dialog-open");
       return;
     }
     const repairNo = event.target.closest("[data-repair-detail]")?.dataset.repairDetail;

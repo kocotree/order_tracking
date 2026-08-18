@@ -32,7 +32,7 @@
 .repair-list-table th:nth-child(6),
 .repair-list-table th:nth-child(7) { width: 126px; }
 .repair-list-table th:nth-child(8) { width: 152px; }
-.repair-list-table th:nth-child(9) { width: 86px; }
+.repair-list-table th:nth-child(9) { width: 104px; }
 
 .repair-number-cell {
   font-variant-numeric: tabular-nums;
@@ -459,4 +459,7 @@
     grid-column: 1 / -1;
     width: 100%;
   }
+}
+.repair-archive-button {
+  color: #d84949;
 }

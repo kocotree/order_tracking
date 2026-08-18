@@ -1,0 +1,345 @@
+.repair-detail-page {
+  min-height: 100dvh;
+  background: var(--canvas);
+}
+
+.repair-detail-content {
+  display: grid;
+  gap: 13px;
+  padding: 14px 14px 28px;
+}
+
+.repair-detail-summary,
+.repair-detail-records {
+  overflow: hidden;
+  border: 1px solid #e2e7ed;
+  border-radius: 16px;
+  background: var(--white);
+  box-shadow: var(--shadow);
+  animation: card-in 360ms both;
+}
+
+.repair-detail-summary {
+  padding: 18px 17px 16px;
+}
+
+.repair-detail-summary__heading small,
+.repair-detail-summary span,
+.repair-detail-summary__progress small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.repair-detail-summary__heading h2 {
+  margin: 4px 0 0;
+  font-size: 22px;
+}
+
+.repair-detail-summary__meta,
+.repair-detail-summary__stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 15px;
+  border-top: 1px solid var(--line);
+}
+
+.repair-detail-summary__meta p,
+.repair-detail-summary__stats p {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 12px 0;
+}
+
+.repair-detail-summary__meta p:nth-child(even),
+.repair-detail-summary__stats p:nth-child(even) {
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+}
+
+.repair-detail-summary__stats p:nth-child(n + 3) {
+  border-top: 1px solid var(--line);
+}
+
+.repair-detail-summary__meta strong {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.repair-detail-summary__stats strong {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.repair-detail-summary__progress {
+  display: grid;
+  gap: 8px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+
+.repair-detail-summary__progress > span {
+  display: flex;
+  align-items: baseline;
+}
+
+.repair-detail-summary__progress strong {
+  margin-left: auto;
+  font-size: 13px;
+}
+
+.repair-detail-summary__progress em {
+  min-width: 42px;
+  margin-left: 9px;
+  color: var(--blue);
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 800;
+  text-align: right;
+}
+
+.repair-detail-summary__progress > i {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #e9edf2;
+}
+
+.repair-detail-summary__progress > i b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #278bff, #0876ed);
+}
+
+.repair-detail-records {
+  animation-delay: 55ms;
+}
+
+.repair-detail-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  padding: 5px;
+  border-bottom: 1px solid var(--line);
+  background: #f3f6f9;
+}
+
+.repair-detail-tabs button {
+  height: 40px;
+  border-radius: 9px;
+  background: transparent;
+  color: #687483;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.repair-detail-tabs button.is-active {
+  background: var(--white);
+  color: var(--blue);
+  box-shadow: 0 2px 8px rgb(38 54 73 / 10%);
+}
+
+.repair-detail-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.repair-product-group,
+.repair-batch {
+  overflow: hidden;
+  border: 1px solid #e1e6ec;
+  border-radius: 12px;
+  background: #fbfcfd;
+}
+
+.repair-product-group__toggle,
+.repair-batch__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 62px;
+  padding: 10px 13px;
+  background: transparent;
+  text-align: left;
+}
+
+.repair-product-group__toggle > span,
+.repair-batch__toggle > span {
+  display: grid;
+  gap: 4px;
+}
+
+.repair-product-group__toggle strong,
+.repair-batch__toggle strong {
+  font-size: 14px;
+}
+
+.repair-product-group__toggle small,
+.repair-batch__toggle small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.repair-product-group__toggle svg,
+.repair-batch__toggle svg {
+  flex: 0 0 auto;
+  width: 18px;
+  color: #778390;
+  transition: transform 160ms ease;
+}
+
+.repair-product-group.is-expanded .repair-product-group__toggle svg,
+.repair-batch.is-expanded .repair-batch__toggle svg {
+  transform: rotate(90deg);
+}
+
+.repair-quality-lines,
+.repair-batch__content {
+  border-top: 1px solid var(--line);
+  background: var(--white);
+}
+
+.repair-quality-line {
+  padding: 12px 13px;
+}
+
+.repair-quality-line + .repair-quality-line {
+  border-top: 1px solid var(--line);
+}
+
+.repair-quality-line__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.repair-quality-line__heading strong {
+  font-size: 13px;
+}
+
+.repair-quality-line__heading span {
+  color: var(--blue-deep);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.repair-quality-line dl,
+.repair-return-line dl {
+  margin: 10px 0 0;
+}
+
+.repair-quality-line dl {
+  display: grid;
+  grid-template-columns: 0.55fr 1.45fr;
+  gap: 8px;
+}
+
+.repair-quality-line dl div,
+.repair-return-line dl div {
+  display: grid;
+  gap: 3px;
+}
+
+.repair-quality-line dt,
+.repair-return-line dt {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.repair-quality-line dd,
+.repair-return-line dd {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.repair-return-product + .repair-return-product {
+  border-top: 8px solid #f2f5f8;
+}
+
+.repair-return-product > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 43px;
+  padding: 0 13px;
+  background: #f8fafc;
+}
+
+.repair-return-product > header strong {
+  font-size: 13px;
+}
+
+.repair-return-product > header span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.repair-return-line {
+  padding: 12px 13px;
+}
+
+.repair-return-line + .repair-return-line {
+  border-top: 1px solid var(--line);
+}
+
+.repair-return-line > strong {
+  font-size: 13px;
+}
+
+.repair-return-line dl {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  border: 1px solid #e5e9ee;
+  border-radius: 9px;
+  background: #fbfcfd;
+}
+
+.repair-return-line dl div {
+  padding: 8px 10px;
+}
+
+.repair-return-line dl div:nth-child(even) {
+  border-left: 1px solid var(--line);
+}
+
+.repair-return-line dl div:nth-child(n + 3) {
+  border-top: 1px solid var(--line);
+}
+
+.repair-detail-empty {
+  display: grid;
+  min-height: 190px;
+  padding: 28px 18px;
+  place-items: center;
+  text-align: center;
+}
+
+.repair-detail-empty span {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.repair-detail-empty svg {
+  width: 24px;
+}
+
+.repair-detail-empty h3 {
+  margin: 12px 0 0;
+  font-size: 15px;
+}
+
+.repair-detail-empty p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}

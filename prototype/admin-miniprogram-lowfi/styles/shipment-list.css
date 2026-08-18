@@ -1,0 +1,187 @@
+.shipment-segmented {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  margin-top: 12px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #eef2f6;
+}
+
+.shipment-segmented button {
+  height: 36px;
+  border-radius: 9px;
+  background: transparent;
+  color: #697584;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.shipment-segmented button.is-active {
+  background: var(--white);
+  color: var(--blue);
+  box-shadow: 0 2px 8px rgb(38 54 73 / 10%);
+}
+
+.shipment-record-list {
+  padding: 13px 14px 22px;
+}
+
+.shipment-record-card {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #e2e7ed;
+  border-radius: 16px;
+  background: var(--white);
+  box-shadow: var(--shadow);
+  text-align: left;
+  animation: card-in 420ms both;
+  animation-delay: calc(var(--card-index) * 45ms);
+}
+
+.shipment-record-card:active {
+  border-color: #bdd8ff;
+  background: #fbfdff;
+}
+
+.shipment-record-card__heading,
+.shipment-record-card__meta,
+.shipment-record-card__stats,
+.shipment-record-card__number,
+.shipment-record-card__heading > span,
+.shipment-record-card__meta > span,
+.shipment-record-card__stats > span {
+  display: flex;
+}
+
+.shipment-record-card__heading {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 17px 16px 14px;
+}
+
+.shipment-record-card__heading > span:first-child {
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shipment-record-card small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.shipment-record-card__heading strong {
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+}
+
+.shipment-record-card__detail {
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  margin-top: 15px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.shipment-record-card__detail svg {
+  width: 16px;
+}
+
+.shipment-record-card__meta {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  padding: 13px 16px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.shipment-record-card__meta > span {
+  align-items: center;
+  min-width: 0;
+}
+
+.shipment-record-card__meta > span + span {
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+}
+
+.shipment-record-card__meta i {
+  margin-right: 6px;
+  color: var(--blue);
+  font-style: normal;
+}
+
+.shipment-record-card__meta i svg {
+  width: 18px;
+  height: 18px;
+}
+
+.shipment-record-card__meta small {
+  margin-right: 7px;
+  white-space: nowrap;
+}
+
+.shipment-record-card__meta strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shipment-record-card__stats {
+  display: grid;
+  grid-template-columns: 0.9fr 0.65fr 1.25fr;
+  padding: 14px 16px;
+}
+
+.shipment-record-card__stats > span {
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.shipment-record-card__stats > span + span {
+  padding-left: 13px;
+  border-left: 1px solid var(--line);
+}
+
+.shipment-record-card__stats strong {
+  overflow: hidden;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shipment-record-card__stats > span:last-child strong {
+  color: var(--blue-deep);
+}
+
+.shipment-record-card__number {
+  align-items: center;
+  gap: 7px;
+  min-height: 37px;
+  padding: 0 16px;
+  border-top: 1px solid var(--line);
+  background: #fbfcfd;
+}
+
+.shipment-record-card__number strong {
+  color: #7a8592;
+  font-family: "DIN Alternate", "Avenir Next", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}

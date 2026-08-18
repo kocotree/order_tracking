@@ -78,7 +78,7 @@
       <button class="shipment-row" type="button" data-shipment-no="${shipment.no}">
         <span class="shipment-row__icon">${icons.box}</span>
         <span class="shipment-row__main"><strong>${shipment.no}</strong><small>${shipment.factory} · ${formatNumber(shipment.quantity)}件</small></span>
-        <span class="shipment-status shipment-status--${shipment.status}">${shipment.statusLabel}</span>
+        <span class="shipment-row__action">详情</span>
         ${icons.chevron}
       </button>
     `;

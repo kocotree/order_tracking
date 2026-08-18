@@ -193,18 +193,28 @@
       shipDate: "2026-08-12",
       totalQuantity: 480,
       orderNos: ["078#"],
-      packageGroups: [
+      lines: [
+        { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/100", quantity: 480 },
+      ],
+      boxes: [
         {
-          name: "装箱组 A",
-          boxNos: "01-02",
-          boxCount: 2,
+          boxNo: "01",
           items: [
-            { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/100", quantity: 480 },
+            { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/100", quantity: 240 },
+          ],
+        },
+        {
+          boxNo: "02",
+          items: [
+            { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/100", quantity: 240 },
           ],
         },
       ],
       proofs: ["发货凭证 1", "发货凭证 2"],
       note: "共2箱，请按箱号核对。",
+      logs: [
+        { action: "提交发货单", date: "2026-08-12", operator: "宇情工厂", source: "工厂小程序" },
+      ],
     },
     "FH20260810-002": {
       no: "FH20260810-002",
@@ -214,21 +224,141 @@
       shipDate: "2026-08-10",
       totalQuantity: 900,
       orderNos: ["078#"],
-      packageGroups: [
+      lines: [
+        { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/90", quantity: 450 },
+        { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/100", quantity: 450 },
+      ],
+      boxes: [
         {
-          name: "装箱组 A",
-          boxNos: "01-02",
-          boxCount: 2,
+          boxNo: "01",
           items: [
-            { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/90", quantity: 450 },
-            { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/100", quantity: 450 },
+            { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/90", quantity: 225 },
+            { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/100", quantity: 225 },
+          ],
+        },
+        {
+          boxNo: "02",
+          items: [
+            { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/90", quantity: 225 },
+            { orderNo: "078#", productName: "乐园游会吊带包屁衣", colorSpec: "蓝色/100", quantity: 225 },
           ],
         },
       ],
       proofs: ["发货凭证 1"],
       note: "无",
+      logs: [
+        { action: "提交发货单", date: "2026-08-10", operator: "昱斌工厂", source: "工厂小程序" },
+      ],
     },
   };
 
-  window.AdminPrototypeData = { orders, statusOptions, sortOptions, detailOverrides, shipmentDetails };
+  const repairRecords = [
+    {
+      repairNo: "FX20260817-001",
+      factory: "旭之梦",
+      returnDate: "2026-08-17",
+      warehouseReturnQuantity: 36,
+      repairedQuantity: 18,
+      scrappedQuantity: 2,
+    },
+    {
+      repairNo: "FX20260816-002",
+      factory: "龙腾",
+      returnDate: "2026-08-16",
+      warehouseReturnQuantity: 48,
+      repairedQuantity: 0,
+      scrappedQuantity: 0,
+    },
+    {
+      repairNo: "FX20260814-003",
+      factory: "红燕",
+      returnDate: "2026-08-14",
+      warehouseReturnQuantity: 28,
+      repairedQuantity: 24,
+      scrappedQuantity: 4,
+    },
+    {
+      repairNo: "FX20260813-004",
+      factory: "众乐鑫",
+      returnDate: "2026-08-13",
+      warehouseReturnQuantity: 42,
+      repairedQuantity: 20,
+      scrappedQuantity: 3,
+    },
+  ];
+
+  const repairDetails = {
+    "FX20260817-001": {
+      qualityLines: [
+        { productName: "探索家渔夫帽", colorSpec: "森林绿 / 52cm", warehouseReturnQuantity: 8, boxNo: "1", reason: "帽檐车线不顺" },
+        { productName: "探索家渔夫帽", colorSpec: "森林绿 / 54cm", warehouseReturnQuantity: 10, boxNo: "1", reason: "面料污渍" },
+        { productName: "探索家渔夫帽", colorSpec: "沙岩米 / 54cm", warehouseReturnQuantity: 12, boxNo: "2", reason: "帽围尺寸偏小" },
+        { productName: "探索家渔夫帽", colorSpec: "沙岩米 / 56cm", warehouseReturnQuantity: 6, boxNo: "3", reason: "扣具松动" },
+      ],
+      returnBatches: [
+        {
+          id: "return-20260817-1",
+          returnDate: "2026-08-17",
+          lines: [
+            { productName: "探索家渔夫帽", colorSpec: "森林绿 / 52cm", repairedQuantity: 8, scrappedQuantity: 0, warehouseReturnQuantity: 8 },
+            { productName: "探索家渔夫帽", colorSpec: "森林绿 / 54cm", repairedQuantity: 6, scrappedQuantity: 1, warehouseReturnQuantity: 10 },
+            { productName: "探索家渔夫帽", colorSpec: "沙岩米 / 54cm", repairedQuantity: 4, scrappedQuantity: 1, warehouseReturnQuantity: 12 },
+          ],
+        },
+      ],
+    },
+    "FX20260816-002": {
+      qualityLines: [
+        { productName: "轻量防风马甲", colorSpec: "雾蓝 / 120", warehouseReturnQuantity: 16, boxNo: "1", reason: "拉链不顺" },
+        { productName: "轻量防风马甲", colorSpec: "雾蓝 / 130", warehouseReturnQuantity: 20, boxNo: "2", reason: "前片色差" },
+        { productName: "山野轻量长裤", colorSpec: "岩灰 / 130", warehouseReturnQuantity: 12, boxNo: "3-4", reason: "裤脚跳线" },
+      ],
+      returnBatches: [],
+    },
+    "FX20260814-003": {
+      qualityLines: [
+        { productName: "海岛轻量防晒帽", colorSpec: "沙岩米 / 52cm", warehouseReturnQuantity: 10, boxNo: "1", reason: "帽檐变形" },
+        { productName: "海岛轻量防晒帽", colorSpec: "沙岩米 / 54cm", warehouseReturnQuantity: 8, boxNo: "1", reason: "车缝线头" },
+        { productName: "海岛轻量防晒帽", colorSpec: "沙岩米 / 56cm", warehouseReturnQuantity: 10, boxNo: "2", reason: "帽围尺寸偏差" },
+      ],
+      returnBatches: [
+        {
+          id: "return-20260816-1",
+          returnDate: "2026-08-16",
+          lines: [
+            { productName: "海岛轻量防晒帽", colorSpec: "沙岩米 / 54cm", repairedQuantity: 5, scrappedQuantity: 1, warehouseReturnQuantity: 8 },
+            { productName: "海岛轻量防晒帽", colorSpec: "沙岩米 / 56cm", repairedQuantity: 5, scrappedQuantity: 1, warehouseReturnQuantity: 10 },
+          ],
+        },
+        {
+          id: "return-20260815-1",
+          returnDate: "2026-08-15",
+          lines: [
+            { productName: "海岛轻量防晒帽", colorSpec: "沙岩米 / 52cm", repairedQuantity: 8, scrappedQuantity: 1, warehouseReturnQuantity: 10 },
+            { productName: "海岛轻量防晒帽", colorSpec: "沙岩米 / 54cm", repairedQuantity: 6, scrappedQuantity: 1, warehouseReturnQuantity: 8 },
+          ],
+        },
+      ],
+    },
+    "FX20260813-004": {
+      qualityLines: [
+        { productName: "乐园游会吊带包屁衣", colorSpec: "雾松灰 / 80", warehouseReturnQuantity: 14, boxNo: "1", reason: "领口尺寸偏小" },
+        { productName: "乐园游会吊带包屁衣", colorSpec: "雾松灰 / 90", warehouseReturnQuantity: 16, boxNo: "2", reason: "印花偏位" },
+        { productName: "乐园游会吊带包屁衣", colorSpec: "雾松灰 / 100", warehouseReturnQuantity: 12, boxNo: "3", reason: "面料污渍" },
+      ],
+      returnBatches: [
+        {
+          id: "return-20260817-2",
+          returnDate: "2026-08-17",
+          lines: [
+            { productName: "乐园游会吊带包屁衣", colorSpec: "雾松灰 / 80", repairedQuantity: 8, scrappedQuantity: 1, warehouseReturnQuantity: 14 },
+            { productName: "乐园游会吊带包屁衣", colorSpec: "雾松灰 / 90", repairedQuantity: 7, scrappedQuantity: 1, warehouseReturnQuantity: 16 },
+            { productName: "乐园游会吊带包屁衣", colorSpec: "雾松灰 / 100", repairedQuantity: 5, scrappedQuantity: 1, warehouseReturnQuantity: 12 },
+          ],
+        },
+      ],
+    },
+  };
+
+  window.AdminPrototypeData = { orders, statusOptions, sortOptions, detailOverrides, shipmentDetails, repairRecords, repairDetails };
 })();

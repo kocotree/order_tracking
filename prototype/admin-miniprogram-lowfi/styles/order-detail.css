@@ -342,14 +342,11 @@
   color: #8a95a2;
 }
 
-.shipment-status {
+.shipment-row__action {
+  color: var(--blue-deep);
   font-size: 12px;
   font-weight: 750;
   white-space: nowrap;
-}
-
-.shipment-status--shipped {
-  color: var(--blue-deep);
 }
 
 .detail-empty {

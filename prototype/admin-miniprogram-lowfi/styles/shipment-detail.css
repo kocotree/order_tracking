@@ -42,15 +42,6 @@
   letter-spacing: .01em;
 }
 
-.shipment-detail-status {
-  padding: 5px 8px;
-  border-radius: 7px;
-  background: var(--blue-soft);
-  color: var(--blue-deep);
-  font-size: 12px;
-  font-weight: 750;
-}
-
 .shipment-summary-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -69,6 +60,13 @@
 .shipment-summary-grid p:nth-child(even) {
   padding-left: 17px;
   border-left: 1px solid var(--line);
+}
+
+.shipment-summary-grid__wide {
+  grid-column: 1 / -1;
+  margin-top: 13px !important;
+  padding-top: 13px !important;
+  border-top: 1px solid var(--line);
 }
 
 .shipment-summary-grid span {
@@ -101,6 +99,64 @@
 .shipment-detail-section > header span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.shipment-line-table {
+  background: var(--white);
+}
+
+.shipment-line-table__head,
+.shipment-line-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) 80px 62px;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+}
+
+.shipment-line-table__head {
+  min-height: 36px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.shipment-line-table__head span:nth-child(2),
+.shipment-line-row > span {
+  text-align: center;
+}
+
+.shipment-line-table__head span:last-child,
+.shipment-line-row > b {
+  text-align: right;
+}
+
+.shipment-line-row {
+  min-height: 58px;
+  border-top: 1px solid #edf0f3;
+  background: #fafbfd;
+  font-size: 11px;
+}
+
+.shipment-line-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.shipment-line-row strong {
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shipment-line-row > span {
+  color: #4f5b69;
+}
+
+.shipment-line-row > b {
+  font-variant-numeric: tabular-nums;
 }
 
 .shipment-package-list {
@@ -201,12 +257,6 @@
   min-width: 0;
 }
 
-.shipment-item-row small {
-  color: var(--blue-deep);
-  font-size: 10px;
-  font-weight: 700;
-}
-
 .shipment-item-row strong {
   overflow: hidden;
   font-weight: 650;
@@ -269,7 +319,7 @@
 
 .shipment-note {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
+  grid-template-columns: 66px minmax(0, 1fr);
   gap: 8px;
   margin-top: 13px;
   padding-top: 13px;
@@ -284,4 +334,56 @@
 .shipment-note p {
   margin: 0;
   line-height: 1.55;
+}
+
+.shipment-log-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 5px 16px 12px;
+  list-style: none;
+}
+
+.shipment-log-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 9px;
+  padding: 12px 0;
+}
+
+.shipment-log-item:not(:last-child)::after {
+  position: absolute;
+  top: 26px;
+  bottom: -12px;
+  left: 5px;
+  width: 1px;
+  background: #d7e5f6;
+  content: "";
+}
+
+.shipment-log-item i {
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  margin-top: 4px;
+  border: 3px solid #dcecff;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.shipment-log-item div {
+  display: grid;
+  gap: 5px;
+}
+
+.shipment-log-item strong {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.shipment-log-item span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
 }

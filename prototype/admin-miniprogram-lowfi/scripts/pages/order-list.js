@@ -208,6 +208,9 @@
       button.addEventListener("click", () => navigate("order-detail", { selectedOrderId: button.dataset.orderId }));
     });
 
+    document.querySelector("[data-page-target='shipments']")?.addEventListener("click", () => navigate("shipments"));
+    document.querySelector("[data-page-target='profile']")?.addEventListener("click", () => navigate("profile"));
+
     document.querySelectorAll("[data-prototype-target]").forEach((button) => {
       button.addEventListener("click", () => helpers.showToast(`${button.dataset.prototypeTarget}页面将在逐项确认后制作`));
     });
@@ -258,8 +261,8 @@
 
         <nav class="tabbar" aria-label="管理员小程序一级导航">
           <button type="button" class="tabbar__item is-active">${icons.orders}<span>订单</span></button>
-          <button type="button" class="tabbar__item" data-prototype-target="发货">${icons.truck}<span>发货</span></button>
-          <button type="button" class="tabbar__item" data-prototype-target="我的">${icons.profile}<span>我的</span></button>
+          <button type="button" class="tabbar__item" data-page-target="shipments">${icons.truck}<span>发货</span></button>
+          <button type="button" class="tabbar__item" data-page-target="profile">${icons.profile}<span>我的</span></button>
         </nav>
       </div>
       ${renderFilterSheet(context, factories, trackers)}

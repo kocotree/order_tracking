@@ -204,6 +204,7 @@ export function renderShipmentDetailPage(shipmentNo) {
   const shipment = getShipment(shipmentNo);
   const detail = getShipmentDetail(shipment);
   const isEffective = shipment.statusKey === "shipped";
+  const shipmentTime = detail.logs.find((item) => item.action.includes("提交发货单"))?.time ?? shipment.shipDate;
   return `
     <article class="order-detail-page shipment-detail-page" data-shipment-detail-page data-shipment-no="${escapeHTML(shipment.shipmentNo)}">
       <section class="section-card detail-overview-card">
@@ -217,11 +218,9 @@ export function renderShipmentDetailPage(shipmentNo) {
         <div class="detail-overview-content">
           <dl class="shipment-summary-grid" aria-label="发货单概览">
             <div><dt>关联订单</dt><dd>${shipment.orderNos.map((orderNo) => escapeHTML(orderNo)).join("、")}</dd></div>
-            <div><dt>发货单号</dt><dd>${escapeHTML(shipment.shipmentNo)}</dd></div>
-            <div><dt>工厂</dt><dd>${escapeHTML(shipment.factory)}</dd></div>
-            <div><dt>发货日期</dt><dd>${escapeHTML(shipment.shipDate)}</dd></div>
             <div><dt>发货数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(shipment.shippedQuantity))}</dd></div>
             <div><dt>总箱数</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(detail.totalBoxes))}</dd></div>
+            <div><dt>发货时间</dt><dd>${escapeHTML(shipmentTime)}</dd></div>
           </dl>
         </div>
       </section>

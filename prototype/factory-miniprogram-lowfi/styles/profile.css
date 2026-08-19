@@ -68,26 +68,96 @@
   object-fit: cover;
 }
 
-.factory-avatar > i {
-  position: absolute;
-  right: -2px;
-  bottom: -1px;
-  display: grid;
-  width: 23px;
-  height: 23px;
-  place-items: center;
-  border: 2px solid white;
-  border-radius: 50%;
-  background: var(--blue);
-}
-
-.factory-avatar > i svg {
-  width: 12px;
-  height: 12px;
-}
-
 .avatar-input {
   display: none;
+}
+
+.factory-avatar-action-layer {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 12px max(12px, env(safe-area-inset-bottom));
+  background: rgb(17 24 32 / 45%);
+  animation: veil-in 160ms ease both;
+}
+
+.factory-avatar-action-sheet {
+  width: 100%;
+  animation: card-in 180ms ease both;
+}
+
+.factory-avatar-action-sheet > div,
+.factory-avatar-action-sheet > button {
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--white);
+}
+
+.factory-avatar-action-sheet > div {
+  display: grid;
+}
+
+.factory-avatar-action-sheet button {
+  width: 100%;
+  min-height: 52px;
+  background: var(--white);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.factory-avatar-action-sheet > div button + button {
+  border-top: 1px solid var(--line);
+  color: var(--blue-deep);
+}
+
+.factory-avatar-action-sheet > button {
+  margin-top: 9px;
+}
+
+.factory-avatar-preview {
+  position: fixed;
+  z-index: 95;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 40px;
+  background: rgb(10 15 21 / 92%);
+  animation: veil-in 160ms ease both;
+}
+
+.factory-avatar-preview > button {
+  position: absolute;
+  top: max(18px, env(safe-area-inset-top));
+  right: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 12%);
+  color: white;
+  font-size: 27px;
+  font-weight: 300;
+}
+
+.factory-avatar-preview > img,
+.factory-avatar-preview > span {
+  width: min(76vw, 310px);
+  aspect-ratio: 1;
+  border-radius: 12px;
+}
+
+.factory-avatar-preview > img {
+  object-fit: cover;
+}
+
+.factory-avatar-preview > span {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #2f91ff, #0f68dd);
+  color: white;
+  font-size: 92px;
+  font-weight: 800;
 }
 
 .factory-profile-identity {

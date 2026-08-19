@@ -1,4 +1,6 @@
 (function registerAuthPage() {
+  let agreementAccepted = false;
+
   const statusContent = {
     identifying: {
       mark: "…",
@@ -60,22 +62,21 @@
     `;
   }
 
+  function renderCapsule() {
+    return '<div class="wechat-capsule" aria-hidden="true"><b>•••</b><i></i><span></span></div>';
+  }
+
   function renderBinding() {
     return `
-      <section class="auth-card auth-card--binding">
-        <div class="auth-card__symbol" aria-hidden="true">绑</div>
-        <div class="auth-card__heading">
-          <p>管理员入口</p>
-          <h1>绑定管理员账号</h1>
-          <span>请授权网页端申请时使用的手机号，用于匹配并绑定同一管理员账号。</span>
-        </div>
-        <div class="auth-binding-points" aria-label="绑定说明">
-          <p><i>1</i><span>管理员申请仅在网页端提交</span></p>
-          <p><i>2</i><span>网页申请与微信手机号必须一致</span></p>
-        </div>
-        <button type="button" class="auth-primary-button" data-bind-phone>授权手机号并绑定</button>
-        <p class="auth-card__note">点击后将调用微信手机号授权</p>
-      </section>
+      <header class="admin-auth-capsule-row">${renderCapsule()}</header>
+      <main class="admin-auth-login-main">
+        <div class="admin-auth-logo"><img src="../factory-miniprogram-lowfi/assets/logo-compact-ktk-transparent.png" alt="KOCOTREE KTK" /></div>
+        <div class="admin-auth-copy"><h1>订单管理系统</h1><p>查看订单、发货记录与返修进度</p></div>
+        <button type="button" class="auth-primary-button admin-auth-login-button" data-bind-phone>微信授权登录</button>
+        <label class="admin-auth-agreement"><input type="checkbox" data-auth-agreement ${agreementAccepted ? "checked" : ""} /><i></i><span>我已阅读并同意<a href="#" data-policy="用户协议">用户协议</a>和<a href="#" data-policy="隐私政策">隐私政策</a></span></label>
+      </main>
+      <footer class="admin-auth-safe-note">仅用于已授权管理员访问业务数据</footer>
+      <div class="prototype-toast" role="status"></div>
     `;
   }
 
@@ -102,8 +103,23 @@
   }
 
   function bindEvents(context) {
-    const { navigate } = context;
-    document.querySelector("[data-bind-phone]")?.addEventListener("click", () => navigate("orders"));
+    const { navigate, helpers } = context;
+    document.querySelector("[data-auth-agreement]")?.addEventListener("change", (event) => {
+      agreementAccepted = event.target.checked;
+    });
+    document.querySelectorAll("[data-policy]").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        helpers.showToast(`${link.dataset.policy}页面暂不展开`);
+      });
+    });
+    document.querySelector("[data-bind-phone]")?.addEventListener("click", () => {
+      if (!agreementAccepted) {
+        helpers.showToast("请先阅读并同意用户协议和隐私政策");
+        return;
+      }
+      navigate("orders");
+    });
     document.querySelector("[data-auth-refresh]")?.addEventListener("click", () => navigate("orders"));
     document.querySelector("[data-auth-login]")?.addEventListener("click", () => navigate("orders"));
   }
@@ -111,13 +127,15 @@
   function mount(context) {
     const { app, state } = context;
     const knownStatus = ["bind", ...Object.keys(statusContent)].includes(state.authStatus) ? state.authStatus : "bind";
-    app.innerHTML = `
-      <div class="auth-page">
+    app.innerHTML = knownStatus === "bind"
+      ? `<div class="auth-page auth-page--login">${renderBinding()}</div>`
+      : `
+      <div class="auth-page auth-page--status">
         <div class="auth-orbit auth-orbit--one" aria-hidden="true"></div>
         <div class="auth-orbit auth-orbit--two" aria-hidden="true"></div>
         ${renderBrand()}
         <main class="auth-content">
-          ${knownStatus === "bind" ? renderBinding() : renderStatus(knownStatus)}
+          ${renderStatus(knownStatus)}
         </main>
       </div>
     `;

@@ -9,7 +9,9 @@
   }
 
   const state = {
-    page: "orders",
+    page: "auth",
+    authStatus: new URLSearchParams(window.location.search).get("auth") || "apply",
+    applicantName: "",
     selectedOrderId: null,
     selectedShipmentNo: null,
     shipmentBackPage: "order-detail",
@@ -19,7 +21,6 @@
     tracker: "all",
     dueStart: "",
     dueEnd: "",
-    overdueOnly: false,
     sort: "urgent",
     filterOpen: false,
     shipmentKeyword: "",
@@ -28,6 +29,7 @@
     shipmentDateEnd: "",
     shipmentFilterOpen: false,
     repairKeyword: "",
+    repairStatus: "all",
     repairFactories: [],
     repairDateStart: "",
     repairDateEnd: "",

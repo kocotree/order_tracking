@@ -5,6 +5,13 @@ import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } f
 const backIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const productIcon = `<svg viewBox="0 0 28 34" fill="none" aria-hidden="true"><path d="m9 5 5-2 5 2 5 6-4 3v15H8V14l-4-3 5-6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M11 5c.6 2 1.6 3 3 3s2.4-1 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 
+function getOrderDisplayStatus(order) {
+  if (order.statusKey === "draft") return { label: "草稿", tone: "draft" };
+  if (order.statusKey === "completed") return { label: "已完成", tone: "success" };
+  if (order.overdueDays > 0) return { label: "已逾期", tone: "danger" };
+  return { label: "未完成", tone: "info" };
+}
+
 function formatNumber(value) {
   return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
 }
@@ -19,8 +26,8 @@ function buildFallbackDetail(orderNo) {
     ...sourceOrder,
     orderDate: sourceOrder.orderDate,
     source: "飞书多维表格导入",
-    statusLabel: sourceOrder.overdueDays > 0 ? "已逾期" : sourceOrder.statusLabel,
-    tone: sourceOrder.overdueDays > 0 ? "danger" : sourceOrder.tone,
+    statusLabel: getOrderDisplayStatus(sourceOrder).label,
+    tone: getOrderDisplayStatus(sourceOrder).tone,
     totalQuantity,
     shippedQuantity,
     pendingQuantity: Math.max(totalQuantity - shippedQuantity, 0),
@@ -38,8 +45,8 @@ function buildFallbackDetail(orderNo) {
       contractNo: `${sourceOrder.orderDate.replaceAll("-", "")}-KK-${String(index + 1).padStart(2, "0")}`,
       allocated: Math.round(totalQuantity / factories.length),
       shipped: Math.round(shippedQuantity / factories.length),
-      statusLabel: sourceOrder.statusLabel,
-      tone: sourceOrder.tone,
+      statusLabel: getOrderDisplayStatus(sourceOrder).label,
+      tone: getOrderDisplayStatus(sourceOrder).tone,
       contractReady: true,
       lines: [
         {
@@ -57,7 +64,11 @@ function buildFallbackDetail(orderNo) {
 }
 
 function getOrderDetail(orderNo) {
-  return orderDetailData[orderNo] ?? buildFallbackDetail(orderNo);
+  const detail = orderDetailData[orderNo] ?? buildFallbackDetail(orderNo);
+  const sourceOrder = orderListData.orders.find((item) => item.orderNo === orderNo);
+  if (!sourceOrder) return detail;
+  const displayStatus = getOrderDisplayStatus(sourceOrder);
+  return { ...detail, statusKey: sourceOrder.statusKey, statusLabel: displayStatus.label, tone: displayStatus.tone };
 }
 
 function buildProductFactoryRows(order) {
@@ -144,7 +155,7 @@ function renderPublishDialog(order) {
       <button class="detail-confirm-backdrop" type="button" aria-label="取消发布订单" data-publish-confirm-cancel></button>
       <section class="detail-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="publish-confirm-title" aria-describedby="publish-confirm-description">
         <h2 id="publish-confirm-title">确认发布订单</h2>
-        <p id="publish-confirm-description">确认发布订单 <strong>${escapeHTML(order.orderNo)}</strong>？发布后相关工厂将在小程序收到任务，订单状态将变为待发货。</p>
+        <p id="publish-confirm-description">确认发布订单 <strong>${escapeHTML(order.orderNo)}</strong>？发布后相关工厂将在小程序收到任务，订单状态将变为未完成。</p>
         <div class="detail-confirm-actions">
           <button class="detail-outline-button" type="button" data-publish-confirm-cancel>取消</button>
           <button class="detail-primary-button" type="button" data-publish-confirm-submit>确认发布</button>
@@ -386,27 +397,27 @@ export function bindOrderDetailPage(orderNo) {
     const sourceOrder = orderListData.orders.find((item) => item.orderNo === orderNo);
     if (sourceOrder) {
       sourceOrder.statusKey = "pending";
-      sourceOrder.statusLabel = "待发货";
-      sourceOrder.tone = "warning";
+      sourceOrder.statusLabel = "未完成";
+      sourceOrder.tone = "info";
       sourceOrder.updatedAt = new Date().toISOString();
     }
 
     const detailOrder = orderDetailData[orderNo];
     if (detailOrder) {
       detailOrder.statusKey = "pending";
-      detailOrder.statusLabel = "待发货";
-      detailOrder.tone = "warning";
+      detailOrder.statusLabel = "未完成";
+      detailOrder.tone = "info";
     }
 
     if (publishLayer) publishLayer.remove();
     document.body.classList.remove("has-dialog-open");
     const statusBadge = page?.querySelector(".order-detail-actions .status-badge");
     if (statusBadge) {
-      statusBadge.className = "status-badge is-warning";
-      statusBadge.textContent = "待发货";
+      statusBadge.className = "status-badge is-info";
+      statusBadge.textContent = "未完成";
     }
     publishButton?.remove();
-    showToast("订单发布成功", `${orderNo} 已变为待发货，相关工厂将收到任务。`);
+    showToast("订单发布成功", `${orderNo} 已变为未完成，相关工厂将收到任务。`);
   });
 
   page?.addEventListener("click", (event) => {

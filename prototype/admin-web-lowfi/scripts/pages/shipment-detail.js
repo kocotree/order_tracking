@@ -169,17 +169,21 @@ function updateOrderAfterReturn(shipment, returnedLines, reason, time) {
   orderTotals.forEach((quantity, orderNo) => {
     const order = orderDetailData[orderNo];
     if (!order) return;
+    const listOrder = orderListData.orders.find((item) => item.orderNo === orderNo);
+    const isOverdue = Number(listOrder?.overdueDays || 0) > 0;
+    const restoredLabel = isOverdue ? "已逾期" : "未完成";
+    const restoredTone = isOverdue ? "danger" : "info";
     const shippedBefore = Number(order.shippedQuantity || 0);
     order.shippedQuantity = Math.max(shippedBefore - quantity, 0);
     order.pendingQuantity = Number(order.pendingQuantity || 0) + quantity;
     order.statusKey = "shipping";
-    order.statusLabel = "发货中";
-    order.tone = "info";
+    order.statusLabel = restoredLabel;
+    order.tone = restoredTone;
     const factory = order.factories.find((item) => item.name === shipment.factory);
     if (factory) {
       factory.shipped = Math.max(Number(factory.shipped || 0) - quantity, 0);
-      factory.statusLabel = "发货中";
-      factory.tone = "info";
+      factory.statusLabel = restoredLabel;
+      factory.tone = restoredTone;
     }
     order.logs.unshift({
       time,
@@ -188,13 +192,12 @@ function updateOrderAfterReturn(shipment, returnedLines, reason, time) {
       source: "管理员网页端",
     });
 
-    const listOrder = orderListData.orders.find((item) => item.orderNo === orderNo);
     if (listOrder) {
       listOrder.shippedPercent = order.totalQuantity ? Math.round((order.shippedQuantity / order.totalQuantity) * 100) : 0;
       listOrder.shippedText = `${formatNumber(order.shippedQuantity)} / ${formatNumber(order.totalQuantity)}`;
       listOrder.statusKey = "shipping";
-      listOrder.statusLabel = "发货中";
-      listOrder.tone = "info";
+      listOrder.statusLabel = restoredLabel;
+      listOrder.tone = restoredTone;
       listOrder.updatedAt = new Date().toISOString();
     }
   });

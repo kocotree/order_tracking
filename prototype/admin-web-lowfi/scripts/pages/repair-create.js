@@ -160,7 +160,7 @@ export function bindRepairCreatePage() {
       repairedQuantity: 0,
       scrappedQuantity: 0,
       statusKey: "pending",
-      statusLabel: "待工厂处理",
+      statusLabel: "未完成",
       tone: "warning",
       summary: { boxCount: repairImportPreview.boxCount, lineCount: repairImportPreview.lineCount },
       lines: repairImportPreview.lines.map((line) => ({ ...line })),

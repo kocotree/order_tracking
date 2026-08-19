@@ -1,14 +1,22 @@
 (function registerRepairListPage() {
+  function getRepairDisplayStatus(repair) {
+    const returnedQuantity = repair.repairedQuantity + repair.scrappedQuantity;
+    return returnedQuantity >= repair.warehouseReturnQuantity
+      ? { key: "completed", label: "已完成", tone: "completed" }
+      : { key: "incomplete", label: "未完成", tone: "incomplete" };
+  }
+
   function getVisibleRepairs(data, state) {
     const keyword = state.repairKeyword.trim().toLowerCase();
     return [...data.repairRecords]
       .filter((repair) => {
         if (repair.archived === true) return false;
         const matchesKeyword = !keyword || repair.factory.toLowerCase().includes(keyword);
+        const matchesStatus = state.repairStatus === "all" || getRepairDisplayStatus(repair).key === state.repairStatus;
         const matchesFactory = !state.repairFactories.length || state.repairFactories.includes(repair.factory);
         const matchesStart = !state.repairDateStart || repair.returnDate >= state.repairDateStart;
         const matchesEnd = !state.repairDateEnd || repair.returnDate <= state.repairDateEnd;
-        return matchesKeyword && matchesFactory && matchesStart && matchesEnd;
+        return matchesKeyword && matchesStatus && matchesFactory && matchesStart && matchesEnd;
       })
       .sort((a, b) => b.returnDate.localeCompare(a.returnDate));
   }
@@ -26,11 +34,12 @@
       ? Math.min(100, Math.round((returnedQuantity / repair.warehouseReturnQuantity) * 100))
       : 0;
     const productSummary = getProductSummary(repair, repairDetails);
+    const displayStatus = getRepairDisplayStatus(repair);
     return `
       <button class="repair-progress-card" type="button" data-repair-no="${repair.repairNo}" style="--card-index:${index}" aria-label="查看 ${repair.factory} 返修进度详情">
         <span class="repair-progress-card__heading">
           <span><small>工厂</small><strong>${repair.factory}</strong><em>${productSummary}</em></span>
-          <span class="repair-progress-card__pending"><small>待返回</small><strong>${formatNumber(pendingQuantity)}件</strong></span>
+          <span class="repair-progress-card__pending"><span class="status status--${displayStatus.tone}">${displayStatus.label}</span><small>待返回</small><strong>${formatNumber(pendingQuantity)}件</strong></span>
         </span>
         <span class="repair-progress-card__progress">
           <span><small>返回进度</small><strong>${formatNumber(returnedQuantity)} / ${formatNumber(repair.warehouseReturnQuantity)}</strong><em>${progress}%</em></span>
@@ -58,6 +67,10 @@
             <button type="button" class="icon-button" data-close-repair-sheet aria-label="关闭筛选">${icons.close}</button>
           </header>
           <div class="filter-sheet__body">
+            <label class="field">
+              <span>返修状态</span>
+              <select id="repair-filter-status">${helpers.selectOptions([["all", "全部状态"], ["incomplete", "未完成"], ["completed", "已完成"]], state.repairStatus)}</select>
+            </label>
             <label class="field">
               <span>工厂</span>
               <select id="repair-filter-factory">
@@ -106,11 +119,12 @@
     });
 
     document.querySelector("#reset-repair-filter")?.addEventListener("click", () => {
-      Object.assign(state, { repairFactories: [], repairDateStart: "", repairDateEnd: "" });
+      Object.assign(state, { repairStatus: "all", repairFactories: [], repairDateStart: "", repairDateEnd: "" });
       render();
     });
 
     document.querySelector("#apply-repair-filter")?.addEventListener("click", () => {
+      state.repairStatus = document.querySelector("#repair-filter-status").value;
       const factory = document.querySelector("#repair-filter-factory").value;
       state.repairFactories = factory === "all" ? [] : [factory];
       state.repairDateStart = document.querySelector("#repair-date-start").value;
@@ -120,7 +134,7 @@
     });
 
     document.querySelector("#clear-repair-filters")?.addEventListener("click", () => {
-      Object.assign(state, { repairKeyword: "", repairFactories: [], repairDateStart: "", repairDateEnd: "" });
+      Object.assign(state, { repairKeyword: "", repairStatus: "all", repairFactories: [], repairDateStart: "", repairDateEnd: "" });
       render();
     });
 
@@ -141,6 +155,7 @@
     const factories = [...new Set(data.repairRecords.map((repair) => repair.factory))];
     const visibleRepairs = getVisibleRepairs(data, state);
     const activeFilterCount = [
+      state.repairStatus !== "all",
       state.repairFactories.length > 0,
       Boolean(state.repairDateStart),
       Boolean(state.repairDateEnd),

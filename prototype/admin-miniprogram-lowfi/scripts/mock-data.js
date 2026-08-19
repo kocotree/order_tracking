@@ -14,7 +14,7 @@
       total: 3000,
       progress: 46,
       status: "shipping",
-      statusLabel: "发货中",
+      statusLabel: "未完成",
       orderDate: "2026-07-26",
       updatedAt: "2026-08-18T08:40:00",
     },
@@ -36,7 +36,7 @@
         { productName: "小热皮绒绒裤", colorCode: "棕色/110", shipped: 720, ordered: 1000 },
       ],
       status: "shipping",
-      statusLabel: "发货中",
+      statusLabel: "未完成",
       orderDate: "2026-07-29",
       updatedAt: "2026-08-18T08:10:00",
     },
@@ -59,7 +59,7 @@
         { productName: "云朵软壳冲锋衣", colorCode: "米白/110", shipped: 0, ordered: 500 },
       ],
       status: "pending",
-      statusLabel: "待发货",
+      statusLabel: "未完成",
       orderDate: "2026-08-03",
       updatedAt: "2026-08-17T16:30:00",
     },
@@ -116,8 +116,8 @@
 
   const statusOptions = [
     ["all", "全部状态"],
-    ["pending", "待发货"],
-    ["shipping", "发货中"],
+    ["incomplete", "未完成"],
+    ["overdue", "已逾期"],
     ["completed", "已完成"],
     ["draft", "草稿"],
   ];

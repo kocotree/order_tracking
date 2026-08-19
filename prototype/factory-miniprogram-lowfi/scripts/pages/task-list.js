@@ -1,22 +1,25 @@
 (function registerTaskList() {
-  function getVisibleTasks(data, state) {
-    var keyword = state.keyword.trim().toLowerCase();
+  function getOrderDisplayStatus(task) {
+    if (task.status === "completed") return { key: "completed", label: "已完成", tone: "completed" };
+    if (task.overdueDays > 0) return { key: "overdue", label: "已逾期", tone: "overdue" };
+    return { key: "incomplete", label: "未完成", tone: "incomplete" };
+  }
+
+  function getVisibleOrderTasks(data, filter) {
+    var keyword = filter.keyword.trim().toLowerCase();
     var filtered = data.tasks.filter(function (task) {
       var matchesKeyword =
         !keyword ||
         task.orderNo.toLowerCase().includes(keyword) ||
         task.productSummary.toLowerCase().includes(keyword) ||
         task.specSummary.toLowerCase().includes(keyword);
-      var matchesStatus =
-        state.status === "all" ||
-        (state.status === "incomplete" ? task.status !== "completed" : task.status === state.status);
-      var matchesStart = !state.dueStart || task.contractShipDate >= state.dueStart;
-      var matchesEnd = !state.dueEnd || task.contractShipDate <= state.dueEnd;
+      var matchesStatus = filter.status === "all" || getOrderDisplayStatus(task).key === filter.status;
+      var matchesStart = !filter.start || task.contractShipDate >= filter.start;
+      var matchesEnd = !filter.end || task.contractShipDate <= filter.end;
       return matchesKeyword && matchesStatus && matchesStart && matchesEnd;
     });
 
     return filtered.sort(function (a, b) {
-      // Overdue + not completed → first
       var aUrgency = a.overdueDays > 0 && a.status !== "completed" ? 0 : a.status === "completed" ? 2 : 1;
       var bUrgency = b.overdueDays > 0 && b.status !== "completed" ? 0 : b.status === "completed" ? 2 : 1;
       if (aUrgency !== bUrgency) return aUrgency - bUrgency;
@@ -24,101 +27,130 @@
     });
   }
 
-  function renderTaskCard(task, index, icons, formatNumber) {
-    var summaryHtml = escapeHtml(task.productSummary);
+  function getVisibleRepairTasks(data, filter) {
+    var keyword = filter.keyword.trim().toLowerCase();
+    var filtered = data.repairTasks.filter(function (task) {
+      var matchesKeyword =
+        !keyword ||
+        task.repairNo.toLowerCase().includes(keyword) ||
+        task.productNames.some(function (name) { return name.toLowerCase().includes(keyword); });
+      var matchesStatus =
+        filter.status === "all" ||
+        (filter.status === "incomplete" ? task.status !== "completed" : task.status === filter.status);
+      var matchesStart = !filter.start || task.returnDate >= filter.start;
+      var matchesEnd = !filter.end || task.returnDate <= filter.end;
+      return !task.archived && matchesKeyword && matchesStatus && matchesStart && matchesEnd;
+    });
 
+    var statusRank = { pending: 0, processing: 1, completed: 2 };
+    return filtered.sort(function (a, b) {
+      return statusRank[a.status] - statusRank[b.status] || a.returnDate.localeCompare(b.returnDate);
+    });
+  }
+
+  function renderOrderCard(task, index, icons) {
+    var displayStatus = getOrderDisplayStatus(task);
     return (
       '<article class="order-card" style="--card-index:' + index + '" role="button" tabindex="0" aria-label="查看任务 ' + escapeHtml(task.orderNo) + ' 详情" data-task-id="' + task.id + '">' +
         '<div class="order-card__heading">' +
-          '<div>' +
-            '<p class="order-card__number">' + escapeHtml(task.orderNo) + '</p>' +
-            '<h2>' + summaryHtml + '</h2>' +
-          '</div>' +
+          '<div><p class="order-card__number">' + escapeHtml(task.orderNo) + '</p><h2>' + escapeHtml(task.productSummary) + '</h2></div>' +
           '<div class="order-card__badges">' +
-            '<span class="status status--' + task.status + '">' + escapeHtml(task.statusLabel) + '</span>' +
-            (task.overdueDays > 0 && task.status !== "completed" ? '<span class="overdue">逾期' + task.overdueDays + '天</span>' : "") +
+            '<span class="status status--' + displayStatus.tone + '">' + displayStatus.label + '</span>' +
           '</div>' +
         '</div>' +
-
         '<div class="order-card__due' + (task.overdueDays > 0 && task.status !== "completed" ? " order-card__due--overdue" : "") + '">' +
-          '<span class="fact-icon">' + icons.calendar + '</span>' +
-          '<span>合同出货时间</span>' +
-          '<strong>' + escapeHtml(task.contractShipDateLabel) + '</strong>' +
+          '<span class="fact-icon">' + icons.calendar + '</span><span>合同出货时间</span><strong>' + escapeHtml(task.contractShipDateLabel) + '</strong>' +
         '</div>' +
-
         '<div class="order-card__quantities">' +
           '<div><span>下单</span><strong>' + formatNumber(task.totalAllocated) + '</strong></div>' +
           '<div><span>已发</span><strong>' + formatNumber(task.totalShipped) + '</strong></div>' +
           '<div><span>未发</span><strong class="' + (task.totalPending > 0 ? "pending-value--warn" : "") + '">' + formatNumber(task.totalPending) + '</strong></div>' +
         '</div>' +
-
-        '<div class="order-card__progress">' +
-          '<div class="progress-track"><i style="width:' + task.progress + '%"></i></div>' +
-          '<strong>' + task.progress + '%</strong>' +
-        '</div>' +
+        '<div class="order-card__progress"><div class="progress-track"><i style="width:' + task.progress + '%"></i></div><strong>' + task.progress + '%</strong></div>' +
       '</article>'
     );
   }
 
-  function escapeHtml(str) {
+  function renderRepairCard(task, index, icons) {
+    return (
+      '<article class="order-card repair-card" style="--card-index:' + index + '" role="button" tabindex="0" aria-label="查看返修任务 ' + escapeHtml(task.repairNo) + ' 详情" data-repair-id="' + task.id + '">' +
+        '<div class="order-card__heading">' +
+          '<div><p class="repair-card__number">' + escapeHtml(task.repairNo) + '</p><h2>' + escapeHtml(task.productSummary) + '</h2></div>' +
+          '<div class="order-card__badges"><span class="status status--' + (task.status === "completed" ? "completed" : "incomplete") + '">' + (task.status === "completed" ? "已完成" : "未完成") + '</span></div>' +
+        '</div>' +
+        '<div class="order-card__due repair-card__date">' +
+          '<span class="fact-icon">' + icons.calendar + '</span><span>退回日期</span><strong>' + escapeHtml(task.returnDateLabel) + '</strong>' +
+        '</div>' +
+        '<div class="order-card__quantities repair-card__quantities">' +
+          '<div><span>仓库退回</span><strong>' + formatNumber(task.warehouseReturned) + '</strong></div>' +
+          '<div><span>已返回</span><strong>' + formatNumber(task.returned) + '</strong></div>' +
+          '<div><span>待返回</span><strong class="' + (task.pendingReturn > 0 ? "pending-value--warn" : "") + '">' + formatNumber(task.pendingReturn) + '</strong></div>' +
+        '</div>' +
+        '<div class="repair-card__progress"><span>返回进度</span><div class="progress-track"><i style="width:' + task.progress + '%"></i></div><strong>' + task.progress + '%</strong></div>' +
+      '</article>'
+    );
+  }
+
+  function escapeHtml(value) {
     var div = document.createElement("div");
-    div.appendChild(document.createTextNode(str));
+    div.appendChild(document.createTextNode(value == null ? "" : String(value)));
     return div.innerHTML;
   }
 
-  function formatNumber(n) {
-    return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  function formatNumber(value) {
+    return Number(value || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   }
 
-  function mount(app) {
+  function mount(app, initialKind) {
     var data = window.FactoryPrototypeData;
     var icons = window.FactoryIcons;
     var state = {
-      keyword: "",
-      status: "incomplete",
-      dueStart: "",
-      dueEnd: "",
+      activeKind: initialKind === "repair" ? "repair" : "order",
       filterOpen: false,
+      filters: {
+        order: { keyword: "", status: "all", start: "", end: "" },
+        repair: { keyword: "", status: "incomplete", start: "", end: "" },
+      },
     };
 
+    function getActiveFilter() {
+      return state.filters[state.activeKind];
+    }
+
+    function getDefaultStatus() {
+      return state.activeKind === "order" ? "all" : "incomplete";
+    }
+
     function render() {
-      var visible = getVisibleTasks(data, state);
+      var isOrder = state.activeKind === "order";
+      var filter = getActiveFilter();
+      var visible = isOrder ? getVisibleOrderTasks(data, filter) : getVisibleRepairTasks(data, filter);
       var activeFilterCount = [
-        state.status !== "incomplete",
-        Boolean(state.dueStart),
-        Boolean(state.dueEnd),
+        filter.status !== getDefaultStatus(),
+        Boolean(filter.start),
+        Boolean(filter.end),
       ].filter(Boolean).length;
 
       app.innerHTML =
         '<div class="page-shell">' +
           '<header class="page-header">' +
-            '<div class="mini-titlebar">' +
-              '<span class="titlebar-spacer" aria-hidden="true"></span>' +
-              '<h1>任务</h1>' +
-              '<div class="wechat-capsule" aria-hidden="true"><b>•••</b><i></i><span></span></div>' +
+            '<div class="mini-titlebar"><span class="titlebar-spacer" aria-hidden="true"></span><h1>任务</h1><div class="wechat-capsule" aria-hidden="true"><b>•••</b><i></i><span></span></div></div>' +
+            '<div class="task-kind-tabs" role="tablist" aria-label="任务类型">' +
+              '<button type="button" role="tab" class="task-kind-tab' + (isOrder ? " is-active" : "") + '" aria-selected="' + isOrder + '" data-task-kind="order">订单</button>' +
+              '<button type="button" role="tab" class="task-kind-tab' + (!isOrder ? " is-active" : "") + '" aria-selected="' + (!isOrder) + '" data-task-kind="repair">返修</button>' +
             '</div>' +
             '<div class="search-row">' +
-              '<label class="search-box">' +
-                icons.search +
-                '<input id="task-search" type="search" value="' + escapeHtml(state.keyword) + '" placeholder="订单编号或产品名称" autocomplete="off" />' +
-              '</label>' +
-              '<button type="button" class="filter-button" id="open-filter">' +
-                icons.filter + '<span>筛选</span>' + (activeFilterCount ? '<b>' + activeFilterCount + '</b>' : "") +
-              '</button>' +
+              '<label class="search-box">' + icons.search + '<input id="task-search" type="search" value="' + escapeHtml(filter.keyword) + '" placeholder="' + (isOrder ? "订单编号或产品名称" : "返修单号或产品名称") + '" autocomplete="off" /></label>' +
+              '<button type="button" class="filter-button" id="open-filter">' + icons.filter + '<span>筛选</span>' + (activeFilterCount ? '<b>' + activeFilterCount + '</b>' : "") + '</button>' +
             '</div>' +
           '</header>' +
-
-          '<section class="order-list" aria-label="任务列表">' +
-            '<div class="result-summary"><span>共 ' + visible.length + ' 个任务</span></div>' +
+          '<section class="order-list' + (!isOrder ? " order-list--repair" : "") + '" aria-label="' + (isOrder ? "订单任务列表" : "返修任务列表") + '">' +
+            '<div class="result-summary"><span>共 ' + visible.length + ' 个' + (isOrder ? "订单" : "返修") + '任务</span></div>' +
             (visible.length
-              ? visible.map(function (task, index) { return renderTaskCard(task, index, icons, formatNumber); }).join("")
-              : '<div class="empty-state"><span>' + icons.search + '</span><h2>没有符合条件的任务</h2><p>可以调整搜索词或筛选条件后再试。</p><button id="clear-all" type="button">清除筛选</button></div>'
-            ) +
-            '<div class="create-shipment-bar">' +
-              '<button type="button" class="primary-button create-shipment-btn" id="create-shipment-btn">创建发货单</button>' +
-            '</div>' +
+              ? visible.map(function (task, index) { return isOrder ? renderOrderCard(task, index, icons) : renderRepairCard(task, index, icons); }).join("")
+              : '<div class="empty-state"><span>' + icons.search + '</span><h2>没有符合条件的' + (isOrder ? "订单" : "返修") + '任务</h2><p>可以调整搜索词或筛选条件后再试。</p><button id="clear-all" type="button">清除筛选</button></div>') +
+            (isOrder ? '<div class="create-shipment-bar"><button type="button" class="primary-button create-shipment-btn" id="create-shipment-btn">创建发货单</button></div>' : "") +
           '</section>' +
-
           '<nav class="tabbar" aria-label="工厂小程序一级导航">' +
             '<button type="button" class="tabbar__item is-active">' + icons.tasks + '<span>任务</span></button>' +
             '<button type="button" class="tabbar__item" data-prototype-target="发货记录">' + icons.truck + '<span>发货记录</span></button>' +
@@ -133,48 +165,43 @@
 
     function renderFilterSheet() {
       if (!state.filterOpen) return "";
+      var isOrder = state.activeKind === "order";
+      var filter = getActiveFilter();
+      var options = isOrder ? data.statusOptions : data.repairStatusOptions;
       return (
         '<div class="sheet-layer" data-close-sheet>' +
           '<section class="filter-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-title">' +
             '<div class="sheet-handle" aria-hidden="true"></div>' +
-            '<header class="filter-sheet__header">' +
-              '<div><p>工厂小程序</p><h2 id="filter-title">筛选任务</h2></div>' +
-              '<button type="button" class="icon-button" data-close-sheet aria-label="关闭筛选">' + icons.close + '</button>' +
-            '</header>' +
+            '<header class="filter-sheet__header"><div><p>工厂小程序</p><h2 id="filter-title">筛选' + (isOrder ? "订单" : "返修") + '任务</h2></div><button type="button" class="icon-button" data-close-sheet aria-label="关闭筛选">' + icons.close + '</button></header>' +
             '<div class="filter-sheet__body">' +
-              '<label class="field">' +
-                '<span>任务状态</span>' +
-                '<select id="filter-status">' +
-                  data.statusOptions.map(function (s) {
-                    return '<option value="' + s[0] + '"' + (s[0] === state.status ? " selected" : "") + '>' + s[1] + '</option>';
-                  }).join("") +
-                '</select>' +
-              '</label>' +
-              '<fieldset class="field date-field">' +
-                '<legend>合同出货时间范围</legend>' +
-                '<div>' +
-                  '<input id="filter-date-start" type="date" value="' + state.dueStart + '" aria-label="合同出货开始日期" />' +
-                  '<span>至</span>' +
-                  '<input id="filter-date-end" type="date" value="' + state.dueEnd + '" aria-label="合同出货结束日期" />' +
-                '</div>' +
-              '</fieldset>' +
+              '<label class="field"><span>' + (isOrder ? "订单" : "返修") + '状态</span><select id="filter-status">' +
+                options.map(function (option) { return '<option value="' + option[0] + '"' + (option[0] === filter.status ? " selected" : "") + '>' + option[1] + '</option>'; }).join("") +
+              '</select></label>' +
+              '<fieldset class="field date-field"><legend>' + (isOrder ? "合同出货时间" : "退回日期") + '范围</legend><div>' +
+                '<input id="filter-date-start" type="date" value="' + filter.start + '" aria-label="开始日期" /><span>至</span><input id="filter-date-end" type="date" value="' + filter.end + '" aria-label="结束日期" />' +
+              '</div></fieldset>' +
             '</div>' +
-            '<footer class="filter-sheet__actions">' +
-              '<button type="button" class="secondary-button" id="reset-filter">重置</button>' +
-              '<button type="button" class="primary-button" id="apply-filter">查看结果</button>' +
-            '</footer>' +
+            '<footer class="filter-sheet__actions"><button type="button" class="secondary-button" id="reset-filter">重置</button><button type="button" class="primary-button" id="apply-filter">查看结果</button></footer>' +
           '</section>' +
         '</div>'
       );
     }
 
     function bindEvents() {
+      document.querySelectorAll("[data-task-kind]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          state.activeKind = button.dataset.taskKind;
+          state.filterOpen = false;
+          render();
+        });
+      });
+
       document.querySelector("#task-search")?.addEventListener("input", function (event) {
-        state.keyword = event.target.value;
+        getActiveFilter().keyword = event.target.value;
         render();
         var input = document.querySelector("#task-search");
         input?.focus();
-        input?.setSelectionRange(state.keyword.length, state.keyword.length);
+        input?.setSelectionRange(getActiveFilter().keyword.length, getActiveFilter().keyword.length);
       });
 
       document.querySelector("#open-filter")?.addEventListener("click", function () {
@@ -191,25 +218,24 @@
       });
 
       document.querySelector("#reset-filter")?.addEventListener("click", function () {
-        state.status = "incomplete";
-        state.dueStart = "";
-        state.dueEnd = "";
+        var filter = getActiveFilter();
+        filter.status = getDefaultStatus();
+        filter.start = "";
+        filter.end = "";
         render();
       });
 
       document.querySelector("#apply-filter")?.addEventListener("click", function () {
-        state.status = document.querySelector("#filter-status").value;
-        state.dueStart = document.querySelector("#filter-date-start").value;
-        state.dueEnd = document.querySelector("#filter-date-end").value;
+        var filter = getActiveFilter();
+        filter.status = document.querySelector("#filter-status").value;
+        filter.start = document.querySelector("#filter-date-start").value;
+        filter.end = document.querySelector("#filter-date-end").value;
         state.filterOpen = false;
         render();
       });
 
       document.querySelector("#clear-all")?.addEventListener("click", function () {
-        state.keyword = "";
-        state.status = "incomplete";
-        state.dueStart = "";
-        state.dueEnd = "";
+        state.filters[state.activeKind] = { keyword: "", status: getDefaultStatus(), start: "", end: "" };
         render();
       });
 
@@ -220,11 +246,9 @@
 
       document.querySelectorAll(".order-card[data-task-id]").forEach(function (card) {
         function openTaskDetail() {
-          var taskId = card.dataset.taskId;
           var page = window.FactoryPages["task-detail"];
-          if (page && page.mount) page.mount(app, taskId);
+          if (page && page.mount) page.mount(app, card.dataset.taskId);
         }
-
         card.addEventListener("click", openTaskDetail);
         card.addEventListener("keydown", function (event) {
           if (event.key === "Enter" || event.key === " ") {
@@ -234,33 +258,33 @@
         });
       });
 
-      document.querySelectorAll("[data-prototype-target]").forEach(function (button) {
-        button.addEventListener("click", function () {
-          showToast(button.dataset.prototypeTarget + "页面将在逐项确认后制作");
+      document.querySelectorAll(".repair-card[data-repair-id]").forEach(function (card) {
+        function openRepairDetail() {
+          var page = window.FactoryPages["repair-detail"];
+          if (page && page.mount) page.mount(app, card.dataset.repairId);
+        }
+        card.addEventListener("click", openRepairDetail);
+        card.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openRepairDetail();
+          }
         });
+      });
+
+      document.querySelectorAll("[data-prototype-target]").forEach(function (button) {
+        button.addEventListener("click", function () { showToast(button.dataset.prototypeTarget + "页面将在逐项确认后制作"); });
       });
     }
 
-    function showToast(msg) {
-      var existing = document.querySelector(".prototype-toast");
-      if (existing) {
-        existing.textContent = msg;
-        existing.classList.remove("is-visible");
-        void existing.offsetWidth;
-        existing.classList.add("is-visible");
-        return;
-      }
-      var toast = document.createElement("div");
-      toast.className = "prototype-toast";
-      toast.textContent = msg;
-      app.appendChild(toast);
-      requestAnimationFrame(function () {
-        toast.classList.add("is-visible");
-        setTimeout(function () {
-          toast.classList.remove("is-visible");
-          setTimeout(function () { toast.remove(); }, 200);
-        }, 1800);
-      });
+    function showToast(message) {
+      var toast = document.querySelector(".prototype-toast");
+      if (!toast) return;
+      toast.textContent = message;
+      toast.classList.remove("is-visible");
+      void toast.offsetWidth;
+      toast.classList.add("is-visible");
+      setTimeout(function () { toast.classList.remove("is-visible"); }, 1800);
     }
 
     render();

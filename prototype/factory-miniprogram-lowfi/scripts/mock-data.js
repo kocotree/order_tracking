@@ -13,7 +13,7 @@
       totalPending: 500,
       progress: 72,
       status: "shipping",
-      statusLabel: "发货中",
+      statusLabel: "未完成",
       items: [
         { productName: "乐园游会吊带包屁衣", spec: "蓝色/90", allocated: 450, shipped: 450, pending: 0 },
         { productName: "乐园游会吊带包屁衣", spec: "蓝色/100", allocated: 450, shipped: 450, pending: 0 },
@@ -33,7 +33,7 @@
       totalPending: 960,
       progress: 68,
       status: "shipping",
-      statusLabel: "发货中",
+      statusLabel: "未完成",
       items: [
         { productName: "小热皮绒绒裤", spec: "棕色/100", allocated: 2000, shipped: 1440, pending: 560 },
         { productName: "小热皮绒绒裤", spec: "棕色/110", allocated: 1000, shipped: 600, pending: 400 },
@@ -52,7 +52,7 @@
       totalPending: 1100,
       progress: 0,
       status: "pending",
-      statusLabel: "待发货",
+      statusLabel: "未完成",
       items: [
         { productName: "云朵软壳冲锋衣", spec: "松石绿/110", allocated: 600, shipped: 0, pending: 600 },
         { productName: "云朵软壳冲锋衣", spec: "米白/110", allocated: 500, shipped: 0, pending: 500 },
@@ -90,7 +90,7 @@
       totalPending: 2800,
       progress: 0,
       status: "pending",
-      statusLabel: "待发货",
+      statusLabel: "未完成",
       items: [
         { productName: "轻量防风马甲", spec: "橙色/110", allocated: 1400, shipped: 0, pending: 1400 },
         { productName: "乐园游会吊带包屁衣", spec: "杏色/90", allocated: 1400, shipped: 0, pending: 1400 },
@@ -99,12 +99,99 @@
   ];
 
   const statusOptions = [
-    ["incomplete", "未完成"],
     ["all", "全部状态"],
-    ["pending", "待发货"],
-    ["shipping", "发货中"],
+    ["incomplete", "未完成"],
+    ["overdue", "已逾期"],
     ["completed", "已完成"],
   ];
 
-  window.FactoryPrototypeData = { tasks, statusOptions };
+  const repairTasks = [
+    {
+      id: "repair-20260812-001",
+      repairNo: "FX20260812-001",
+      productSummary: "云朵软壳冲锋衣等2个产品",
+      productNames: ["云朵软壳冲锋衣", "小热皮绒绒裤"],
+      returnDate: "2026-08-12",
+      returnDateLabel: "08月12日",
+      warehouseReturned: 400,
+      returned: 0,
+      pendingReturn: 400,
+      progress: 0,
+      status: "pending",
+      statusLabel: "未完成",
+      archived: false,
+      attachment: { name: "质检单_20260812.xlsx", size: "286 KB" },
+      items: [
+        { productName: "云朵软壳冲锋衣", spec: "松石绿/110", warehouseReturned: 160, returned: 0, pendingReturn: 160 },
+        { productName: "云朵软壳冲锋衣", spec: "米白/110", warehouseReturned: 120, returned: 0, pendingReturn: 120 },
+        { productName: "小热皮绒绒裤", spec: "棕色/100", warehouseReturned: 120, returned: 0, pendingReturn: 120 },
+      ],
+      returnBatches: [],
+    },
+    {
+      id: "repair-20260810-002",
+      repairNo: "FX20260810-002",
+      productSummary: "乐园游会吊带包屁衣",
+      productNames: ["乐园游会吊带包屁衣"],
+      returnDate: "2026-08-10",
+      returnDateLabel: "08月10日",
+      warehouseReturned: 900,
+      returned: 420,
+      pendingReturn: 480,
+      progress: 47,
+      status: "processing",
+      statusLabel: "未完成",
+      archived: false,
+      attachment: { name: "质检单_20260810.xlsx", size: "314 KB" },
+      items: [
+        { productName: "乐园游会吊带包屁衣", spec: "蓝色/90", warehouseReturned: 450, returned: 220, pendingReturn: 230 },
+        { productName: "乐园游会吊带包屁衣", spec: "蓝色/100", warehouseReturned: 450, returned: 200, pendingReturn: 250 },
+      ],
+      returnBatches: [
+        {
+          id: "return-20260816-001",
+          date: "2026年08月16日",
+          lines: [
+            { productName: "乐园游会吊带包屁衣", spec: "蓝色/90", repaired: 180, scrapped: 40 },
+            { productName: "乐园游会吊带包屁衣", spec: "蓝色/100", repaired: 150, scrapped: 50 },
+          ],
+        },
+      ],
+    },
+    {
+      id: "repair-20260806-003",
+      repairNo: "FX20260806-003",
+      productSummary: "轻量防风马甲",
+      productNames: ["轻量防风马甲"],
+      returnDate: "2026-08-06",
+      returnDateLabel: "08月06日",
+      warehouseReturned: 200,
+      returned: 200,
+      pendingReturn: 0,
+      progress: 100,
+      status: "completed",
+      statusLabel: "已完成",
+      archived: false,
+      attachment: { name: "质检单_20260806.xlsx", size: "198 KB" },
+      items: [
+        { productName: "轻量防风马甲", spec: "橙色/110", warehouseReturned: 200, returned: 200, pendingReturn: 0 },
+      ],
+      returnBatches: [
+        {
+          id: "return-20260809-001",
+          date: "2026年08月09日",
+          lines: [
+            { productName: "轻量防风马甲", spec: "橙色/110", repaired: 180, scrapped: 20 },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const repairStatusOptions = [
+    ["incomplete", "未完成"],
+    ["completed", "已完成"],
+  ];
+
+  window.FactoryPrototypeData = { tasks, statusOptions, repairTasks, repairStatusOptions };
 })();

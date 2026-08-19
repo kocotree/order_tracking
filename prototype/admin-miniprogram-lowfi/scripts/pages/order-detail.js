@@ -1,4 +1,11 @@
 (function registerOrderDetailPage() {
+  function getOrderDisplayStatus(order) {
+    if (order.status === "draft") return { label: "草稿", tone: "draft" };
+    if (order.status === "completed") return { label: "已完成", tone: "completed" };
+    if (order.overdueDays > 0) return { label: "已逾期", tone: "overdue" };
+    return { label: "未完成", tone: "incomplete" };
+  }
+
   function getOrderDetail(order, detailOverrides) {
     if (detailOverrides[order.id]) return detailOverrides[order.id];
 
@@ -110,6 +117,7 @@
     const { app, data, icons, state, helpers } = context;
     const order = data.orders.find((item) => item.id === state.selectedOrderId) ?? data.orders[0];
     const detail = getOrderDetail(order, data.detailOverrides);
+    const displayStatus = getOrderDisplayStatus(order);
 
     app.innerHTML = `
       <div class="detail-page">
@@ -124,8 +132,7 @@
             <div class="order-card__heading">
               <div><p class="order-card__number">${order.orderNo}</p><h2>${order.productName}</h2></div>
               <div class="order-card__badges">
-                <span class="status status--${order.status}">${order.statusLabel}</span>
-                ${order.overdueDays > 0 ? `<span class="overdue">逾期${order.overdueDays}天</span>` : ""}
+                <span class="status status--${displayStatus.tone}">${displayStatus.label}</span>
               </div>
             </div>
 

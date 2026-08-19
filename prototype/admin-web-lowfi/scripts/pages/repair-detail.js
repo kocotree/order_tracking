@@ -82,12 +82,13 @@ function renderReturnRows(rows) {
 export function renderRepairDetailPage(repairNo) {
   const repair = getRepair(repairNo);
   const returnedTotal = Number(repair.repairedQuantity) + Number(repair.scrappedQuantity);
+  const isCompleted = repair.statusKey === "completed";
   return `
     <article class="order-detail-page repair-detail-page" data-repair-detail-page data-repair-no="${escapeHTML(repair.repairNo)}">
       <section class="section-card detail-overview-card">
         <header class="detail-page-header">
           <button class="detail-back-button" type="button" data-repair-detail-back>${backIcon}<span>返回</span></button>
-          <div class="detail-title-row repair-detail-title"><strong>${escapeHTML(repair.factory)}</strong></div>
+          <div class="detail-title-row repair-detail-title"><strong>${escapeHTML(repair.factory)}</strong><span class="status-badge is-${isCompleted ? "success" : "info"}">${isCompleted ? "已完成" : "未完成"}</span></div>
         </header>
         <div class="detail-overview-content">
           <dl class="repair-summary-matrix">

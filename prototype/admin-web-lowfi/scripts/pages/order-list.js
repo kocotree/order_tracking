@@ -7,11 +7,18 @@ const chevronIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><pa
 
 const statusFilters = [
   { key: "all", label: "全部" },
-  { key: "pending", label: "待发货" },
-  { key: "shipping", label: "发货中" },
+  { key: "incomplete", label: "未完成" },
+  { key: "overdue", label: "已逾期" },
   { key: "completed", label: "已完成" },
   { key: "draft", label: "草稿" },
 ];
+
+function getOrderDisplayStatus(order) {
+  if (order.statusKey === "draft") return { key: "draft", label: "草稿", tone: "draft" };
+  if (order.statusKey === "completed") return { key: "completed", label: "已完成", tone: "success" };
+  if (order.overdueDays > 0) return { key: "overdue", label: "已逾期", tone: "danger" };
+  return { key: "incomplete", label: "未完成", tone: "info" };
+}
 
 function renderStatusTabs() {
   return statusFilters
@@ -69,8 +76,9 @@ function renderOrderRows(orders, rowStart = 0) {
   }
 
   return orders
-    .map(
-      (order, index) => `
+    .map((order, index) => {
+      const displayStatus = getOrderDisplayStatus(order);
+      return `
         <tr>
           <td class="order-sequence-cell">${rowStart + index + 1}</td>
           <td>
@@ -86,7 +94,7 @@ function renderOrderRows(orders, rowStart = 0) {
           <td>${renderProgress("发货进度", order.shippedPercent)}</td>
           <td class="order-shipment-count">${escapeHTML(order.shippedText)}</td>
           <td class="order-status-cell">
-            <span class="status-badge is-${escapeHTML(order.overdueDays > 0 ? "danger" : order.tone)}">${escapeHTML(order.overdueDays > 0 ? "已逾期" : order.statusLabel)}</span>
+            <span class="status-badge is-${escapeHTML(displayStatus.tone)}">${escapeHTML(displayStatus.label)}</span>
           </td>
           <td>
             <div class="order-row-actions">
@@ -95,8 +103,8 @@ function renderOrderRows(orders, rowStart = 0) {
             </div>
           </td>
         </tr>
-      `,
-    )
+      `;
+    })
     .join("");
 }
 
@@ -201,11 +209,6 @@ export function renderOrderListPage() {
               <input type="date" data-list-due-to />
             </label>
 
-            <label class="order-overdue-toggle">
-              <input type="checkbox" data-list-overdue />
-              <span>仅看逾期</span>
-            </label>
-
             <button class="order-secondary-button" type="button" data-list-reset>重置</button>
             <button class="order-primary-button" type="submit">搜索</button>
           </div>
@@ -287,7 +290,7 @@ function sortOrders(orders, sortKey) {
 }
 
 function orderSortValue(order, key) {
-  if (key === "status") return order.overdueDays > 0 ? "已逾期" : order.statusLabel;
+  if (key === "status") return getOrderDisplayStatus(order).label;
   if (key === "shippedQuantity") return Number(String(order.shippedText).replace(/,/g, "").split("/")[0]) || 0;
   return order[key];
 }
@@ -307,7 +310,6 @@ export function bindOrderListPage() {
   const trackerOptions = [...(page?.querySelectorAll("[data-list-tracker-option]") ?? [])];
   const dueFromInput = page?.querySelector("[data-list-due-from]");
   const dueToInput = page?.querySelector("[data-list-due-to]");
-  const overdueInput = page?.querySelector("[data-list-overdue]");
   const sortSelect = page?.querySelector("[data-list-sort]");
   const tableBody = page?.querySelector("[data-order-list-body]");
   const pagination = page?.querySelector("[data-list-pagination]");
@@ -370,20 +372,18 @@ export function bindOrderListPage() {
     const trackers = selectedTrackers();
     const dueFrom = normalizeDateFilter(dueFromInput?.value ?? "");
     const dueTo = normalizeDateFilter(dueToInput?.value ?? "");
-    const onlyOverdue = overdueInput?.checked ?? false;
     const sortKey = sortSelect?.value ?? "default";
 
     const filteredOrders = orderListData.orders.filter((order) => {
       const matchesKeyword = !keyword || [order.orderNo, order.productName, order.specSummary].some((value) => normalizeKeyword(value).includes(keyword));
       const matchesCategory = !category || order.category === category;
-      const matchesStatus = activeStatus === "all" || order.statusKey === activeStatus;
+      const matchesStatus = activeStatus === "all" || getOrderDisplayStatus(order).key === activeStatus;
       const orderFactories = order.factory.split(/[、,，]/).map((value) => value.trim());
       const matchesFactory = factories.length === 0 || factories.some((factory) => orderFactories.includes(factory));
       const matchesTracker = trackers.length === 0 || trackers.includes(order.tracker);
       const matchesFrom = !dueFrom || order.nearestDue >= dueFrom;
       const matchesTo = !dueTo || order.nearestDue <= dueTo;
-      const matchesOverdue = !onlyOverdue || order.overdueDays > 0;
-      return matchesKeyword && matchesCategory && matchesStatus && matchesFactory && matchesTracker && matchesFrom && matchesTo && matchesOverdue;
+      return matchesKeyword && matchesCategory && matchesStatus && matchesFactory && matchesTracker && matchesFrom && matchesTo;
     });
 
     currentOrders = tableSortState.key
@@ -410,7 +410,7 @@ export function bindOrderListPage() {
     });
   });
 
-  [categorySelect, dueFromInput, dueToInput, overdueInput].forEach((control) => {
+  [categorySelect, dueFromInput, dueToInput].forEach((control) => {
     control?.addEventListener("change", () => applyFilters());
   });
 

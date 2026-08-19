@@ -142,6 +142,7 @@
     const progress = repair.warehouseReturnQuantity
       ? Math.min(100, Math.round((returnedQuantity / repair.warehouseReturnQuantity) * 100))
       : 0;
+    const isCompleted = returnedQuantity >= repair.warehouseReturnQuantity;
 
     if (state.repairDetailInitializedFor !== repair.repairNo) {
       const firstProduct = detail.qualityLines[0]?.productName;
@@ -161,7 +162,7 @@
 
         <main class="repair-detail-content">
           <section class="repair-detail-summary">
-            <div class="repair-detail-summary__heading"><small>工厂</small><h2>${repair.factory}</h2></div>
+            <div class="repair-detail-summary__heading"><div><small>工厂</small><h2>${repair.factory}</h2></div><span class="status status--${isCompleted ? "completed" : "incomplete"}">${isCompleted ? "已完成" : "未完成"}</span></div>
             <div class="repair-detail-summary__meta">
               <p><span>返修单号</span><strong>${repair.repairNo}</strong></p>
               <p><span>退回日期</span><strong>${repair.returnDate}</strong></p>

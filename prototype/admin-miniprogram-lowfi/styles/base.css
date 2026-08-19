@@ -155,6 +155,16 @@ svg {
   color: var(--success);
 }
 
+.status--incomplete {
+  background: var(--blue-soft);
+  color: var(--blue-deep);
+}
+
+.status--overdue {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .status--draft,
 .status--cancelled {
   background: #eef0f2;

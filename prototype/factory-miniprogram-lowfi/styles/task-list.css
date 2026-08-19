@@ -1,9 +1,36 @@
+/* ── Task Kind Tabs ── */
+.task-kind-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  margin-top: 10px;
+  padding: 3px;
+  border-radius: 11px;
+  background: #eef1f5;
+}
+
+.task-kind-tab {
+  height: 34px;
+  border-radius: 8px;
+  background: transparent;
+  color: #687483;
+  font-size: 13px;
+  font-weight: 700;
+  transition: background 160ms ease, box-shadow 160ms ease, color 160ms ease;
+}
+
+.task-kind-tab.is-active {
+  background: white;
+  color: var(--blue-deep);
+  box-shadow: 0 2px 8px rgb(35 52 73 / 9%);
+}
+
 /* ── Search Row ── */
 .search-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .search-box {
@@ -80,6 +107,10 @@
 /* ── Order / Task List ── */
 .order-list {
   padding: 11px 14px 154px;
+}
+
+.order-list--repair {
+  padding-bottom: 92px;
 }
 
 .result-summary {
@@ -177,6 +208,16 @@
 .status--completed {
   background: var(--success-soft);
   color: var(--success);
+}
+
+.status--incomplete {
+  background: var(--blue-soft);
+  color: var(--blue-deep);
+}
+
+.status--overdue {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .overdue {
@@ -289,6 +330,54 @@
 }
 
 .order-card__progress > strong {
+  color: var(--blue);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── Repair Task Card ── */
+.repair-card__number {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+  line-height: 1.1;
+}
+
+.repair-card h2 {
+  margin-top: 7px;
+  font-size: 15px;
+}
+
+.repair-card__date {
+  margin-top: 12px;
+}
+
+.repair-card__quantities span {
+  white-space: nowrap;
+}
+
+.repair-card__progress {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.repair-card__progress > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.repair-card__progress .progress-track {
+  height: 6px;
+}
+
+.repair-card__progress > strong {
   color: var(--blue);
   font-size: 13px;
   font-variant-numeric: tabular-nums;

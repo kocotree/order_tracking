@@ -9,10 +9,10 @@
       boxCountInput: "",
       draftProduct: "",
       draftSpecKey: "",
+      draftOrderId: "",
       draftQty: "",
       photos: [],
       note: "",
-      allocationOverrides: {},
     };
   }
 
@@ -105,8 +105,9 @@
     var productNames = getProductNames(catalog);
     var specs = catalog.filter(function (entry) { return entry.productName === state.draftProduct; });
     var selectedEntry = getCatalogEntry(state.draftSpecKey, catalog);
-    var packedForSelected = selectedEntry ? getPackedQuantity(selectedEntry.key) : 0;
-    var remainingForSelected = selectedEntry ? selectedEntry.totalPending - packedForSelected : 0;
+    var selectedSource = selectedEntry ? getSource(selectedEntry, state.draftOrderId) : null;
+    var packedForSelected = selectedSource ? getPackedQuantity(selectedEntry.key, selectedSource.taskId) : 0;
+    var remainingForSelected = selectedSource ? selectedSource.pending - packedForSelected : 0;
 
     var productOptions = productNames.map(function (name) {
       return '<option value="' + escapeHtml(name) + '"' + (name === state.draftProduct ? " selected" : "") + '>' + escapeHtml(name) + '</option>';
@@ -116,20 +117,32 @@
       return '<option value="' + entry.key + '"' + (entry.key === state.draftSpecKey ? " selected" : "") + '>' + escapeHtml(entry.spec) + '</option>';
     }).join("");
 
+    var orderFieldHtml = selectedEntry && selectedEntry.sources.length > 1
+      ? '<label class="field-label" for="pack-order-select">订单编号</label>' +
+        '<select class="ship-input ship-select" id="pack-order-select">' +
+          selectedEntry.sources.map(function (source) {
+            return '<option value="' + source.taskId + '"' + (source.taskId === state.draftOrderId ? " selected" : "") + '>' +
+              escapeHtml(source.orderNo) + ' · 合同出货时间 ' + escapeHtml(source.contractShipDateLabel) +
+            '</option>';
+          }).join("") +
+        '</select>'
+      : "";
+
     var detailHtml = container.items.length
       ? container.items.map(function (item) {
           var entry = getCatalogEntry(item.key, catalog);
+          var source = getSource(entry, item.orderId);
           return (
             '<div class="packed-item">' +
               '<div class="packed-item__main">' +
                 '<strong>' + escapeHtml(entry.productName) + '</strong>' +
-                '<span>' + escapeHtml(entry.spec) + '</span>' +
+                '<span>' + escapeHtml(entry.spec) + ' · ' + escapeHtml(source.orderNo) + '</span>' +
               '</div>' +
               '<label class="packed-item__quantity">' +
                 '<span>数量</span>' +
-                '<input type="number" inputmode="numeric" min="1" class="ship-input packed-quantity-input" value="' + item.qty + '" data-packed-key="' + item.key + '" />' +
+                '<input type="number" inputmode="numeric" min="1" class="ship-input packed-quantity-input" value="' + item.qty + '" data-packed-key="' + item.key + '" data-packed-order="' + item.orderId + '" />' +
               '</label>' +
-              '<button type="button" class="packed-item__remove" data-remove-packed="' + item.key + '" aria-label="删除该装箱明细">' + icons.close + '</button>' +
+              '<button type="button" class="packed-item__remove" data-remove-packed="' + item.key + '" data-remove-order="' + item.orderId + '" aria-label="删除该装箱明细">' + icons.close + '</button>' +
             '</div>'
           );
         }).join("")
@@ -158,14 +171,15 @@
         '</div>' +
       '</section>' +
       '<section class="ship-section">' +
-        '<header><h2>添加产品规格</h2><span>不需要选择订单</span></header>' +
+        '<header><h2>添加产品规格</h2></header>' +
         '<div class="ship-section__body pack-form">' +
           '<label class="field-label" for="pack-product-select">产品名称</label>' +
           '<select class="ship-input ship-select" id="pack-product-select">' + productOptions + '</select>' +
           '<label class="field-label" for="pack-spec-select">颜色/规格</label>' +
           '<select class="ship-input ship-select" id="pack-spec-select">' + specOptions + '</select>' +
+          orderFieldHtml +
           '<div class="availability-line">' +
-            '<span>总可发 <strong>' + formatNumber(selectedEntry ? selectedEntry.totalPending : 0) + '</strong></span>' +
+            '<span>总可发 <strong>' + formatNumber(selectedSource ? selectedSource.pending : 0) + '</strong></span>' +
             '<span>已装 <strong>' + formatNumber(packedForSelected) + '</strong></span>' +
             '<span>剩余 <strong class="availability-remaining">' + formatNumber(remainingForSelected) + '</strong></span>' +
           '</div>' +
@@ -220,59 +234,60 @@
   }
 
   function renderStep4() {
+    var icons = window.FactoryIcons;
     var catalog = getCatalog();
     var summaries = getShipmentSummaries(catalog);
     var packingHtml = state.containers.map(function (container) {
       return (
-        '<div class="preview-container">' +
-          '<div class="preview-container__head">' +
-            '<div><strong>' + escapeHtml(getContainerLabel(container)) + '</strong><span>单箱装箱明细</span></div>' +
-            '<b>' + formatNumber(getContainerTotal(container)) + ' 件</b>' +
-          '</div>' +
+        '<details class="preview-container">' +
+          '<summary class="preview-container__head">' +
+            '<span class="preview-container__icon">' + icons.box + '</span>' +
+            '<div><strong>' + escapeHtml(getContainerLabel(container)) + '</strong><span>' + container.items.length + ' 个产品规格</span></div>' +
+            '<b>合计 ' + formatNumber(getContainerTotal(container)) + '</b>' +
+            '<i class="preview-container__chevron">' + icons.chevron + '</i>' +
+          '</summary>' +
           '<div class="preview-container__body">' +
+            '<div class="preview-pack-head"><span>序号</span><span>产品名称</span><span>颜色/规格</span><span>数量</span></div>' +
             container.items.map(function (item, index) {
               var entry = getCatalogEntry(item.key, catalog);
+              var source = getSource(entry, item.orderId);
               return (
                 '<div class="preview-pack-row">' +
                   '<span class="preview-index">' + (index + 1) + '</span>' +
-                  '<div><strong>' + escapeHtml(entry.productName) + '</strong><span>' + escapeHtml(entry.spec) + '</span></div>' +
+                  '<div><strong>' + escapeHtml(entry.productName + " " + source.orderNo) + '</strong></div>' +
+                  '<span class="preview-pack-spec">' + escapeHtml(entry.spec) + '</span>' +
                   '<b>' + formatNumber(item.qty) + ' 件</b>' +
                 '</div>'
               );
             }).join("") +
           '</div>' +
-        '</div>'
+        '</details>'
       );
     }).join("");
 
-    var productHtml = summaries.map(function (summary, index) {
-      var allocationHtml = "";
-      if (summary.entry.sources.length > 1) {
-        var allocation = getAllocation(summary.entry, summary.qty);
-        allocationHtml =
-          '<div class="allocation-block">' +
-            '<div class="allocation-title"><strong>订单分配</strong><span>默认按合同出货时间从早到晚</span></div>' +
-            summary.entry.sources.map(function (source) {
+    var productGroups = buildProductGroups(summaries);
+    var productHtml = productGroups.map(function (product) {
+      return (
+        '<details class="preview-product-group">' +
+          '<summary>' +
+            '<strong>' + escapeHtml(product.productName) + '</strong>' +
+            '<b>合计 ' + formatNumber(product.qty) + '</b>' +
+            '<i>' + icons.chevron + '</i>' +
+          '</summary>' +
+          '<div class="product-order-table">' +
+            '<div class="product-order-table__head"><span>序号</span><span>订单编号</span><span>颜色/规格</span><span>数量</span></div>' +
+            product.lines.map(function (line, index) {
               return (
-                '<label class="allocation-row">' +
-                  '<span><strong>' + escapeHtml(source.orderNo) + '</strong><small>合同出货时间 ' + escapeHtml(source.contractShipDateLabel) + ' · 可分配 ' + formatNumber(source.pending) + '</small></span>' +
-                  '<input type="number" inputmode="numeric" min="0" max="' + source.pending + '" class="ship-input allocation-input" value="' + (allocation[source.taskId] || 0) + '" data-allocation-spec="' + summary.entry.key + '" data-allocation-order="' + source.taskId + '" />' +
-                '</label>'
+                '<div class="product-order-table__row">' +
+                  '<span class="preview-index">' + (index + 1) + '</span>' +
+                  '<strong>' + escapeHtml(line.orderNo) + '</strong>' +
+                  '<span>' + escapeHtml(line.spec) + '</span>' +
+                  '<b>' + formatNumber(line.qty) + ' 件</b>' +
+                '</div>'
               );
             }).join("") +
-            '<div class="allocation-total">本规格应分配 <strong>' + formatNumber(summary.qty) + '</strong> 件</div>' +
-          '</div>';
-      }
-
-      return (
-        '<div class="preview-product">' +
-          '<div class="preview-product__summary">' +
-            '<span class="preview-index">' + (index + 1) + '</span>' +
-            '<div><strong>' + escapeHtml(summary.entry.productName) + '</strong><span>' + escapeHtml(summary.entry.spec) + '</span></div>' +
-            '<b>' + formatNumber(summary.qty) + ' 件</b>' +
           '</div>' +
-          allocationHtml +
-        '</div>'
+        '</details>'
       );
     }).join("");
 
@@ -280,7 +295,6 @@
       '<section class="preview-overview">' +
         '<div><span>总箱数</span><strong>' + formatNumber(getTotalBoxCount()) + '</strong></div>' +
         '<div><span>总数量</span><strong>' + formatNumber(getShipmentTotal()) + '</strong></div>' +
-        '<div><span>产品规格</span><strong>' + summaries.length + '</strong></div>' +
       '</section>' +
       '<section class="ship-section">' +
         '<header><h2>产品规格汇总</h2><span>' + summaries.length + ' 个规格</span></header>' +
@@ -332,7 +346,6 @@
       var boxCount = parsePositiveInteger(state.boxCountInput);
       if (!boxCount) return showToast("请填写大于 0 的总箱数");
       generateBoxes(boxCount);
-      state.allocationOverrides = {};
       render(app);
     });
 
@@ -357,12 +370,21 @@
       state.draftProduct = event.target.value;
       var firstSpec = getCatalog().find(function (entry) { return entry.productName === state.draftProduct; });
       state.draftSpecKey = firstSpec ? firstSpec.key : "";
+      state.draftOrderId = firstSpec?.sources[0]?.taskId || "";
       state.draftQty = "";
       render(app);
     });
 
     document.querySelector("#pack-spec-select")?.addEventListener("change", function (event) {
       state.draftSpecKey = event.target.value;
+      var entry = getCatalogEntry(state.draftSpecKey);
+      state.draftOrderId = entry?.sources[0]?.taskId || "";
+      state.draftQty = "";
+      render(app);
+    });
+
+    document.querySelector("#pack-order-select")?.addEventListener("change", function (event) {
+      state.draftOrderId = event.target.value;
       state.draftQty = "";
       render(app);
     });
@@ -374,15 +396,15 @@
     document.querySelector("#add-pack-item")?.addEventListener("click", function () {
       var container = getCurrentContainer();
       var entry = getCatalogEntry(state.draftSpecKey);
+      var source = entry ? getSource(entry, state.draftOrderId) : null;
       var qty = parsePositiveInteger(state.draftQty);
-      if (!entry || !qty) return showToast("请填写大于 0 的装箱数量");
-      var existing = container.items.find(function (item) { return item.key === entry.key; });
+      if (!entry || !source || !qty) return showToast("请填写大于 0 的装箱数量");
+      var existing = container.items.find(function (item) { return item.key === entry.key && item.orderId === source.taskId; });
       var nextPerBoxQty = (existing ? existing.qty : 0) + qty;
-      if (!canSetPackedQuantity(container, entry, nextPerBoxQty)) return showToast("装箱数量超过该规格可发数量");
+      if (!canSetPackedQuantity(container, entry, source, nextPerBoxQty)) return showToast("装箱数量超过该订单可发数量");
       if (existing) existing.qty = nextPerBoxQty;
-      else container.items.push({ key: entry.key, qty: qty });
+      else container.items.push({ key: entry.key, orderId: source.taskId, qty: qty });
       state.draftQty = "";
-      state.allocationOverrides = {};
       render(app);
     });
 
@@ -390,18 +412,20 @@
       input.addEventListener("change", function () {
         var container = getCurrentContainer();
         var entry = getCatalogEntry(input.dataset.packedKey);
-        var item = container.items.find(function (packed) { return packed.key === input.dataset.packedKey; });
+        var source = getSource(entry, input.dataset.packedOrder);
+        var item = container.items.find(function (packed) {
+          return packed.key === input.dataset.packedKey && packed.orderId === input.dataset.packedOrder;
+        });
         var qty = parsePositiveInteger(input.value);
         if (!qty) {
           showToast("装箱数量必须大于 0");
           return render(app);
         }
-        if (!canSetPackedQuantity(container, entry, qty)) {
-          showToast("装箱数量超过该规格可发数量");
+        if (!canSetPackedQuantity(container, entry, source, qty)) {
+          showToast("装箱数量超过该订单可发数量");
           return render(app);
         }
         item.qty = qty;
-        state.allocationOverrides = {};
         render(app);
       });
     });
@@ -409,8 +433,9 @@
     document.querySelectorAll("[data-remove-packed]").forEach(function (button) {
       button.addEventListener("click", function () {
         var container = getCurrentContainer();
-        container.items = container.items.filter(function (item) { return item.key !== button.dataset.removePacked; });
-        state.allocationOverrides = {};
+        container.items = container.items.filter(function (item) {
+          return item.key !== button.dataset.removePacked || item.orderId !== button.dataset.removeOrder;
+        });
         render(app);
       });
     });
@@ -465,19 +490,7 @@
   }
 
   function bindStep4Events(app) {
-    document.querySelectorAll("[data-allocation-spec]").forEach(function (input) {
-      input.addEventListener("input", function () {
-        var key = input.dataset.allocationSpec;
-        var entry = getCatalogEntry(key);
-        var summary = getShipmentSummaries().find(function (item) { return item.entry.key === key; });
-        if (!state.allocationOverrides[key]) state.allocationOverrides[key] = getAllocation(entry, summary.qty);
-        state.allocationOverrides[key][input.dataset.allocationOrder] = parseNonNegativeInteger(input.value);
-      });
-    });
-
     document.querySelector("#submit-shipment")?.addEventListener("click", function () {
-      var allocationError = validateAllocations();
-      if (allocationError) return showToast(allocationError);
       showToast("发货单已提交");
       setTimeout(function () {
         var page = window.FactoryPages["task-list"];
@@ -498,12 +511,10 @@
             key: key,
             productName: item.productName,
             spec: item.spec,
-            totalPending: 0,
             firstDate: task.contractShipDate,
             sources: [],
           };
         }
-        grouped[key].totalPending += item.pending;
         grouped[key].sources.push({
           taskId: task.id,
           orderNo: task.orderNo,
@@ -538,6 +549,10 @@
     var matchingSpecs = catalog.filter(function (entry) { return entry.productName === state.draftProduct; });
     if (!matchingSpecs.some(function (entry) { return entry.key === state.draftSpecKey; })) {
       state.draftSpecKey = matchingSpecs[0]?.key || "";
+    }
+    var selectedEntry = getCatalogEntry(state.draftSpecKey, catalog);
+    if (selectedEntry && !selectedEntry.sources.some(function (source) { return source.taskId === state.draftOrderId; })) {
+      state.draftOrderId = selectedEntry.sources[0]?.taskId || "";
     }
   }
 
@@ -583,59 +598,65 @@
     return state.containers.reduce(function (sum, container) { return sum + getContainerTotal(container); }, 0);
   }
 
-  function getPackedQuantity(key, excludedContainerId) {
+  function getPackedQuantity(key, orderId, excludedContainerId) {
     return state.containers.reduce(function (sum, container) {
       if (container.id === excludedContainerId) return sum;
-      var item = container.items.find(function (packed) { return packed.key === key; });
-      return sum + (item ? item.qty : 0);
+      return sum + container.items.reduce(function (containerSum, item) {
+        return containerSum + (item.key === key && item.orderId === orderId ? item.qty : 0);
+      }, 0);
     }, 0);
   }
 
-  function canSetPackedQuantity(container, entry, perBoxQty) {
-    return getPackedQuantity(entry.key, container.id) + perBoxQty <= entry.totalPending;
+  function canSetPackedQuantity(container, entry, source, perBoxQty) {
+    return getPackedQuantity(entry.key, source.taskId, container.id) + perBoxQty <= source.pending;
   }
 
   function getShipmentSummaries(catalog) {
     catalog = catalog || getCatalog();
-    var quantities = {};
+    var grouped = {};
     state.containers.forEach(function (container) {
       container.items.forEach(function (item) {
-        quantities[item.key] = (quantities[item.key] || 0) + item.qty;
+        if (!grouped[item.key]) grouped[item.key] = { qty: 0, orders: {} };
+        grouped[item.key].qty += item.qty;
+        grouped[item.key].orders[item.orderId] = (grouped[item.key].orders[item.orderId] || 0) + item.qty;
       });
     });
-    return catalog.filter(function (entry) { return quantities[entry.key] > 0; }).map(function (entry) {
-      return { entry: entry, qty: quantities[entry.key] };
+    return catalog.filter(function (entry) { return grouped[entry.key]?.qty > 0; }).map(function (entry) {
+      return { entry: entry, qty: grouped[entry.key].qty, orders: grouped[entry.key].orders };
     });
   }
 
-  function getAllocation(entry, totalQty) {
-    if (state.allocationOverrides[entry.key]) return state.allocationOverrides[entry.key];
-    var remaining = totalQty;
-    var allocation = {};
-    entry.sources.forEach(function (source) {
-      var qty = Math.min(source.pending, remaining);
-      allocation[source.taskId] = qty;
-      remaining -= qty;
-    });
-    return allocation;
-  }
-
-  function validateAllocations() {
-    var summaries = getShipmentSummaries();
-    for (var i = 0; i < summaries.length; i += 1) {
-      var summary = summaries[i];
-      if (summary.entry.sources.length < 2) continue;
-      var allocation = getAllocation(summary.entry, summary.qty);
-      var total = 0;
-      for (var j = 0; j < summary.entry.sources.length; j += 1) {
-        var source = summary.entry.sources[j];
-        var qty = parseNonNegativeInteger(allocation[source.taskId]);
-        if (qty > source.pending) return source.orderNo + "的分配数量超过可发数量";
-        total += qty;
+  function buildProductGroups(summaries) {
+    var groups = [];
+    summaries.forEach(function (summary) {
+      var product = groups.find(function (group) { return group.productName === summary.entry.productName; });
+      if (!product) {
+        product = { productName: summary.entry.productName, qty: 0, lines: [] };
+        groups.push(product);
       }
-      if (total !== summary.qty) return summary.entry.spec + "的订单分配合计应为 " + summary.qty + " 件";
-    }
-    return "";
+      product.qty += summary.qty;
+      Object.keys(summary.orders).forEach(function (orderId) {
+        var source = getSource(summary.entry, orderId);
+        product.lines.push({
+          orderNo: source.orderNo,
+          contractShipDate: source.contractShipDate,
+          spec: summary.entry.spec,
+          qty: summary.orders[orderId],
+        });
+      });
+    });
+
+    groups.forEach(function (product) {
+      product.lines.sort(function (a, b) {
+        return a.contractShipDate.localeCompare(b.contractShipDate) || a.spec.localeCompare(b.spec, "zh-CN");
+      });
+    });
+    return groups;
+  }
+
+  function getSource(entry, orderId) {
+    if (!entry) return null;
+    return entry.sources.find(function (source) { return source.taskId === orderId; }) || entry.sources[0] || null;
   }
 
   function getCatalogEntry(key, catalog) {
@@ -649,11 +670,6 @@
   function parsePositiveInteger(value) {
     var number = Number(value);
     return Number.isInteger(number) && number > 0 ? number : 0;
-  }
-
-  function parseNonNegativeInteger(value) {
-    var number = Number(value);
-    return Number.isInteger(number) && number >= 0 ? number : 0;
   }
 
   function escapeHtml(value) {

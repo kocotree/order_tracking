@@ -9,6 +9,12 @@ function formatNumber(value) {
   return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
 }
 
+function getRepairDisplayStatus(repair) {
+  return repair.statusKey === "completed"
+    ? { key: "completed", label: "已完成", tone: "success" }
+    : { key: "incomplete", label: "未完成", tone: "info" };
+}
+
 function renderMultiSelectOptions(values) {
   return values.map((value) => `
     <label class="order-multiselect-option">
@@ -20,11 +26,12 @@ function renderMultiSelectOptions(values) {
 
 function renderRows(repairs, rowStart = 0) {
   if (!repairs.length) {
-    return `<tr><td colspan="9"><div class="empty-state"><div><span class="empty-state-mark">0</span><strong>没有符合当前条件的返修单</strong><p>可以调整返修单号、工厂或退回时间范围后重新查询。</p></div></div></td></tr>`;
+    return `<tr><td colspan="10"><div class="empty-state"><div><span class="empty-state-mark">0</span><strong>没有符合当前条件的返修单</strong><p>可以调整返修单号、状态、工厂或退回时间范围后重新查询。</p></div></div></td></tr>`;
   }
 
   return repairs.map((repair, index) => {
     const returnedTotal = Number(repair.repairedQuantity) + Number(repair.scrappedQuantity);
+    const displayStatus = getRepairDisplayStatus(repair);
     return `
     <tr>
       <td class="order-sequence-cell">${rowStart + index + 1}</td>
@@ -35,6 +42,7 @@ function renderRows(repairs, rowStart = 0) {
       <td class="repair-number-cell">${escapeHTML(formatNumber(returnedTotal))}</td>
       <td class="repair-number-cell">${escapeHTML(formatNumber(repair.warehouseReturnQuantity))}</td>
       <td>${escapeHTML(repair.returnedAt.slice(0, 10))}</td>
+      <td><span class="status-badge is-${displayStatus.tone}">${displayStatus.label}</span></td>
       <td>
         <div class="order-row-actions">
           <button class="order-view-button" type="button" data-repair-detail="${escapeHTML(repair.repairNo)}">详情</button>
@@ -86,6 +94,10 @@ export function renderRepairListPage() {
               <span class="sr-only">搜索返修单号或工厂名称</span>${searchIcon}
               <input type="search" placeholder="输入返修单号或工厂名称" autocomplete="off" data-repair-keyword />
             </label>
+            <label class="order-select-field repair-status-field">
+              <span class="sr-only">选择返修状态</span>
+              <select data-repair-status><option value="all">全部状态</option><option value="incomplete">未完成</option><option value="completed">已完成</option></select>
+            </label>
             <div class="order-multiselect repair-factory-field" data-repair-factory>
               <button class="order-multiselect-trigger" type="button" aria-haspopup="true" aria-expanded="false" data-repair-factory-trigger>
                 <span data-repair-factory-label>全部工厂</span>${chevronIcon}
@@ -121,6 +133,7 @@ export function renderRepairListPage() {
                 ${renderSortableHeader("返回总数量", "returnedTotal")}
                 ${renderSortableHeader("仓库退回总数量", "warehouseReturnQuantity")}
                 ${renderSortableHeader("退回时间", "returnedAt")}
+                ${renderSortableHeader("状态", "status")}
                 <th scope="col">操作</th>
               </tr>
             </thead>
@@ -138,6 +151,7 @@ export function bindRepairListPage() {
   const page = document.querySelector("[data-repair-list-page]");
   const form = page?.querySelector("[data-repair-filter-form]");
   const keywordInput = page?.querySelector("[data-repair-keyword]");
+  const statusSelect = page?.querySelector("[data-repair-status]");
   const factoryTrigger = page?.querySelector("[data-repair-factory-trigger]");
   const factoryMenu = page?.querySelector("[data-repair-factory-menu]");
   const factoryLabel = page?.querySelector("[data-repair-factory-label]");
@@ -181,20 +195,22 @@ export function bindRepairListPage() {
   const applyFilters = () => {
     const keyword = normalize(keywordInput?.value ?? "");
     const factories = selectedFactories();
+    const status = statusSelect?.value ?? "all";
     const dateFrom = dateFromInput?.value ?? "";
     const dateTo = dateToInput?.value ?? "";
     const filtered = repairListData.repairs.filter((repair) => (
       repair.archived !== true
       && (!keyword || normalize(repair.repairNo).includes(keyword) || normalize(repair.factory).includes(keyword))
+      && (status === "all" || getRepairDisplayStatus(repair).key === status)
       && (!factories.length || factories.includes(repair.factory))
       && (!dateFrom || repair.returnedAt.slice(0, 10) >= dateFrom)
       && (!dateTo || repair.returnedAt.slice(0, 10) <= dateTo)
     ));
-    currentRepairs = sortState.key ? sortRows(filtered, sortState, (repair, key) => (
-      key === "returnedTotal"
-        ? Number(repair.repairedQuantity) + Number(repair.scrappedQuantity)
-        : repair[key]
-    )) : filtered;
+    currentRepairs = sortState.key ? sortRows(filtered, sortState, (repair, key) => {
+      if (key === "returnedTotal") return Number(repair.repairedQuantity) + Number(repair.scrappedQuantity);
+      if (key === "status") return getRepairDisplayStatus(repair).label;
+      return repair[key];
+    }) : filtered;
     currentPage = 1;
     renderCurrentPage();
   };
@@ -203,7 +219,7 @@ export function bindRepairListPage() {
     event.preventDefault();
     applyFilters();
   });
-  [dateFromInput, dateToInput].forEach((input) => input?.addEventListener("change", applyFilters));
+  [statusSelect, dateFromInput, dateToInput].forEach((input) => input?.addEventListener("change", applyFilters));
   factoryOptions.forEach((option) => option.addEventListener("change", () => {
     updateFactoryLabel();
     applyFilters();

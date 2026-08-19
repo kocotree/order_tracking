@@ -1,4 +1,11 @@
 (function registerOrderListPage() {
+  function getOrderDisplayStatus(order) {
+    if (order.status === "draft") return { key: "draft", label: "草稿", tone: "draft" };
+    if (order.status === "completed") return { key: "completed", label: "已完成", tone: "completed" };
+    if (order.overdueDays > 0) return { key: "overdue", label: "已逾期", tone: "overdue" };
+    return { key: "incomplete", label: "未完成", tone: "incomplete" };
+  }
+
   function getVisibleOrders(data, state) {
     const keyword = state.keyword.trim().toLowerCase();
     const filtered = data.orders.filter((order) => {
@@ -6,13 +13,12 @@
         !keyword ||
         order.orderNo.toLowerCase().includes(keyword) ||
         order.productName.toLowerCase().includes(keyword);
-      const matchesStatus = state.status === "all" || order.status === state.status;
+      const matchesStatus = state.status === "all" || getOrderDisplayStatus(order).key === state.status;
       const matchesFactory = !state.factories.length || order.factories.some((factory) => state.factories.includes(factory));
       const matchesTracker = state.tracker === "all" || order.tracker === state.tracker;
       const matchesStart = !state.dueStart || order.contractShipDate >= state.dueStart;
       const matchesEnd = !state.dueEnd || order.contractShipDate <= state.dueEnd;
-      const matchesOverdue = !state.overdueOnly || order.overdueDays > 0;
-      return matchesKeyword && matchesStatus && matchesFactory && matchesTracker && matchesStart && matchesEnd && matchesOverdue;
+      return matchesKeyword && matchesStatus && matchesFactory && matchesTracker && matchesStart && matchesEnd;
     });
 
     return filtered.sort((a, b) => {
@@ -33,6 +39,7 @@
 
   function renderOrderCard(order, index, icons, formatNumber) {
     const unshipped = Math.max(order.total - order.shipped, 0);
+    const displayStatus = getOrderDisplayStatus(order);
     return `
       <article class="order-card" style="--card-index:${index}" role="button" tabindex="0" aria-label="查看订单 ${order.orderNo} 详情" data-order-id="${order.id}">
         <div class="order-card__heading">
@@ -41,8 +48,7 @@
             <h2>${order.productName}</h2>
           </div>
           <div class="order-card__badges">
-            <span class="status status--${order.status}">${order.statusLabel}</span>
-            ${order.overdueDays > 0 ? `<span class="overdue">逾期${order.overdueDays}天</span>` : ""}
+            <span class="status status--${displayStatus.tone}">${displayStatus.label}</span>
           </div>
         </div>
 
@@ -108,11 +114,6 @@
                 <input id="filter-date-end" type="date" value="${state.dueEnd}" aria-label="合同出货结束日期" />
               </div>
             </fieldset>
-            <label class="switch-row">
-              <span><strong>仅看逾期</strong><small>只显示已超过合同出货时间的未完成订单</small></span>
-              <input id="filter-overdue" type="checkbox" ${state.overdueOnly ? "checked" : ""} />
-              <i aria-hidden="true"></i>
-            </label>
             <label class="field">
               <span>排序方式</span>
               <select id="filter-sort">${helpers.selectOptions(data.sortOptions, state.sort)}</select>
@@ -158,7 +159,6 @@
         tracker: "all",
         dueStart: "",
         dueEnd: "",
-        overdueOnly: false,
         sort: "urgent",
       });
       render();
@@ -171,7 +171,6 @@
       state.tracker = document.querySelector("#filter-tracker").value;
       state.dueStart = document.querySelector("#filter-date-start").value;
       state.dueEnd = document.querySelector("#filter-date-end").value;
-      state.overdueOnly = document.querySelector("#filter-overdue").checked;
       state.sort = document.querySelector("#filter-sort").value;
       state.filterOpen = false;
       render();
@@ -185,7 +184,6 @@
         tracker: "all",
         dueStart: "",
         dueEnd: "",
-        overdueOnly: false,
         sort: "urgent",
       });
       render();
@@ -220,7 +218,6 @@
       state.tracker !== "all",
       Boolean(state.dueStart),
       Boolean(state.dueEnd),
-      state.overdueOnly,
       state.sort !== "urgent",
     ].filter(Boolean).length;
 

@@ -6,6 +6,10 @@
   flex: 1 1 auto;
 }
 
+.repair-filter-row .repair-status-field {
+  flex: 0 0 116px;
+}
+
 .repair-filter-row .repair-factory-field {
   flex: 0 0 170px;
 }
@@ -20,7 +24,7 @@
 }
 
 .repair-list-table {
-  min-width: 1060px;
+  min-width: 1164px;
   table-layout: fixed;
 }
 
@@ -33,6 +37,7 @@
 .repair-list-table th:nth-child(7) { width: 126px; }
 .repair-list-table th:nth-child(8) { width: 152px; }
 .repair-list-table th:nth-child(9) { width: 104px; }
+.repair-list-table th:nth-child(10) { width: 104px; }
 
 .repair-number-cell {
   font-variant-numeric: tabular-nums;

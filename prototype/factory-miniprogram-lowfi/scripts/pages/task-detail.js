@@ -1,9 +1,16 @@
 (function registerTaskDetail() {
+  function getOrderDisplayStatus(task) {
+    if (task.status === "completed") return { label: "已完成", tone: "completed" };
+    if (task.overdueDays > 0) return { label: "已逾期", tone: "overdue" };
+    return { label: "未完成", tone: "incomplete" };
+  }
+
   function mount(app, taskId) {
     var data = window.FactoryPrototypeData;
     var icons = window.FactoryIcons;
     var task = data.tasks.find(function (t) { return t.id === taskId; }) || data.tasks[0];
     if (!task) return;
+    var displayStatus = getOrderDisplayStatus(task);
 
     app.innerHTML =
       '<div class="detail-page">' +
@@ -18,8 +25,7 @@
             '<div class="order-card__heading">' +
               '<div><p class="order-card__number">' + escapeHtml(task.orderNo) + '</p><h2>' + escapeHtml(task.productSummary) + '</h2></div>' +
               '<div class="order-card__badges">' +
-                '<span class="status status--' + task.status + '">' + escapeHtml(task.statusLabel) + '</span>' +
-                (task.overdueDays > 0 && task.status !== "completed" ? '<span class="overdue">逾期' + task.overdueDays + '天</span>' : "") +
+                '<span class="status status--' + displayStatus.tone + '">' + displayStatus.label + '</span>' +
               '</div>' +
             '</div>' +
 

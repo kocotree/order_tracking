@@ -35,6 +35,13 @@
   font-size: 22px;
 }
 
+.repair-detail-summary__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .repair-detail-summary__meta,
 .repair-detail-summary__stats {
   display: grid;

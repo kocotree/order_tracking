@@ -31,6 +31,14 @@ python3 -m http.server 4173
 
 浏览器打开 `http://127.0.0.1:4173/#/dashboard`；订单列表为 `http://127.0.0.1:4173/#/orders`。
 
+登录与访问申请原型：
+
+- 飞书登录：`http://127.0.0.1:4173/#/login`
+- 管理员申请：`http://127.0.0.1:4173/#/admin-apply`
+- 审核中：`http://127.0.0.1:4173/#/access-status/pending`
+- 已拒绝：`http://127.0.0.1:4173/#/access-status/rejected`
+- 已停用：`http://127.0.0.1:4173/#/access-status/disabled`
+
 ## 文件边界
 
 - `styles/`：公共令牌、布局、组件和当前页面样式。

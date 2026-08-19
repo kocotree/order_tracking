@@ -285,7 +285,7 @@
 .repair-spec-table__head,
 .repair-spec-table__row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 52px 48px 48px;
+  grid-template-columns: 24px minmax(0, 1fr) 58px 52px 52px;
   align-items: center;
   gap: 4px;
   padding: 8px 9px;
@@ -294,8 +294,8 @@
 .repair-spec-table__head,
 .repair-history-table__head {
   color: var(--muted);
-  font-size: 8px;
-  font-weight: 650;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .repair-spec-table__head span:not(:nth-child(2)),
@@ -350,7 +350,7 @@
 .repair-history-table__head,
 .repair-history-table__row {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) 62px repeat(3, 38px);
+  grid-template-columns: minmax(0, 1.2fr) 62px repeat(3, 42px);
   align-items: center;
   gap: 4px;
   padding: 8px 9px;

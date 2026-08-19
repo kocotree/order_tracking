@@ -193,5 +193,74 @@
     ["completed", "已完成"],
   ];
 
-  window.FactoryPrototypeData = { tasks, statusOptions, repairTasks, repairStatusOptions };
+  const shipmentRecords = [
+    {
+      id: "shipment-20260818-003",
+      shipmentNo: "FH20260818-003",
+      shipDate: "2026-08-18",
+      orderNos: ["E81#"],
+      productNames: ["乐园游会吊带包屁衣"],
+      totalQuantity: 400,
+      totalBoxes: 3,
+      operator: "王师傅",
+      submittedAt: "2026-08-18 16:42",
+      note: "共3箱，物流单号稍后补充。",
+      proofs: ["发货凭证 1"],
+      lines: [
+        { orderNo: "E81#", productName: "乐园游会吊带包屁衣", spec: "蓝色/90", quantity: 100 },
+        { orderNo: "E81#", productName: "乐园游会吊带包屁衣", spec: "蓝色/100", quantity: 300 },
+      ],
+      boxes: [
+        { boxNo: "1", lines: [{ orderNo: "E81#", productName: "乐园游会吊带包屁衣", spec: "蓝色/90", quantity: 100 }, { orderNo: "E81#", productName: "乐园游会吊带包屁衣", spec: "蓝色/100", quantity: 100 }] },
+        { boxNo: "2", lines: [{ orderNo: "E81#", productName: "乐园游会吊带包屁衣", spec: "蓝色/100", quantity: 100 }] },
+        { boxNo: "3", lines: [{ orderNo: "E81#", productName: "乐园游会吊带包屁衣", spec: "蓝色/100", quantity: 100 }] },
+      ],
+    },
+    {
+      id: "shipment-20260816-002",
+      shipmentNo: "FH20260816-002",
+      shipDate: "2026-08-16",
+      orderNos: ["E92#", "E35#"],
+      productNames: ["小热皮绒绒裤", "轻量防风马甲"],
+      totalQuantity: 600,
+      totalBoxes: 4,
+      operator: "李师傅",
+      submittedAt: "2026-08-16 10:18",
+      note: "无",
+      proofs: [],
+      lines: [
+        { orderNo: "E92#", productName: "小热皮绒绒裤", spec: "棕色/100", quantity: 400 },
+        { orderNo: "E35#", productName: "轻量防风马甲", spec: "橙色/110", quantity: 200 },
+      ],
+      boxes: [
+        { boxNo: "1", lines: [{ orderNo: "E92#", productName: "小热皮绒绒裤", spec: "棕色/100", quantity: 150 }] },
+        { boxNo: "2", lines: [{ orderNo: "E92#", productName: "小热皮绒绒裤", spec: "棕色/100", quantity: 250 }] },
+        { boxNo: "3", lines: [{ orderNo: "E35#", productName: "轻量防风马甲", spec: "橙色/110", quantity: 100 }] },
+        { boxNo: "4", lines: [{ orderNo: "E35#", productName: "轻量防风马甲", spec: "橙色/110", quantity: 100 }] },
+      ],
+    },
+    {
+      id: "shipment-20260810-001",
+      shipmentNo: "FH20260810-001",
+      shipDate: "2026-08-10",
+      orderNos: ["E78#"],
+      productNames: ["秋日摇粒绒外套"],
+      totalQuantity: 900,
+      totalBoxes: 2,
+      operator: "王师傅",
+      submittedAt: "2026-08-10 09:26",
+      note: "无",
+      proofs: ["发货凭证 1", "发货凭证 2"],
+      lines: [
+        { orderNo: "E78#", productName: "秋日摇粒绒外套", spec: "雾蓝/120", quantity: 450 },
+        { orderNo: "E78#", productName: "秋日摇粒绒外套", spec: "雾蓝/130", quantity: 450 },
+      ],
+      boxes: [
+        { boxNo: "1", lines: [{ orderNo: "E78#", productName: "秋日摇粒绒外套", spec: "雾蓝/120", quantity: 450 }] },
+        { boxNo: "2", lines: [{ orderNo: "E78#", productName: "秋日摇粒绒外套", spec: "雾蓝/130", quantity: 450 }] },
+      ],
+    },
+  ];
+
+  window.FactoryPrototypeData = { tasks, statusOptions, repairTasks, repairStatusOptions, shipmentRecords };
 })();

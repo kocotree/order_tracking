@@ -14,11 +14,47 @@ import { bindRepairDetailPage, renderRepairDetailPage } from "./pages/repair-det
 import { bindProductListPage, renderProductListPage } from "./pages/product-list.js";
 import { bindFactoryListPage, renderFactoryListPage } from "./pages/factory-list.js";
 import { bindPeopleManagementPage, renderPeopleManagementPage } from "./pages/people-management.js";
+import {
+  bindAccessStatusPage,
+  bindAdminApplyPage,
+  bindLoginPage,
+  renderAccessStatusPage,
+  renderAdminApplyPage,
+  renderLoginPage,
+} from "./pages/auth.js";
 
 const appRoot = document.querySelector("#app");
 
 function renderRoute(route) {
   if (!appRoot) return;
+
+  const accessStatusMatch = route.match(/^\/access-status\/(pending|rejected|disabled)$/);
+  const standalonePage = route === "/login"
+    ? {
+        content: renderLoginPage,
+        bind: bindLoginPage,
+        title: "登录｜跟单看板低保真原型",
+      }
+    : route === "/admin-apply"
+      ? {
+          content: renderAdminApplyPage,
+          bind: bindAdminApplyPage,
+          title: "管理员申请｜跟单看板低保真原型",
+        }
+      : accessStatusMatch
+        ? {
+            content: () => renderAccessStatusPage(accessStatusMatch[1]),
+            bind: () => bindAccessStatusPage(accessStatusMatch[1]),
+            title: "访问状态｜跟单看板低保真原型",
+          }
+        : null;
+
+  if (standalonePage) {
+    appRoot.innerHTML = standalonePage.content();
+    standalonePage.bind();
+    document.title = standalonePage.title;
+    return;
+  }
 
   const orderDetailMatch = route.match(/^\/orders\/(.+)$/);
   const pendingImportDetailMatch = route.match(/^\/pending-imports\/(.+)$/);

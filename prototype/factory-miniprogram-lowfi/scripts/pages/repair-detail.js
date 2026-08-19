@@ -33,7 +33,7 @@
       var items = groups[productName];
       var pendingTotal = items.reduce(function (sum, item) { return sum + item.pendingReturn; }, 0);
       return (
-        '<details class="repair-product" open>' +
+        '<details class="repair-product">' +
           '<summary>' +
             '<div><strong>' + escapeHtml(productName) + '</strong><span>' + items.length + ' 个规格</span></div>' +
             '<b>待返回 ' + formatNumber(pendingTotal) + '</b>' +

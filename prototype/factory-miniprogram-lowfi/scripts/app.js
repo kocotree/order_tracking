@@ -2,9 +2,12 @@
   var app = document.getElementById("app");
 
   function init() {
-    var page = window.FactoryPages["task-list"];
+    var authMatch = window.location.hash.match(/^#auth=(login|apply|pending|rejected|disabled)$/);
+    var initialView = authMatch ? authMatch[1] : "login";
+    var isApprovedDemoAccount = initialView === "login";
+    var page = window.FactoryPages.auth;
     if (page && page.mount) {
-      page.mount(app);
+      page.mount(app, initialView, isApprovedDemoAccount);
     }
   }
 

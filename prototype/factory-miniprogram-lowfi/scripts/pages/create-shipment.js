@@ -304,7 +304,7 @@
         '<header><h2>装箱明细</h2><span>' + state.containers.length + ' 项</span></header>' +
         '<div class="preview-container-list">' + packingHtml + '</div>' +
       '</section>' +
-      '<div class="submit-notice">提交后立即计入订单已发数量，不能直接编辑或删除；如需撤销，请从发货记录申请作废。</div>' +
+      '<div class="submit-notice">提交后立即计入订单已发数量，不能直接编辑或删除；如需撤销，请从发货记录使用“撤回发货”。</div>' +
       renderBottomBar(true, "提交发货单", "submit-shipment", false)
     );
   }

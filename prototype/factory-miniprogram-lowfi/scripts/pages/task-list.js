@@ -153,8 +153,8 @@
           '</section>' +
           '<nav class="tabbar" aria-label="工厂小程序一级导航">' +
             '<button type="button" class="tabbar__item is-active">' + icons.tasks + '<span>任务</span></button>' +
-            '<button type="button" class="tabbar__item" data-prototype-target="发货记录">' + icons.truck + '<span>发货记录</span></button>' +
-            '<button type="button" class="tabbar__item" data-prototype-target="我的">' + icons.profile + '<span>我的</span></button>' +
+            '<button type="button" class="tabbar__item" id="open-shipment-records">' + icons.truck + '<span>发货记录</span></button>' +
+            '<button type="button" class="tabbar__item" id="open-profile">' + icons.profile + '<span>我的</span></button>' +
           '</nav>' +
         '</div>' +
         renderFilterSheet() +
@@ -241,6 +241,16 @@
 
       document.querySelector("#create-shipment-btn")?.addEventListener("click", function () {
         var page = window.FactoryPages["create-shipment"];
+        if (page && page.mount) page.mount(app);
+      });
+
+      document.querySelector("#open-shipment-records")?.addEventListener("click", function () {
+        var page = window.FactoryPages["shipment-records"];
+        if (page && page.mount) page.mount(app, "order");
+      });
+
+      document.querySelector("#open-profile")?.addEventListener("click", function () {
+        var page = window.FactoryPages.profile;
         if (page && page.mount) page.mount(app);
       });
 

@@ -9,6 +9,7 @@ const icons = {
   factory: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20V9l6 3V8l6 3V5h4v15H4ZM8 16h1M13 16h1M18 16h1" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   people: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.5 19a5.5 5.5 0 0 1 11 0M16 11a2.5 2.5 0 1 0 0-5M16 14c2.6 0 4.5 1.8 4.5 4" stroke-width="1.6" stroke-linecap="round"/></svg>`,
   bell: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.5 10a5.5 5.5 0 0 1 11 0v4l2 2H4.5l2-2v-4ZM10 19h4" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  chevron: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
 let toastTimer;
@@ -100,7 +101,6 @@ export function renderAppShell({
             <img src="./assets/logos/logo-compact-ktk.jpg" alt="KOCOTREE" />
           </div>
           ${renderRailModules(activeModule, savedSidebarState)}
-          <div class="rail-settings">菜单设置</div>
         </div>
 
         <div class="page-sidebar" id="${escapeHTML(activeModule)}-page-sidebar">
@@ -131,13 +131,14 @@ export function renderAppShell({
               <span class="topbar-icon">${icons.bell}</span>
               <span class="notification-dot">${notifications.length}</span>
             </button>
-            <div class="user-chip" aria-label="当前用户：煎饼，最高管理员">
+            <button class="user-chip" type="button" aria-label="查看当前账号信息" aria-expanded="false" data-account-toggle>
               <span class="user-avatar">煎</span>
               <span class="user-copy">
                 <span class="user-name">煎饼</span>
                 <span class="user-role">最高管理员</span>
               </span>
-            </div>
+              <span class="user-menu-chevron">${icons.chevron}</span>
+            </button>
 
             <section class="notification-popover" aria-label="通知记录" data-notification-popover>
               <div class="popover-header">
@@ -147,6 +148,22 @@ export function renderAppShell({
               <div class="notification-popover-list">
                 ${renderPopoverNotifications(notifications)}
               </div>
+            </section>
+
+            <section class="account-popover" aria-label="账号信息" data-account-popover>
+              <div class="account-popover-header">
+                <span class="user-avatar">煎</span>
+                <div>
+                  <strong>煎饼</strong>
+                  <span>公司飞书账号</span>
+                </div>
+              </div>
+              <dl class="account-popover-details">
+                <div><dt>飞书姓名</dt><dd>煎饼</dd></div>
+                <div><dt>管理员类型</dt><dd>最高管理员</dd></div>
+                <div><dt>已验证手机号</dt><dd>138****5122</dd></div>
+              </dl>
+              <button class="account-logout-button" type="button" data-account-logout>退出登录</button>
             </section>
           </div>
         </header>
@@ -184,6 +201,18 @@ export function bindAppShell() {
   const currentModuleToggle = document.querySelector("[data-toggle-current-module]");
   const notificationToggle = document.querySelector("[data-notification-toggle]");
   const notificationPopover = document.querySelector("[data-notification-popover]");
+  const accountToggle = document.querySelector("[data-account-toggle]");
+  const accountPopover = document.querySelector("[data-account-popover]");
+
+  const closeNotificationPopover = () => {
+    notificationPopover?.classList.remove("is-open");
+    notificationToggle?.setAttribute("aria-expanded", "false");
+  };
+
+  const closeAccountPopover = () => {
+    accountPopover?.classList.remove("is-open");
+    accountToggle?.setAttribute("aria-expanded", "false");
+  };
 
   const applySidebarState = (isCollapsed) => {
     shell?.classList.toggle("is-sidebar-collapsed", isCollapsed);
@@ -227,22 +256,42 @@ export function bindAppShell() {
 
   notificationToggle?.addEventListener("click", (event) => {
     event.stopPropagation();
+    closeAccountPopover();
     const isOpen = notificationPopover?.classList.toggle("is-open") ?? false;
     notificationToggle.setAttribute("aria-expanded", String(isOpen));
+  });
+
+  accountToggle?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closeNotificationPopover();
+    const isOpen = accountPopover?.classList.toggle("is-open") ?? false;
+    accountToggle.setAttribute("aria-expanded", String(isOpen));
+  });
+
+  document.querySelector("[data-account-logout]")?.addEventListener("click", () => {
+    closeAccountPopover();
+    window.location.hash = "/login";
   });
 
   notificationPopover?.addEventListener("click", (event) => {
     const target = event.target.closest("[data-destination]");
     if (!target) return;
     showToast("目标页面待设计", `${target.dataset.destination}将在对应页面完成后开放。`);
-    notificationPopover.classList.remove("is-open");
-    notificationToggle?.setAttribute("aria-expanded", "false");
+    closeNotificationPopover();
   });
 
   document.addEventListener("click", (event) => {
-    if (!notificationPopover?.classList.contains("is-open")) return;
-    if (notificationPopover.contains(event.target) || notificationToggle?.contains(event.target)) return;
-    notificationPopover.classList.remove("is-open");
-    notificationToggle?.setAttribute("aria-expanded", "false");
+    if (notificationPopover?.classList.contains("is-open") && !notificationPopover.contains(event.target) && !notificationToggle?.contains(event.target)) {
+      closeNotificationPopover();
+    }
+    if (accountPopover?.classList.contains("is-open") && !accountPopover.contains(event.target) && !accountToggle?.contains(event.target)) {
+      closeAccountPopover();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    closeNotificationPopover();
+    closeAccountPopover();
   });
 }

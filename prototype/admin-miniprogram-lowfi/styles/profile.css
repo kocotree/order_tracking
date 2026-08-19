@@ -55,6 +55,29 @@
   color: var(--white);
   font-size: 25px;
   font-weight: 800;
+  overflow: visible;
+  padding: 0;
+}
+
+.profile-avatar > span,
+.profile-avatar > img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.profile-avatar > span {
+  display: grid;
+  place-items: center;
+}
+
+.profile-avatar > img {
+  display: block;
+  object-fit: cover;
+}
+
+.profile-avatar-input {
+  display: none;
 }
 
 .profile-identity {
@@ -216,4 +239,156 @@
 
 .profile-switch.is-on i {
   transform: translateX(19px);
+}
+
+.profile-logout-button {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #f0d3d5;
+  border-radius: 14px;
+  background: var(--white);
+  color: var(--danger);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.profile-dialog-layer {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(17 24 32 / 45%);
+  animation: veil-in 160ms ease both;
+}
+
+.profile-dialog {
+  width: min(100%, 330px);
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--white);
+  box-shadow: 0 24px 64px rgb(17 24 32 / 24%);
+  text-align: center;
+}
+
+.profile-dialog h2 {
+  margin: 0;
+  padding: 22px 22px 8px;
+  font-size: 18px;
+}
+
+.profile-dialog p {
+  margin: 0;
+  padding: 0 24px 22px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.profile-dialog > div {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  border-top: 1px solid var(--line);
+}
+
+.profile-dialog > div button {
+  min-height: 48px;
+  background: var(--white);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.profile-dialog > div button + button {
+  border-left: 1px solid var(--line);
+  color: var(--danger);
+}
+
+.profile-action-layer {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 12px max(12px, env(safe-area-inset-bottom));
+  background: rgb(17 24 32 / 45%);
+  animation: veil-in 160ms ease both;
+}
+
+.profile-action-sheet {
+  width: 100%;
+  animation: card-in 180ms ease both;
+}
+
+.profile-action-sheet > div,
+.profile-action-sheet > button {
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--white);
+}
+
+.profile-action-sheet > div {
+  display: grid;
+}
+
+.profile-action-sheet button {
+  width: 100%;
+  min-height: 52px;
+  background: var(--white);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.profile-action-sheet > div button + button {
+  border-top: 1px solid var(--line);
+  color: var(--blue-deep);
+}
+
+.profile-action-sheet > button {
+  margin-top: 9px;
+}
+
+.profile-avatar-preview {
+  position: fixed;
+  z-index: 95;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 40px;
+  background: rgb(10 15 21 / 92%);
+  animation: veil-in 160ms ease both;
+}
+
+.profile-avatar-preview > button {
+  position: absolute;
+  top: max(18px, env(safe-area-inset-top));
+  right: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 14%);
+  color: white;
+  font-size: 27px;
+  font-weight: 300;
+}
+
+.profile-avatar-preview > img,
+.profile-avatar-preview > span {
+  width: min(76vw, 310px);
+  aspect-ratio: 1;
+  border-radius: 12px;
+}
+
+.profile-avatar-preview > img {
+  object-fit: cover;
+}
+
+.profile-avatar-preview > span {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #2f91ff, #0f68dd);
+  color: white;
+  font-size: 92px;
+  font-weight: 800;
 }

@@ -17,13 +17,14 @@
   }
 
   function renderShipmentCard(shipment, index, icons, formatNumber) {
-    const products = [...new Set(shipment.lines.map((line) => `${line.productName} ${line.orderNo}`))];
-    const productSummary = products.length > 2 ? `${products.slice(0, 2).join("、")}等${products.length}款` : products.join("、");
+    const products = [...new Set(shipment.lines.map((line) => line.productName))];
+    const productSummary = products.length > 1 ? `${products[0]}等${products.length}个产品` : products[0];
+    const orderSummary = [...new Set(shipment.orderNos)].join("、");
     return `
       <button class="shipment-record-card" type="button" data-shipment-no="${shipment.no}" style="--card-index:${index}" aria-label="查看发货单 ${shipment.no} 详情">
         <span class="shipment-record-card__heading">
-          <span><strong>${productSummary}</strong></span>
-          <span class="shipment-record-card__detail">详情${icons.chevron}</span>
+          <span><strong>${productSummary}　${orderSummary}</strong></span>
+          <span class="shipment-record-card__detail">${icons.chevron}</span>
         </span>
         <span class="shipment-record-card__meta">
           <span><i>${icons.factory}</i><small>工厂</small><strong>${shipment.factory}</strong></span>

@@ -10,8 +10,7 @@
 
   const state = {
     page: "auth",
-    authStatus: new URLSearchParams(window.location.search).get("auth") || "apply",
-    applicantName: "",
+    authStatus: new URLSearchParams(window.location.search).get("auth") || "bind",
     selectedOrderId: null,
     selectedShipmentNo: null,
     shipmentBackPage: "order-detail",
@@ -44,6 +43,10 @@
     notifyShipment: true,
     notifyRepair: false,
     notificationPermissionDenied: ["notifyRepair"],
+    profileAvatar: "",
+    avatarSheetOpen: false,
+    avatarPreviewOpen: false,
+    logoutConfirmOpen: false,
   };
 
   function formatNumber(value) {

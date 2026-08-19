@@ -148,7 +148,8 @@
     });
 
     document.querySelector("#create-repair-return")?.addEventListener("click", function () {
-      showToast("返修发回页面将在下一步确认后制作");
+      var page = window.FactoryPages["repair-return"];
+      if (page && page.mount) page.mount(app, task.id);
     });
   }
 

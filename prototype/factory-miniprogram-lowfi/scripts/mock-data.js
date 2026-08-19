@@ -81,7 +81,7 @@
       id: "order-035",
       orderNo: "E35#",
       productSummary: "轻量防风马甲等2款",
-      specSummary: "橙色/110、藏青/120 等4个规格",
+      specSummary: "橙色/110、杏色/90 等4个规格",
       contractShipDate: "2026-08-24",
       contractShipDateLabel: "08月24日",
       overdueDays: 0,
@@ -93,7 +93,7 @@
       statusLabel: "待发货",
       items: [
         { productName: "轻量防风马甲", spec: "橙色/110", allocated: 1400, shipped: 0, pending: 1400 },
-        { productName: "轻量防风马甲", spec: "藏青/120", allocated: 1400, shipped: 0, pending: 1400 },
+        { productName: "乐园游会吊带包屁衣", spec: "杏色/90", allocated: 1400, shipped: 0, pending: 1400 },
       ],
     },
   ];

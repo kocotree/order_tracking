@@ -25,7 +25,7 @@ from app.local_demo import (
     LocalDemoWechatIdentity,
     create_local_demo_router,
 )
-from app.logging import StructuredLogger
+from app.logging import StructuredLogger, configure_uvicorn_access_log_redaction
 from app.modules.identity_access import (
     ApplicationConflict,
     AvatarInvalid,
@@ -52,6 +52,7 @@ def create_app(
     resolved_database_url = settings.database_url
     engine = create_database_engine(resolved_database_url)
     logger = event_logger or StructuredLogger()
+    configure_uvicorn_access_log_redaction()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]

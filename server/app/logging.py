@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -29,6 +30,26 @@ def redact_sensitive(value: Any) -> Any:
     if isinstance(value, list):
         return [redact_sensitive(item) for item in value]
     return value
+
+
+class UvicornAccessQueryFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if record.name != "uvicorn.access" or not isinstance(args, tuple) or len(args) < 3:
+            return True
+        request_target = args[2]
+        if not isinstance(request_target, str) or "?" not in request_target:
+            return True
+        sanitized_args = list(args)
+        sanitized_args[2] = request_target.partition("?")[0]
+        record.args = tuple(sanitized_args)
+        return True
+
+
+def configure_uvicorn_access_log_redaction() -> None:
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(item, UvicornAccessQueryFilter) for item in access_logger.filters):
+        access_logger.addFilter(UvicornAccessQueryFilter())
 
 
 class StructuredLogger:

@@ -66,6 +66,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_user_sessions_user_terminal", table_name="user_sessions")
     op.drop_table("user_sessions")
     op.drop_table("oauth_states")

@@ -86,6 +86,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_external_identities_user", table_name="external_identities")
     op.drop_table("external_identities")
     op.drop_table("users")

@@ -83,7 +83,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_admin_applications_status_submitted", table_name="admin_applications")
     op.drop_table("admin_applications")
-    op.drop_index("ix_sms_challenges_user_purpose_created", table_name="sms_challenges")
     op.drop_table("sms_challenges")

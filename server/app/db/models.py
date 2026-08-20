@@ -29,6 +29,10 @@ class User(Base):
             "is_super_admin = 0 OR role = 'admin'",
             name="ck_users_super_admin_role",
         ),
+        CheckConstraint(
+            "factory_position IS NULL OR factory_position IN ('owner', 'employee')",
+            name="ck_users_factory_position",
+        ),
         UniqueConstraint("phone_digest", name="uq_users_phone_digest"),
     )
 

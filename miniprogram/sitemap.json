@@ -1,0 +1,4 @@
+{
+  "desc": "S00 engineering baseline",
+  "rules": [{ "action": "disallow", "page": "*" }]
+}

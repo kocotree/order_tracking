@@ -108,6 +108,8 @@ jobs:
         run: corepack enable && corepack prepare pnpm@11.22.0 --activate
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
+      - name: Check generated API types
+        run: pnpm generate:api && git -C .. diff --exit-code -- miniprogram/api/generated.ts
       - name: Lint
         run: pnpm lint
       - name: Type check

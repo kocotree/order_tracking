@@ -1,0 +1,90 @@
+import { identityApi } from "../../api/identity";
+import {
+  clearSession,
+  storedUser,
+  updateStoredUser,
+  type User,
+} from "../../modules/identity/session";
+
+Page({
+  data: {
+    user: null as User | null,
+    avatarFallback: "",
+    avatarPath: "",
+    avatarSheetOpen: false,
+    uploading: false,
+  },
+
+  onLoad() {
+    void this.loadProfile();
+  },
+
+  async loadProfile() {
+    try {
+      const cached = storedUser();
+      const user = await identityApi.getMe();
+      updateStoredUser(user);
+      this.setData({ user, avatarFallback: user.displayName.slice(0, 1) });
+      if (user.miniAvatarFileId) {
+        this.setData({ avatarPath: await identityApi.downloadAvatar() });
+      } else {
+        this.setData({ avatarPath: user.miniAvatarExternalUrl ?? cached?.miniAvatarExternalUrl ?? "" });
+      }
+    } catch {
+      clearSession();
+      wx.reLaunch({ url: "/pages/auth/auth" });
+    }
+  },
+
+  openAvatarActions() {
+    this.setData({ avatarSheetOpen: true });
+  },
+
+  closeAvatarActions() {
+    this.setData({ avatarSheetOpen: false });
+  },
+
+  noop() {
+    return;
+  },
+
+  viewAvatar() {
+    if (!this.data.avatarPath) {
+      wx.showToast({ title: "暂无可查看的头像", icon: "none" });
+      return;
+    }
+    this.closeAvatarActions();
+    wx.previewImage({ urls: [this.data.avatarPath], current: this.data.avatarPath });
+  },
+
+  async chooseAvatar(event: { detail: { avatarUrl: string } }) {
+    const filePath = event.detail.avatarUrl;
+    if (!filePath) return;
+    this.setData({ avatarSheetOpen: false, uploading: true });
+    try {
+      await identityApi.uploadAvatar(filePath);
+      const user = await identityApi.getMe();
+      updateStoredUser(user);
+      this.setData({ user, avatarPath: filePath });
+      wx.showToast({ title: "头像已更新", icon: "success" });
+    } catch {
+      wx.showToast({ title: "头像上传失败，请重试", icon: "none" });
+    } finally {
+      this.setData({ uploading: false });
+    }
+  },
+
+  logout() {
+    wx.showModal({
+      title: "退出登录",
+      content: "退出登录不会解除微信与管理员账号的绑定，确定退出吗？",
+      confirmText: "确认退出",
+      success: (result) => {
+        if (!result.confirm) return;
+        void identityApi.logout().finally(() => {
+          wx.reLaunch({ url: "/pages/status/status?status=logged-out" });
+        });
+      },
+    });
+  },
+});

@@ -11,12 +11,14 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
-    "build": "pnpm typecheck && node scripts/validate-project.mjs"
+    "build": "pnpm typecheck && node scripts/validate-project.mjs",
+    "generate:api": "openapi-typescript ../server/openapi/openapi.json -o api/generated.ts"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
     "eslint": "^10.8.1",
     "miniprogram-api-typings": "^5.2.3",
+    "openapi-typescript": "^7.13.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.11"

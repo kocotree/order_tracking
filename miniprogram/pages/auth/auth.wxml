@@ -1,0 +1,24 @@
+<view wx:if="{{mode === 'identifying'}}" class="auth-page auth-page--status">
+  <view class="auth-brand"><text>KOCOTREE</text><text>订单管理系统</text></view>
+  <view class="auth-card auth-card--status">
+    <view class="auth-status-mark">…</view>
+    <text class="auth-eyebrow">管理员入口</text>
+    <text class="auth-title">正在识别身份</text>
+    <text class="auth-description">正在通过微信身份确认管理员账号，请稍候。</text>
+    <text class="auth-note">身份识别完成后将自动进入下一步</text>
+  </view>
+</view>
+
+<view wx:else class="auth-page auth-page--login">
+  <view class="wechat-capsule">•••　○</view>
+  <view class="auth-login-main">
+    <view class="auth-logo">KTK</view>
+    <view class="auth-copy"><text class="auth-title">订单管理系统</text><text>查看订单、发货记录与返修进度</text></view>
+    <button wx:if="{{agreementAccepted}}" class="auth-primary-button" loading="{{busy}}" open-type="getPhoneNumber" bindgetphonenumber="phoneAuthorized">微信授权登录</button>
+    <button wx:else class="auth-primary-button" bindtap="requestAgreement">微信授权登录</button>
+    <checkbox-group bindchange="agreementChanged">
+      <label class="auth-agreement"><checkbox value="accepted" checked="{{agreementAccepted}}" color="#0d8fe9"/><text>我已阅读并同意<text class="auth-link">用户协议</text>和<text class="auth-link">隐私政策</text></text></label>
+    </checkbox-group>
+  </view>
+  <text class="auth-safe-note">仅用于已授权管理员访问业务数据</text>
+</view>

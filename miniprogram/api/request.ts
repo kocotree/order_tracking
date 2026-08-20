@@ -4,6 +4,7 @@ export interface ApiError {
   code: string;
   message: string;
   requestId?: string;
+  statusCode?: number;
 }
 
 export function request<
@@ -18,7 +19,10 @@ export function request<
           resolve(response.data);
           return;
         }
-        reject(response.data as ApiError);
+        reject({
+          ...(response.data as ApiError),
+          statusCode: response.statusCode,
+        } satisfies ApiError);
       },
       fail(error) {
         reject({ code: "network_error", message: error.errMsg } satisfies ApiError);

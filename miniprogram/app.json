@@ -1,7 +1,11 @@
 {
-  "pages": ["pages/index/index"],
+  "pages": [
+    "pages/auth/auth",
+    "pages/status/status",
+    "pages/profile/profile"
+  ],
   "window": {
-    "navigationBarTitleText": "跟单看板",
+    "navigationBarTitleText": "订单管理系统",
     "navigationBarBackgroundColor": "#ffffff",
     "navigationBarTextStyle": "black",
     "backgroundColor": "#f3f5f8"

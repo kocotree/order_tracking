@@ -1,0 +1,20 @@
+.auth-page { min-height: 100vh; color: #20242b; background: linear-gradient(180deg, #f8fbfd, #eef5f9); }
+.auth-page--login { display: flex; flex-direction: column; padding: 28rpx 38rpx 50rpx; }
+.wechat-capsule { align-self: flex-end; padding: 13rpx 24rpx; color: #30343a; font-size: 24rpx; background: rgba(255,255,255,.8); border: 1rpx solid #d6dce2; border-radius: 40rpx; }
+.auth-login-main { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; padding-bottom: 80rpx; }
+.auth-logo { display: flex; width: 132rpx; height: 132rpx; align-items: center; justify-content: center; color: #fff; font-size: 32rpx; font-weight: 800; background: #0d8fe9; border-radius: 28rpx; box-shadow: 0 18rpx 42rpx rgba(13,143,233,.2); }
+.auth-copy { display: flex; flex-direction: column; align-items: center; gap: 16rpx; margin: 42rpx 0 72rpx; color: #687283; font-size: 26rpx; }
+.auth-title { color: #20242b; font-size: 44rpx; font-weight: 750; }
+.auth-primary-button { width: 100%; height: 92rpx; color: #fff; font-size: 30rpx; font-weight: 700; line-height: 92rpx; background: #0d8fe9; border-radius: 14rpx; }
+.auth-agreement { display: flex; gap: 8rpx; align-items: flex-start; margin-top: 28rpx; color: #687283; font-size: 23rpx; line-height: 1.6; }
+.auth-agreement checkbox { transform: scale(.8); transform-origin: top left; }
+.auth-link { color: #087fd1; }
+.auth-safe-note { align-self: center; color: #959eac; font-size: 22rpx; }
+.auth-page--status { display: flex; flex-direction: column; align-items: center; padding: 120rpx 38rpx 60rpx; }
+.auth-brand { display: flex; flex-direction: column; align-items: center; gap: 8rpx; margin-bottom: 64rpx; color: #687283; font-size: 24rpx; }
+.auth-brand text:first-child { color: #173f5f; font-size: 34rpx; font-weight: 800; letter-spacing: 4rpx; }
+.auth-card { display: flex; width: 100%; flex-direction: column; align-items: center; padding: 54rpx 42rpx; background: #fff; border: 1rpx solid #d2d7df; border-radius: 20rpx; box-shadow: 0 24rpx 60rpx rgba(42,61,78,.1); }
+.auth-status-mark { display: flex; width: 104rpx; height: 104rpx; align-items: center; justify-content: center; margin-bottom: 30rpx; color: #a76c07; font-size: 44rpx; background: #fff6df; border-radius: 50%; }
+.auth-eyebrow { margin-bottom: 14rpx; color: #087fd1; font-size: 22rpx; font-weight: 700; letter-spacing: 4rpx; }
+.auth-description { margin-top: 24rpx; color: #687283; font-size: 26rpx; line-height: 1.7; text-align: center; }
+.auth-note { width: 100%; margin-top: 36rpx; padding: 22rpx; color: #a76c07; font-size: 24rpx; text-align: center; background: #fff6df; border-radius: 12rpx; }

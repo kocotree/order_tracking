@@ -1,7 +1,0 @@
-<view class="baseline-page">
-  <view class="baseline-card">
-    <text class="baseline-kicker">S00 · 工程基线</text>
-    <text class="baseline-title">{{title}}</text>
-    <text class="baseline-description">{{description}}</text>
-  </view>
-</view>

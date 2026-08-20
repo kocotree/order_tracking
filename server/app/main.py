@@ -10,14 +10,21 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.adapters.avatar import DisabledAvatarStore
+from app.adapters.avatar import DisabledAvatarStore, FakeAvatarStore
 from app.adapters.errors import ExternalAdapterUnavailable
 from app.adapters.identity import DisabledFeishuIdentity
-from app.adapters.sms import DisabledSmsSender
+from app.adapters.sms import DisabledSmsSender, FakeSmsSender
 from app.adapters.wechat import DisabledWechatIdentity
 from app.api.identity import create_identity_router
 from app.api.router import api_router
 from app.db.session import create_database_engine, create_session_factory
+from app.local_demo import (
+    LOCAL_DEMO_FEISHU_SCOPE,
+    LOCAL_DEMO_VERIFICATION_CODE,
+    LocalDemoFeishuIdentity,
+    LocalDemoWechatIdentity,
+    create_local_demo_router,
+)
 from app.logging import StructuredLogger
 from app.modules.identity_access import (
     ApplicationConflict,
@@ -53,13 +60,30 @@ def create_app(
 
     app = FastAPI(title="Order Tracking API", version="0.1.0", lifespan=lifespan)
     app.include_router(api_router)
+    local_demo_enabled = settings.app_env == "local_demo"
     if identity_service is None:
+        feishu_identity = (
+            LocalDemoFeishuIdentity()
+            if local_demo_enabled
+            else DisabledFeishuIdentity(scope=settings.feishu_identity_scope)
+        )
+        sms_sender = FakeSmsSender() if local_demo_enabled else DisabledSmsSender()
+        wechat_identity = (
+            LocalDemoWechatIdentity()
+            if local_demo_enabled
+            else DisabledWechatIdentity(scope=settings.wechat_identity_scope)
+        )
+        avatar_store = (
+            FakeAvatarStore(bucket="local-demo-private-avatar")
+            if local_demo_enabled
+            else DisabledAvatarStore(bucket=settings.avatar_bucket)
+        )
         identity_service = IdentityAccessService(
             create_session_factory(engine),
-            feishu_identity=DisabledFeishuIdentity(scope=settings.feishu_identity_scope),
-            sms_sender=DisabledSmsSender(),
-            wechat_identity=DisabledWechatIdentity(scope=settings.wechat_identity_scope),
-            avatar_store=DisabledAvatarStore(bucket=settings.avatar_bucket),
+            feishu_identity=feishu_identity,
+            sms_sender=sms_sender,
+            wechat_identity=wechat_identity,
+            avatar_store=avatar_store,
             token_secret=(
                 settings.identity_token_secret.encode()
                 if settings.identity_token_secret
@@ -75,8 +99,25 @@ def create_app(
                 if settings.phone_digest_secret
                 else secrets.token_bytes(32)
             ),
+            verification_code_factory=(
+                (lambda: LOCAL_DEMO_VERIFICATION_CODE) if local_demo_enabled else None
+            ),
         )
-    app.include_router(create_identity_router(identity_service))
+        if local_demo_enabled:
+            identity_service.bootstrap_super_admin(
+                scope=LOCAL_DEMO_FEISHU_SCOPE,
+                profile=LocalDemoFeishuIdentity().exchange_code(code="super"),
+                operator_source="local-demo-startup",
+                request_id="local-demo-bootstrap",
+            )
+    app.include_router(
+        create_identity_router(
+            identity_service,
+            secure_web_cookies=not local_demo_enabled,
+        )
+    )
+    if local_demo_enabled:
+        app.include_router(create_local_demo_router())
 
     @app.middleware("http")
     async def attach_request_id(

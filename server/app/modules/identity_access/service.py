@@ -160,6 +160,7 @@ class IdentityAccessService:
         phone_encryption_secret: bytes | None = None,
         phone_digest_secret: bytes | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        verification_code_factory: Callable[[], str] | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._feishu_identity = feishu_identity
@@ -172,6 +173,7 @@ class IdentityAccessService:
             digest_secret=phone_digest_secret or secrets.token_bytes(32),
         )
         self._clock = clock
+        self._verification_code_factory = verification_code_factory
 
     def _now(self) -> datetime:
         value = self._clock()
@@ -269,7 +271,13 @@ class IdentityAccessService:
             raise VerificationInvalid("phone is invalid")
         now = self._now()
         phone_digest = self._phone.digest(phone)
-        code = f"{secrets.randbelow(1_000_000):06d}"
+        code = (
+            self._verification_code_factory()
+            if self._verification_code_factory is not None
+            else f"{secrets.randbelow(1_000_000):06d}"
+        )
+        if re.fullmatch(r"\d{6}", code) is None:
+            raise RuntimeError("verification code factory returned an invalid code")
         challenge_id = str(uuid4())
         with self._session_factory() as session, session.begin():
             user = session.get(User, user_id)

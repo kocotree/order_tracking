@@ -167,7 +167,11 @@ def _mini_login_response(result: MiniLoginResult) -> MiniLoginResponse:
     )
 
 
-def create_identity_router(service: IdentityAccessService) -> APIRouter:
+def create_identity_router(
+    service: IdentityAccessService,
+    *,
+    secure_web_cookies: bool = True,
+) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
     def web_user(
@@ -226,7 +230,7 @@ def create_identity_router(service: IdentityAccessService) -> APIRouter:
             "ot_web_session",
             result.web_session_token,
             max_age=12 * 60 * 60,
-            secure=True,
+            secure=secure_web_cookies,
             httponly=True,
             samesite="lax",
             path="/",
@@ -235,7 +239,7 @@ def create_identity_router(service: IdentityAccessService) -> APIRouter:
             "ot_csrf",
             result.csrf_token,
             max_age=12 * 60 * 60,
-            secure=True,
+            secure=secure_web_cookies,
             httponly=False,
             samesite="lax",
             path="/",
@@ -271,8 +275,13 @@ def create_identity_router(service: IdentityAccessService) -> APIRouter:
             request_id=request.state.request_id,
         )
         response = Response(status_code=204)
-        response.delete_cookie("ot_web_session", path="/", secure=True, httponly=True)
-        response.delete_cookie("ot_csrf", path="/", secure=True)
+        response.delete_cookie(
+            "ot_web_session",
+            path="/",
+            secure=secure_web_cookies,
+            httponly=True,
+        )
+        response.delete_cookie("ot_csrf", path="/", secure=secure_web_cookies)
         return response
 
     @router.post(

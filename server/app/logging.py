@@ -4,13 +4,26 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, TextIO
 
-SENSITIVE_KEYS = {"authorization", "cookie", "password", "secret", "token"}
+SENSITIVE_KEY_PARTS = {
+    "authorization",
+    "cookie",
+    "password",
+    "phone",
+    "secret",
+    "token",
+    "verificationcode",
+}
+
+
+def is_sensitive_key(key: object) -> bool:
+    normalized = str(key).lower().replace("_", "").replace("-", "")
+    return any(part in normalized for part in SENSITIVE_KEY_PARTS)
 
 
 def redact_sensitive(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {
-            str(key): "[REDACTED]" if str(key).lower() in SENSITIVE_KEYS else redact_sensitive(item)
+            str(key): "[REDACTED]" if is_sensitive_key(key) else redact_sensitive(item)
             for key, item in value.items()
         }
     if isinstance(value, list):

@@ -1,0 +1,597 @@
+from datetime import datetime
+from typing import Annotated
+
+from fastapi import APIRouter, Cookie, File, Header, Query, Request, UploadFile
+from fastapi.responses import RedirectResponse, Response
+from pydantic import BaseModel, ConfigDict
+
+from app.modules.identity_access import (
+    IdentityAccessService,
+    MiniLoginResult,
+    SessionInvalid,
+    SessionTokens,
+    UserSnapshot,
+)
+
+
+def to_camel(value: str) -> str:
+    first, *rest = value.split("_")
+    return first + "".join(part.capitalize() for part in rest)
+
+
+class ApiModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+class UserResponse(ApiModel):
+    user_id: str
+    role: str | None
+    is_super_admin: bool
+    is_enabled: bool
+    display_name: str
+    feishu_avatar_url: str | None
+    mini_avatar_external_url: str | None
+    mini_avatar_file_id: int | None
+    phone_masked: str | None
+    version: int
+    capabilities: list[str]
+
+
+class SmsChallengeRequest(ApiModel):
+    phone: str
+
+
+class SmsChallengeResponse(ApiModel):
+    challenge_id: str
+    phone_masked: str
+    expires_at: datetime
+
+
+class AdminApplicationCreateRequest(ApiModel):
+    challenge_id: str
+    verification_code: str
+
+
+class AdminApplicationResponse(ApiModel):
+    application_id: str
+    user_id: str
+    display_name: str
+    phone_masked: str
+    status: str
+    rejection_reason: str | None
+    submitted_at: datetime
+    reviewed_at: datetime | None
+    reviewed_by: str | None
+    version: int
+
+
+class AdminApplicationListResponse(ApiModel):
+    items: list[AdminApplicationResponse]
+    total: int
+
+
+class ReviewRequest(ApiModel):
+    version: int
+
+
+class RejectRequest(ReviewRequest):
+    reason: str
+
+
+class AdminUserListResponse(ApiModel):
+    items: list[UserResponse]
+    total: int
+
+
+class UserVersionRequest(ApiModel):
+    version: int
+
+
+class WechatLoginRequest(ApiModel):
+    code: str
+
+
+class WechatPhoneRequest(ApiModel):
+    binding_token: str
+    phone_code: str
+
+
+class MiniRefreshRequest(ApiModel):
+    refresh_token: str
+
+
+class SessionResponse(ApiModel):
+    access_token: str
+    refresh_token: str | None
+    expires_at: datetime
+
+
+class MiniLoginResponse(ApiModel):
+    status: str
+    binding_token: str | None
+    user: UserResponse | None
+    session: SessionResponse | None
+    rejection_reason: str | None
+
+
+class AvatarResponse(ApiModel):
+    file_id: int
+    mime_type: str
+    size_bytes: int
+
+
+def _capabilities(user: UserSnapshot) -> list[str]:
+    if not user.is_enabled:
+        return []
+    if user.role is None:
+        return ["admin_application.submit", "admin_application.read_own"]
+    capabilities = ["business.read", "mini.use"]
+    if user.is_super_admin:
+        capabilities.extend(["admin_application.review", "admin_user.manage"])
+    return capabilities
+
+
+def _user_response(user: UserSnapshot) -> UserResponse:
+    return UserResponse(
+        user_id=user.user_id,
+        role=user.role,
+        is_super_admin=user.is_super_admin,
+        is_enabled=user.is_enabled,
+        display_name=user.display_name,
+        feishu_avatar_url=user.feishu_avatar_url,
+        mini_avatar_external_url=user.mini_avatar_external_url,
+        mini_avatar_file_id=user.mini_avatar_file_id,
+        phone_masked=user.phone_masked,
+        version=user.version,
+        capabilities=_capabilities(user),
+    )
+
+
+def _application_response(application: object) -> AdminApplicationResponse:
+    return AdminApplicationResponse.model_validate(application, from_attributes=True)
+
+
+def _session_response(session: SessionTokens) -> SessionResponse:
+    return SessionResponse.model_validate(session, from_attributes=True)
+
+
+def _mini_login_response(result: MiniLoginResult) -> MiniLoginResponse:
+    user = result.user
+    session = result.session
+    return MiniLoginResponse(
+        status=result.status,
+        binding_token=result.binding_token,
+        user=_user_response(user) if user is not None else None,
+        session=_session_response(session) if session is not None else None,
+        rejection_reason=result.rejection_reason,
+    )
+
+
+def create_identity_router(service: IdentityAccessService) -> APIRouter:
+    router = APIRouter(prefix="/api/v1")
+
+    def web_user(
+        *,
+        web_session: str | None,
+        csrf_token: str | None = None,
+        require_csrf: bool = False,
+    ) -> UserSnapshot:
+        if not web_session:
+            raise SessionInvalid("web session is missing")
+        return service.authenticate_session(
+            token=web_session,
+            terminal="web",
+            csrf_token=csrf_token,
+            require_csrf=require_csrf,
+        )
+
+    def bearer_token(authorization: str | None) -> str:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise SessionInvalid("mini-program session is missing")
+        token = authorization.removeprefix("Bearer ").strip()
+        if not token:
+            raise SessionInvalid("mini-program session is missing")
+        return token
+
+    def mini_user(authorization: str | None) -> UserSnapshot:
+        return service.authenticate_session(
+            token=bearer_token(authorization),
+            terminal="mini",
+        )
+
+    @router.get("/auth/feishu/start", tags=["identity"])
+    def start_feishu_login(
+        request: Request,
+        return_to: str = Query(default="/", alias="returnTo"),
+    ) -> RedirectResponse:
+        started = service.start_feishu_login(
+            return_to=return_to,
+            request_id=request.state.request_id,
+        )
+        return RedirectResponse(started.authorization_url, status_code=307)
+
+    @router.get("/auth/feishu/callback", tags=["identity"])
+    def complete_feishu_login(
+        request: Request,
+        state: str,
+        code: str,
+    ) -> RedirectResponse:
+        result = service.complete_feishu_login(
+            state=state,
+            code=code,
+            request_id=request.state.request_id,
+        )
+        response = RedirectResponse(result.redirect_to, status_code=303)
+        response.set_cookie(
+            "ot_web_session",
+            result.web_session_token,
+            max_age=12 * 60 * 60,
+            secure=True,
+            httponly=True,
+            samesite="lax",
+            path="/",
+        )
+        response.set_cookie(
+            "ot_csrf",
+            result.csrf_token,
+            max_age=12 * 60 * 60,
+            secure=True,
+            httponly=False,
+            samesite="lax",
+            path="/",
+        )
+        return response
+
+    @router.get("/me", response_model=UserResponse, tags=["identity"])
+    def current_user(
+        ot_web_session: str | None = Cookie(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> UserResponse:
+        user = (
+            web_user(web_session=ot_web_session)
+            if ot_web_session is not None
+            else mini_user(authorization)
+        )
+        return _user_response(user)
+
+    @router.post("/auth/logout", status_code=204, tags=["identity"])
+    def web_logout(
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> Response:
+        web_user(
+            web_session=ot_web_session,
+            csrf_token=x_csrf_token,
+            require_csrf=True,
+        )
+        service.logout_session(
+            token=ot_web_session or "",
+            terminal="web",
+            request_id=request.state.request_id,
+        )
+        response = Response(status_code=204)
+        response.delete_cookie("ot_web_session", path="/", secure=True, httponly=True)
+        response.delete_cookie("ot_csrf", path="/", secure=True)
+        return response
+
+    @router.post(
+        "/sms/challenges",
+        response_model=SmsChallengeResponse,
+        status_code=201,
+        tags=["identity"],
+    )
+    def send_sms_challenge(
+        payload: SmsChallengeRequest,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> SmsChallengeResponse:
+        user = web_user(
+            web_session=ot_web_session,
+            csrf_token=x_csrf_token,
+            require_csrf=True,
+        )
+        challenge = service.send_admin_application_code(
+            user_id=user.user_id,
+            phone=payload.phone,
+            request_id=request.state.request_id,
+        )
+        return SmsChallengeResponse.model_validate(challenge, from_attributes=True)
+
+    @router.post(
+        "/admin-applications",
+        response_model=AdminApplicationResponse,
+        status_code=201,
+        tags=["identity"],
+    )
+    def create_admin_application(
+        payload: AdminApplicationCreateRequest,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> AdminApplicationResponse:
+        user = web_user(
+            web_session=ot_web_session,
+            csrf_token=x_csrf_token,
+            require_csrf=True,
+        )
+        application = service.submit_admin_application(
+            user_id=user.user_id,
+            challenge_id=payload.challenge_id,
+            verification_code=payload.verification_code,
+            request_id=request.state.request_id,
+        )
+        return _application_response(application)
+
+    @router.get(
+        "/admin-applications/me",
+        response_model=AdminApplicationResponse | None,
+        tags=["identity"],
+    )
+    def my_admin_application(
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> AdminApplicationResponse | None:
+        user = web_user(web_session=ot_web_session)
+        application = service.get_my_application(user_id=user.user_id)
+        return _application_response(application) if application is not None else None
+
+    @router.get(
+        "/admin/admin-applications",
+        response_model=AdminApplicationListResponse,
+        tags=["identity-admin"],
+    )
+    def list_admin_applications(
+        status: str | None = Query(default=None),
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> AdminApplicationListResponse:
+        actor = web_user(web_session=ot_web_session)
+        applications = service.list_admin_applications(actor_id=actor.user_id, status=status)
+        items = [_application_response(application) for application in applications]
+        return AdminApplicationListResponse(items=items, total=len(items))
+
+    @router.get(
+        "/admin/admin-applications/{application_id}",
+        response_model=AdminApplicationResponse,
+        tags=["identity-admin"],
+    )
+    def get_admin_application(
+        application_id: str,
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> AdminApplicationResponse:
+        actor = web_user(web_session=ot_web_session)
+        return _application_response(
+            service.get_admin_application(
+                actor_id=actor.user_id,
+                application_id=application_id,
+            )
+        )
+
+    @router.post(
+        "/admin/admin-applications/{application_id}/approve",
+        response_model=AdminApplicationResponse,
+        tags=["identity-admin"],
+    )
+    def approve_admin_application(
+        application_id: str,
+        payload: ReviewRequest,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> AdminApplicationResponse:
+        actor = web_user(
+            web_session=ot_web_session,
+            csrf_token=x_csrf_token,
+            require_csrf=True,
+        )
+        return _application_response(
+            service.approve_admin_application(
+                actor_id=actor.user_id,
+                application_id=application_id,
+                expected_version=payload.version,
+                request_id=request.state.request_id,
+            )
+        )
+
+    @router.post(
+        "/admin/admin-applications/{application_id}/reject",
+        response_model=AdminApplicationResponse,
+        tags=["identity-admin"],
+    )
+    def reject_admin_application(
+        application_id: str,
+        payload: RejectRequest,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> AdminApplicationResponse:
+        actor = web_user(
+            web_session=ot_web_session,
+            csrf_token=x_csrf_token,
+            require_csrf=True,
+        )
+        return _application_response(
+            service.reject_admin_application(
+                actor_id=actor.user_id,
+                application_id=application_id,
+                expected_version=payload.version,
+                reason=payload.reason,
+                request_id=request.state.request_id,
+            )
+        )
+
+    @router.get(
+        "/admin/users",
+        response_model=AdminUserListResponse,
+        tags=["identity-admin"],
+    )
+    def list_admin_users(
+        role: str = Query(default="admin"),
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> AdminUserListResponse:
+        actor = web_user(web_session=ot_web_session)
+        if role != "admin":
+            return AdminUserListResponse(items=[], total=0)
+        users = service.list_admin_users(actor_id=actor.user_id)
+        items = [_user_response(user) for user in users]
+        return AdminUserListResponse(items=items, total=len(items))
+
+    def set_user_enabled(
+        *,
+        target_user_id: str,
+        payload: UserVersionRequest,
+        request: Request,
+        web_session: str | None,
+        csrf_token: str | None,
+        enabled: bool,
+    ) -> UserResponse:
+        actor = web_user(
+            web_session=web_session,
+            csrf_token=csrf_token,
+            require_csrf=True,
+        )
+        return _user_response(
+            service.set_admin_enabled(
+                actor_id=actor.user_id,
+                target_user_id=target_user_id,
+                enabled=enabled,
+                expected_version=payload.version,
+                request_id=request.state.request_id,
+            )
+        )
+
+    @router.post(
+        "/admin/users/{target_user_id}/enable",
+        response_model=UserResponse,
+        tags=["identity-admin"],
+    )
+    def enable_admin_user(
+        target_user_id: str,
+        payload: UserVersionRequest,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> UserResponse:
+        return set_user_enabled(
+            target_user_id=target_user_id,
+            payload=payload,
+            request=request,
+            web_session=ot_web_session,
+            csrf_token=x_csrf_token,
+            enabled=True,
+        )
+
+    @router.post(
+        "/admin/users/{target_user_id}/disable",
+        response_model=UserResponse,
+        tags=["identity-admin"],
+    )
+    def disable_admin_user(
+        target_user_id: str,
+        payload: UserVersionRequest,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> UserResponse:
+        return set_user_enabled(
+            target_user_id=target_user_id,
+            payload=payload,
+            request=request,
+            web_session=ot_web_session,
+            csrf_token=x_csrf_token,
+            enabled=False,
+        )
+
+    @router.post(
+        "/mini/auth/wechat",
+        response_model=MiniLoginResponse,
+        tags=["identity-mini"],
+    )
+    def mini_wechat_login(
+        payload: WechatLoginRequest,
+        request: Request,
+    ) -> MiniLoginResponse:
+        return _mini_login_response(
+            service.begin_wechat_login(
+                login_code=payload.code,
+                request_id=request.state.request_id,
+            )
+        )
+
+    @router.post(
+        "/mini/auth/phone",
+        response_model=MiniLoginResponse,
+        tags=["identity-mini"],
+    )
+    def mini_phone_binding(
+        payload: WechatPhoneRequest,
+        request: Request,
+    ) -> MiniLoginResponse:
+        return _mini_login_response(
+            service.bind_wechat_phone(
+                binding_token=payload.binding_token,
+                phone_code=payload.phone_code,
+                request_id=request.state.request_id,
+            )
+        )
+
+    @router.post(
+        "/mini/auth/refresh",
+        response_model=SessionResponse,
+        tags=["identity-mini"],
+    )
+    def mini_refresh(payload: MiniRefreshRequest) -> SessionResponse:
+        return _session_response(
+            service.refresh_mini_session(refresh_token=payload.refresh_token)
+        )
+
+    @router.post("/mini/auth/logout", status_code=204, tags=["identity-mini"])
+    def mini_logout(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> Response:
+        token = bearer_token(authorization)
+        mini_user(authorization)
+        service.logout_session(
+            token=token,
+            terminal="mini",
+            request_id=request.state.request_id,
+        )
+        return Response(status_code=204)
+
+    @router.post(
+        "/mini/me/avatar",
+        response_model=AvatarResponse,
+        tags=["identity-mini"],
+    )
+    async def replace_mini_avatar(
+        request: Request,
+        avatar: Annotated[UploadFile, File()],
+        authorization: str | None = Header(default=None),
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+    ) -> AvatarResponse:
+        user = mini_user(authorization)
+        content = await avatar.read()
+        stored = service.replace_mini_avatar(
+            user_id=user.user_id,
+            original_filename=avatar.filename or "avatar",
+            mime_type=avatar.content_type or "application/octet-stream",
+            content=content,
+            idempotency_key=idempotency_key,
+            request_id=request.state.request_id,
+        )
+        return AvatarResponse.model_validate(stored, from_attributes=True)
+
+    @router.get("/mini/me/avatar", tags=["identity-mini"])
+    def get_mini_avatar(
+        authorization: str | None = Header(default=None),
+    ) -> Response:
+        user = mini_user(authorization)
+        avatar = service.get_mini_avatar(user_id=user.user_id)
+        return Response(
+            content=avatar.content,
+            media_type=avatar.mime_type,
+            headers={"Cache-Control": "private, no-store"},
+        )
+
+    return router

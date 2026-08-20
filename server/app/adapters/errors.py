@@ -1,0 +1,2 @@
+class ExternalAdapterUnavailable(RuntimeError):
+    pass

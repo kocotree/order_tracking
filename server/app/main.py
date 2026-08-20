@@ -1,3 +1,4 @@
+import secrets
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from typing import Any
@@ -9,9 +10,27 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.adapters.avatar import DisabledAvatarStore
+from app.adapters.errors import ExternalAdapterUnavailable
+from app.adapters.identity import DisabledFeishuIdentity
+from app.adapters.sms import DisabledSmsSender
+from app.adapters.wechat import DisabledWechatIdentity
+from app.api.identity import create_identity_router
 from app.api.router import api_router
-from app.db.session import create_database_engine
+from app.db.session import create_database_engine, create_session_factory
 from app.logging import StructuredLogger
+from app.modules.identity_access import (
+    ApplicationConflict,
+    AvatarInvalid,
+    IdentityAccessError,
+    OAuthStateInvalid,
+    PermissionDenied,
+    ResourceNotFound,
+    SessionInvalid,
+    SmsRateLimited,
+    VerificationInvalid,
+)
+from app.modules.identity_access.service import IdentityAccessService
 from app.settings.config import Settings
 
 
@@ -19,9 +38,11 @@ def create_app(
     *,
     database_url: str | None = None,
     event_logger: StructuredLogger | None = None,
+    identity_service: IdentityAccessService | None = None,
     extra_routers: Sequence[APIRouter] = (),
 ) -> FastAPI:
-    resolved_database_url = database_url or Settings().database_url
+    settings = Settings(database_url=database_url) if database_url is not None else Settings()
+    resolved_database_url = settings.database_url
     engine = create_database_engine(resolved_database_url)
     logger = event_logger or StructuredLogger()
 
@@ -32,6 +53,30 @@ def create_app(
 
     app = FastAPI(title="Order Tracking API", version="0.1.0", lifespan=lifespan)
     app.include_router(api_router)
+    if identity_service is None:
+        identity_service = IdentityAccessService(
+            create_session_factory(engine),
+            feishu_identity=DisabledFeishuIdentity(scope=settings.feishu_identity_scope),
+            sms_sender=DisabledSmsSender(),
+            wechat_identity=DisabledWechatIdentity(scope=settings.wechat_identity_scope),
+            avatar_store=DisabledAvatarStore(bucket=settings.avatar_bucket),
+            token_secret=(
+                settings.identity_token_secret.encode()
+                if settings.identity_token_secret
+                else secrets.token_bytes(32)
+            ),
+            phone_encryption_secret=(
+                settings.phone_encryption_secret.encode()
+                if settings.phone_encryption_secret
+                else secrets.token_bytes(32)
+            ),
+            phone_digest_secret=(
+                settings.phone_digest_secret.encode()
+                if settings.phone_digest_secret
+                else secrets.token_bytes(32)
+            ),
+        )
+    app.include_router(create_identity_router(identity_service))
 
     @app.middleware("http")
     async def attach_request_id(
@@ -68,6 +113,50 @@ def create_app(
                 "code": "internal_error",
                 "message": "服务器内部错误",
                 "requestId": request_id,
+            },
+        )
+
+    @app.exception_handler(IdentityAccessError)
+    async def handle_identity_error(
+        request: Request,
+        error: IdentityAccessError,
+    ) -> JSONResponse:
+        if isinstance(error, SessionInvalid):
+            status_code, code, message = 401, "session_invalid", "登录状态无效或已失效"
+        elif isinstance(error, PermissionDenied):
+            status_code, code, message = 403, "permission_denied", "没有权限执行该操作"
+        elif isinstance(error, ResourceNotFound):
+            status_code, code, message = 404, "not_found", "资源不存在"
+        elif isinstance(error, ApplicationConflict):
+            status_code, code, message = 409, "conflict", "数据状态已变化，请刷新后重试"
+        elif isinstance(error, SmsRateLimited):
+            status_code, code, message = 429, "rate_limited", "操作过于频繁，请稍后重试"
+        elif isinstance(error, OAuthStateInvalid):
+            status_code, code, message = 422, "oauth_state_invalid", "登录状态校验失败"
+        elif isinstance(error, (VerificationInvalid, AvatarInvalid)):
+            status_code, code, message = 422, "validation_failed", "提交内容校验失败"
+        else:
+            status_code, code, message = 422, "identity_error", "身份操作失败"
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "code": code,
+                "message": message,
+                "requestId": request.state.request_id,
+            },
+        )
+
+    @app.exception_handler(ExternalAdapterUnavailable)
+    async def handle_external_adapter_error(
+        request: Request,
+        _error: ExternalAdapterUnavailable,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "code": "external_service_unavailable",
+                "message": "外部服务暂不可用",
+                "requestId": request.state.request_id,
             },
         )
 

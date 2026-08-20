@@ -25,6 +25,7 @@ Page({
       const user = await identityApi.getMe();
       updateStoredUser(user);
       this.setData({ user, avatarFallback: user.displayName.slice(0, 1) });
+      if (user.role === "factory") return;
       if (user.miniAvatarFileId) {
         this.setData({ avatarPath: await identityApi.downloadAvatar() });
       } else {
@@ -77,7 +78,7 @@ Page({
   logout() {
     wx.showModal({
       title: "退出登录",
-      content: "退出登录不会解除微信与管理员账号的绑定，确定退出吗？",
+      content: "退出后，下次进入仍会根据当前微信身份重新登录。确定退出吗？",
       confirmText: "确认退出",
       success: (result) => {
         if (!result.confirm) return;

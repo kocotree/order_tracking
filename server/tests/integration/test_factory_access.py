@@ -296,6 +296,12 @@ def test_factory_applicant_uses_verified_wechat_phone_and_relogs_after_approval(
             token=relogin.session.access_token,
             terminal="mini",
         )
+    disabled_login = identity.begin_wechat_login(
+        login_code="wx-factory-login", request_id="req-disabled-factory-relogin"
+    )
+    assert disabled_login.status == "disabled"
+    assert disabled_login.user is not None
+    assert disabled_login.user.role == "factory"
 
     reenabled = access.set_factory_user_enabled(
         actor_id=admin_id,

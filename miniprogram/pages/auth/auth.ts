@@ -1,5 +1,11 @@
 import { identityApi, wxLoginCode } from "../../api/identity";
-import { canRequestPhone, saveSession } from "../../modules/identity/session";
+import {
+  canRequestPhone,
+  loginDestination,
+  saveSession,
+  updateStoredUser,
+  type MiniLogin,
+} from "../../modules/identity/session";
 
 Page({
   data: {
@@ -17,16 +23,11 @@ Page({
     this.setData({ mode: "identifying", busy: true });
     try {
       const result = await identityApi.wechatLogin(await wxLoginCode());
-      if (result.status === "authenticated" && result.session && result.user) {
-        saveSession(result.session, result.user);
-        wx.reLaunch({ url: "/pages/profile/profile" });
-        return;
-      }
       if (result.status === "phone_required" && result.bindingToken) {
         this.setData({ mode: "bind", bindingToken: result.bindingToken, busy: false });
         return;
       }
-      this.openStatus(result.status, result.rejectionReason ?? "");
+      this.continueWith(result);
     } catch {
       this.setData({ mode: "bind", busy: false });
       wx.showToast({ title: "身份识别失败，请稍后重试", icon: "none" });
@@ -53,12 +54,7 @@ Page({
     this.setData({ busy: true });
     try {
       const result = await identityApi.bindPhone(this.data.bindingToken, event.detail.code);
-      if (result.status === "authenticated" && result.session && result.user) {
-        saveSession(result.session, result.user);
-        wx.reLaunch({ url: "/pages/profile/profile" });
-        return;
-      }
-      this.openStatus(result.status, result.rejectionReason ?? "");
+      this.continueWith(result);
     } catch {
       wx.showToast({ title: "手机号绑定失败，请稍后重试", icon: "none" });
       this.setData({ busy: false });
@@ -68,5 +64,25 @@ Page({
   openStatus(status: string, reason: string) {
     const query = `status=${encodeURIComponent(status)}&reason=${encodeURIComponent(reason)}`;
     wx.redirectTo({ url: `/pages/status/status?${query}` });
+  },
+
+  continueWith(result: MiniLogin) {
+    if (result.session && result.user) saveSession(result.session, result.user);
+    else if (result.user) updateStoredUser(result.user);
+    const destination = loginDestination(result);
+    if (destination === "profile") {
+      wx.reLaunch({ url: "/pages/profile/profile" });
+      return;
+    }
+    if (destination === "factory-apply") {
+      wx.redirectTo({ url: "/pages/factory-apply/factory-apply" });
+      return;
+    }
+    if (destination === "factory-status") {
+      const query = `status=${encodeURIComponent(result.status)}`;
+      wx.redirectTo({ url: `/pages/factory-status/factory-status?${query}` });
+      return;
+    }
+    this.openStatus(result.status, result.rejectionReason ?? "");
   },
 });

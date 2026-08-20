@@ -905,9 +905,11 @@ class IdentityAccessService:
             )
             if identity is not None:
                 user = session.get(User, identity.user_id)
-                if user is None or not user.is_enabled:
+                if user is None:
                     return MiniLoginResult(status="disabled")
                 snapshot = self._user_snapshot(user)
+                if not user.is_enabled:
+                    return MiniLoginResult(status="disabled", user=snapshot)
                 identity_id = identity.id
                 if user.role in {"admin", "factory"}:
                     status = "authenticated"

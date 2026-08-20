@@ -2,6 +2,8 @@
   "pages": [
     "pages/auth/auth",
     "pages/status/status",
+    "pages/factory-apply/factory-apply",
+    "pages/factory-status/factory-status",
     "pages/profile/profile"
   ],
   "window": {

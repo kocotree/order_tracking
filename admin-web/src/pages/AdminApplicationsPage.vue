@@ -2,9 +2,7 @@
   <AdminShell>
     <section class="content-card people-card">
       <header class="content-header"><h1>管理员申请</h1></header>
-      <div class="people-tabs" role="tablist">
-        <button class="people-tab is-active" type="button" role="tab" aria-selected="true">管理员申请</button>
-      </div>
+      <PeopleTabs />
       <div class="people-toolbar">
         <label for="application-status">申请状态</label>
         <select id="application-status" v-model="statusFilter" @change="load">
@@ -57,6 +55,7 @@ import { onMounted, ref } from "vue";
 
 import { ApiError, identityApi, type AdminApplication } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
+import PeopleTabs from "@/components/PeopleTabs.vue";
 
 const applications = ref<AdminApplication[]>([]);
 const statusFilter = ref("");

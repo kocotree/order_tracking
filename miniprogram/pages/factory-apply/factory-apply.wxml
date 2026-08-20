@@ -1,0 +1,32 @@
+<view class="factory-apply-page">
+  <view class="apply-intro">
+    <text>工厂身份申请</text>
+    <text>填写真实工作信息</text>
+    <text>提交后由管理员审核。</text>
+  </view>
+  <view class="apply-form">
+    <label class="apply-field"><text>真实姓名</text><input value="{{realName}}" maxlength="20" placeholder="请输入真实姓名" bindinput="nameChanged" /></label>
+    <view class="apply-field"><text>验证联系电话</text><text class="readonly-value">{{phoneMasked}}</text></view>
+    <view class="apply-field">
+      <text>职位</text>
+      <view class="position-options">
+        <button class="{{position === 'owner' ? 'is-selected' : ''}}" data-position="owner" bindtap="selectPosition">老板</button>
+        <button class="{{position === 'employee' ? 'is-selected' : ''}}" data-position="employee" bindtap="selectPosition">工厂员工</button>
+      </view>
+    </view>
+    <view class="apply-field">
+      <text>申请工厂</text>
+      <view class="factory-search"><input value="{{keyword}}" placeholder="搜索工厂" bindinput="keywordChanged" bindconfirm="searchFactories" /><button bindtap="searchFactories">搜索</button></view>
+      <picker range="{{factories}}" range-key="factoryName" bindchange="factoryChanged">
+        <view class="factory-picker">
+          <block wx:for="{{factories}}" wx:key="factoryId">
+            <text wx:if="{{item.factoryId === selectedFactoryId}}">{{item.supplierNumber}}　{{item.factoryName}}</text>
+          </block>
+          <text wx:if="{{!selectedFactoryId}}">请选择系统已有工厂</text>
+        </view>
+      </picker>
+      <text class="field-note">只能从系统已有且启用的工厂中单选</text>
+    </view>
+  </view>
+  <button class="submit-button" loading="{{busy}}" bindtap="submit">提交申请</button>
+</view>

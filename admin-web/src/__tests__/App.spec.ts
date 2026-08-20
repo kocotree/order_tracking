@@ -24,6 +24,9 @@ function user(overrides: Partial<User> = {}): User {
     miniAvatarExternalUrl: null,
     miniAvatarFileId: null,
     phoneMasked: "138****5122",
+    factoryId: null,
+    factoryName: null,
+    factoryPosition: null,
     version: 1,
     capabilities: ["business.read", "mini.use"],
     ...overrides,
@@ -85,7 +88,7 @@ describe("administrator identity web", () => {
     expect(new Headers(submitCall?.[1]?.headers).get("X-CSRF-Token")).toBe("csrf-test");
   });
 
-  it("shows only S01 people tabs and lets a super administrator approve", async () => {
+  it("keeps the super administrator application flow and shows all people entries", async () => {
     const superAdmin = user({ userId: "super-1", isSuperAdmin: true });
     let reviewed = false;
     const pending = { applicationId: "application-1", userId: "user-2", displayName: "小树", phoneMasked: "139****6677", status: "pending", rejectionReason: null, submittedAt: "2026-08-20T08:00:00", reviewedAt: null, reviewedBy: null, version: 1 };
@@ -109,7 +112,8 @@ describe("administrator identity web", () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain("管理员申请");
-    expect(wrapper.text()).not.toContain("工厂用户申请");
+    expect(wrapper.text()).toContain("工厂用户申请");
+    expect(wrapper.text()).toContain("用户列表");
     await wrapper.get(".people-row-actions .text-button").trigger("click");
     expect(wrapper.text()).toContain("将获得普通管理员角色");
     await wrapper.get(".modal").trigger("submit");
@@ -125,5 +129,98 @@ describe("administrator identity web", () => {
     await router.isReady();
 
     expect(router.currentRoute.value.name).toBe("home");
+  });
+
+  it("lets an ordinary administrator maintain the confirmed factory fields", async () => {
+    const factory = {
+      factoryId: "factory-1",
+      supplierNumber: "A10",
+      factoryName: "禹帆",
+      factoryCode: "YF",
+      legalName: "温岭市新河禹帆制帽厂",
+      address: "浙江省温岭市",
+      legalRepresentative: "徐陈杰",
+      isEnabled: true,
+      version: 1,
+      contractComplete: true,
+      missingContractFields: [],
+      contacts: [{ name: "王超", phone: "13858645122", displayOrder: 0, isPrimary: true }],
+      connectedUsers: 1,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/v1/me")) return response(user());
+      if (url.includes("/v1/admin/factories")) return response({ items: [factory], total: 1 });
+      throw new Error(`unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const pinia = createPinia();
+    const router = createAppRouter(pinia, "/factories");
+    await router.isReady();
+    const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("A10");
+    expect(wrapper.text()).toContain("禹帆");
+    expect(wrapper.text()).toContain("王超");
+    expect(wrapper.text()).not.toContain("委托代理人");
+    expect(wrapper.text()).not.toContain("开户银行");
+    expect(wrapper.text()).not.toContain("银行账号");
+    expect(wrapper.text()).not.toContain("来源别名");
+  });
+
+  it("reviews a factory application from its detail dialog and confirms the binding factory", async () => {
+    let approvedBody = "";
+    const application = {
+      applicationId: "application-factory-1",
+      userId: "factory-user-1",
+      realName: "张师傅",
+      phoneMasked: "137****5678",
+      position: "owner",
+      requestedFactoryId: "factory-1",
+      requestedFactoryName: "禹帆",
+      boundFactoryId: null,
+      boundFactoryName: null,
+      status: "pending",
+      submittedAt: "2026-08-20T08:00:00",
+      reviewedBy: null,
+      reviewedAt: null,
+      rejectionReason: null,
+      version: 1,
+      factoryContacts: [{ name: "王超", phone: "13858645122", displayOrder: 0, isPrimary: true }],
+    };
+    const factory = {
+      factoryId: "factory-1", supplierNumber: "A10", factoryName: "禹帆", factoryCode: "YF",
+      legalName: "温岭市新河禹帆制帽厂", address: "浙江省温岭市", legalRepresentative: "徐陈杰",
+      isEnabled: true, version: 1, contractComplete: true, missingContractFields: [],
+      contacts: application.factoryContacts, connectedUsers: 0,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/v1/me")) return response(user());
+      if (url.endsWith("/v1/admin/factory-applications")) return response({ items: [application], total: 1 });
+      if (url.includes("/v1/admin/factories")) return response({ items: [factory], total: 1 });
+      if (url.endsWith("/approve") && init?.method === "POST") {
+        approvedBody = String(init.body);
+        return response({ ...application, status: "approved", boundFactoryId: "factory-1", boundFactoryName: "禹帆", version: 2 });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const pinia = createPinia();
+    const router = createAppRouter(pinia, "/people/factory-applications");
+    await router.isReady();
+    const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+    await flushPromises();
+
+    await wrapper.get(".people-table .text-button").trigger("click");
+    expect(wrapper.text()).toContain("137****5678");
+    expect(wrapper.text()).toContain("王超");
+    await wrapper.get(".application-detail .primary-button").trigger("click");
+    await flushPromises();
+    await wrapper.get(".application-detail .primary-button").trigger("click");
+    await flushPromises();
+
+    expect(JSON.parse(approvedBody)).toEqual({ version: 1, factoryId: "factory-1" });
   });
 });

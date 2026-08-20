@@ -10,6 +10,9 @@ import AdminApplicationsPage from "@/pages/AdminApplicationsPage.vue";
 import AdminApplyPage from "@/pages/AdminApplyPage.vue";
 import AdminUsersPage from "@/pages/AdminUsersPage.vue";
 import AccessStatusPage from "@/pages/AccessStatusPage.vue";
+import FactoriesPage from "@/pages/FactoriesPage.vue";
+import FactoryApplicationsPage from "@/pages/FactoryApplicationsPage.vue";
+import FactoryUsersPage from "@/pages/FactoryUsersPage.vue";
 import HomePage from "@/pages/HomePage.vue";
 import LoginPage from "@/pages/LoginPage.vue";
 import NotFoundPage from "@/pages/NotFoundPage.vue";
@@ -21,6 +24,7 @@ export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
     routes: [
       { path: "/login", name: "login", component: LoginPage, meta: { public: true } },
       { path: "/", name: "home", component: HomePage, meta: { activeAdmin: true } },
+      { path: "/factories", name: "factories", component: FactoriesPage },
       { path: "/admin-apply", name: "admin-apply", component: AdminApplyPage },
       {
         path: "/access-status/:status(pending|rejected|disabled)",
@@ -38,6 +42,16 @@ export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
         name: "admin-users",
         component: AdminUsersPage,
         meta: { superAdmin: true },
+      },
+      {
+        path: "/people/factory-applications",
+        name: "factory-applications",
+        component: FactoryApplicationsPage,
+      },
+      {
+        path: "/people/users",
+        name: "people-users",
+        component: FactoryUsersPage,
       },
       { path: "/:pathMatch(.*)*", name: "not-found", component: NotFoundPage },
     ],

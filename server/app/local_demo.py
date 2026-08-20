@@ -80,7 +80,7 @@ def create_local_demo_router() -> APIRouter:
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
-    <title>S01 本地身份演示</title>
+    <title>本地身份演示</title>
     <style>
       body {{ margin: 0; background: #f5f7fa; color: #1f2937; font: 16px/1.6 sans-serif; }}
       main {{ width: min(520px, calc(100% - 40px)); margin: 12vh auto; padding: 32px;
@@ -96,7 +96,7 @@ def create_local_demo_router() -> APIRouter:
   </head>
   <body>
     <main>
-      <h1>S01 身份选择</h1>
+      <h1>本地身份选择</h1>
       <p class="notice">仅限本机演示，不会连接真实飞书、短信或微信。</p>
       <div class="actions">
         <a href="/api/v1/local-demo/feishu-authorize?{escape(applicant_query)}">申请人登录</a>

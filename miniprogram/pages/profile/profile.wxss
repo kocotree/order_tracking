@@ -8,6 +8,10 @@
 .profile-identity { display: flex; flex-direction: column; gap: 12rpx; }
 .profile-identity text:first-child { color: #20242b; font-size: 38rpx; font-weight: 750; }
 .profile-identity text:last-child { color: #087fd1; font-size: 25rpx; font-weight: 700; }
+.factory-profile-heading { display: flex; flex-direction: column; gap: 12rpx; padding: 42rpx 32rpx; background: linear-gradient(135deg,#fff,#eef8ff); border: 1rpx solid #e5e8ed; border-radius: 18rpx; box-shadow: 0 12rpx 34rpx rgba(43,56,75,.06); }
+.factory-profile-heading text:first-child { color: #20242b; font-size: 40rpx; font-weight: 750; }
+.factory-profile-heading text:last-child { color: #087fd1; font-size: 25rpx; font-weight: 700; }
+.factory-profile-card { margin-top: 28rpx; }
 .profile-card { margin-top: 28rpx; overflow: hidden; }
 .profile-card__header { padding: 25rpx 28rpx; color: #20242b; font-size: 28rpx; font-weight: 750; border-bottom: 1rpx solid #e5e8ed; }
 .profile-account-row { display: flex; align-items: center; justify-content: space-between; min-height: 90rpx; padding: 0 28rpx; font-size: 27rpx; border-bottom: 1rpx solid #e5e8ed; }

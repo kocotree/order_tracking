@@ -28,7 +28,7 @@ async function refresh(): Promise<void> {
   replaceSession(session);
 }
 
-async function authorizedRequest<T extends WechatMiniprogram.IAnyObject>(
+export async function authorizedRequest<T extends WechatMiniprogram.IAnyObject>(
   options: WechatMiniprogram.RequestOption<T>,
 ): Promise<T> {
   try {

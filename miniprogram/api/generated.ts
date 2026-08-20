@@ -106,6 +106,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/factories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Factories */
+        get: operations["list_factories_api_v1_admin_factories_get"];
+        put?: never;
+        /** Create Factory */
+        post: operations["create_factory_api_v1_admin_factories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/factories/{factory_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Factory */
+        get: operations["get_factory_api_v1_admin_factories__factory_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Factory */
+        patch: operations["update_factory_api_v1_admin_factories__factory_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/factory-applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Factory Applications */
+        get: operations["list_factory_applications_api_v1_admin_factory_applications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/factory-applications/{application_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Factory Application */
+        get: operations["get_factory_application_api_v1_admin_factory_applications__application_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/factory-applications/{application_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Factory Application */
+        post: operations["approve_factory_application_api_v1_admin_factory_applications__application_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/factory-applications/{application_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Factory Application */
+        post: operations["reject_factory_application_api_v1_admin_factory_applications__application_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -202,6 +306,57 @@ export interface paths {
         put?: never;
         /** Web Logout */
         post: operations["web_logout_api_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Factory Options */
+        get: operations["list_factory_options_api_v1_factories_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory-applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Factory Application */
+        post: operations["submit_factory_application_api_v1_factory_applications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory-applications/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Factory Application */
+        get: operations["my_factory_application_api_v1_factory_applications_me_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -413,6 +568,13 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** ApproveFactoryApplication */
+        ApproveFactoryApplication: {
+            /** Factoryid */
+            factoryId: string;
+            /** Version */
+            version: number;
+        };
         /** AvatarResponse */
         AvatarResponse: {
             /** Fileid */
@@ -426,6 +588,188 @@ export interface components {
         Body_replace_mini_avatar_api_v1_mini_me_avatar_post: {
             /** Avatar */
             avatar: string;
+        };
+        /** ContactResponse */
+        ContactResponse: {
+            /** Displayorder */
+            displayOrder: number;
+            /** Isprimary */
+            isPrimary: boolean;
+            /** Name */
+            name: string;
+            /** Phone */
+            phone: string;
+        };
+        /** ContactWrite */
+        ContactWrite: {
+            /** Name */
+            name: string;
+            /** Phone */
+            phone: string;
+        };
+        /** FactoryApplicationCreate */
+        FactoryApplicationCreate: {
+            /** Factoryid */
+            factoryId: string;
+            /** Position */
+            position: string;
+            /** Realname */
+            realName: string;
+        };
+        /** FactoryApplicationListResponse */
+        FactoryApplicationListResponse: {
+            /** Items */
+            items: components["schemas"]["FactoryApplicationResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** FactoryApplicationResponse */
+        FactoryApplicationResponse: {
+            /** Applicationid */
+            applicationId: string;
+            /** Boundfactoryid */
+            boundFactoryId: string | null;
+            /** Boundfactoryname */
+            boundFactoryName: string | null;
+            /** Factorycontacts */
+            factoryContacts: components["schemas"]["ContactResponse"][];
+            /** Phonemasked */
+            phoneMasked: string;
+            /** Position */
+            position: string;
+            /** Realname */
+            realName: string;
+            /** Rejectionreason */
+            rejectionReason: string | null;
+            /** Requestedfactoryid */
+            requestedFactoryId: string;
+            /** Requestedfactoryname */
+            requestedFactoryName: string;
+            /** Reviewedat */
+            reviewedAt: string | null;
+            /** Reviewedby */
+            reviewedBy: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Submittedat
+             * Format: date-time
+             */
+            submittedAt: string;
+            /** Userid */
+            userId: string;
+            /** Version */
+            version: number;
+        };
+        /** FactoryListResponse */
+        FactoryListResponse: {
+            /** Items */
+            items: components["schemas"]["FactoryResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** FactoryOptionListResponse */
+        FactoryOptionListResponse: {
+            /** Items */
+            items: components["schemas"]["FactoryOptionResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** FactoryOptionResponse */
+        FactoryOptionResponse: {
+            /** Factoryid */
+            factoryId: string;
+            /** Factoryname */
+            factoryName: string;
+            /** Suppliernumber */
+            supplierNumber: string;
+        };
+        /** FactoryResponse */
+        FactoryResponse: {
+            /** Address */
+            address: string | null;
+            /** Connectedusers */
+            connectedUsers: number;
+            /** Contacts */
+            contacts: components["schemas"]["ContactResponse"][];
+            /** Contractcomplete */
+            contractComplete: boolean;
+            /** Factorycode */
+            factoryCode: string;
+            /** Factoryid */
+            factoryId: string;
+            /** Factoryname */
+            factoryName: string;
+            /** Isenabled */
+            isEnabled: boolean;
+            /** Legalname */
+            legalName: string | null;
+            /** Legalrepresentative */
+            legalRepresentative: string | null;
+            /** Missingcontractfields */
+            missingContractFields: string[];
+            /** Suppliernumber */
+            supplierNumber: string;
+            /** Version */
+            version: number;
+        };
+        /** FactoryUpdate */
+        FactoryUpdate: {
+            /**
+             * Address
+             * @default
+             */
+            address: string;
+            /**
+             * Contacts
+             * @default []
+             */
+            contacts: components["schemas"]["ContactWrite"][];
+            /** Factorycode */
+            factoryCode: string;
+            /** Factoryname */
+            factoryName: string;
+            /**
+             * Legalname
+             * @default
+             */
+            legalName: string;
+            /**
+             * Legalrepresentative
+             * @default
+             */
+            legalRepresentative: string;
+            /** Version */
+            version: number;
+        };
+        /** FactoryWrite */
+        FactoryWrite: {
+            /**
+             * Address
+             * @default
+             */
+            address: string;
+            /**
+             * Contacts
+             * @default []
+             */
+            contacts: components["schemas"]["ContactWrite"][];
+            /** Factorycode */
+            factoryCode: string;
+            /** Factoryname */
+            factoryName: string;
+            /**
+             * Legalname
+             * @default
+             */
+            legalName: string;
+            /**
+             * Legalrepresentative
+             * @default
+             */
+            legalRepresentative: string;
+            /** Suppliernumber */
+            supplierNumber: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -447,6 +791,13 @@ export interface components {
         MiniRefreshRequest: {
             /** Refreshtoken */
             refreshToken: string;
+        };
+        /** RejectFactoryApplication */
+        RejectFactoryApplication: {
+            /** Reason */
+            reason: string;
+            /** Version */
+            version: number;
         };
         /** RejectRequest */
         RejectRequest: {
@@ -495,6 +846,12 @@ export interface components {
             capabilities: string[];
             /** Displayname */
             displayName: string;
+            /** Factoryid */
+            factoryId: string | null;
+            /** Factoryname */
+            factoryName: string | null;
+            /** Factoryposition */
+            factoryPosition: string | null;
             /** Feishuavatarurl */
             feishuAvatarUrl: string | null;
             /** Isenabled */
@@ -765,6 +1122,294 @@ export interface operations {
             };
         };
     };
+    list_factories_api_v1_admin_factories_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                contractStatus?: string;
+                accessStatus?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_factory_api_v1_admin_factories_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactoryWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_factory_api_v1_admin_factories__factory_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                factory_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_factory_api_v1_admin_factories__factory_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                factory_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_factory_applications_api_v1_admin_factory_applications_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryApplicationListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_factory_application_api_v1_admin_factory_applications__application_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_factory_application_api_v1_admin_factory_applications__application_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveFactoryApplication"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_factory_application_api_v1_admin_factory_applications__application_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                application_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectFactoryApplication"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_admin_users_api_v1_admin_users_get: {
         parameters: {
             query?: {
@@ -958,6 +1603,105 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_factory_options_api_v1_factories_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryOptionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_factory_application_api_v1_factory_applications_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactoryApplicationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_factory_application_api_v1_factory_applications_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryApplicationResponse"] | null;
+                };
             };
             /** @description Validation Error */
             422: {

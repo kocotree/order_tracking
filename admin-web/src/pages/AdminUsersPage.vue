@@ -2,6 +2,7 @@
   <AdminShell>
     <section class="content-card people-card">
       <header class="content-header"><h1>管理员账号</h1></header>
+      <PeopleTabs />
       <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
       <div class="people-table-scroll">
         <table class="people-table">
@@ -34,6 +35,7 @@ import { onMounted, ref } from "vue";
 
 import { ApiError, identityApi, type User } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
+import PeopleTabs from "@/components/PeopleTabs.vue";
 
 const users = ref<User[]>([]);
 const target = ref<User | null>(null);

@@ -143,6 +143,12 @@ def test_factory_api_creates_reviews_and_disables_factory_user(
         relogin = mini_client.post("/api/v1/mini/auth/wechat", json={"code": "wx-login"})
         assert relogin.json()["status"] == "authenticated"
         assert relogin.json()["user"]["factoryId"] == factory_id
+        current = mini_client.get(
+            "/api/v1/me",
+            headers={"Authorization": f"Bearer {relogin.json()['session']['accessToken']}"},
+        )
+        assert current.status_code == 200
+        assert current.json()["factoryName"] == "禹帆"
         factory_user_id = relogin.json()["user"]["userId"]
         factory_user_version = relogin.json()["user"]["version"]
 

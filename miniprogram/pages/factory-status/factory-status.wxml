@@ -1,0 +1,21 @@
+<view class="factory-status-page status-{{status}}">
+  <view class="state-card">
+    <view class="state-mark">{{status === 'disabled' ? '×' : status === 'rejected' ? '!' : '审'}}</view>
+    <text class="state-kicker">{{status === 'disabled' ? '账号权限' : '工厂身份申请'}}</text>
+    <text class="state-title">{{status === 'disabled' ? '当前账号暂不可使用' : status === 'rejected' ? '申请未通过' : '申请审核中'}}</text>
+    <text class="state-description">{{status === 'disabled' ? '账号已停用或没有访问权限，请联系管理员处理。' : status === 'rejected' ? '请根据拒绝原因修改资料后重新提交。' : '管理员审核通过后，请重新登录查看身份信息。'}}</text>
+    <view wx:if="{{status === 'disabled' && factoryName}}" class="disabled-factory"><text>所属工厂</text><text>{{factoryName}}</text></view>
+    <view wx:if="{{application}}" class="application-facts">
+      <view><text>真实姓名</text><text>{{application.realName}}</text></view>
+      <view><text>联系电话</text><text>{{application.phoneMasked}}</text></view>
+      <view><text>职位</text><text>{{application.position === 'owner' ? '老板' : '工厂员工'}}</text></view>
+      <view><text>申请工厂</text><text>{{application.requestedFactoryName}}</text></view>
+      <view><text>提交时间</text><text>{{application.submittedAt}}</text></view>
+      <view wx:if="{{application.rejectionReason}}" class="reject-row"><text>拒绝原因</text><text>{{application.rejectionReason}}</text></view>
+      <view wx:if="{{application.reviewedAt}}"><text>审核时间</text><text>{{application.reviewedAt}}</text></view>
+    </view>
+  </view>
+  <button wx:if="{{status === 'pending'}}" class="primary-action" loading="{{loading}}" bindtap="refresh">刷新审核结果</button>
+  <button wx:if="{{status === 'rejected'}}" class="primary-action" bindtap="reapply">修改并重新提交</button>
+  <button class="logout-action" bindtap="logout">退出登录</button>
+</view>

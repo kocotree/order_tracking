@@ -290,7 +290,14 @@ def create_identity_router(
             if ot_web_session is not None
             else mini_user(authorization)
         )
-        return _user_response(user)
+        response = _user_response(user)
+        if user.role == "factory" and user.factory_id is not None and factory_service:
+            factory = factory_service.get_own_factory(
+                user_id=user.user_id,
+                factory_id=user.factory_id,
+            )
+            return response.model_copy(update={"factory_name": factory.factory_name})
+        return response
 
     @router.post("/auth/logout", status_code=204, tags=["identity"])
     def web_logout(

@@ -5,6 +5,7 @@ import {
   canRequestPhone,
   clearSession,
   isIdentityStatus,
+  loginDestination,
   refreshToken,
   saveSession,
   storedUser,
@@ -38,6 +39,30 @@ describe("mini-program identity session", () => {
     expect(isIdentityStatus("factory-application")).toBe(false);
   });
 
+  it("routes restricted factory identities through application states in the same mini program", () => {
+    const factoryApplicant = {
+      userId: "factory-applicant-1",
+      role: null,
+      isSuperAdmin: false,
+      isEnabled: true,
+      displayName: "微信用户",
+      feishuAvatarUrl: null,
+      miniAvatarExternalUrl: null,
+      miniAvatarFileId: null,
+      phoneMasked: "137****5678",
+      factoryId: null,
+      factoryName: null,
+      factoryPosition: null,
+      version: 1,
+      capabilities: [],
+    } satisfies User;
+    expect(loginDestination({ status: "factory_application_required", user: factoryApplicant, session: null, bindingToken: null, rejectionReason: null })).toBe("factory-apply");
+    expect(loginDestination({ status: "pending", user: factoryApplicant, session: null, bindingToken: null, rejectionReason: null })).toBe("factory-status");
+    expect(loginDestination({ status: "rejected", user: factoryApplicant, session: null, bindingToken: null, rejectionReason: "资料不符" })).toBe("factory-status");
+    expect(loginDestination({ status: "disabled", user: { ...factoryApplicant, role: "factory", factoryId: "factory-1", factoryName: null, factoryPosition: "employee", isEnabled: false }, session: null, bindingToken: null, rejectionReason: null })).toBe("factory-status");
+    expect(loginDestination({ status: "authenticated", user: { ...factoryApplicant, role: "factory", factoryId: "factory-1", factoryName: "禹帆", factoryPosition: "employee" }, session: null, bindingToken: null, rejectionReason: null })).toBe("profile");
+  });
+
   it("does not allow phone authorization before both agreement and binding token", () => {
     expect(canRequestPhone(false, "binding-token")).toBe(false);
     expect(canRequestPhone(true, "")).toBe(false);
@@ -55,6 +80,9 @@ describe("mini-program identity session", () => {
       miniAvatarExternalUrl: null,
       miniAvatarFileId: null,
       phoneMasked: "138****5122",
+      factoryId: null,
+      factoryName: null,
+      factoryPosition: null,
       version: 1,
       capabilities: ["mini.use"],
     };

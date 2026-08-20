@@ -142,6 +142,24 @@
         "title": "AdminUserListResponse",
         "type": "object"
       },
+      "ApproveFactoryApplication": {
+        "properties": {
+          "factoryId": {
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "factoryId"
+        ],
+        "title": "ApproveFactoryApplication",
+        "type": "object"
+      },
       "AvatarResponse": {
         "properties": {
           "fileId": {
@@ -177,6 +195,481 @@
           "avatar"
         ],
         "title": "Body_replace_mini_avatar_api_v1_mini_me_avatar_post",
+        "type": "object"
+      },
+      "ContactResponse": {
+        "properties": {
+          "displayOrder": {
+            "title": "Displayorder",
+            "type": "integer"
+          },
+          "isPrimary": {
+            "title": "Isprimary",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "phone",
+          "displayOrder",
+          "isPrimary"
+        ],
+        "title": "ContactResponse",
+        "type": "object"
+      },
+      "ContactWrite": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "phone"
+        ],
+        "title": "ContactWrite",
+        "type": "object"
+      },
+      "FactoryApplicationCreate": {
+        "properties": {
+          "factoryId": {
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "realName": {
+            "title": "Realname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "realName",
+          "position",
+          "factoryId"
+        ],
+        "title": "FactoryApplicationCreate",
+        "type": "object"
+      },
+      "FactoryApplicationListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FactoryApplicationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "FactoryApplicationListResponse",
+        "type": "object"
+      },
+      "FactoryApplicationResponse": {
+        "properties": {
+          "applicationId": {
+            "title": "Applicationid",
+            "type": "string"
+          },
+          "boundFactoryId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Boundfactoryid"
+          },
+          "boundFactoryName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Boundfactoryname"
+          },
+          "factoryContacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactResponse"
+            },
+            "title": "Factorycontacts",
+            "type": "array"
+          },
+          "phoneMasked": {
+            "title": "Phonemasked",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "string"
+          },
+          "realName": {
+            "title": "Realname",
+            "type": "string"
+          },
+          "rejectionReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejectionreason"
+          },
+          "requestedFactoryId": {
+            "title": "Requestedfactoryid",
+            "type": "string"
+          },
+          "requestedFactoryName": {
+            "title": "Requestedfactoryname",
+            "type": "string"
+          },
+          "reviewedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewedat"
+          },
+          "reviewedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewedby"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "title": "Submittedat",
+            "type": "string"
+          },
+          "userId": {
+            "title": "Userid",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "applicationId",
+          "userId",
+          "realName",
+          "phoneMasked",
+          "position",
+          "requestedFactoryId",
+          "requestedFactoryName",
+          "boundFactoryId",
+          "boundFactoryName",
+          "status",
+          "submittedAt",
+          "reviewedBy",
+          "reviewedAt",
+          "rejectionReason",
+          "version",
+          "factoryContacts"
+        ],
+        "title": "FactoryApplicationResponse",
+        "type": "object"
+      },
+      "FactoryListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FactoryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "FactoryListResponse",
+        "type": "object"
+      },
+      "FactoryOptionListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FactoryOptionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "FactoryOptionListResponse",
+        "type": "object"
+      },
+      "FactoryOptionResponse": {
+        "properties": {
+          "factoryId": {
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          },
+          "supplierNumber": {
+            "title": "Suppliernumber",
+            "type": "string"
+          }
+        },
+        "required": [
+          "factoryId",
+          "supplierNumber",
+          "factoryName"
+        ],
+        "title": "FactoryOptionResponse",
+        "type": "object"
+      },
+      "FactoryResponse": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "connectedUsers": {
+            "title": "Connectedusers",
+            "type": "integer"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactResponse"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
+          "contractComplete": {
+            "title": "Contractcomplete",
+            "type": "boolean"
+          },
+          "factoryCode": {
+            "title": "Factorycode",
+            "type": "string"
+          },
+          "factoryId": {
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          },
+          "isEnabled": {
+            "title": "Isenabled",
+            "type": "boolean"
+          },
+          "legalName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legalname"
+          },
+          "legalRepresentative": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legalrepresentative"
+          },
+          "missingContractFields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missingcontractfields",
+            "type": "array"
+          },
+          "supplierNumber": {
+            "title": "Suppliernumber",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "factoryId",
+          "supplierNumber",
+          "factoryName",
+          "factoryCode",
+          "legalName",
+          "address",
+          "legalRepresentative",
+          "isEnabled",
+          "version",
+          "contractComplete",
+          "missingContractFields",
+          "contacts",
+          "connectedUsers"
+        ],
+        "title": "FactoryResponse",
+        "type": "object"
+      },
+      "FactoryUpdate": {
+        "properties": {
+          "address": {
+            "default": "",
+            "title": "Address",
+            "type": "string"
+          },
+          "contacts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContactWrite"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
+          "factoryCode": {
+            "title": "Factorycode",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          },
+          "legalName": {
+            "default": "",
+            "title": "Legalname",
+            "type": "string"
+          },
+          "legalRepresentative": {
+            "default": "",
+            "title": "Legalrepresentative",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "factoryName",
+          "factoryCode"
+        ],
+        "title": "FactoryUpdate",
+        "type": "object"
+      },
+      "FactoryWrite": {
+        "properties": {
+          "address": {
+            "default": "",
+            "title": "Address",
+            "type": "string"
+          },
+          "contacts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContactWrite"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
+          "factoryCode": {
+            "title": "Factorycode",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          },
+          "legalName": {
+            "default": "",
+            "title": "Legalname",
+            "type": "string"
+          },
+          "legalRepresentative": {
+            "default": "",
+            "title": "Legalrepresentative",
+            "type": "string"
+          },
+          "supplierNumber": {
+            "title": "Suppliernumber",
+            "type": "string"
+          }
+        },
+        "required": [
+          "supplierNumber",
+          "factoryName",
+          "factoryCode"
+        ],
+        "title": "FactoryWrite",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -262,6 +755,24 @@
           "refreshToken"
         ],
         "title": "MiniRefreshRequest",
+        "type": "object"
+      },
+      "RejectFactoryApplication": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "RejectFactoryApplication",
         "type": "object"
       },
       "RejectRequest": {
@@ -376,6 +887,39 @@
             "title": "Displayname",
             "type": "string"
           },
+          "factoryId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factoryid"
+          },
+          "factoryName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factoryname"
+          },
+          "factoryPosition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factoryposition"
+          },
           "feishuAvatarUrl": {
             "anyOf": [
               {
@@ -458,6 +1002,9 @@
           "miniAvatarExternalUrl",
           "miniAvatarFileId",
           "phoneMasked",
+          "factoryId",
+          "factoryPosition",
+          "factoryName",
           "version",
           "capabilities"
         ],
@@ -979,6 +1526,589 @@
         ]
       }
     },
+    "/api/v1/admin/factories": {
+      "get": {
+        "operationId": "list_factories_api_v1_admin_factories_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Keyword",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "contractStatus",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Contractstatus",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "accessStatus",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Accessstatus",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Factories",
+        "tags": [
+          "factory-admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_factory_api_v1_admin_factories_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactoryWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Factory",
+        "tags": [
+          "factory-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/factories/{factory_id}": {
+      "get": {
+        "operationId": "get_factory_api_v1_admin_factories__factory_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "factory_id",
+            "required": true,
+            "schema": {
+              "title": "Factory Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Factory",
+        "tags": [
+          "factory-admin"
+        ]
+      },
+      "patch": {
+        "operationId": "update_factory_api_v1_admin_factories__factory_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "factory_id",
+            "required": true,
+            "schema": {
+              "title": "Factory Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactoryUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Factory",
+        "tags": [
+          "factory-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/factory-applications": {
+      "get": {
+        "operationId": "list_factory_applications_api_v1_admin_factory_applications_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryApplicationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Factory Applications",
+        "tags": [
+          "factory-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/factory-applications/{application_id}": {
+      "get": {
+        "operationId": "get_factory_application_api_v1_admin_factory_applications__application_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "title": "Application Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Factory Application",
+        "tags": [
+          "factory-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/factory-applications/{application_id}/approve": {
+      "post": {
+        "operationId": "approve_factory_application_api_v1_admin_factory_applications__application_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "title": "Application Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveFactoryApplication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Factory Application",
+        "tags": [
+          "factory-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/factory-applications/{application_id}/reject": {
+      "post": {
+        "operationId": "reject_factory_application_api_v1_admin_factory_applications__application_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "title": "Application Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectFactoryApplication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Factory Application",
+        "tags": [
+          "factory-admin"
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "operationId": "list_admin_users_api_v1_admin_users_get",
@@ -1351,6 +2481,181 @@
         "summary": "Web Logout",
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/api/v1/factories": {
+      "get": {
+        "operationId": "list_factory_options_api_v1_factories_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Keyword",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryOptionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Factory Options",
+        "tags": [
+          "factory-mini"
+        ]
+      }
+    },
+    "/api/v1/factory-applications": {
+      "post": {
+        "operationId": "submit_factory_application_api_v1_factory_applications_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactoryApplicationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Factory Application",
+        "tags": [
+          "factory-mini"
+        ]
+      }
+    },
+    "/api/v1/factory-applications/me": {
+      "get": {
+        "operationId": "my_factory_application_api_v1_factory_applications_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/FactoryApplicationResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response My Factory Application Api V1 Factory Applications Me Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My Factory Application",
+        "tags": [
+          "factory-mini"
         ]
       }
     },

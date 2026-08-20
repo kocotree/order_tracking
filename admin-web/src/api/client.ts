@@ -7,6 +7,11 @@ export const apiBaseUrl = configuredBaseUrl || "/api";
 export type AdminApplication = components["schemas"]["AdminApplicationResponse"];
 export type AdminApplicationList = components["schemas"]["AdminApplicationListResponse"];
 export type AdminUserList = components["schemas"]["AdminUserListResponse"];
+export type Factory = components["schemas"]["FactoryResponse"];
+export type FactoryApplication = components["schemas"]["FactoryApplicationResponse"];
+export type FactoryApplicationList = components["schemas"]["FactoryApplicationListResponse"];
+export type FactoryList = components["schemas"]["FactoryListResponse"];
+export type FactoryWrite = components["schemas"]["FactoryWrite"];
 export type SmsChallenge = components["schemas"]["SmsChallengeResponse"];
 export type User = components["schemas"]["UserResponse"];
 
@@ -97,6 +102,40 @@ export const identityApi = {
     ),
   listAdminUsers: () => request<AdminUserList>("/v1/admin/users?role=admin"),
   setAdminEnabled: (userId: string, version: number, enabled: boolean) =>
+    request<User>(
+      `/v1/admin/users/${encodeURIComponent(userId)}/${enabled ? "enable" : "disable"}`,
+      { method: "POST", body: JSON.stringify({ version }) },
+    ),
+  listFactories: (keyword = "", contractStatus = "all", accessStatus = "all") =>
+    request<FactoryList>(
+      `/v1/admin/factories?keyword=${encodeURIComponent(keyword)}&contractStatus=${encodeURIComponent(contractStatus)}&accessStatus=${encodeURIComponent(accessStatus)}`,
+    ),
+  createFactory: (payload: FactoryWrite) =>
+    request<Factory>("/v1/admin/factories", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateFactory: (factoryId: string, payload: Omit<FactoryWrite, "supplierNumber"> & { version: number }) =>
+    request<Factory>(`/v1/admin/factories/${encodeURIComponent(factoryId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  listFactoryApplications: (status?: string) =>
+    request<FactoryApplicationList>(
+      `/v1/admin/factory-applications${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+    ),
+  approveFactoryApplication: (applicationId: string, version: number, factoryId: string) =>
+    request<FactoryApplication>(
+      `/v1/admin/factory-applications/${encodeURIComponent(applicationId)}/approve`,
+      { method: "POST", body: JSON.stringify({ version, factoryId }) },
+    ),
+  rejectFactoryApplication: (applicationId: string, version: number, reason: string) =>
+    request<FactoryApplication>(
+      `/v1/admin/factory-applications/${encodeURIComponent(applicationId)}/reject`,
+      { method: "POST", body: JSON.stringify({ version, reason }) },
+    ),
+  listFactoryUsers: () => request<AdminUserList>("/v1/admin/users?role=factory"),
+  setFactoryUserEnabled: (userId: string, version: number, enabled: boolean) =>
     request<User>(
       `/v1/admin/users/${encodeURIComponent(userId)}/${enabled ? "enable" : "disable"}`,
       { method: "POST", body: JSON.stringify({ version }) },

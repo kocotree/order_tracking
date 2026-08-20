@@ -374,6 +374,21 @@
   flex: 2.4 1 310px;
 }
 
+.pending-import-fetch-meta {
+  color: var(--subtle);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pending-import-fetch-meta strong {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.pending-import-fetch-button {
+  min-width: 142px;
+}
+
 .pending-import-filter-row .order-select-field,
 .pending-import-filter-row .order-multiselect {
   flex: 1 1 128px;

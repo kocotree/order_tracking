@@ -59,13 +59,13 @@ function productSortValue(product, key) {
 function renderConfirmDialog(order) {
   return `
     <div class="detail-confirm-layer" hidden data-import-confirm-layer>
-      <button class="detail-confirm-backdrop" type="button" aria-label="取消确认导入" data-import-confirm-cancel></button>
+      <button class="detail-confirm-backdrop" type="button" aria-label="取消确认导入为草稿" data-import-confirm-cancel></button>
       <section class="detail-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="import-confirm-title" aria-describedby="import-confirm-description">
-        <h2 id="import-confirm-title">确认导入订单</h2>
-        <p id="import-confirm-description">确认将订单 <strong>${escapeHTML(order.orderNo)}</strong> 导入跟单系统？导入后将在订单列表中生成正式草稿订单。</p>
+        <h2 id="import-confirm-title">确认导入为草稿</h2>
+        <p id="import-confirm-description">确认将候选订单 <strong>${escapeHTML(order.orderNo)}</strong> 导入跟单系统？确认后将在订单列表中生成草稿订单，发布前工厂不可见。</p>
         <div class="detail-confirm-actions">
           <button class="detail-outline-button" type="button" data-import-confirm-cancel>取消</button>
-          <button class="detail-primary-button" type="button" data-import-confirm-submit>确认导入</button>
+          <button class="detail-primary-button" type="button" data-import-confirm-submit>确认导入为草稿</button>
         </div>
       </section>
     </div>
@@ -84,7 +84,7 @@ export function renderPendingImportDetailPage(orderNo) {
           <button class="detail-back-button" type="button" data-import-back>${backIcon}<span>返回</span></button>
           <div class="detail-title-row pending-import-detail-actions">
             <span class="status-badge is-${isImported ? "success" : escapeHTML(order.tone)}">${isImported ? "已导入" : escapeHTML(order.validationLabel)}</span>
-            ${isImported ? "" : `<button class="detail-primary-button" type="button" data-import-confirm-open ${canImport ? "" : "disabled"} title="${canImport ? "确认导入当前订单" : "请先处理全部待处理资料"}">确认导入</button>`}
+            ${isImported ? "" : `<button class="detail-primary-button" type="button" data-import-confirm-open ${canImport ? "" : "disabled"} title="${canImport ? "确认导入当前候选为草稿" : "请先处理全部待处理资料"}">确认导入为草稿</button>`}
           </div>
         </header>
 
@@ -142,7 +142,7 @@ export function bindPendingImportDetailPage(orderNo) {
     document.body.classList.remove("has-dialog-open");
     window.location.hash = "/pending-imports";
     window.setTimeout(() => {
-      showToast("订单导入成功", `${orderNo} 已生成正式草稿订单。`);
+      showToast("确认导入为草稿成功", `${orderNo} 已生成草稿订单。`);
     }, 50);
   });
   page?.addEventListener("click", (event) => {

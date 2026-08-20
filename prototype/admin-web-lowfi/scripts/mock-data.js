@@ -256,6 +256,8 @@ export const orderListData = {
 };
 
 export const pendingImportData = {
+  lastSuccessfulFetchAt: "2026-08-20 09:30",
+  fetchLogs: [],
   orders: [
     { orderNo: "E81", productName: "小护甲机能裤", category: "服装", tracker: "松子", factory: "宇情", validationKey: "ready", validationLabel: "可导入", tone: "success", statusKey: "pending" },
     { orderNo: "E82", productName: "云感防晒衣", category: "服装", tracker: "烧麦", factory: "昱斌", validationKey: "needs-data", validationLabel: "资料待处理", tone: "warning", statusKey: "pending" },
@@ -272,6 +274,43 @@ export const pendingImportData = {
     { orderNo: "E73", productName: "向阳遮阳帽", category: "帽子", tracker: "青椒", factory: "启宏", validationKey: "ready", validationLabel: "导入时校验通过", tone: "success", statusKey: "imported" },
   ],
 };
+
+const mockFeishuCandidate = {
+  orderNo: "E92",
+  productName: "山野轻量冲锋裤",
+  category: "服装",
+  tracker: "青椒",
+  factory: "盛泰",
+  validationKey: "needs-data",
+  validationLabel: "资料待处理",
+  tone: "warning",
+  statusKey: "pending",
+};
+
+export function fetchNewFeishuOrders() {
+  const fetchedAt = new Date();
+  const fetchedAtText = fetchedAt.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).replaceAll("/", "-");
+  const exists = pendingImportData.orders.some((order) => order.orderNo === mockFeishuCandidate.orderNo);
+
+  if (!exists) pendingImportData.orders.unshift({ ...mockFeishuCandidate });
+  const result = { added: exists ? 0 : 1, skipped: exists ? 3 : 2, failed: 1 };
+  pendingImportData.lastSuccessfulFetchAt = fetchedAtText;
+  pendingImportData.fetchLogs.unshift({
+    operator: "煎饼",
+    fetchedAt: fetchedAt.toISOString(),
+    feishuRecordIds: ["rec_mock_e92_01", "rec_mock_existing_01", "rec_mock_existing_02", "rec_mock_failed_01"],
+    errorReason: "rec_mock_failed_01：订单编号为空",
+    ...result,
+  });
+  return result;
+}
 
 export const shipmentListData = {
   shipments: [

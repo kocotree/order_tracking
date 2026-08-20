@@ -1,4 +1,4 @@
-import { deletePendingImportOrder, importPendingOrdersAsDrafts, pendingImportData } from "../mock-data.js";
+import { deletePendingImportOrder, fetchNewFeishuOrders, importPendingOrdersAsDrafts, pendingImportData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
 
@@ -50,14 +50,14 @@ function renderPagination(currentPage, totalPages, totalItems) {
 function renderBatchImportDialog() {
   return `
     <div class="detail-confirm-layer" hidden data-batch-import-layer>
-      <button class="detail-confirm-backdrop" type="button" aria-label="取消批量导入" data-batch-import-cancel></button>
+      <button class="detail-confirm-backdrop" type="button" aria-label="取消批量导入为草稿" data-batch-import-cancel></button>
       <section class="detail-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="batch-import-title" aria-describedby="batch-import-description">
-        <h2 id="batch-import-title">确认批量导入</h2>
+        <h2 id="batch-import-title">确认批量导入为草稿</h2>
         <p id="batch-import-description">确认将已选 <strong data-batch-import-count>0</strong> 个订单导入跟单系统？导入后将生成草稿订单。</p>
         <p class="batch-import-order-list" data-batch-import-orders></p>
         <div class="detail-confirm-actions">
           <button class="detail-outline-button" type="button" data-batch-import-cancel>取消</button>
-          <button class="detail-primary-button" type="button" data-batch-import-submit>确认批量导入</button>
+          <button class="detail-primary-button" type="button" data-batch-import-submit>确认导入为草稿</button>
         </div>
       </section>
     </div>
@@ -117,7 +117,9 @@ export function renderPendingImportListPage() {
         <header class="order-list-card-header">
           <div class="order-list-heading"><h1 id="pending-import-title">待导入订单</h1></div>
           <div class="order-list-header-actions">
-            <button class="order-primary-button" type="button" data-batch-import-open disabled>批量导入</button>
+            <span class="pending-import-fetch-meta">上次成功获取：<strong data-feishu-fetch-time>${escapeHTML(pendingImportData.lastSuccessfulFetchAt)}</strong></span>
+            <button class="order-secondary-button pending-import-fetch-button" type="button" data-feishu-fetch>获取飞书新订单</button>
+            <button class="order-primary-button" type="button" data-batch-import-open disabled>批量导入为草稿</button>
           </div>
         </header>
         <div class="table-scroll">
@@ -160,6 +162,8 @@ export function bindPendingImportListPage() {
   const trackerOptions = [...(page?.querySelectorAll("[data-import-tracker-option]") ?? [])];
   const selectPageInput = page?.querySelector("[data-import-select-page]");
   const batchImportButton = page?.querySelector("[data-batch-import-open]");
+  const feishuFetchButton = page?.querySelector("[data-feishu-fetch]");
+  const feishuFetchTime = page?.querySelector("[data-feishu-fetch-time]");
   const batchImportLayer = page?.querySelector("[data-batch-import-layer]");
   const batchImportCount = page?.querySelector("[data-batch-import-count]");
   const batchImportOrders = page?.querySelector("[data-batch-import-orders]");
@@ -285,7 +289,27 @@ export function bindPendingImportListPage() {
     const importedOrders = importPendingOrdersAsDrafts([...selectedOrderNos]);
     closeBatchImportDialog();
     applyFilters();
-    showToast("批量导入成功", `已导入 ${importedOrders.length} 个订单并生成草稿，可在订单列表查看。`);
+    showToast("确认导入为草稿成功", `已生成 ${importedOrders.length} 个草稿订单，可在订单列表查看。`);
+  });
+
+  feishuFetchButton?.addEventListener("click", () => {
+    if (feishuFetchButton.disabled) return;
+    feishuFetchButton.disabled = true;
+    feishuFetchButton.textContent = "正在获取…";
+    window.setTimeout(() => {
+      const result = fetchNewFeishuOrders();
+      if (feishuFetchTime) feishuFetchTime.textContent = pendingImportData.lastSuccessfulFetchAt;
+      activeStatus = "pending";
+      page.querySelectorAll("[data-import-status]").forEach((item) => {
+        const active = item.dataset.importStatus === "pending";
+        item.classList.toggle("is-active", active);
+        item.setAttribute("aria-pressed", String(active));
+      });
+      applyFilters();
+      feishuFetchButton.disabled = false;
+      feishuFetchButton.textContent = "获取飞书新订单";
+      showToast("获取完成", `新增 ${result.added} 个，已存在/跳过 ${result.skipped} 个，失败 ${result.failed} 个。`);
+    }, 700);
   });
 
   page?.addEventListener("click", (event) => {

@@ -156,9 +156,9 @@ class IdentityAccessService:
         sms_sender: SmsSender | None = None,
         wechat_identity: WechatIdentity | None = None,
         avatar_store: AvatarStore | None = None,
-        token_secret: bytes = b"local-development-token-secret",
-        phone_encryption_secret: bytes = b"local-development-phone-encryption-secret",
-        phone_digest_secret: bytes = b"local-development-phone-digest-secret",
+        token_secret: bytes | None = None,
+        phone_encryption_secret: bytes | None = None,
+        phone_digest_secret: bytes | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._session_factory = session_factory
@@ -166,10 +166,10 @@ class IdentityAccessService:
         self._sms_sender = sms_sender
         self._wechat_identity = wechat_identity
         self._avatar_store = avatar_store
-        self._token_secret = token_secret
+        self._token_secret = token_secret or secrets.token_bytes(32)
         self._phone = PhoneProtector(
-            encryption_secret=phone_encryption_secret,
-            digest_secret=phone_digest_secret,
+            encryption_secret=phone_encryption_secret or secrets.token_bytes(32),
+            digest_secret=phone_digest_secret or secrets.token_bytes(32),
         )
         self._clock = clock
 

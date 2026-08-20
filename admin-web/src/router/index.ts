@@ -1,3 +1,4 @@
+import type { Pinia } from "pinia";
 import {
   createMemoryHistory,
   createRouter,
@@ -5,16 +6,76 @@ import {
   type Router,
 } from "vue-router";
 
-import BaselinePage from "@/pages/BaselinePage.vue";
+import AdminApplicationsPage from "@/pages/AdminApplicationsPage.vue";
+import AdminApplyPage from "@/pages/AdminApplyPage.vue";
+import AdminUsersPage from "@/pages/AdminUsersPage.vue";
+import AccessStatusPage from "@/pages/AccessStatusPage.vue";
+import HomePage from "@/pages/HomePage.vue";
+import LoginPage from "@/pages/LoginPage.vue";
 import NotFoundPage from "@/pages/NotFoundPage.vue";
+import { useIdentityStore } from "@/stores";
 
-export function createAppRouter(initialPath?: string): Router {
+export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
   const router = createRouter({
     history: initialPath === undefined ? createWebHistory() : createMemoryHistory(),
     routes: [
-      { path: "/", name: "baseline", component: BaselinePage },
+      { path: "/login", name: "login", component: LoginPage, meta: { public: true } },
+      { path: "/", name: "home", component: HomePage, meta: { activeAdmin: true } },
+      { path: "/admin-apply", name: "admin-apply", component: AdminApplyPage },
+      {
+        path: "/access-status/:status(pending|rejected|disabled)",
+        name: "access-status",
+        component: AccessStatusPage,
+      },
+      {
+        path: "/people/admin-applications",
+        name: "admin-applications",
+        component: AdminApplicationsPage,
+        meta: { superAdmin: true },
+      },
+      {
+        path: "/people/admin-users",
+        name: "admin-users",
+        component: AdminUsersPage,
+        meta: { superAdmin: true },
+      },
       { path: "/:pathMatch(.*)*", name: "not-found", component: NotFoundPage },
     ],
+  });
+
+  router.beforeEach(async (to) => {
+    if (to.meta.public) return true;
+    const identity = useIdentityStore(pinia);
+    const user = await identity.loadCurrentUser();
+    if (!user) return { name: "login", query: { returnTo: to.fullPath } };
+    if (!user.isEnabled) {
+      return to.name === "access-status" && to.params.status === "disabled"
+        ? true
+        : { name: "access-status", params: { status: "disabled" } };
+    }
+    if (user.role === null) {
+      const application = await identity.loadOwnApplication();
+      if (
+        application?.status === "rejected" &&
+        to.name === "admin-apply" &&
+        to.query.reapply === "1"
+      ) {
+        return true;
+      }
+      const expectedRoute =
+        application?.status === "pending" || application?.status === "rejected"
+          ? { name: "access-status", params: { status: application.status } }
+          : { name: "admin-apply" };
+      const matchesExpected =
+        to.name === expectedRoute.name &&
+        (to.name !== "access-status" || to.params.status === application?.status);
+      return matchesExpected ? true : expectedRoute;
+    }
+    if (to.name === "login" || to.name === "admin-apply" || to.name === "access-status") {
+      return { name: "home" };
+    }
+    if (to.meta.superAdmin && !user.isSuperAdmin) return { name: "home" };
+    return true;
   });
   if (initialPath !== undefined) void router.push(initialPath);
   return router;

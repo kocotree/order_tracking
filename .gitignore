@@ -28,6 +28,13 @@ coverage/
 project.config.json
 project.private.config.json
 miniprogram_npm/
+miniprogram/app.js
+miniprogram/api/**/*.js
+miniprogram/pages/**/*.js
+miniprogram/components/**/*.js
+miniprogram/modules/**/*.js
+miniprogram/utils/**/*.js
+miniprogram/**/*.js.map
 
 # Editors
 .idea/

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Cookie, File, Header, Query, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict
 
+from app.modules.factory_access import FactoryAccessService, FactoryUserSnapshot
 from app.modules.identity_access import (
     IdentityAccessService,
     MiniLoginResult,
@@ -33,6 +34,9 @@ class UserResponse(ApiModel):
     mini_avatar_external_url: str | None
     mini_avatar_file_id: int | None
     phone_masked: str | None
+    factory_id: str | None
+    factory_position: str | None
+    factory_name: str | None
     version: int
     capabilities: list[str]
 
@@ -124,8 +128,15 @@ def _capabilities(user: UserSnapshot) -> list[str]:
     if not user.is_enabled:
         return []
     if user.role is None:
-        return ["admin_application.submit", "admin_application.read_own"]
-    capabilities = ["business.read", "mini.use"]
+        return [
+            "admin_application.submit",
+            "admin_application.read_own",
+            "factory_application.submit",
+            "factory_application.read_own",
+        ]
+    if user.role == "factory":
+        return ["factory_identity.read", "mini.use"]
+    capabilities = ["business.read", "factory.manage", "factory_application.review", "mini.use"]
     if user.is_super_admin:
         capabilities.extend(["admin_application.review", "admin_user.manage"])
     return capabilities
@@ -142,6 +153,9 @@ def _user_response(user: UserSnapshot) -> UserResponse:
         mini_avatar_external_url=user.mini_avatar_external_url,
         mini_avatar_file_id=user.mini_avatar_file_id,
         phone_masked=user.phone_masked,
+        factory_id=user.factory_id,
+        factory_position=user.factory_position,
+        factory_name=None,
         version=user.version,
         capabilities=_capabilities(user),
     )
@@ -153,6 +167,25 @@ def _application_response(application: object) -> AdminApplicationResponse:
 
 def _session_response(session: SessionTokens) -> SessionResponse:
     return SessionResponse.model_validate(session, from_attributes=True)
+
+
+def _factory_user_response(user: FactoryUserSnapshot) -> UserResponse:
+    return UserResponse(
+        user_id=user.user_id,
+        role="factory",
+        is_super_admin=False,
+        is_enabled=user.is_enabled,
+        display_name=user.real_name,
+        feishu_avatar_url=None,
+        mini_avatar_external_url=None,
+        mini_avatar_file_id=None,
+        phone_masked=user.phone_masked,
+        factory_id=user.factory_id,
+        factory_position=user.position,
+        factory_name=user.factory_name,
+        version=user.version,
+        capabilities=["factory_identity.read", "mini.use"] if user.is_enabled else [],
+    )
 
 
 def _mini_login_response(result: MiniLoginResult) -> MiniLoginResponse:
@@ -170,6 +203,7 @@ def _mini_login_response(result: MiniLoginResult) -> MiniLoginResponse:
 def create_identity_router(
     service: IdentityAccessService,
     *,
+    factory_service: FactoryAccessService | None = None,
     secure_web_cookies: bool = True,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
@@ -439,11 +473,17 @@ def create_identity_router(
         ot_web_session: str | None = Cookie(default=None),
     ) -> AdminUserListResponse:
         actor = web_user(web_session=ot_web_session)
+        if role == "factory":
+            if factory_service is None:
+                return AdminUserListResponse(items=[], total=0)
+            factory_users = factory_service.list_factory_users(actor_id=actor.user_id)
+            factory_items = [_factory_user_response(user) for user in factory_users]
+            return AdminUserListResponse(items=factory_items, total=len(factory_items))
         if role != "admin":
             return AdminUserListResponse(items=[], total=0)
-        users = service.list_admin_users(actor_id=actor.user_id)
-        items = [_user_response(user) for user in users]
-        return AdminUserListResponse(items=items, total=len(items))
+        admin_users = service.list_admin_users(actor_id=actor.user_id)
+        admin_items = [_user_response(user) for user in admin_users]
+        return AdminUserListResponse(items=admin_items, total=len(admin_items))
 
     def set_user_enabled(
         *,
@@ -459,6 +499,17 @@ def create_identity_router(
             csrf_token=csrf_token,
             require_csrf=True,
         )
+        target = service.get_user(user_id=target_user_id)
+        if target.role == "factory" and factory_service is not None:
+            return _factory_user_response(
+                factory_service.set_factory_user_enabled(
+                    actor_id=actor.user_id,
+                    target_user_id=target_user_id,
+                    enabled=enabled,
+                    expected_version=payload.version,
+                    request_id=request.state.request_id,
+                )
+            )
         return _user_response(
             service.set_admin_enabled(
                 actor_id=actor.user_id,

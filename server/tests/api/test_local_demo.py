@@ -9,6 +9,8 @@ def clean_identity_tables(engine: Engine) -> None:
         connection.execute(text("UPDATE users SET mini_avatar_file_id = NULL"))
         connection.execute(text("DELETE FROM stored_files"))
         connection.execute(text("DELETE FROM mini_login_attempts"))
+        connection.execute(text("UPDATE factory_applications SET previous_application_id = NULL"))
+        connection.execute(text("DELETE FROM factory_applications"))
         connection.execute(text("UPDATE admin_applications SET previous_application_id = NULL"))
         connection.execute(text("DELETE FROM admin_applications"))
         connection.execute(text("DELETE FROM sms_challenges"))
@@ -16,6 +18,8 @@ def clean_identity_tables(engine: Engine) -> None:
         connection.execute(text("DELETE FROM oauth_states"))
         connection.execute(text("DELETE FROM external_identities"))
         connection.execute(text("DELETE FROM users"))
+        connection.execute(text("DELETE FROM factory_contacts"))
+        connection.execute(text("DELETE FROM factories"))
 
 
 def test_local_demo_completes_cross_terminal_identity_flow_over_public_http(

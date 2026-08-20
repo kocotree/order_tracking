@@ -28,6 +28,8 @@ def clean_identity_tables(engine: Engine) -> None:
         connection.execute(text("UPDATE users SET mini_avatar_file_id = NULL"))
         connection.execute(text("DELETE FROM stored_files"))
         connection.execute(text("DELETE FROM mini_login_attempts"))
+        connection.execute(text("UPDATE factory_applications SET previous_application_id = NULL"))
+        connection.execute(text("DELETE FROM factory_applications"))
         connection.execute(text("UPDATE admin_applications SET previous_application_id = NULL"))
         connection.execute(text("DELETE FROM admin_applications"))
         connection.execute(text("DELETE FROM sms_challenges"))
@@ -35,6 +37,8 @@ def clean_identity_tables(engine: Engine) -> None:
         connection.execute(text("DELETE FROM oauth_states"))
         connection.execute(text("DELETE FROM external_identities"))
         connection.execute(text("DELETE FROM users"))
+        connection.execute(text("DELETE FROM factory_contacts"))
+        connection.execute(text("DELETE FROM factories"))
 
 
 def test_feishu_identity_is_reused_inside_scope_and_isolated_between_scopes(
@@ -662,7 +666,7 @@ def test_wechat_phone_binding_reports_pending_rejected_and_unmatched_states(
     for login_code, phone_code, expected_status in (
         ("wx-pending", "phone-pending", "pending"),
         ("wx-rejected", "phone-rejected", "rejected"),
-        ("wx-unmatched", "phone-unmatched", "unmatched"),
+        ("wx-unmatched", "phone-unmatched", "factory_application_required"),
     ):
         login = service.begin_wechat_login(
             login_code=login_code,
@@ -675,7 +679,8 @@ def test_wechat_phone_binding_reports_pending_rejected_and_unmatched_states(
             request_id=f"req-bind-{expected_status}",
         )
         assert result.status == expected_status
-    assert result.user is None
+    assert result.user is not None
+    assert result.user.role is None
 
 
 def test_mini_avatar_is_private_idempotent_and_does_not_replace_feishu_avatar(

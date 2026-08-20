@@ -15,6 +15,7 @@ from app.adapters.errors import ExternalAdapterUnavailable
 from app.adapters.identity import DisabledFeishuIdentity
 from app.adapters.sms import DisabledSmsSender, FakeSmsSender
 from app.adapters.wechat import DisabledWechatIdentity
+from app.api.factory_access import create_factory_router
 from app.api.identity import create_identity_router
 from app.api.router import api_router
 from app.db.session import create_database_engine, create_session_factory
@@ -26,6 +27,7 @@ from app.local_demo import (
     create_local_demo_router,
 )
 from app.logging import StructuredLogger, configure_uvicorn_access_log_redaction
+from app.modules.factory_access import FactoryAccessService
 from app.modules.identity_access import (
     ApplicationConflict,
     AvatarInvalid,
@@ -46,11 +48,13 @@ def create_app(
     database_url: str | None = None,
     event_logger: StructuredLogger | None = None,
     identity_service: IdentityAccessService | None = None,
+    factory_service: FactoryAccessService | None = None,
     extra_routers: Sequence[APIRouter] = (),
 ) -> FastAPI:
     settings = Settings(database_url=database_url) if database_url is not None else Settings()
     resolved_database_url = settings.database_url
     engine = create_database_engine(resolved_database_url)
+    session_factory = create_session_factory(engine)
     logger = event_logger or StructuredLogger()
     configure_uvicorn_access_log_redaction()
 
@@ -80,7 +84,7 @@ def create_app(
             else DisabledAvatarStore(bucket=settings.avatar_bucket)
         )
         identity_service = IdentityAccessService(
-            create_session_factory(engine),
+            session_factory,
             feishu_identity=feishu_identity,
             sms_sender=sms_sender,
             wechat_identity=wechat_identity,
@@ -111,12 +115,16 @@ def create_app(
                 operator_source="local-demo-startup",
                 request_id="local-demo-bootstrap",
             )
+    if factory_service is None:
+        factory_service = FactoryAccessService(session_factory)
     app.include_router(
         create_identity_router(
             identity_service,
+            factory_service=factory_service,
             secure_web_cookies=not local_demo_enabled,
         )
     )
+    app.include_router(create_factory_router(factory_service, identity_service))
     if local_demo_enabled:
         app.include_router(create_local_demo_router())
 

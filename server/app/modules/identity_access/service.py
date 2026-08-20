@@ -18,6 +18,7 @@ from app.db.models import (
     AdminApplication,
     AuditLog,
     ExternalIdentity,
+    FactoryApplication,
     MiniLoginAttempt,
     OAuthState,
     SmsChallenge,
@@ -43,6 +44,8 @@ class UserSnapshot:
     mini_avatar_external_url: str | None
     mini_avatar_file_id: int | None
     phone_masked: str | None
+    factory_id: str | None
+    factory_position: str | None
     version: int
 
 
@@ -700,8 +703,8 @@ class IdentityAccessService:
             user = session.get(User, user_id)
             if user is None or not user.is_enabled:
                 raise SessionInvalid("user is unavailable")
-            if terminal == "mini" and user.role != "admin":
-                raise SessionInvalid("mini program session requires an approved role")
+            if terminal == "mini" and user.role == "factory" and user.factory_id is None:
+                raise SessionInvalid("factory user affiliation is unavailable")
             session.add(
                 UserSession(
                     session_id=str(uuid4()),
@@ -759,11 +762,9 @@ class IdentityAccessService:
             ):
                 raise PermissionDenied("CSRF validation failed")
             user = session.get(User, active_session.user_id)
-            if (
-                user is None
-                or not user.is_enabled
-                or (terminal == "mini" and user.role != "admin")
-            ):
+            if user is None or not user.is_enabled:
+                raise SessionInvalid("session user is unavailable")
+            if terminal == "mini" and user.role == "factory" and user.factory_id is None:
                 raise SessionInvalid("session user is unavailable")
             active_session.last_activity_at = now
             return self._user_snapshot(user)
@@ -800,7 +801,9 @@ class IdentityAccessService:
             ):
                 raise SessionInvalid("refresh token is invalid")
             user = session.get(User, active_session.user_id)
-            if user is None or not user.is_enabled or user.role != "admin":
+            if user is None or not user.is_enabled:
+                raise SessionInvalid("refresh token user is unavailable")
+            if user.role == "factory" and user.factory_id is None:
                 raise SessionInvalid("refresh token user is unavailable")
             active_session.token_digest = self._digest(new_access)
             active_session.refresh_token_digest = self._digest(new_refresh)
@@ -904,22 +907,41 @@ class IdentityAccessService:
                 user = session.get(User, identity.user_id)
                 if user is None or not user.is_enabled:
                     return MiniLoginResult(status="disabled")
-                if user.role != "admin":
-                    return MiniLoginResult(status="unmatched")
                 snapshot = self._user_snapshot(user)
                 identity_id = identity.id
+                if user.role in {"admin", "factory"}:
+                    status = "authenticated"
+                    rejection_reason = None
+                else:
+                    application = session.scalar(
+                        select(FactoryApplication)
+                        .where(FactoryApplication.user_id == user.user_id)
+                        .order_by(FactoryApplication.submitted_at.desc())
+                        .limit(1)
+                    )
+                    status = (
+                        application.status
+                        if application is not None
+                        else "factory_application_required"
+                    )
+                    rejection_reason = (
+                        application.rejection_reason if application is not None else None
+                    )
             else:
                 snapshot = None
                 identity_id = None
+                status = "phone_required"
+                rejection_reason = None
         if snapshot is not None:
             with self._session_factory() as session, session.begin():
                 identity = session.get(ExternalIdentity, identity_id)
                 if identity is not None:
                     identity.last_login_at = self._now()
             return MiniLoginResult(
-                status="authenticated",
+                status=status,
                 user=snapshot,
                 session=self.issue_session(user_id=snapshot.user_id, terminal="mini"),
+                rejection_reason=rejection_reason,
             )
 
         raw_token = secrets.token_urlsafe(32)
@@ -971,17 +993,63 @@ class IdentityAccessService:
             matched_users = session.scalars(
                 select(User).where(User.phone_digest == phone_digest)
             ).all()
-            if len(matched_users) != 1:
-                return MiniLoginResult(status="ambiguous" if matched_users else "unmatched")
-            user = matched_users[0]
-            application = session.scalar(
-                select(AdminApplication)
-                .where(AdminApplication.user_id == user.user_id)
-                .order_by(AdminApplication.submitted_at.desc())
-                .limit(1)
+            if len(matched_users) > 1:
+                return MiniLoginResult(status="ambiguous")
+            if not matched_users:
+                user = None
+                application = None
+            else:
+                user = matched_users[0]
+                application = session.scalar(
+                    select(AdminApplication)
+                    .where(AdminApplication.user_id == user.user_id)
+                    .order_by(AdminApplication.submitted_at.desc())
+                    .limit(1)
+                )
+
+        if user is None:
+            user_id = str(uuid4())
+            with self._session_factory() as session, session.begin():
+                created = User(
+                    user_id=user_id,
+                    feishu_display_name="微信用户",
+                    mini_avatar_external_url=wechat_avatar_url,
+                    phone_encrypted=self._phone.encrypt(phone),
+                    phone_digest=phone_digest,
+                    phone_masked=self._phone.mask(phone),
+                )
+                session.add(created)
+                session.flush()
+                session.add(
+                    ExternalIdentity(
+                        platform="wechat",
+                        scope=scope,
+                        platform_subject=platform_subject,
+                        user_id=user_id,
+                        bound_at=now,
+                        last_login_at=now,
+                    )
+                )
+                session.add(
+                    AuditLog(
+                        request_id=request_id,
+                        action="identity.wechat.factory_applicant_created",
+                        target_type="user",
+                        target_id=user_id,
+                        changes={"scope": scope, "phone": self._phone.mask(phone)},
+                        actor_id=user_id,
+                        source_terminal="mini",
+                    )
+                )
+            snapshot = self.get_user(user_id=user_id)
+            return MiniLoginResult(
+                status="factory_application_required",
+                user=snapshot,
+                session=self.issue_session(user_id=user_id, terminal="mini"),
             )
-            if application is None:
-                return MiniLoginResult(status="unmatched")
+
+        if application is not None:
+            user = matched_users[0]
             if application.status == "pending":
                 return MiniLoginResult(status="pending")
             if application.status == "rejected":
@@ -994,6 +1062,39 @@ class IdentityAccessService:
             if not user.is_enabled:
                 return MiniLoginResult(status="disabled")
             user_id = user.user_id
+            final_status = "authenticated"
+            final_reason = None
+        elif user.role == "factory":
+            if not user.is_enabled or user.factory_id is None:
+                return MiniLoginResult(status="disabled")
+            user_id = user.user_id
+            final_status = "authenticated"
+            final_reason = None
+        elif user.role is None:
+            with self._session_factory() as session:
+                factory_application = session.scalar(
+                    select(FactoryApplication)
+                    .where(FactoryApplication.user_id == user.user_id)
+                    .order_by(FactoryApplication.submitted_at.desc())
+                    .limit(1)
+                )
+            user_id = user.user_id
+            final_status = (
+                factory_application.status
+                if factory_application is not None
+                else "factory_application_required"
+            )
+            final_reason = (
+                factory_application.rejection_reason
+                if factory_application is not None
+                else None
+            )
+        elif user.role == "admin":
+            user_id = user.user_id
+            final_status = "authenticated"
+            final_reason = None
+        else:
+            return MiniLoginResult(status="unmatched")
 
         with self._session_factory() as session, session.begin():
             existing = session.scalar(
@@ -1051,9 +1152,10 @@ class IdentityAccessService:
             )
         snapshot = self.get_user(user_id=user_id)
         return MiniLoginResult(
-            status="authenticated",
+            status=final_status,
             user=snapshot,
             session=self.issue_session(user_id=user_id, terminal="mini"),
+            rejection_reason=final_reason,
         )
 
     def get_mini_avatar(self, *, user_id: str) -> AvatarContent:
@@ -1199,5 +1301,7 @@ class IdentityAccessService:
             mini_avatar_external_url=user.mini_avatar_external_url,
             mini_avatar_file_id=user.mini_avatar_file_id,
             phone_masked=user.phone_masked,
+            factory_id=user.factory_id,
+            factory_position=user.factory_position,
             version=user.version,
         )

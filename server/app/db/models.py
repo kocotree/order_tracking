@@ -42,6 +42,10 @@ class User(Base):
     phone_encrypted: Mapped[str | None] = mapped_column(Text)
     phone_digest: Mapped[str | None] = mapped_column(String(64))
     phone_masked: Mapped[str | None] = mapped_column(String(32))
+    factory_id: Mapped[str | None] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT", use_alter=True)
+    )
+    factory_position: Mapped[str | None] = mapped_column(String(32))
     mini_avatar_file_id: Mapped[int | None] = mapped_column(
         ForeignKey("stored_files.file_id", ondelete="SET NULL", use_alter=True)
     )
@@ -178,6 +182,96 @@ class AdminApplication(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     previous_application_id: Mapped[str | None] = mapped_column(
         ForeignKey("admin_applications.application_id", ondelete="RESTRICT")
+    )
+
+
+class Factory(Base):
+    __tablename__ = "factories"
+    __table_args__ = (
+        UniqueConstraint("supplier_number", name="uq_factories_supplier_number"),
+        UniqueConstraint("factory_name", name="uq_factories_name"),
+        UniqueConstraint("factory_code", name="uq_factories_code"),
+    )
+
+    factory_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    supplier_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    factory_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    factory_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    legal_name: Mapped[str | None] = mapped_column(String(200))
+    address: Mapped[str | None] = mapped_column(String(500))
+    legal_representative: Mapped[str | None] = mapped_column(String(100))
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        server_onupdate=text("CURRENT_TIMESTAMP(6)"),
+    )
+
+
+class FactoryContact(Base):
+    __tablename__ = "factory_contacts"
+    __table_args__ = (
+        UniqueConstraint("factory_id", "display_order", name="uq_factory_contacts_order"),
+        Index("ix_factory_contacts_factory", "factory_id"),
+    )
+
+    contact_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    factory_id: Mapped[str] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    phone: Mapped[str] = mapped_column(String(50), nullable=False)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        server_onupdate=text("CURRENT_TIMESTAMP(6)"),
+    )
+
+
+class FactoryApplication(Base):
+    __tablename__ = "factory_applications"
+    __table_args__ = (
+        UniqueConstraint("pending_user_id", name="uq_factory_applications_pending_user"),
+        Index("ix_factory_applications_status_submitted", "status", "submitted_at"),
+    )
+
+    application_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    pending_user_id: Mapped[str | None] = mapped_column(String(36))
+    real_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    phone_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    phone_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    phone_masked: Mapped[str] = mapped_column(String(32), nullable=False)
+    position: Mapped[str] = mapped_column(String(32), nullable=False)
+    requested_factory_id: Mapped[str] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
+    )
+    bound_factory_id: Mapped[str | None] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT")
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    reviewed_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    previous_application_id: Mapped[str | None] = mapped_column(
+        ForeignKey("factory_applications.application_id", ondelete="RESTRICT")
     )
 
 

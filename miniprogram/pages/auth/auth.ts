@@ -1,4 +1,5 @@
 import { identityApi, wxLoginCode } from "../../api/identity";
+import { isDevPreview } from "../../modules/dev-preview";
 import {
   canRequestPhone,
   loginDestination,
@@ -15,7 +16,11 @@ Page({
     busy: false,
   },
 
-  onLoad() {
+  onLoad(options: Record<string, string | undefined>) {
+    if (isDevPreview(options)) {
+      this.setData({ mode: "bind", busy: false });
+      return;
+    }
     void this.identify();
   },
 

@@ -1,13 +1,20 @@
-.status-page { display: flex; min-height: 100vh; flex-direction: column; align-items: center; padding: 120rpx 38rpx 60rpx; color: #20242b; background: linear-gradient(180deg,#f8fbfd,#eef5f9); }
-.status-brand { display: flex; flex-direction: column; align-items: center; gap: 8rpx; margin-bottom: 64rpx; color: #687283; font-size: 24rpx; }
-.status-brand text:first-child { color: #173f5f; font-size: 34rpx; font-weight: 800; letter-spacing: 4rpx; }
-.status-card { display: flex; width: 100%; flex-direction: column; align-items: center; padding: 54rpx 42rpx; background: #fff; border: 1rpx solid #d2d7df; border-radius: 20rpx; box-shadow: 0 24rpx 60rpx rgba(42,61,78,.1); }
-.status-mark { display: flex; width: 104rpx; height: 104rpx; align-items: center; justify-content: center; margin-bottom: 30rpx; color: #a76c07; font-size: 38rpx; font-weight: 750; background: #fff6df; border-radius: 50%; }
-.status-rejected .status-mark { color: #d84f51; background: #fff0f0; }
-.status-disabled .status-mark, .status-logged-out .status-mark { color: #67717e; background: #eef1f4; }
-.status-eyebrow { margin-bottom: 14rpx; color: #087fd1; font-size: 22rpx; font-weight: 700; letter-spacing: 4rpx; }
-.status-title { font-size: 40rpx; font-weight: 750; }
-.status-description, .status-reason { margin-top: 24rpx; color: #687283; font-size: 26rpx; line-height: 1.7; text-align: center; }
-.status-reason { color: #d84f51; }
-.status-note { width: 100%; margin-top: 36rpx; padding: 22rpx; color: #a76c07; font-size: 24rpx; text-align: center; background: #fff6df; border-radius: 12rpx; }
-.status-button { width: 100%; height: 88rpx; margin-top: 32rpx; color: #fff; font-size: 28rpx; font-weight: 700; line-height: 88rpx; background: #0d8fe9; border-radius: 12rpx; }
+.status-page { position: relative; display: flex; min-height: 100vh; overflow: hidden; flex-direction: column; align-items: center; padding: max(116rpx, calc(env(safe-area-inset-top) + 68rpx)) 48rpx max(56rpx, env(safe-area-inset-bottom)); color: #1c2430; background: linear-gradient(158deg,rgba(235,244,255,.96) 0%,#f8fafc 48%,#f4f6f8 100%); }
+.status-orbit { position: absolute; border: 1rpx solid rgba(22,119,255,.12); border-radius: 50%; pointer-events: none; }
+.status-orbit--one { top: -236rpx; right: -192rpx; width: 500rpx; height: 500rpx; box-shadow: 0 0 0 48rpx rgba(22,119,255,.03); }
+.status-orbit--two { bottom: 48rpx; left: -228rpx; width: 340rpx; height: 340rpx; }
+.status-brand { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 18rpx; color: #687586; font-size: 26rpx; font-weight: 600; letter-spacing: 8rpx; }
+.status-brand text:first-child { color: #1677ff; font-size: 46rpx; font-weight: 800; letter-spacing: 8rpx; line-height: 1; }
+.status-card { position: relative; z-index: 1; display: flex; width: 100%; flex-direction: column; align-items: center; padding: 68rpx 48rpx 48rpx; margin: auto 0; border: 1rpx solid rgba(229,233,239,.86); border-radius: 44rpx; background: rgba(255,255,255,.94); box-shadow: 0 44rpx 112rpx rgba(32,58,91,.12); }
+.status-mark { display: grid; width: 116rpx; height: 116rpx; margin-bottom: 44rpx; place-items: center; color: #fff; font-size: 46rpx; font-weight: 800; background: #1677ff; border-radius: 36rpx; box-shadow: 0 24rpx 48rpx rgba(22,119,255,.25); }
+.status-mark--pending { background: #e97b19; box-shadow: 0 24rpx 48rpx rgba(233,123,25,.22); }
+.status-mark--rejected { background: #e5484d; box-shadow: 0 24rpx 48rpx rgba(229,72,77,.22); }
+.status-mark--disabled, .status-mark--logged-out { background: #6f7782; box-shadow: 0 24rpx 48rpx rgba(111,119,130,.2); }
+.status-mark--unmatched, .status-mark--ambiguous { background: #e97b19; box-shadow: 0 24rpx 48rpx rgba(233,123,25,.22); }
+.status-eyebrow { margin-bottom: 16rpx; color: #1677ff; font-size: 24rpx; font-weight: 750; letter-spacing: 5rpx; }
+.status-title { font-size: 48rpx; font-weight: 800; text-align: center; }
+.status-description, .status-reason { margin-top: 24rpx; color: #687586; font-size: 26rpx; line-height: 1.7; text-align: center; }
+.status-reason { color: #d83f45; }
+.status-note { width: 100%; margin-top: 36rpx; padding: 24rpx; color: #a25f0b; font-size: 24rpx; text-align: center; background: #fff5e6; border-radius: 16rpx; }
+.status-rejected .status-note { color: #c93e43; background: #fff0f1; }
+.status-disabled .status-note, .status-logged-out .status-note { color: #66717e; background: #eef1f4; }
+.status-button { width: 100%; min-height: 100rpx; margin-top: 32rpx; color: #fff; font-size: 32rpx; font-weight: 750; line-height: 100rpx; background: #1677ff; border-radius: 24rpx; box-shadow: 0 20rpx 44rpx rgba(22,119,255,.22); }

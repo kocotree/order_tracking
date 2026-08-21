@@ -1,4 +1,5 @@
 import { isIdentityStatus, type IdentityStatus } from "../../modules/identity/session";
+import { isDevPreview } from "../../modules/dev-preview";
 
 const CONTENT: Record<IdentityStatus, { mark: string; title: string; description: string; note: string; action: string }> = {
   identifying: { mark: "…", title: "正在识别身份", description: "正在通过微信身份确认管理员账号，请稍候。", note: "身份识别完成后将自动进入下一步", action: "" },
@@ -11,12 +12,16 @@ const CONTENT: Record<IdentityStatus, { mark: string; title: string; description
 };
 
 Page({
-  data: { status: "unmatched" as IdentityStatus, content: CONTENT.unmatched, reason: "" },
+  data: { status: "unmatched" as IdentityStatus, content: CONTENT.unmatched, reason: "", previewMode: false },
   onLoad(options: Record<string, string | undefined>) {
     const status = options.status && isIdentityStatus(options.status) ? options.status : "unmatched";
-    this.setData({ status, content: CONTENT[status], reason: options.reason ?? "" });
+    this.setData({ status, content: CONTENT[status], reason: options.reason ?? "", previewMode: isDevPreview(options) });
   },
   act() {
+    if (this.data.previewMode) {
+      wx.showToast({ title: "预览模式不会查询真实状态", icon: "none" });
+      return;
+    }
     wx.reLaunch({ url: "/pages/auth/auth" });
   },
 });

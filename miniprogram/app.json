@@ -4,13 +4,17 @@
     "pages/status/status",
     "pages/factory-apply/factory-apply",
     "pages/factory-status/factory-status",
-    "pages/profile/profile"
+    "pages/profile/profile",
+    "pages/dev-preview/dev-preview"
   ],
   "window": {
     "navigationBarTitleText": "订单管理系统",
     "navigationBarBackgroundColor": "#ffffff",
     "navigationBarTextStyle": "black",
     "backgroundColor": "#f3f5f8"
+  },
+  "usingComponents": {
+    "mini-titlebar": "/components/mini-titlebar/mini-titlebar"
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json"

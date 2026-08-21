@@ -1,4 +1,5 @@
 import { identityApi } from "../../api/identity";
+import { isDevPreview, previewUser } from "../../modules/dev-preview";
 import {
   clearSession,
   storedUser,
@@ -13,9 +14,15 @@ Page({
     avatarPath: "",
     avatarSheetOpen: false,
     uploading: false,
+    previewMode: false,
   },
 
-  onLoad() {
+  onLoad(options: Record<string, string | undefined>) {
+    if (isDevPreview(options)) {
+      const user = previewUser(options.variant);
+      this.setData({ previewMode: true, user, avatarFallback: user.displayName.slice(0, 1) });
+      return;
+    }
     void this.loadProfile();
   },
 
@@ -61,6 +68,11 @@ Page({
   async chooseAvatar(event: { detail: { avatarUrl: string } }) {
     const filePath = event.detail.avatarUrl;
     if (!filePath) return;
+    if (this.data.previewMode) {
+      this.setData({ avatarSheetOpen: false, avatarPath: filePath });
+      wx.showToast({ title: "预览模式不会上传头像", icon: "none" });
+      return;
+    }
     this.setData({ avatarSheetOpen: false, uploading: true });
     try {
       await identityApi.uploadAvatar(filePath);
@@ -82,6 +94,10 @@ Page({
       confirmText: "确认退出",
       success: (result) => {
         if (!result.confirm) return;
+        if (this.data.previewMode) {
+          wx.reLaunch({ url: "/pages/dev-preview/dev-preview?preview=1" });
+          return;
+        }
         void identityApi.logout().finally(() => {
           wx.reLaunch({ url: "/pages/status/status?status=logged-out" });
         });

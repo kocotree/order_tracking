@@ -1,0 +1,20 @@
+<view class="preview-page">
+  <mini-titlebar title="页面预览" />
+  <view class="preview-content">
+    <view class="preview-intro">
+      <text class="preview-kicker">WECHAT DEVTOOLS ONLY</text>
+      <text class="preview-title">小程序页面预览</text>
+      <text class="preview-description">仅查看界面，不会登录、写入身份或提交业务数据。</text>
+    </view>
+    <view class="preview-list">
+      <button wx:for="{{items}}" wx:key="url" class="preview-item" data-url="{{item.url}}" bindtap="open">
+        <view class="preview-item__copy">
+          <text class="preview-item__label">{{item.label}}</text>
+          <text class="preview-item__description">{{item.description}}</text>
+        </view>
+        <text class="preview-arrow">›</text>
+      </button>
+    </view>
+    <text class="preview-note">真机、体验版和正式版无法启用此入口</text>
+  </view>
+</view>

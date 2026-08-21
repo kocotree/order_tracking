@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import Engine, delete
@@ -24,6 +24,18 @@ from app.modules.orders import (
     OrderService,
     OrderValidationError,
 )
+
+
+class ConfigurableExecutionGuard:
+    def __init__(self, *, shipments: bool = False, pending_void: bool = False) -> None:
+        self.shipments = shipments
+        self.pending_void = pending_void
+
+    def has_valid_shipments(self, *, order_id: str) -> bool:
+        return self.shipments
+
+    def has_pending_void_requests(self, *, order_id: str) -> bool:
+        return self.pending_void
 
 
 def _clean_order_tables(engine: Engine) -> None:
@@ -187,6 +199,14 @@ def test_admin_creates_and_publishes_complete_multi_factory_draft(
 
     assert published.lifecycle == "PUBLISHED"
     assert published.display_status == "未完成"
+    repeated = service.publish(
+        actor_id=admin_id,
+        order_id=draft.order_id,
+        version=draft.version,
+        request_id="req-publish-order-repeat",
+        idempotency_key="publish-e81-v1",
+    )
+    assert repeated.order_id == published.order_id
     with Session(test_database_engine) as session:
         assert (
             session.query(OutboxMessage)
@@ -195,6 +215,44 @@ def test_admin_creates_and_publishes_complete_multi_factory_draft(
             == 2
         )
         assert session.query(AuditLog).filter_by(action="order.published").count() == 1
+
+
+def test_publish_validation_rolls_back_without_outbox_or_state_change(
+    test_database_engine: Engine,
+) -> None:
+    admin_id, factory_a_id, _, variant_id = _seed_order_dependencies(
+        test_database_engine
+    )
+    service = OrderService(
+        sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    )
+    draft = service.create_draft(
+        actor_id=admin_id,
+        order_no="S04-INCOMPLETE",
+        order_date=date(2026, 8, 21),
+        tracker="松子",
+        contract_ship_date=date(2026, 8, 30),
+        lines=[
+            DraftLineInput(
+                variant_id,
+                50,
+                [AssignmentInput(factory_a_id, 20)],
+            )
+        ],
+        request_id="req-incomplete-create",
+    )
+    with pytest.raises(OrderValidationError):
+        service.publish(
+            actor_id=admin_id,
+            order_id=draft.order_id,
+            version=draft.version,
+            request_id="req-incomplete-publish",
+            idempotency_key="incomplete-publish",
+        )
+    assert service.get(order_id=draft.order_id).lifecycle == "DRAFT"
+    with Session(test_database_engine) as session:
+        assert session.query(OutboxMessage).count() == 0
+        assert session.query(AuditLog).filter_by(action="order.published").count() == 0
 
 
 def test_draft_update_merges_duplicates_and_rejects_stale_version(
@@ -359,3 +417,90 @@ def test_withdraw_complete_reopen_delete_and_factory_visibility(
             lines=[DraftLineInput(variant_id, 1, [])],
             request_id="req-no-permission",
         )
+
+
+def test_display_status_uses_east_eight_business_date(
+    test_database_engine: Engine,
+) -> None:
+    admin_id, _, _, variant_id = _seed_order_dependencies(test_database_engine)
+    service = OrderService(
+        sessionmaker(test_database_engine, class_=Session, expire_on_commit=False),
+        clock=lambda: datetime(2026, 8, 21, 16, 30, tzinfo=UTC),
+    )
+    draft = service.create_draft(
+        actor_id=admin_id,
+        order_no="S04-TIMEZONE",
+        order_date=date(2026, 8, 21),
+        tracker="松子",
+        contract_ship_date=date(2026, 8, 21),
+        lines=[DraftLineInput(variant_id, 1, [])],
+        request_id="req-timezone",
+    )
+    assert draft.display_status == "草稿"
+    with Session(test_database_engine) as session, session.begin():
+        order = session.get(Order, draft.order_id)
+        assert order is not None
+        order.lifecycle = "PUBLISHED"
+    assert service.get(order_id=draft.order_id).display_status == "已逾期"
+
+
+def test_execution_guard_blocks_withdraw_delete_and_complete(
+    test_database_engine: Engine,
+) -> None:
+    admin_id, factory_a_id, _, variant_id = _seed_order_dependencies(
+        test_database_engine
+    )
+    sessions = sessionmaker(
+        test_database_engine, class_=Session, expire_on_commit=False
+    )
+    setup_service = OrderService(sessions)
+    draft = setup_service.create_draft(
+        actor_id=admin_id,
+        order_no="S04-GUARD",
+        order_date=date(2026, 8, 21),
+        tracker="松子",
+        contract_ship_date=date(2026, 8, 30),
+        lines=[
+            DraftLineInput(
+                variant_id,
+                10,
+                [AssignmentInput(factory_a_id, 10)],
+            )
+        ],
+        request_id="req-guard-create",
+    )
+    setup_service.publish(
+        actor_id=admin_id,
+        order_id=draft.order_id,
+        version=draft.version,
+        request_id="req-guard-publish",
+        idempotency_key="guard-publish",
+    )
+    shipped_service = OrderService(
+        sessions, execution_guard=ConfigurableExecutionGuard(shipments=True)
+    )
+    with pytest.raises(OrderConflict):
+        shipped_service.withdraw(
+            actor_id=admin_id,
+            order_id=draft.order_id,
+            request_id="req-guard-withdraw",
+            idempotency_key="guard-withdraw",
+        )
+    with pytest.raises(OrderConflict):
+        shipped_service.delete(
+            actor_id=admin_id,
+            order_id=draft.order_id,
+            request_id="req-guard-delete",
+            idempotency_key="guard-delete",
+        )
+    pending_service = OrderService(
+        sessions, execution_guard=ConfigurableExecutionGuard(pending_void=True)
+    )
+    with pytest.raises(OrderConflict):
+        pending_service.complete(
+            actor_id=admin_id,
+            order_id=draft.order_id,
+            request_id="req-guard-complete",
+            idempotency_key="guard-complete",
+        )
+    assert setup_service.get(order_id=draft.order_id).lifecycle == "PUBLISHED"

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any, Protocol
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +24,7 @@ from app.db.models import (
 )
 
 TRACKERS = frozenset({"烧麦", "松子", "橄榄", "大葱", "青椒"})
+BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
 
 
 class OrderError(ValueError):
@@ -205,7 +207,7 @@ class OrderService:
                 )
         except IntegrityError as error:
             raise OrderConflict("order number already exists") from error
-        return self.get(order_id=order_id, today=now.date())
+        return self.get(order_id=order_id, today=self._business_today())
 
     def save_draft(
         self,
@@ -246,7 +248,7 @@ class OrderService:
                     changes={"version": order.version},
                 )
                 session.flush()
-                result = self._snapshot(session, order, now.date())
+                result = self._snapshot(session, order, self._business_today())
         except IntegrityError as error:
             raise OrderConflict("order number already exists") from error
         return result
@@ -267,7 +269,9 @@ class OrderService:
                 session, scope=f"order.publish:{order_id}", key=idempotency_key
             )
             if existing:
-                return self._snapshot(session, self._require_order(session, order_id), now.date())
+                return self._snapshot(
+                    session, self._require_order(session, order_id), self._business_today()
+                )
             order = self._locked_order(session, order_id)
             if order.lifecycle != "DRAFT" or order.version != version:
                 raise OrderConflict("order state or version changed")
@@ -299,7 +303,7 @@ class OrderService:
                 changes={"before": "DRAFT", "after": "PUBLISHED"},
             )
             session.flush()
-            return self._snapshot(session, order, now.date())
+            return self._snapshot(session, order, self._business_today())
 
     def withdraw(
         self,
@@ -314,7 +318,9 @@ class OrderService:
             self._require_admin(session, actor_id)
             scope = f"order.withdraw:{order_id}"
             if self._idempotency_exists(session, scope=scope, key=idempotency_key):
-                return self._snapshot(session, self._require_order(session, order_id), now.date())
+                return self._snapshot(
+                    session, self._require_order(session, order_id), self._business_today()
+                )
             order = self._locked_order(session, order_id)
             if order.lifecycle != "PUBLISHED":
                 raise OrderConflict("only published orders can be withdrawn")
@@ -343,7 +349,7 @@ class OrderService:
                 changes={"before": "PUBLISHED", "after": "DRAFT"},
             )
             session.flush()
-            return self._snapshot(session, order, now.date())
+            return self._snapshot(session, order, self._business_today())
 
     def delete(
         self,
@@ -433,7 +439,9 @@ class OrderService:
     def get(self, *, order_id: str, today: date | None = None) -> OrderSnapshot:
         with self._session_factory() as session:
             return self._snapshot(
-                session, self._require_order(session, order_id), today or self._now().date()
+                session,
+                self._require_order(session, order_id),
+                today or self._business_today(),
             )
 
     def get_visible(
@@ -443,7 +451,7 @@ class OrderService:
             user = self._require_enabled_user(session, actor_id)
             order = self._require_order(session, order_id)
             if user.role == "admin":
-                return self._snapshot(session, order, today or self._now().date())
+                return self._snapshot(session, order, today or self._business_today())
             if user.role != "factory" or user.factory_id is None:
                 raise OrderPermissionDenied("order access is not available")
             visible = session.scalar(
@@ -460,7 +468,7 @@ class OrderService:
             return self._snapshot(
                 session,
                 order,
-                today or self._now().date(),
+                today or self._business_today(),
                 factory_id=user.factory_id,
             )
 
@@ -491,7 +499,7 @@ class OrderService:
         }
         if sort_by not in allowed_sorts:
             raise OrderValidationError("invalid sort option")
-        business_today = today or self._now().date()
+        business_today = today or self._business_today()
         with self._session_factory() as session:
             user = self._require_enabled_user(session, actor_id)
             query = select(Order).where(Order.deleted_at.is_(None))
@@ -610,7 +618,9 @@ class OrderService:
         with self._session_factory() as session, session.begin():
             self._require_admin(session, actor_id)
             if self._idempotency_exists(session, scope=scope, key=idempotency_key):
-                return self._snapshot(session, self._require_order(session, order_id), now.date())
+                return self._snapshot(
+                    session, self._require_order(session, order_id), self._business_today()
+                )
             order = self._locked_order(session, order_id)
             expected = "PUBLISHED" if action == "COMPLETE" else "COMPLETED"
             target = "COMPLETED" if action == "COMPLETE" else "PUBLISHED"
@@ -654,7 +664,7 @@ class OrderService:
                 changes={"before": expected, "after": target, "reason": reason},
             )
             session.flush()
-            return self._snapshot(session, order, now.date())
+            return self._snapshot(session, order, self._business_today())
 
     def _replace_lines(
         self,
@@ -1057,3 +1067,7 @@ class OrderService:
     def _now(self) -> datetime:
         value = self._clock()
         return value.astimezone(UTC).replace(tzinfo=None) if value.tzinfo else value
+
+    def _business_today(self) -> date:
+        value = self._clock()
+        return value.astimezone(BUSINESS_TIME_ZONE).date() if value.tzinfo else value.date()

@@ -16,6 +16,9 @@ import FactoryUsersPage from "@/pages/FactoryUsersPage.vue";
 import HomePage from "@/pages/HomePage.vue";
 import LoginPage from "@/pages/LoginPage.vue";
 import NotFoundPage from "@/pages/NotFoundPage.vue";
+import OrderDetailPage from "@/pages/OrderDetailPage.vue";
+import OrderFormPage from "@/pages/OrderFormPage.vue";
+import OrdersPage from "@/pages/OrdersPage.vue";
 import ProductsPage from "@/pages/ProductsPage.vue";
 import { useIdentityStore } from "@/stores";
 
@@ -25,6 +28,10 @@ export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
     routes: [
       { path: "/login", name: "login", component: LoginPage, meta: { public: true } },
       { path: "/", name: "home", component: HomePage, meta: { activeAdmin: true } },
+      { path: "/orders", name: "orders", component: OrdersPage },
+      { path: "/orders/new", name: "order-new", component: OrderFormPage },
+      { path: "/orders/:orderId/edit", name: "order-edit", component: OrderFormPage },
+      { path: "/orders/:orderId", name: "order-detail", component: OrderDetailPage },
       { path: "/factories", name: "factories", component: FactoriesPage },
       { path: "/products", name: "products", component: ProductsPage },
       { path: "/admin-apply", name: "admin-apply", component: AdminApplyPage },

@@ -14,6 +14,12 @@ export type FactoryList = components["schemas"]["FactoryListResponse"];
 export type FactoryWrite = components["schemas"]["FactoryWrite"];
 export type ProductList = components["schemas"]["ProductListResponse"];
 export type ProductListItem = components["schemas"]["ProductListItemResponse"];
+export type Order = components["schemas"]["OrderResponse"];
+export type OrderList = components["schemas"]["OrderListResponse"];
+export type DashboardOrders = components["schemas"]["DashboardResponse"];
+export type DraftCreate = components["schemas"]["DraftCreate"];
+export type DraftUpdate = components["schemas"]["DraftUpdate"];
+export type AuditLogList = components["schemas"]["AuditLogListResponse"];
 export type SmsChallenge = components["schemas"]["SmsChallengeResponse"];
 export type User = components["schemas"]["UserResponse"];
 
@@ -158,4 +164,75 @@ export const identityApi = {
     });
     return request<ProductList>(`/v1/admin/products?${query.toString()}`);
   },
+};
+
+function idempotencyHeaders(): HeadersInit {
+  return { "Idempotency-Key": crypto.randomUUID() };
+}
+
+export const orderApi = {
+  list: (params: {
+    keyword?: string;
+    status?: string;
+    factoryId?: string;
+    trackers?: string[];
+    shipDateFrom?: string;
+    shipDateTo?: string;
+    sortBy?: string;
+    includeDrafts?: boolean;
+    page?: number;
+    pageSize?: number;
+  } = {}) => {
+    const query = new URLSearchParams({
+      keyword: params.keyword ?? "",
+      status: params.status ?? "all",
+      sortBy: params.sortBy ?? "priority",
+      includeDrafts: String(params.includeDrafts ?? true),
+      page: String(params.page ?? 1),
+      pageSize: String(params.pageSize ?? 20),
+    });
+    if (params.factoryId) query.set("factoryId", params.factoryId);
+    for (const tracker of params.trackers ?? []) query.append("trackers", tracker);
+    if (params.shipDateFrom) query.set("shipDateFrom", params.shipDateFrom);
+    if (params.shipDateTo) query.set("shipDateTo", params.shipDateTo);
+    return request<OrderList>(`/v1/orders?${query.toString()}`);
+  },
+  get: (orderId: string) => request<Order>(`/v1/orders/${encodeURIComponent(orderId)}`),
+  dashboard: () => request<DashboardOrders>("/v1/admin/dashboard/orders"),
+  auditLogs: (orderId: string) =>
+    request<AuditLogList>(`/v1/admin/orders/${encodeURIComponent(orderId)}/audit-logs`),
+  createDraft: (payload: DraftCreate) =>
+    request<Order>("/v1/admin/orders", { method: "POST", body: JSON.stringify(payload) }),
+  saveDraft: (orderId: string, payload: DraftUpdate) =>
+    request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  publish: (orderId: string, version: number) =>
+    request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/publish`, {
+      method: "POST",
+      headers: idempotencyHeaders(),
+      body: JSON.stringify({ version }),
+    }),
+  withdraw: (orderId: string) =>
+    request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/withdraw`, {
+      method: "POST",
+      headers: idempotencyHeaders(),
+    }),
+  delete: (orderId: string) =>
+    request<void>(`/v1/admin/orders/${encodeURIComponent(orderId)}`, {
+      method: "DELETE",
+      headers: idempotencyHeaders(),
+    }),
+  complete: (orderId: string) =>
+    request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/complete`, {
+      method: "POST",
+      headers: idempotencyHeaders(),
+    }),
+  reopen: (orderId: string, reason: string) =>
+    request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/reopen`, {
+      method: "POST",
+      headers: idempotencyHeaders(),
+      body: JSON.stringify({ reason }),
+    }),
 };

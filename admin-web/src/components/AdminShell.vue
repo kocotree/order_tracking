@@ -17,6 +17,7 @@
         >
           <span class="rail-module-icon" aria-hidden="true">
             <svg v-if="module.id === 'dashboard'" viewBox="0 0 24 24" fill="none"><path d="M4 4h6v7H4zM14 4h6v4h-6zM14 12h6v8h-6zM4 15h6v5H4z" /></svg>
+            <svg v-else-if="module.id === 'orders'" viewBox="0 0 24 24" fill="none"><path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" /></svg>
             <svg v-else-if="module.id === 'products'" viewBox="0 0 24 24" fill="none"><path d="M4 7.5 12 4l8 3.5-8 3.5-8-3.5ZM4 7.5V16l8 4 8-4V7.5M12 11v9" /></svg>
             <svg v-else-if="module.id === 'factory'" viewBox="0 0 24 24" fill="none"><path d="M4 20V9l6 3V8l6 3V5h4v15H4ZM8 16h1M13 16h1M18 16h1" /></svg>
             <svg v-else viewBox="0 0 24 24" fill="none"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.5 19a5.5 5.5 0 0 1 11 0M16 11a2.5 2.5 0 1 0 0-5M16 14c2.6 0 4.5 1.8 4.5 4" /></svg>
@@ -38,6 +39,7 @@
           >
             <span class="nav-icon" aria-hidden="true">
               <svg v-if="activeModule.id === 'dashboard'" viewBox="0 0 24 24" fill="none"><path d="M4 4h6v7H4zM14 4h6v4h-6zM14 12h6v8h-6zM4 15h6v5H4z" /></svg>
+              <svg v-else-if="activeModule.id === 'orders'" viewBox="0 0 24 24" fill="none"><path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" /></svg>
               <svg v-else-if="activeModule.id === 'products'" viewBox="0 0 24 24" fill="none"><path d="M4 7.5 12 4l8 3.5-8 3.5-8-3.5ZM4 7.5V16l8 4 8-4V7.5M12 11v9" /></svg>
               <svg v-else-if="activeModule.id === 'factory'" viewBox="0 0 24 24" fill="none"><path d="M4 20V9l6 3V8l6 3V5h4v15H4ZM8 16h1M13 16h1M18 16h1" /></svg>
               <svg v-else viewBox="0 0 24 24" fill="none"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.5 19a5.5 5.5 0 0 1 11 0M16 11a2.5 2.5 0 1 0 0-5M16 14c2.6 0 4.5 1.8 4.5 4" /></svg>
@@ -95,7 +97,7 @@ import BrandLogo from "@/components/BrandLogo.vue";
 import { useIdentityStore } from "@/stores";
 
 type ShellModule = {
-  id: "dashboard" | "products" | "factory" | "people";
+  id: "dashboard" | "orders" | "products" | "factory" | "people";
   label: string;
   route: string;
   items: { label: string; route: string }[];
@@ -103,6 +105,7 @@ type ShellModule = {
 
 const modules: ShellModule[] = [
   { id: "dashboard", label: "订单看板", route: "/", items: [{ label: "看板首页", route: "/" }] },
+  { id: "orders", label: "订单与发货", route: "/orders", items: [{ label: "订单列表", route: "/orders" }] },
   { id: "products", label: "产品资料", route: "/products", items: [{ label: "产品列表", route: "/products" }] },
   { id: "factory", label: "工厂资料", route: "/factories", items: [{ label: "工厂列表", route: "/factories" }] },
   { id: "people", label: "人员管理", route: "/people/factory-applications", items: [{ label: "人员管理", route: "/people/factory-applications" }] },
@@ -116,9 +119,10 @@ const accountOpen = ref(false);
 const sidebarCollapsed = ref(window.localStorage?.getItem("order-tracking-sidebar-collapsed") === "true");
 
 const activeModule = computed(() => {
-  if (route.path.startsWith("/products")) return modules[1];
-  if (route.path.startsWith("/factories")) return modules[2];
-  if (route.path.startsWith("/people")) return modules[3];
+  if (route.path.startsWith("/orders")) return modules[1];
+  if (route.path.startsWith("/products")) return modules[2];
+  if (route.path.startsWith("/factories")) return modules[3];
+  if (route.path.startsWith("/people")) return modules[4];
   return modules[0];
 });
 const userInitial = computed(() => identity.currentUser?.displayName.slice(0, 1) || "管");

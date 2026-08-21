@@ -7,4 +7,5 @@ Page({
   onLoad(options: Record<string, string | undefined>) { if (isDevPreview(options)) { this.show(previewOrder(true)); return; } if (!options.orderId) { this.setData({ loading: false, error: "任务参数缺失" }); return; } void this.load(options.orderId); },
   show(order: Order) { this.setData({ order, productSummary: orderProductSummary(order), statusTone: statusTone(order.displayStatus), totalText: formatQuantity(order.totalQuantity), shippedText: formatQuantity(order.shippedQuantity), pendingText: formatQuantity(order.pendingQuantity), loading: false }); },
   async load(orderId: string) { try { this.show(await orderApi.get(orderId)); } catch { this.setData({ error: "任务详情加载失败" }); } finally { this.setData({ loading: false }); } },
+  goBack() { wx.navigateBack(); },
 });

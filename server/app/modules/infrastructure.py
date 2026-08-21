@@ -17,6 +17,7 @@ class ClaimedJob:
     payload: dict[str, Any]
     status: str
     locked_by: str
+    attempts: int
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,7 @@ class InfrastructureStore:
                 payload=job.payload,
                 status=job.status,
                 locked_by=worker_id,
+                attempts=job.attempts,
             )
 
     def recover_stale_jobs(self, *, before: datetime) -> int:
@@ -136,7 +138,7 @@ class InfrastructureStore:
                         locked_at=None,
                         updated_at=utc_now(),
                     )
-                )
+                ),
             )
             return int(result.rowcount or 0)
 
@@ -166,6 +168,27 @@ class InfrastructureStore:
                     locked_at=None,
                     last_error=error_code,
                     updated_at=failed_at,
+                )
+            )
+
+    def retry_job(
+        self,
+        *,
+        job_id: int,
+        error_code: str,
+        available_at: datetime,
+    ) -> None:
+        with self._session_factory() as session, session.begin():
+            session.execute(
+                update(BackgroundJob)
+                .where(BackgroundJob.id == job_id, BackgroundJob.status == "running")
+                .values(
+                    status="pending",
+                    available_at=available_at,
+                    locked_by=None,
+                    locked_at=None,
+                    last_error=error_code,
+                    updated_at=utc_now(),
                 )
             )
 
@@ -240,9 +263,7 @@ class InfrastructureStore:
     def list_audit_logs(self, *, request_id: str) -> list[AuditEntry]:
         with self._session_factory() as session:
             entries = session.scalars(
-                select(AuditLog)
-                .where(AuditLog.request_id == request_id)
-                .order_by(AuditLog.id)
+                select(AuditLog).where(AuditLog.request_id == request_id).order_by(AuditLog.id)
             ).all()
             return [
                 AuditEntry(

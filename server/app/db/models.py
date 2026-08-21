@@ -279,6 +279,105 @@ class FactoryApplication(Base):
     )
 
 
+class Product(Base):
+    __tablename__ = "products"
+    __table_args__ = (
+        UniqueConstraint("source_i_id", name="uq_products_source_i_id"),
+        UniqueConstraint("name", name="uq_products_name"),
+    )
+
+    product_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    source_i_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
+    image_source_ref: Mapped[str | None] = mapped_column(String(1000))
+    image_object_key: Mapped[str | None] = mapped_column(String(500))
+    image_cache_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="missing"
+    )
+    image_cache_error: Mapped[str | None] = mapped_column(String(100))
+    source_modified_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    first_synced_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    last_synced_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        server_onupdate=text("CURRENT_TIMESTAMP(6)"),
+    )
+
+
+class ProductVariant(Base):
+    __tablename__ = "product_variants"
+    __table_args__ = (
+        UniqueConstraint("source_sku_id", name="uq_product_variants_source_sku_id"),
+        UniqueConstraint(
+            "product_id",
+            "properties_value",
+            name="uq_product_variants_product_properties",
+        ),
+        Index("ix_product_variants_available", "is_available", "variant_id"),
+    )
+
+    variant_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    product_id: Mapped[str] = mapped_column(
+        ForeignKey("products.product_id", ondelete="RESTRICT"), nullable=False
+    )
+    source_sku_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    properties_value: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_category: Mapped[str | None] = mapped_column(String(100))
+    source_enabled: Mapped[int | None] = mapped_column(Integer)
+    is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
+    source_modified_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    first_synced_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    last_synced_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        server_onupdate=text("CURRENT_TIMESTAMP(6)"),
+    )
+
+
+class ProductSyncRun(Base):
+    __tablename__ = "product_sync_runs"
+    __table_args__ = (
+        UniqueConstraint("active_key", name="uq_product_sync_runs_active_key"),
+        Index("ix_product_sync_runs_success", "status", "finished_at"),
+    )
+
+    run_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    active_key: Mapped[str | None] = mapped_column(String(64))
+    start_cursor: Mapped[str | None] = mapped_column(String(255))
+    candidate_cursor: Mapped[str | None] = mapped_column(String(255))
+    success_cursor: Mapped[str | None] = mapped_column(String(255))
+    started_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    worker_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    pages_read: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    records_read: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    included_records: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    created_records: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    updated_records: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    ignored_records: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    disabled_records: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    moved_out_records: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    image_jobs_created: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
 class MiniLoginAttempt(Base):
     __tablename__ = "mini_login_attempts"
     __table_args__ = (UniqueConstraint("token_digest", name="uq_mini_login_attempt_token"),)

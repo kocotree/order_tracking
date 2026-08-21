@@ -106,6 +106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/dashboard/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard */
+        get: operations["dashboard_api_v1_admin_dashboard_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/factories": {
         parameters: {
             query?: never;
@@ -204,6 +221,126 @@ export interface paths {
         put?: never;
         /** Reject Factory Application */
         post: operations["reject_factory_application_api_v1_admin_factory_applications__application_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Draft */
+        post: operations["create_draft_api_v1_admin_orders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Draft */
+        put: operations["save_draft_api_v1_admin_orders__order_id__put"];
+        post?: never;
+        /** Delete Order */
+        delete: operations["delete_order_api_v1_admin_orders__order_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit Logs */
+        get: operations["audit_logs_api_v1_admin_orders__order_id__audit_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete */
+        post: operations["complete_api_v1_admin_orders__order_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish */
+        post: operations["publish_api_v1_admin_orders__order_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen */
+        post: operations["reopen_api_v1_admin_orders__order_id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw */
+        post: operations["withdraw_api_v1_admin_orders__order_id__withdraw_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -483,6 +620,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Orders */
+        get: operations["list_orders_api_v1_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{order_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Order */
+        get: operations["get_order_api_v1_orders__order_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sms/challenges": {
         parameters: {
             query?: never;
@@ -592,6 +763,61 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** AssignmentResponse */
+        AssignmentResponse: {
+            /** Assignedquantity */
+            assignedQuantity: number;
+            /** Assignmentid */
+            assignmentId: number;
+            /** Factoryid */
+            factoryId: string;
+            /** Factoryname */
+            factoryName: string;
+            /** Overquantity */
+            overQuantity: number;
+            /** Pendingquantity */
+            pendingQuantity: number;
+            /** Progresspercent */
+            progressPercent: number;
+            /** Shippedquantity */
+            shippedQuantity: number;
+            /** Shortquantity */
+            shortQuantity: number;
+        };
+        /** AssignmentWrite */
+        AssignmentWrite: {
+            /** Factoryid */
+            factoryId: string;
+            /** Quantity */
+            quantity: number;
+        };
+        /** AuditLogListResponse */
+        AuditLogListResponse: {
+            /** Items */
+            items: components["schemas"]["AuditLogResponse"][];
+            /** Requestid */
+            requestId: string;
+            /** Total */
+            total: number;
+        };
+        /** AuditLogResponse */
+        AuditLogResponse: {
+            /** Action */
+            action: string;
+            /** Actorid */
+            actorId: string | null;
+            /** Changes */
+            changes: {
+                [key: string]: unknown;
+            };
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Sourceterminal */
+            sourceTerminal: string | null;
+        };
         /** AvatarResponse */
         AvatarResponse: {
             /** Fileid */
@@ -623,6 +849,77 @@ export interface components {
             name: string;
             /** Phone */
             phone: string;
+        };
+        /** DashboardResponse */
+        DashboardResponse: {
+            /** Overdueorders */
+            overdueOrders: number;
+            /** Pendingimportorders */
+            pendingImportOrders: number;
+            /** Recentorders */
+            recentOrders: components["schemas"]["OrderResponse"][];
+            /** Requestid */
+            requestId: string;
+            /** Todayshipments */
+            todayShipments: number;
+        };
+        /** DraftCreate */
+        DraftCreate: {
+            /**
+             * Contractshipdate
+             * Format: date
+             */
+            contractShipDate: string;
+            /** Lines */
+            lines: components["schemas"]["DraftLineWrite"][];
+            /**
+             * Orderdate
+             * Format: date
+             */
+            orderDate: string;
+            /** Orderno */
+            orderNo: string;
+            /**
+             * Tracker
+             * @enum {string}
+             */
+            tracker: "烧麦" | "松子" | "橄榄" | "大葱" | "青椒";
+        };
+        /** DraftLineWrite */
+        DraftLineWrite: {
+            /**
+             * Assignments
+             * @default []
+             */
+            assignments: components["schemas"]["AssignmentWrite"][];
+            /** Orderquantity */
+            orderQuantity: number;
+            /** Variantid */
+            variantId: string;
+        };
+        /** DraftUpdate */
+        DraftUpdate: {
+            /**
+             * Contractshipdate
+             * Format: date
+             */
+            contractShipDate: string;
+            /** Lines */
+            lines: components["schemas"]["DraftLineWrite"][];
+            /**
+             * Orderdate
+             * Format: date
+             */
+            orderDate: string;
+            /** Orderno */
+            orderNo: string;
+            /**
+             * Tracker
+             * @enum {string}
+             */
+            tracker: "烧麦" | "松子" | "橄榄" | "大葱" | "青椒";
+            /** Version */
+            version: number;
         };
         /** FactoryApplicationCreate */
         FactoryApplicationCreate: {
@@ -700,6 +997,25 @@ export interface components {
             factoryName: string;
             /** Suppliernumber */
             supplierNumber: string;
+        };
+        /** FactoryProgressResponse */
+        FactoryProgressResponse: {
+            /** Factoryid */
+            factoryId: string;
+            /** Factoryname */
+            factoryName: string;
+            /** Orderquantity */
+            orderQuantity: number;
+            /** Overquantity */
+            overQuantity: number;
+            /** Pendingquantity */
+            pendingQuantity: number;
+            /** Progresspercent */
+            progressPercent: number;
+            /** Shippedquantity */
+            shippedQuantity: number;
+            /** Shortquantity */
+            shortQuantity: number;
         };
         /** FactoryResponse */
         FactoryResponse: {
@@ -809,6 +1125,110 @@ export interface components {
             /** Refreshtoken */
             refreshToken: string;
         };
+        /** OrderLineResponse */
+        OrderLineResponse: {
+            /** Assignments */
+            assignments: components["schemas"]["AssignmentResponse"][];
+            /** Category */
+            category: string | null;
+            /** Imageobjectkey */
+            imageObjectKey: string | null;
+            /** Orderlineid */
+            orderLineId: number;
+            /** Orderquantity */
+            orderQuantity: number;
+            /** Overquantity */
+            overQuantity: number;
+            /** Pendingquantity */
+            pendingQuantity: number;
+            /** Productname */
+            productName: string;
+            /** Progresspercent */
+            progressPercent: number;
+            /** Propertiesvalue */
+            propertiesValue: string;
+            /** Shippedquantity */
+            shippedQuantity: number;
+            /** Shortquantity */
+            shortQuantity: number;
+            /** Skuid */
+            skuId: string;
+            /** Variantid */
+            variantId: string;
+        };
+        /** OrderListResponse */
+        OrderListResponse: {
+            /** Items */
+            items: components["schemas"]["OrderResponse"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            /** Requestid */
+            requestId: string;
+            /** Total */
+            total: number;
+        };
+        /** OrderResponse */
+        OrderResponse: {
+            /**
+             * Contractshipdate
+             * Format: date
+             */
+            contractShipDate: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Displaystatus */
+            displayStatus: string;
+            /** Factoryprogress */
+            factoryProgress: components["schemas"]["FactoryProgressResponse"][];
+            /** Lifecycle */
+            lifecycle: string;
+            /** Lines */
+            lines: components["schemas"]["OrderLineResponse"][];
+            /**
+             * Orderdate
+             * Format: date
+             */
+            orderDate: string;
+            /** Orderid */
+            orderId: string;
+            /** Orderno */
+            orderNo: string;
+            /** Overquantity */
+            overQuantity: number;
+            /** Pendingquantity */
+            pendingQuantity: number;
+            /** Progresspercent */
+            progressPercent: number;
+            /**
+             * Requestid
+             * @default
+             */
+            requestId: string;
+            /** Shippedquantity */
+            shippedQuantity: number;
+            /** Shortquantity */
+            shortQuantity: number;
+            /** Source */
+            source: string;
+            /** Totalquantity */
+            totalQuantity: number;
+            /** Tracker */
+            tracker: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            /** Validationissues */
+            validationIssues: string[];
+            /** Version */
+            version: number;
+        };
         /** ProductListItemResponse */
         ProductListItemResponse: {
             /** Iid */
@@ -848,6 +1268,11 @@ export interface components {
             reason: string;
             /** Version */
             version: number;
+        };
+        /** ReopenWrite */
+        ReopenWrite: {
+            /** Reason */
+            reason: string;
         };
         /** ReviewRequest */
         ReviewRequest: {
@@ -931,6 +1356,11 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VersionWrite */
+        VersionWrite: {
+            /** Version */
+            version: number;
         };
         /** WechatLoginRequest */
         WechatLoginRequest: {
@@ -1152,6 +1582,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_api_v1_admin_dashboard_orders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1440,6 +1901,301 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactoryApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_draft_api_v1_admin_orders_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_draft_api_v1_admin_orders__order_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_order_api_v1_admin_orders__order_id__delete: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_logs_api_v1_admin_orders__order_id__audit_logs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_api_v1_admin_orders__order_id__complete_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_api_v1_admin_orders__order_id__publish_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reopen_api_v1_admin_orders__order_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReopenWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_api_v1_admin_orders__order_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2009,6 +2765,85 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AvatarResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_orders_api_v1_orders_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                status?: string;
+                factoryId?: string | null;
+                trackers?: string[] | null;
+                shipDateFrom?: string | null;
+                shipDateTo?: string | null;
+                sortBy?: string;
+                includeDrafts?: boolean;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_order_api_v1_orders__order_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
                 };
             };
             /** @description Validation Error */

@@ -139,6 +139,15 @@ class OrderSnapshot:
     updated_at: datetime
 
 
+@dataclass(frozen=True)
+class OrderAuditSnapshot:
+    action: str
+    changes: dict[str, object]
+    actor_id: str | None
+    source_terminal: str | None
+    created_at: datetime
+
+
 class OrderService:
     def __init__(
         self,
@@ -560,6 +569,31 @@ class OrderService:
             total = len(snapshots)
             start = (page - 1) * page_size
             return snapshots[start : start + page_size], total
+
+    def list_audit_logs(
+        self, *, actor_id: str, order_id: str
+    ) -> list[OrderAuditSnapshot]:
+        with self._session_factory() as session:
+            self._require_admin(session, actor_id)
+            self._require_order(session, order_id)
+            entries = session.scalars(
+                select(AuditLog)
+                .where(
+                    AuditLog.target_type == "order",
+                    AuditLog.target_id == order_id,
+                )
+                .order_by(AuditLog.id.desc())
+            )
+            return [
+                OrderAuditSnapshot(
+                    action=item.action,
+                    changes=item.changes,
+                    actor_id=item.actor_id,
+                    source_terminal=item.source_terminal,
+                    created_at=item.created_at,
+                )
+                for item in entries
+            ]
 
     def _set_completion(
         self,

@@ -1,7 +1,10 @@
 from app.modules.orders.service import (
     AssignmentInput,
     DraftLineInput,
+    EmptyOrderExecutionGuard,
+    OrderAuditSnapshot,
     OrderConflict,
+    OrderError,
     OrderNotFound,
     OrderPermissionDenied,
     OrderService,
@@ -12,7 +15,10 @@ from app.modules.orders.service import (
 __all__ = [
     "AssignmentInput",
     "DraftLineInput",
+    "EmptyOrderExecutionGuard",
+    "OrderAuditSnapshot",
     "OrderConflict",
+    "OrderError",
     "OrderNotFound",
     "OrderPermissionDenied",
     "OrderService",

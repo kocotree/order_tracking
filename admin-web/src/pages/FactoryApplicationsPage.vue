@@ -1,20 +1,20 @@
 <template>
   <AdminShell>
-    <section class="content-card people-card">
-      <header class="content-header"><h1>人员管理</h1></header>
+    <section class="section-card people-management-card">
+      <header class="people-management-header"><h1>人员管理</h1></header>
       <PeopleTabs />
       <div class="people-toolbar">
-        <label for="factory-application-status">申请状态</label>
+        <label class="people-user-filter" for="factory-application-status"><span>申请状态</span>
         <select id="factory-application-status" v-model="statusFilter" @change="load">
           <option value="">全部状态</option>
           <option value="pending">待审核</option>
           <option value="approved">已通过</option>
           <option value="rejected">已拒绝</option>
-        </select>
+        </select></label>
       </div>
       <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
       <div class="people-table-scroll">
-        <table class="people-table">
+        <table class="people-table data-grid-table people-factory-application-table">
           <thead><tr><th>序号</th><th>姓名</th><th>职位</th><th>申请工厂</th><th>申请时间</th><th>申请状态</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="(application, index) in applications" :key="application.applicationId">

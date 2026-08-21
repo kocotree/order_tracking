@@ -2,7 +2,7 @@
   <main class="auth-page" :class="modifier">
     <section class="auth-shell" aria-label="跟单看板账号访问">
       <header class="auth-brand">
-        <span class="auth-brand__mark">KTK</span>
+        <BrandLogo />
         <div>
           <strong>跟单管理系统</strong>
           <span>订单与发货协同管理</span>
@@ -15,5 +15,7 @@
 </template>
 
 <script setup lang="ts">
+import BrandLogo from "@/components/BrandLogo.vue";
+
 defineProps<{ modifier?: string }>();
 </script>

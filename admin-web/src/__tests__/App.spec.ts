@@ -167,6 +167,12 @@ describe("administrator identity web", () => {
     expect(wrapper.text()).not.toContain("开户银行");
     expect(wrapper.text()).not.toContain("银行账号");
     expect(wrapper.text()).not.toContain("来源别名");
+    expect(wrapper.find(".app-rail").exists()).toBe(true);
+    expect(wrapper.find(".page-sidebar").exists()).toBe(true);
+    expect(wrapper.text()).toContain("重置");
+    await wrapper.get(".factory-row-actions .text-button").trigger("click");
+    expect(wrapper.find(".factory-detail-modal").exists()).toBe(true);
+    expect(wrapper.text()).toContain("温岭市新河禹帆制帽厂");
   });
 
   it("reviews a factory application from its detail dialog and confirms the binding factory", async () => {
@@ -260,10 +266,12 @@ describe("administrator identity web", () => {
     expect(wrapper.text()).toContain("ITEM-01");
     expect(wrapper.text()).toContain("SKU-01");
     expect(wrapper.text()).toContain("蓝色,52");
-    expect(wrapper.find(".product-table").text()).not.toContain("操作");
-    expect(wrapper.find(".product-table").text()).not.toContain("编辑");
+    expect(wrapper.find(".product-list-table").text()).not.toContain("操作");
+    expect(wrapper.find(".product-list-table").text()).not.toContain("编辑");
+    expect(wrapper.find(".order-list-filter-card").exists()).toBe(true);
+    expect(wrapper.find(".section-card.product-list-card").exists()).toBe(true);
     await wrapper.get('input[type="search"]').setValue("蓝色,52");
-    await wrapper.get(".product-toolbar .secondary-button").trigger("click");
+    await wrapper.get(".product-search-form").trigger("submit");
     await flushPromises();
     expect(requestedUrls.some((url) => url.includes("keyword=%E8%93%9D%E8%89%B2%2C52"))).toBe(true);
   });

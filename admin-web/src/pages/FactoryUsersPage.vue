@@ -1,18 +1,18 @@
 <template>
   <AdminShell>
-    <section class="content-card people-card">
-      <header class="content-header"><h1>人员管理</h1></header>
+    <section class="section-card people-management-card">
+      <header class="people-management-header"><h1>人员管理</h1></header>
       <PeopleTabs />
       <div class="people-toolbar">
-        <label for="factory-user-filter">所属工厂</label>
+        <label class="people-user-filter" for="factory-user-filter"><span>所属工厂</span>
         <select id="factory-user-filter" v-model="factoryFilter">
           <option value="">全部工厂</option>
           <option v-for="factory in factories" :key="factory.factoryId" :value="factory.factoryId">{{ factory.factoryName }}</option>
-        </select>
+        </select></label>
       </div>
       <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
       <div class="people-table-scroll">
-        <table class="people-table">
+        <table class="people-table data-grid-table people-user-table">
           <thead><tr><th>序号</th><th>姓名</th><th>角色</th><th>职位</th><th>所属工厂</th><th>启用状态</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="(account, index) in filteredUsers" :key="account.userId">
@@ -39,6 +39,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
 
 import { ApiError, identityApi, type Factory, type User } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
@@ -46,6 +47,7 @@ import PeopleTabs from "@/components/PeopleTabs.vue";
 import { useIdentityStore } from "@/stores";
 
 const identity = useIdentityStore();
+const route = useRoute();
 const users = ref<User[]>([]);
 const factories = ref<Factory[]>([]);
 const factoryFilter = ref("");
@@ -101,5 +103,8 @@ async function confirmToggle() {
   }
 }
 
-onMounted(load);
+onMounted(async () => {
+  if (typeof route.query.factory === "string") factoryFilter.value = route.query.factory;
+  await load();
+});
 </script>

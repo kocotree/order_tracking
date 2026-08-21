@@ -1,11 +1,11 @@
 <template>
   <AdminShell>
-    <section class="content-card people-card">
-      <header class="content-header"><h1>管理员账号</h1></header>
+    <section class="section-card people-management-card">
+      <header class="people-management-header"><h1>人员管理</h1></header>
       <PeopleTabs />
       <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
       <div class="people-table-scroll">
-        <table class="people-table">
+        <table class="people-table data-grid-table people-user-table">
           <thead><tr><th>序号</th><th>姓名</th><th>角色</th><th>手机号</th><th>启用状态</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="(user, index) in users" :key="user.userId">

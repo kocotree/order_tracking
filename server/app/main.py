@@ -17,6 +17,7 @@ from app.adapters.sms import DisabledSmsSender, FakeSmsSender
 from app.adapters.wechat import DisabledWechatIdentity
 from app.api.factory_access import create_factory_router
 from app.api.identity import create_identity_router
+from app.api.products import create_product_router
 from app.api.router import api_router
 from app.db.session import create_database_engine, create_session_factory
 from app.local_demo import (
@@ -40,6 +41,8 @@ from app.modules.identity_access import (
     VerificationInvalid,
 )
 from app.modules.identity_access.service import IdentityAccessService
+from app.modules.product_sync import ProductCatalogService
+from app.product_demo import seed_local_demo_products
 from app.settings.config import Settings
 
 
@@ -49,6 +52,7 @@ def create_app(
     event_logger: StructuredLogger | None = None,
     identity_service: IdentityAccessService | None = None,
     factory_service: FactoryAccessService | None = None,
+    product_service: ProductCatalogService | None = None,
     extra_routers: Sequence[APIRouter] = (),
 ) -> FastAPI:
     settings = Settings(database_url=database_url) if database_url is not None else Settings()
@@ -117,6 +121,10 @@ def create_app(
             )
     if factory_service is None:
         factory_service = FactoryAccessService(session_factory)
+    if product_service is None:
+        product_service = ProductCatalogService(session_factory)
+    if local_demo_enabled:
+        seed_local_demo_products(session_factory)
     app.include_router(
         create_identity_router(
             identity_service,
@@ -125,6 +133,7 @@ def create_app(
         )
     )
     app.include_router(create_factory_router(factory_service, identity_service))
+    app.include_router(create_product_router(product_service, identity_service))
     if local_demo_enabled:
         app.include_router(create_local_demo_router())
 

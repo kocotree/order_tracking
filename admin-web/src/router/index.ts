@@ -16,6 +16,7 @@ import FactoryUsersPage from "@/pages/FactoryUsersPage.vue";
 import HomePage from "@/pages/HomePage.vue";
 import LoginPage from "@/pages/LoginPage.vue";
 import NotFoundPage from "@/pages/NotFoundPage.vue";
+import ProductsPage from "@/pages/ProductsPage.vue";
 import { useIdentityStore } from "@/stores";
 
 export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
@@ -25,6 +26,7 @@ export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
       { path: "/login", name: "login", component: LoginPage, meta: { public: true } },
       { path: "/", name: "home", component: HomePage, meta: { activeAdmin: true } },
       { path: "/factories", name: "factories", component: FactoriesPage },
+      { path: "/products", name: "products", component: ProductsPage },
       { path: "/admin-apply", name: "admin-apply", component: AdminApplyPage },
       {
         path: "/access-status/:status(pending|rejected|disabled)",

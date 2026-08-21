@@ -223,4 +223,48 @@ describe("administrator identity web", () => {
 
     expect(JSON.parse(approvedBody)).toEqual({ version: 1, factoryId: "factory-1" });
   });
+
+  it("shows the confirmed read-only product list with server search and no operation column", async () => {
+    const requestedUrls: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.endsWith("/v1/me")) return response(user());
+      if (url.includes("/v1/admin/products")) {
+        return response({
+          items: [
+            {
+              variantId: "variant-1",
+              iId: "ITEM-01",
+              skuId: "SKU-01",
+              name: "春夏童帽",
+              propertiesValue: "蓝色,52",
+              imageAvailable: false,
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 10,
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const pinia = createPinia();
+    const router = createAppRouter(pinia, "/products");
+    await router.isReady();
+    const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("产品资料");
+    expect(wrapper.text()).toContain("ITEM-01");
+    expect(wrapper.text()).toContain("SKU-01");
+    expect(wrapper.text()).toContain("蓝色,52");
+    expect(wrapper.find(".product-table").text()).not.toContain("操作");
+    expect(wrapper.find(".product-table").text()).not.toContain("编辑");
+    await wrapper.get('input[type="search"]').setValue("蓝色,52");
+    await wrapper.get(".product-toolbar .secondary-button").trigger("click");
+    await flushPromises();
+    expect(requestedUrls.some((url) => url.includes("keyword=%E8%93%9D%E8%89%B2%2C52"))).toBe(true);
+  });
 });

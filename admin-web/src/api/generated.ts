@@ -210,6 +210,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Products */
+        get: operations["list_products_api_v1_admin_products_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -791,6 +808,32 @@ export interface components {
         MiniRefreshRequest: {
             /** Refreshtoken */
             refreshToken: string;
+        };
+        /** ProductListItemResponse */
+        ProductListItemResponse: {
+            /** Iid */
+            iId: string;
+            /** Imageavailable */
+            imageAvailable: boolean;
+            /** Name */
+            name: string;
+            /** Propertiesvalue */
+            propertiesValue: string;
+            /** Skuid */
+            skuId: string;
+            /** Variantid */
+            variantId: string;
+        };
+        /** ProductListResponse */
+        ProductListResponse: {
+            /** Items */
+            items: components["schemas"]["ProductListItemResponse"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            /** Total */
+            total: number;
         };
         /** RejectFactoryApplication */
         RejectFactoryApplication: {
@@ -1397,6 +1440,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactoryApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_products_api_v1_admin_products_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                page?: number;
+                pageSize?: number;
+                sortBy?: "iId" | "skuId" | "name" | "propertiesValue";
+                sortOrder?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductListResponse"];
                 };
             };
             /** @description Validation Error */

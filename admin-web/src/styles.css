@@ -97,6 +97,9 @@ h1, h2, p { margin-top: 0; }
 .admin-sidebar { display: flex; flex-direction: column; gap: 4px; padding: 18px 12px; background: #fff; border-right: 1px solid var(--line); }
 .admin-sidebar a { padding: 11px 13px; color: var(--muted); font-size: 13px; font-weight: 700; text-decoration: none; border-radius: 5px; }
 .admin-sidebar a.router-link-active { color: var(--blue-dark); background: var(--blue-pale); }
+.sidebar-module { display: grid; gap: 3px; padding-top: 5px; }
+.sidebar-module > span { padding: 4px 13px; color: var(--subtle); font-size: 11px; font-weight: 800; }
+.sidebar-module > a { padding-left: 22px; }
 .admin-main { min-width: 0; padding: 22px; }
 .content-card { min-width: 0; overflow: hidden; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgb(43 56 75 / 6%); }
 .home-card { padding: 28px; }
@@ -142,6 +145,14 @@ h1, h2, p { margin-top: 0; }
 .factory-header { justify-content: space-between; }
 .factory-toolbar input { width: min(340px, 100%); height: 34px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 4px; }
 .factory-table { min-width: 1180px; }
+.product-toolbar input { width: min(460px, 100%); height: 34px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 4px; }
+.product-table { min-width: 920px; }
+.product-table .sequence-column { width: 76px; }
+.product-table .image-column { width: 100px; }
+.sort-button { padding: 0; color: inherit; font-weight: 800; background: transparent; border: 0; }
+.product-image-placeholder { display: grid; width: 44px; height: 32px; color: var(--subtle); font-size: 11px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 4px; place-items: center; }
+.product-pagination { display: flex; gap: 10px; align-items: center; justify-content: flex-end; min-height: 58px; padding: 10px 16px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); }
+.product-pagination .secondary-button { min-width: 68px; min-height: 32px; }
 .factory-editor { width: min(760px, calc(100vw - 40px)); }
 .factory-form { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-height: calc(100vh - 190px); overflow-y: auto; }
 .factory-form > label { display: grid; gap: 7px; color: var(--ink); font-size: 13px; font-weight: 700; }

@@ -12,6 +12,8 @@ export type FactoryApplication = components["schemas"]["FactoryApplicationRespon
 export type FactoryApplicationList = components["schemas"]["FactoryApplicationListResponse"];
 export type FactoryList = components["schemas"]["FactoryListResponse"];
 export type FactoryWrite = components["schemas"]["FactoryWrite"];
+export type ProductList = components["schemas"]["ProductListResponse"];
+export type ProductListItem = components["schemas"]["ProductListItemResponse"];
 export type SmsChallenge = components["schemas"]["SmsChallengeResponse"];
 export type User = components["schemas"]["UserResponse"];
 
@@ -140,4 +142,20 @@ export const identityApi = {
       `/v1/admin/users/${encodeURIComponent(userId)}/${enabled ? "enable" : "disable"}`,
       { method: "POST", body: JSON.stringify({ version }) },
     ),
+  listProducts: (params: {
+    keyword?: string;
+    page?: number;
+    pageSize?: number;
+    sortBy?: "iId" | "skuId" | "name" | "propertiesValue";
+    sortOrder?: "asc" | "desc";
+  } = {}) => {
+    const query = new URLSearchParams({
+      keyword: params.keyword ?? "",
+      page: String(params.page ?? 1),
+      pageSize: String(params.pageSize ?? 10),
+      sortBy: params.sortBy ?? "iId",
+      sortOrder: params.sortOrder ?? "asc",
+    });
+    return request<ProductList>(`/v1/admin/products?${query.toString()}`);
+  },
 };

@@ -6,6 +6,9 @@ from app.main import create_app
 
 def clean_identity_tables(engine: Engine) -> None:
     with engine.begin() as connection:
+        connection.execute(text("DELETE FROM product_variants"))
+        connection.execute(text("DELETE FROM product_sync_runs"))
+        connection.execute(text("DELETE FROM products"))
         connection.execute(text("UPDATE users SET mini_avatar_file_id = NULL"))
         connection.execute(text("DELETE FROM stored_files"))
         connection.execute(text("DELETE FROM mini_login_attempts"))
@@ -42,9 +45,7 @@ def test_local_demo_completes_cross_terminal_identity_flow_over_public_http(
             follow_redirects=False,
         )
         assert started.status_code == 307
-        assert started.headers["location"].startswith(
-            "/api/v1/local-demo/feishu-authorize?"
-        )
+        assert started.headers["location"].startswith("/api/v1/local-demo/feishu-authorize?")
 
         chooser = client.get(started.headers["location"])
         assert chooser.status_code == 200
@@ -111,6 +112,9 @@ def test_local_demo_completes_cross_terminal_identity_flow_over_public_http(
             json={"version": application["version"]},
         )
         assert approved.status_code == 200
+        products = client.get("/api/v1/admin/products")
+        assert products.status_code == 200
+        assert products.json()["total"] == 12
         log_out(client)
 
         log_in(client, "applicant")

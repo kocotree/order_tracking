@@ -165,6 +165,51 @@ function renderPublishDialog(order) {
   `;
 }
 
+function renderCompleteDialog(order) {
+  const overQuantity = Math.max(Number(order.shippedQuantity) - Number(order.totalQuantity), 0);
+  const shortQuantity = Math.max(Number(order.totalQuantity) - Number(order.shippedQuantity), 0);
+  return `
+    <div class="detail-confirm-layer" hidden data-complete-confirm-layer>
+      <button class="detail-confirm-backdrop" type="button" aria-label="取消确认订单完成" data-complete-confirm-cancel></button>
+      <section class="detail-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="complete-confirm-title" aria-describedby="complete-confirm-description">
+        <h2 id="complete-confirm-title">确认订单完成</h2>
+        <p id="complete-confirm-description">确认订单 <strong>${escapeHTML(order.orderNo)}</strong> 不再继续发货并标记为已完成？</p>
+        <dl class="order-completion-summary">
+          <div><dt>订单数量</dt><dd>${escapeHTML(formatNumber(order.totalQuantity))}</dd></div>
+          <div><dt>已发数量</dt><dd>${escapeHTML(formatNumber(order.shippedQuantity))}</dd></div>
+          <div><dt>多发数量</dt><dd>${escapeHTML(formatNumber(overQuantity))}</dd></div>
+          <div><dt>少发数量</dt><dd>${escapeHTML(formatNumber(shortQuantity))}</dd></div>
+        </dl>
+        <div class="detail-confirm-actions">
+          <button class="detail-outline-button" type="button" data-complete-confirm-cancel>取消</button>
+          <button class="detail-primary-button" type="button" data-complete-confirm-submit>确认完成</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderReopenDialog(order) {
+  return `
+    <div class="detail-confirm-layer" hidden data-reopen-confirm-layer>
+      <button class="detail-confirm-backdrop" type="button" aria-label="取消撤销订单完成" data-reopen-confirm-cancel></button>
+      <section class="detail-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reopen-confirm-title" aria-describedby="reopen-confirm-description">
+        <h2 id="reopen-confirm-title">撤销完成</h2>
+        <p id="reopen-confirm-description">订单 <strong>${escapeHTML(order.orderNo)}</strong> 将恢复为未完成；若已超过合同出货时间，则显示为已逾期。</p>
+        <label class="order-reopen-reason">
+          <span>撤销原因</span>
+          <textarea maxlength="200" placeholder="请输入撤销原因" data-reopen-reason></textarea>
+        </label>
+        <p class="order-reopen-error" hidden data-reopen-error>请填写撤销原因。</p>
+        <div class="detail-confirm-actions">
+          <button class="detail-outline-button" type="button" data-reopen-confirm-cancel>取消</button>
+          <button class="detail-primary-button" type="button" data-reopen-confirm-submit>确认撤销</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function getContractSigningDate(factory) {
   if (factory.contractSignDate) return factory.contractSignDate;
   const match = String(factory.contractNo ?? "").match(/^(\d{4})(\d{2})(\d{2})/);
@@ -259,6 +304,8 @@ export function renderOrderDetailPage(orderNo) {
   const order = getOrderDetail(orderNo);
   const productFactoryRows = buildProductFactoryRows(order);
   const isDraft = order.statusKey === "draft";
+  const isCompleted = order.statusKey === "completed";
+  const canComplete = !isDraft && !isCompleted;
   const canExportContract = order.factories.length > 0 && Number(order.shippedQuantity) === 0;
 
   return `
@@ -270,6 +317,8 @@ export function renderOrderDetailPage(orderNo) {
             <span class="status-badge is-${escapeHTML(order.tone)}">${escapeHTML(order.statusLabel)}</span>
             <button class="detail-outline-button" type="button" data-contract-export-open ${canExportContract ? "" : "disabled"} title="${canExportContract ? "导出加工合同" : "只有已发数量为0的订单才能导出加工合同"}">导出加工合同</button>
             ${isDraft ? `<button class="detail-primary-button" type="button" data-publish-confirm-open>发布订单</button>` : ""}
+            ${canComplete ? `<button class="detail-primary-button" type="button" data-complete-confirm-open>确认订单完成</button>` : ""}
+            ${isCompleted ? `<button class="detail-outline-button" type="button" data-reopen-confirm-open>撤销完成</button>` : ""}
           </div>
         </header>
 
@@ -331,6 +380,8 @@ export function renderOrderDetailPage(orderNo) {
         </div>
       </section>
       ${isDraft ? renderPublishDialog(order) : ""}
+      ${canComplete ? renderCompleteDialog(order) : ""}
+      ${isCompleted ? renderReopenDialog(order) : ""}
       ${renderContractExportLayer(order)}
     </article>
   `;
@@ -340,6 +391,10 @@ export function bindOrderDetailPage(orderNo) {
   const page = document.querySelector("[data-order-detail-page]");
   const publishLayer = page?.querySelector("[data-publish-confirm-layer]");
   const publishButton = page?.querySelector("[data-publish-confirm-open]");
+  const completeLayer = page?.querySelector("[data-complete-confirm-layer]");
+  const completeButton = page?.querySelector("[data-complete-confirm-open]");
+  const reopenLayer = page?.querySelector("[data-reopen-confirm-layer]");
+  const reopenButton = page?.querySelector("[data-reopen-confirm-open]");
   const contractLayer = page?.querySelector("[data-contract-export-layer]");
   const contractButton = page?.querySelector("[data-contract-export-open]");
   const contractDialogRoot = page?.querySelector("[data-contract-export-dialog-root]");
@@ -362,6 +417,22 @@ export function bindOrderDetailPage(orderNo) {
     contractButton?.focus();
   };
 
+  const closeCompleteDialog = () => {
+    if (completeLayer) completeLayer.hidden = true;
+    document.body.classList.remove("has-dialog-open");
+    completeButton?.focus();
+  };
+
+  const closeReopenDialog = () => {
+    if (reopenLayer) reopenLayer.hidden = true;
+    document.body.classList.remove("has-dialog-open");
+    reopenButton?.focus();
+  };
+
+  const refreshOrderDetail = () => {
+    window.dispatchEvent(new Event("hashchange"));
+  };
+
   page?.querySelector("[data-order-back]")?.addEventListener("click", () => {
     window.location.hash = "/orders";
   });
@@ -371,6 +442,20 @@ export function bindOrderDetailPage(orderNo) {
     publishLayer.hidden = false;
     document.body.classList.add("has-dialog-open");
     publishLayer.querySelector("[data-publish-confirm-submit]")?.focus();
+  });
+
+  completeButton?.addEventListener("click", () => {
+    if (!completeLayer) return;
+    completeLayer.hidden = false;
+    document.body.classList.add("has-dialog-open");
+    completeLayer.querySelector("[data-complete-confirm-submit]")?.focus();
+  });
+
+  reopenButton?.addEventListener("click", () => {
+    if (!reopenLayer) return;
+    reopenLayer.hidden = false;
+    document.body.classList.add("has-dialog-open");
+    reopenLayer.querySelector("[data-reopen-reason]")?.focus();
   });
 
   contractButton?.addEventListener("click", () => {
@@ -391,6 +476,14 @@ export function bindOrderDetailPage(orderNo) {
 
   page?.querySelectorAll("[data-publish-confirm-cancel]").forEach((button) => {
     button.addEventListener("click", closePublishDialog);
+  });
+
+  page?.querySelectorAll("[data-complete-confirm-cancel]").forEach((button) => {
+    button.addEventListener("click", closeCompleteDialog);
+  });
+
+  page?.querySelectorAll("[data-reopen-confirm-cancel]").forEach((button) => {
+    button.addEventListener("click", closeReopenDialog);
   });
 
   page?.querySelector("[data-publish-confirm-submit]")?.addEventListener("click", () => {
@@ -418,6 +511,60 @@ export function bindOrderDetailPage(orderNo) {
     }
     publishButton?.remove();
     showToast("订单发布成功", `${orderNo} 已变为未完成，相关工厂将收到任务。`);
+  });
+
+  page?.querySelector("[data-complete-confirm-submit]")?.addEventListener("click", () => {
+    const sourceOrder = orderListData.orders.find((item) => item.orderNo === orderNo);
+    const detailOrder = orderDetailData[orderNo];
+    if (sourceOrder) {
+      sourceOrder.statusKey = "completed";
+      sourceOrder.statusLabel = "已完成";
+      sourceOrder.tone = "success";
+      sourceOrder.updatedAt = new Date().toISOString();
+    }
+    if (detailOrder) {
+      detailOrder.statusKey = "completed";
+      detailOrder.statusLabel = "已完成";
+      detailOrder.tone = "success";
+      detailOrder.logs?.unshift({ time: new Date().toLocaleString("zh-CN", { hour12: false }).slice(0, 16), operator: "煎饼", action: "确认订单完成", source: "管理员网页端" });
+    }
+    closeCompleteDialog();
+    refreshOrderDetail();
+    showToast("订单已完成", `${orderNo} 已标记为已完成。`);
+  });
+
+  page?.querySelector("[data-reopen-confirm-submit]")?.addEventListener("click", () => {
+    const reasonInput = reopenLayer?.querySelector("[data-reopen-reason]");
+    const error = reopenLayer?.querySelector("[data-reopen-error]");
+    const reason = reasonInput?.value.trim() ?? "";
+    if (!reason) {
+      if (error) error.hidden = false;
+      reasonInput?.setAttribute("aria-invalid", "true");
+      reasonInput?.focus();
+      return;
+    }
+
+    const sourceOrder = orderListData.orders.find((item) => item.orderNo === orderNo);
+    const detailOrder = orderDetailData[orderNo];
+    const dueDate = sourceOrder?.nearestDue ?? order.nearestDue;
+    const today = new Date().toISOString().slice(0, 10);
+    const isOverdue = dueDate < today;
+    if (sourceOrder) {
+      sourceOrder.statusKey = "pending";
+      sourceOrder.statusLabel = isOverdue ? "已逾期" : "未完成";
+      sourceOrder.tone = isOverdue ? "danger" : "info";
+      sourceOrder.overdueDays = isOverdue ? Math.max(1, Math.floor((new Date(today) - new Date(dueDate)) / 86400000)) : 0;
+      sourceOrder.updatedAt = new Date().toISOString();
+    }
+    if (detailOrder) {
+      detailOrder.statusKey = "pending";
+      detailOrder.statusLabel = isOverdue ? "已逾期" : "未完成";
+      detailOrder.tone = isOverdue ? "danger" : "info";
+      detailOrder.logs?.unshift({ time: new Date().toLocaleString("zh-CN", { hour12: false }).slice(0, 16), operator: "煎饼", action: `撤销完成：${reason}`, source: "管理员网页端" });
+    }
+    closeReopenDialog();
+    refreshOrderDetail();
+    showToast("已撤销完成", `${orderNo} 已恢复为${isOverdue ? "已逾期" : "未完成"}。`);
   });
 
   page?.addEventListener("click", (event) => {
@@ -479,6 +626,8 @@ export function bindOrderDetailPage(orderNo) {
   page?.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (contractLayer && !contractLayer.hidden) closeContractDialog();
+    else if (reopenLayer && !reopenLayer.hidden) closeReopenDialog();
+    else if (completeLayer && !completeLayer.hidden) closeCompleteDialog();
     else if (publishLayer && !publishLayer.hidden) closePublishDialog();
   });
 }

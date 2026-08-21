@@ -463,6 +463,70 @@
   color: var(--ink-strong);
 }
 
+.order-completion-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0 0;
+}
+
+.order-completion-summary div {
+  padding: 10px 8px;
+  text-align: center;
+  background: #f5f7f9;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.order-completion-summary dt {
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.order-completion-summary dd {
+  margin: 4px 0 0;
+  color: var(--ink-strong);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.order-reopen-reason {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  color: var(--ink-strong);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.order-reopen-reason textarea {
+  width: 100%;
+  min-height: 78px;
+  padding: 10px 12px;
+  color: var(--ink-strong);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+
+.order-reopen-reason textarea:focus {
+  outline: none;
+  border-color: var(--erp-blue);
+}
+
+.order-reopen-reason textarea[aria-invalid="true"] {
+  border-color: #d84a4a;
+}
+
+.detail-confirm-dialog .order-reopen-error {
+  margin-top: 6px;
+  color: #c73c3c;
+  font-size: 12px;
+}
+
 .detail-confirm-dialog .batch-import-order-list {
   margin-top: 10px;
   color: var(--ink-strong);

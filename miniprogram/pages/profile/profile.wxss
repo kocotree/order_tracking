@@ -1,5 +1,5 @@
 .profile-page { min-height: 100vh; background: #f3f5f8; }
-.profile-content { display: grid; gap: 26rpx; padding: 28rpx 28rpx 56rpx; }
+.profile-content { display: grid; gap: 26rpx; padding: 28rpx 28rpx calc(156rpx + env(safe-area-inset-bottom)); }
 .profile-hero, .profile-card { position: relative; overflow: hidden; border: 1rpx solid #e2e7ed; border-radius: 32rpx; background: #fff; box-shadow: 0 12rpx 34rpx rgba(32,48,68,.07); }
 .profile-hero { display: flex; min-height: 256rpx; align-items: center; gap: 30rpx; padding: 42rpx 36rpx; background: linear-gradient(135deg,#fff 0%,#f5f9ff 64%,#eaf3ff 100%); }
 .profile-hero::after { position: absolute; top: -70rpx; right: -48rpx; width: 224rpx; height: 224rpx; border: 36rpx solid rgba(22,119,255,.06); border-radius: 50%; content: ""; pointer-events: none; }

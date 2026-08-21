@@ -60,7 +60,7 @@ describe("mini-program identity session", () => {
     expect(loginDestination({ status: "pending", user: factoryApplicant, session: null, bindingToken: null, rejectionReason: null })).toBe("factory-status");
     expect(loginDestination({ status: "rejected", user: factoryApplicant, session: null, bindingToken: null, rejectionReason: "资料不符" })).toBe("factory-status");
     expect(loginDestination({ status: "disabled", user: { ...factoryApplicant, role: "factory", factoryId: "factory-1", factoryName: null, factoryPosition: "employee", isEnabled: false }, session: null, bindingToken: null, rejectionReason: null })).toBe("factory-status");
-    expect(loginDestination({ status: "authenticated", user: { ...factoryApplicant, role: "factory", factoryId: "factory-1", factoryName: "禹帆", factoryPosition: "employee" }, session: null, bindingToken: null, rejectionReason: null })).toBe("profile");
+    expect(loginDestination({ status: "authenticated", user: { ...factoryApplicant, role: "factory", factoryId: "factory-1", factoryName: "禹帆", factoryPosition: "employee" }, session: null, bindingToken: null, rejectionReason: null })).toBe("factory-tasks");
   });
 
   it("does not allow phone authorization before both agreement and binding token", () => {

@@ -13,7 +13,7 @@ export type IdentityStatus =
   | "disabled"
   | "logged-out";
 
-export type LoginDestination = "profile" | "factory-apply" | "factory-status" | "admin-status";
+export type LoginDestination = "admin-orders" | "factory-tasks" | "factory-apply" | "factory-status" | "admin-status";
 
 const ACCESS_TOKEN_KEY = "identity.accessToken";
 const REFRESH_TOKEN_KEY = "identity.refreshToken";
@@ -69,7 +69,8 @@ export function canRequestPhone(agreementAccepted: boolean, bindingToken: string
 }
 
 export function loginDestination(result: MiniLogin): LoginDestination {
-  if (result.status === "authenticated") return "profile";
+  if (result.status === "authenticated" && result.user?.role === "admin") return "admin-orders";
+  if (result.status === "authenticated" && result.user?.role === "factory") return "factory-tasks";
   if (result.user?.role === "factory") return "factory-status";
   if (result.user?.role === null) {
     return result.status === "factory_application_required" ? "factory-apply" : "factory-status";

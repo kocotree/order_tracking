@@ -104,4 +104,11 @@ Page({
       },
     });
   },
+
+  openOrders() {
+    const url = this.data.user?.role === "factory"
+      ? "/pages/factory-tasks/factory-tasks"
+      : "/pages/admin-orders/admin-orders";
+    wx.reLaunch({ url });
+  },
 });

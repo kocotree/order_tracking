@@ -1,6 +1,10 @@
 {
   "pages": [
     "pages/auth/auth",
+    "pages/admin-orders/admin-orders",
+    "pages/admin-order-detail/admin-order-detail",
+    "pages/factory-tasks/factory-tasks",
+    "pages/factory-task-detail/factory-task-detail",
     "pages/status/status",
     "pages/factory-apply/factory-apply",
     "pages/factory-status/factory-status",

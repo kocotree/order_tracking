@@ -17,6 +17,10 @@ Page({
       { label: "工厂申请未通过", description: "拒绝原因与重新申请", url: "/pages/factory-status/factory-status?status=rejected&preview=1" },
       { label: "管理员个人中心", description: "最高管理员账号信息", url: "/pages/profile/profile?variant=admin&preview=1" },
       { label: "工厂用户个人中心", description: "所属工厂与职位信息", url: "/pages/profile/profile?variant=factory&preview=1" },
+      { label: "管理员订单列表", description: "只读订单卡片与筛选", url: "/pages/admin-orders/admin-orders?preview=1" },
+      { label: "管理员订单详情", description: "全部工厂进度折叠展示", url: "/pages/admin-order-detail/admin-order-detail?orderId=preview&preview=1" },
+      { label: "工厂订单任务", description: "仅本厂下单数量", url: "/pages/factory-tasks/factory-tasks?preview=1" },
+      { label: "工厂任务详情", description: "无其他工厂和发货入口", url: "/pages/factory-task-detail/factory-task-detail?orderId=preview&preview=1" },
     ] satisfies PreviewItem[],
   },
 

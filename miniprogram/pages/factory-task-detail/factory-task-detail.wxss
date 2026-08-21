@@ -1,0 +1,1 @@
+.order-mini-page { min-height: 100vh; padding-bottom: max(36rpx, env(safe-area-inset-bottom)); }

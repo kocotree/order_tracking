@@ -1,4 +1,5 @@
 import type { FactoryApplication, FactoryOption } from "../api/factory";
+import type { Order } from "../api/orders";
 import type { User } from "./identity/session";
 
 export type PreviewOptions = Record<string, string | undefined>;
@@ -66,4 +67,34 @@ export function previewUser(variant: string | undefined): User {
     };
   }
   return PREVIEW_USER_BASE;
+}
+
+export function previewOrder(factoryOnly = false): Order {
+  const quantity = factoryOnly ? 40 : 100;
+  const assignment = {
+    assignmentId: 1, factoryId: "preview-factory-1", factoryName: "禹帆",
+    assignedQuantity: quantity, shippedQuantity: 0, pendingQuantity: quantity,
+    overQuantity: 0, shortQuantity: quantity, progressPercent: 0,
+  };
+  return {
+    orderId: "preview-order", orderNo: "E81", source: "manual",
+    orderDate: "2026-08-21", tracker: "松子", contractShipDate: "2026-08-30",
+    lifecycle: "PUBLISHED", displayStatus: "未完成", version: 2,
+    totalQuantity: quantity, shippedQuantity: 0, pendingQuantity: quantity,
+    overQuantity: 0, shortQuantity: quantity, progressPercent: 0,
+    lines: [{
+      orderLineId: 1, variantId: "preview-variant", skuId: "SKU-E81-01",
+      productName: "晴雨两用机能风衣", propertiesValue: "天蓝色 / 120",
+      category: "童装", imageObjectKey: null, orderQuantity: quantity,
+      shippedQuantity: 0, pendingQuantity: quantity, overQuantity: 0,
+      shortQuantity: quantity, progressPercent: 0, assignments: [assignment],
+    }],
+    factoryProgress: [{
+      factoryId: assignment.factoryId, factoryName: assignment.factoryName,
+      orderQuantity: quantity, shippedQuantity: 0, pendingQuantity: quantity,
+      overQuantity: 0, shortQuantity: quantity, progressPercent: 0,
+    }],
+    validationIssues: [], createdAt: "2026-08-21T08:00:00",
+    updatedAt: "2026-08-21T09:00:00", requestId: "preview",
+  };
 }

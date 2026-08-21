@@ -75,8 +75,12 @@ Page({
     if (result.session && result.user) saveSession(result.session, result.user);
     else if (result.user) updateStoredUser(result.user);
     const destination = loginDestination(result);
-    if (destination === "profile") {
-      wx.reLaunch({ url: "/pages/profile/profile" });
+    if (destination === "admin-orders") {
+      wx.reLaunch({ url: "/pages/admin-orders/admin-orders" });
+      return;
+    }
+    if (destination === "factory-tasks") {
+      wx.reLaunch({ url: "/pages/factory-tasks/factory-tasks" });
       return;
     }
     if (destination === "factory-apply") {

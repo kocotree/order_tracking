@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -6,6 +6,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     ForeignKey,
     Index,
     Integer,
@@ -373,6 +374,135 @@ class ProductSyncRun(Base):
     moved_out_records: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     image_jobs_created: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     error_code: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class Order(Base):
+    __tablename__ = "orders"
+    __table_args__ = (
+        UniqueConstraint("order_no", name="uq_orders_order_no"),
+        CheckConstraint("source IN ('manual', 'feishu')", name="ck_orders_source"),
+        CheckConstraint(
+            "lifecycle IN ('DRAFT', 'PUBLISHED', 'COMPLETED')",
+            name="ck_orders_lifecycle",
+        ),
+        Index("ix_orders_visible_status", "deleted_at", "lifecycle", "contract_ship_date"),
+    )
+
+    order_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    order_no: Mapped[str] = mapped_column(String(100), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    order_date: Mapped[date] = mapped_column(Date, nullable=False)
+    tracker: Mapped[str] = mapped_column(String(32), nullable=False)
+    contract_ship_date: Mapped[date] = mapped_column(Date, nullable=False)
+    lifecycle: Mapped[str] = mapped_column(String(32), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    published_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    published_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    completed_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    deleted_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    created_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    updated_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class OrderLine(Base):
+    __tablename__ = "order_lines"
+    __table_args__ = (
+        UniqueConstraint("order_id", "product_variant_id", name="uq_order_lines_variant"),
+        CheckConstraint("order_quantity > 0", name="ck_order_lines_quantity_positive"),
+        Index("ix_order_lines_order", "order_id", "order_line_id"),
+    )
+
+    order_line_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    order_id: Mapped[str] = mapped_column(
+        ForeignKey("orders.order_id", ondelete="RESTRICT"), nullable=False
+    )
+    product_variant_id: Mapped[str] = mapped_column(
+        ForeignKey("product_variants.variant_id", ondelete="RESTRICT"), nullable=False
+    )
+    order_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    sku_id_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    product_name_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
+    properties_value_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
+    category_snapshot: Mapped[str | None] = mapped_column(String(100))
+    image_object_key_snapshot: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class OrderAssignment(Base):
+    __tablename__ = "order_assignments"
+    __table_args__ = (
+        UniqueConstraint(
+            "order_line_id", "factory_id", name="uq_order_assignments_line_factory"
+        ),
+        CheckConstraint("assigned_quantity > 0", name="ck_order_assignments_quantity_positive"),
+        Index("ix_order_assignments_factory", "factory_id", "order_line_id"),
+    )
+
+    order_assignment_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True
+    )
+    order_line_id: Mapped[int] = mapped_column(
+        ForeignKey("order_lines.order_line_id", ondelete="RESTRICT"), nullable=False
+    )
+    factory_id: Mapped[str] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
+    )
+    assigned_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    factory_name_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class OrderCompletionRecord(Base):
+    __tablename__ = "order_completion_records"
+    __table_args__ = (
+        CheckConstraint("action IN ('COMPLETE', 'REOPEN')", name="ck_order_completion_action"),
+        Index("ix_order_completion_order", "order_id", "record_id"),
+    )
+
+    record_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    order_id: Mapped[str] = mapped_column(
+        ForeignKey("orders.order_id", ondelete="RESTRICT"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    actor_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    source_terminal: Mapped[str] = mapped_column(String(32), nullable=False)
+    before_lifecycle: Mapped[str] = mapped_column(String(32), nullable=False)
+    after_lifecycle: Mapped[str] = mapped_column(String(32), nullable=False)
+    quantity_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
     )

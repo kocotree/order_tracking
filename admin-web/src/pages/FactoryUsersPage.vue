@@ -16,7 +16,7 @@
         <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
         <div class="people-table-scroll">
           <table class="people-table data-grid-table people-user-table">
-          <thead><tr><th>序号</th><th>姓名</th><th>角色</th><th>职位</th><th>所属工厂</th><th>启用状态</th><th>操作</th></tr></thead>
+          <thead><tr><th>序号</th><th><TableSortButton label="姓名" field="displayName" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="角色" field="role" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="职位" field="factoryPosition" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="所属工厂" field="factoryName" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="启用状态" field="isEnabled" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="(account, index) in filteredUsers" :key="account.userId">
               <td>{{ index + 1 }}</td><td>{{ account.displayName }}</td>
@@ -48,7 +48,10 @@ import { useRoute } from "vue-router";
 import { ApiError, identityApi, type Factory, type User } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 import PeopleTabs from "@/components/PeopleTabs.vue";
+import TableSortButton from "@/components/TableSortButton.vue";
 import { useIdentityStore } from "@/stores";
+
+type SortField = "displayName" | "role" | "factoryPosition" | "factoryName" | "isEnabled";
 
 const identity = useIdentityStore();
 const route = useRoute();
@@ -58,7 +61,15 @@ const factoryFilter = ref("");
 const errorMessage = ref("");
 const target = ref<User | null>(null);
 const saving = ref(false);
-const filteredUsers = computed(() => users.value.filter((item) => !factoryFilter.value || item.factoryId === factoryFilter.value));
+const sortBy = ref<SortField | "">("");
+const sortOrder = ref<"asc" | "desc">("asc");
+const filteredUsers = computed(() => {
+  const rows = users.value.filter((item) => !factoryFilter.value || item.factoryId === factoryFilter.value);
+  const field = sortBy.value;
+  if (!field) return rows;
+  const direction = sortOrder.value === "asc" ? 1 : -1;
+  return [...rows].sort((left, right) => String(sortValue(left, field)).localeCompare(String(sortValue(right, field)), "zh-CN", { numeric: true }) * direction);
+});
 
 function positionLabel(position: string | null) {
   if (position === "owner") return "老板";
@@ -68,6 +79,20 @@ function positionLabel(position: string | null) {
 
 function factoryName(factoryId: string | null) {
   return factories.value.find((item) => item.factoryId === factoryId)?.factoryName ?? "—";
+}
+
+function sortValue(account: User, field: SortField) {
+  if (field === "role") return account.role === "factory" ? "工厂用户" : "管理员";
+  if (field === "factoryPosition") return positionLabel(account.factoryPosition);
+  if (field === "factoryName") return factoryName(account.factoryId);
+  if (field === "isEnabled") return account.isEnabled ? "已启用" : "已停用";
+  return account.displayName;
+}
+
+function sortField(field: string) {
+  const nextField = field as SortField;
+  if (sortBy.value === nextField) sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc";
+  else { sortBy.value = nextField; sortOrder.value = "asc"; }
 }
 
 function canToggle(account: User) {

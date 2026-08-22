@@ -9,9 +9,9 @@
         <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
         <div class="people-table-scroll">
           <table class="people-table data-grid-table people-user-table">
-          <thead><tr><th>序号</th><th>姓名</th><th>角色</th><th>手机号</th><th>启用状态</th><th>操作</th></tr></thead>
+          <thead><tr><th>序号</th><th><TableSortButton label="姓名" field="displayName" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="角色" field="role" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="手机号" field="phoneMasked" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="启用状态" field="isEnabled" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th>操作</th></tr></thead>
           <tbody>
-            <tr v-for="(user, index) in users" :key="user.userId">
+            <tr v-for="(user, index) in sortedUsers" :key="user.userId">
               <td>{{ index + 1 }}</td><td>{{ user.displayName }}</td>
               <td>管理员 <span v-if="user.isSuperAdmin" class="super-badge">最高权限</span></td>
               <td>{{ user.phoneMasked ?? '—' }}</td>
@@ -35,16 +35,39 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import { ApiError, identityApi, type User } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 import PeopleTabs from "@/components/PeopleTabs.vue";
+import TableSortButton from "@/components/TableSortButton.vue";
+
+type SortField = "displayName" | "role" | "phoneMasked" | "isEnabled";
 
 const users = ref<User[]>([]);
 const target = ref<User | null>(null);
 const saving = ref(false);
 const errorMessage = ref("");
+const sortBy = ref<SortField | "">("");
+const sortOrder = ref<"asc" | "desc">("asc");
+const sortedUsers = computed(() => {
+  const field = sortBy.value;
+  if (!field) return users.value;
+  const direction = sortOrder.value === "asc" ? 1 : -1;
+  return [...users.value].sort((left, right) => String(sortValue(left, field)).localeCompare(String(sortValue(right, field)), "zh-CN", { numeric: true }) * direction);
+});
+
+function sortValue(user: User, field: SortField) {
+  if (field === "role") return "管理员";
+  if (field === "isEnabled") return user.isEnabled ? "已启用" : "已停用";
+  return user[field] ?? "";
+}
+
+function sortField(field: string) {
+  const nextField = field as SortField;
+  if (sortBy.value === nextField) sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc";
+  else { sortBy.value = nextField; sortOrder.value = "asc"; }
+}
 
 async function load() {
   try {

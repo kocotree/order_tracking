@@ -18,9 +18,9 @@
         <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
         <div class="people-table-scroll">
           <table class="people-table data-grid-table people-admin-table">
-          <thead><tr><th>序号</th><th>申请人</th><th>手机号</th><th>申请时间</th><th>申请状态</th><th>操作</th></tr></thead>
+          <thead><tr><th>序号</th><th><TableSortButton label="申请人" field="displayName" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="手机号" field="phoneMasked" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="申请时间" field="submittedAt" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="申请状态" field="status" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th>操作</th></tr></thead>
           <tbody>
-            <tr v-for="(application, index) in applications" :key="application.applicationId">
+            <tr v-for="(application, index) in sortedApplications" :key="application.applicationId">
               <td>{{ index + 1 }}</td><td>{{ application.displayName }}</td><td>{{ application.phoneMasked }}</td>
               <td>{{ formatDate(application.submittedAt) }}</td>
               <td><span class="status-badge" :class="`is-${application.status}`">{{ statusLabel(application.status) }}</span></td>
@@ -55,11 +55,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import { ApiError, identityApi, type AdminApplication } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 import PeopleTabs from "@/components/PeopleTabs.vue";
+import TableSortButton from "@/components/TableSortButton.vue";
+
+type SortField = "displayName" | "phoneMasked" | "submittedAt" | "status";
 
 const applications = ref<AdminApplication[]>([]);
 const statusFilter = ref("");
@@ -68,6 +71,14 @@ const saving = ref(false);
 const errorMessage = ref("");
 const rejectReason = ref("");
 const decision = ref<{ application: AdminApplication; action: "approve" | "reject" } | null>(null);
+const sortBy = ref<SortField | "">("");
+const sortOrder = ref<"asc" | "desc">("asc");
+const sortedApplications = computed(() => {
+  const field = sortBy.value;
+  if (!field) return applications.value;
+  const direction = sortOrder.value === "asc" ? 1 : -1;
+  return [...applications.value].sort((left, right) => String(sortValue(left, field)).localeCompare(String(sortValue(right, field)), "zh-CN", { numeric: true }) * direction);
+});
 
 function statusLabel(status: string) {
   return { pending: "待审核", approved: "已通过", rejected: "已拒绝" }[status] ?? status;
@@ -75,6 +86,17 @@ function statusLabel(status: string) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short", hour12: false }).format(new Date(value));
+}
+
+function sortValue(application: AdminApplication, field: SortField) {
+  if (field === "status") return statusLabel(application.status);
+  return application[field] ?? "";
+}
+
+function sortField(field: string) {
+  const nextField = field as SortField;
+  if (sortBy.value === nextField) sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc";
+  else { sortBy.value = nextField; sortOrder.value = "asc"; }
 }
 
 async function load() {

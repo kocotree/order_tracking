@@ -2783,7 +2783,9 @@ export interface operations {
             query?: {
                 keyword?: string;
                 status?: string;
+                category?: string | null;
                 factoryId?: string | null;
+                factoryIds?: string[] | null;
                 trackers?: string[] | null;
                 shipDateFrom?: string | null;
                 shipDateTo?: string | null;

@@ -4551,6 +4551,22 @@
           },
           {
             "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
             "name": "factoryId",
             "required": false,
             "schema": {
@@ -4563,6 +4579,25 @@
                 }
               ],
               "title": "Factoryid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "factoryIds",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Factoryids"
             }
           },
           {

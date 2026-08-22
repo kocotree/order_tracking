@@ -174,7 +174,9 @@ export const orderApi = {
   list: (params: {
     keyword?: string;
     status?: string;
+    category?: string;
     factoryId?: string;
+    factoryIds?: string[];
     trackers?: string[];
     shipDateFrom?: string;
     shipDateTo?: string;
@@ -191,7 +193,9 @@ export const orderApi = {
       page: String(params.page ?? 1),
       pageSize: String(params.pageSize ?? 20),
     });
+    if (params.category) query.set("category", params.category);
     if (params.factoryId) query.set("factoryId", params.factoryId);
+    for (const factoryId of params.factoryIds ?? []) query.append("factoryIds", factoryId);
     for (const tracker of params.trackers ?? []) query.append("trackers", tracker);
     if (params.shipDateFrom) query.set("shipDateFrom", params.shipDateFrom);
     if (params.shipDateTo) query.set("shipDateTo", params.shipDateTo);

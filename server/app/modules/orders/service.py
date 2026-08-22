@@ -479,7 +479,9 @@ class OrderService:
         include_drafts: bool = False,
         keyword: str = "",
         status: str = "all",
+        category: str | None = None,
         factory_id: str | None = None,
+        factory_ids: list[str] | None = None,
         trackers: list[str] | None = None,
         ship_date_from: date | None = None,
         ship_date_to: date | None = None,
@@ -496,6 +498,24 @@ class OrderService:
             "shipDateDesc",
             "orderDateDesc",
             "updatedDesc",
+            "orderNoAsc",
+            "orderNoDesc",
+            "productNameAsc",
+            "productNameDesc",
+            "categoryAsc",
+            "categoryDesc",
+            "trackerAsc",
+            "trackerDesc",
+            "factoryAsc",
+            "factoryDesc",
+            "contractShipDateAsc",
+            "contractShipDateDesc",
+            "progressPercentAsc",
+            "progressPercentDesc",
+            "shippedQuantityAsc",
+            "shippedQuantityDesc",
+            "statusAsc",
+            "statusDesc",
         }
         if sort_by not in allowed_sorts:
             raise OrderValidationError("invalid sort option")
@@ -523,14 +543,19 @@ class OrderService:
             elif user.role == "admin":
                 if not include_drafts:
                     query = query.where(Order.lifecycle != "DRAFT")
-                if factory_id:
+                selected_factory_ids = list(
+                    dict.fromkeys(
+                        [*(factory_ids or []), *([factory_id] if factory_id else [])]
+                    )
+                )
+                if selected_factory_ids:
                     query = (
                         query.join(OrderLine, OrderLine.order_id == Order.order_id)
                         .join(
                             OrderAssignment,
                             OrderAssignment.order_line_id == OrderLine.order_line_id,
                         )
-                        .where(OrderAssignment.factory_id == factory_id)
+                        .where(OrderAssignment.factory_id.in_(selected_factory_ids))
                         .distinct()
                     )
             else:
@@ -548,6 +573,17 @@ class OrderService:
                 )
             if trackers:
                 query = query.where(Order.tracker.in_(trackers))
+            if category:
+                category_sources = {
+                    "服装": ("童装春夏", "童装秋冬"),
+                    "帽子": ("童帽春夏", "童帽秋冬", "童配春夏", "童配秋冬"),
+                }
+                if category not in category_sources:
+                    raise OrderValidationError("invalid category")
+                matching_categories = select(OrderLine.order_id).where(
+                    OrderLine.category_snapshot.in_(category_sources[category])
+                )
+                query = query.where(Order.order_id.in_(matching_categories))
             if ship_date_from:
                 query = query.where(Order.contract_ship_date >= ship_date_from)
             if ship_date_to:
@@ -573,7 +609,18 @@ class OrderService:
                 self._snapshot(session, item, business_today, factory_id=scoped_factory)
                 for item in orders
             ]
-            snapshots.sort(key=self._sort_key(sort_by, business_today))
+            reverse = sort_by in {
+                "orderNoDesc",
+                "productNameDesc",
+                "categoryDesc",
+                "trackerDesc",
+                "factoryDesc",
+                "contractShipDateDesc",
+                "progressPercentDesc",
+                "shippedQuantityDesc",
+                "statusDesc",
+            }
+            snapshots.sort(key=self._sort_key(sort_by, business_today), reverse=reverse)
             total = len(snapshots)
             start = (page - 1) * page_size
             return snapshots[start : start + page_size], total
@@ -921,6 +968,39 @@ class OrderService:
     def _sort_key(
         sort_by: str, today: date
     ) -> Callable[[OrderSnapshot], tuple[Any, ...]]:
+        normalized_sort = sort_by.removesuffix("Asc").removesuffix("Desc")
+        if normalized_sort == "orderNo":
+            return lambda item: (item.order_no,)
+        if normalized_sort == "productName":
+            return lambda item: ("、".join(line.product_name for line in item.lines), item.order_no)
+        if normalized_sort == "category":
+            def category_value(item: OrderSnapshot) -> tuple[str, str]:
+                categories = {
+                    "服装" if line.category in {"童装春夏", "童装秋冬"} else "帽子"
+                    for line in item.lines
+                    if line.category
+                }
+                label = "、".join(
+                    value for value in ("服装", "帽子") if value in categories
+                )
+                return (label, item.order_no)
+
+            return category_value
+        if normalized_sort == "tracker":
+            return lambda item: (item.tracker, item.order_no)
+        if normalized_sort == "factory":
+            return lambda item: (
+                "、".join(row.factory_name for row in item.factory_progress),
+                item.order_no,
+            )
+        if normalized_sort == "contractShipDate":
+            return lambda item: (item.contract_ship_date, item.order_no)
+        if normalized_sort == "progressPercent":
+            return lambda item: (item.progress_percent, item.order_no)
+        if normalized_sort == "shippedQuantity":
+            return lambda item: (item.shipped_quantity, item.order_no)
+        if normalized_sort == "status":
+            return lambda item: (item.display_status, item.order_no)
         if sort_by == "shipDateAsc":
             return lambda item: (item.contract_ship_date, item.order_no)
         if sort_by == "shipDateDesc":

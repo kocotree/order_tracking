@@ -1,11 +1,14 @@
 <template>
   <AdminShell>
-    <section class="section-card people-management-card">
-      <header class="people-management-header"><h1>人员管理</h1></header>
-      <PeopleTabs />
-      <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
-      <div class="people-table-scroll">
-        <table class="people-table data-grid-table people-user-table">
+    <article class="people-management-page">
+      <section class="section-card people-management-filter-card">
+        <PeopleTabs />
+      </section>
+      <section class="section-card people-management-card">
+        <header class="people-management-header"><h1>人员管理</h1></header>
+        <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
+        <div class="people-table-scroll">
+          <table class="people-table data-grid-table people-user-table">
           <thead><tr><th>序号</th><th>姓名</th><th>角色</th><th>手机号</th><th>启用状态</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="(user, index) in users" :key="user.userId">
@@ -17,9 +20,10 @@
             </tr>
             <tr v-if="users.length === 0"><td colspan="6" class="empty-cell">暂无管理员账号</td></tr>
           </tbody>
-        </table>
-      </div>
-    </section>
+          </table>
+        </div>
+      </section>
+    </article>
     <div v-if="target" class="modal-backdrop" @click.self="target = null">
       <section class="modal" role="dialog" aria-modal="true">
         <header><h2>{{ target.isEnabled ? '停用管理员' : '启用管理员' }}</h2><button type="button" aria-label="关闭" @click="target = null">×</button></header>

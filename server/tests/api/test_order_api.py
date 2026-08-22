@@ -180,6 +180,53 @@ def test_order_api_enforces_terminal_and_factory_visibility(
             )
             assert published.status_code == 200
 
+            second_payload = {
+                **draft_payload,
+                "orderNo": "API-90",
+                "lines": [
+                    {
+                        "variantId": "order-api-variant",
+                        "orderQuantity": 30,
+                        "assignments": [
+                            {"factoryId": FACTORY_IDS[1], "quantity": 30}
+                        ],
+                    }
+                ],
+            }
+            second_created = client.post(
+                "/api/v1/admin/orders",
+                json=second_payload,
+                headers={"X-CSRF-Token": admin_web.csrf_token or ""},
+            )
+            assert second_created.status_code == 201
+            second_published = client.post(
+                f"/api/v1/admin/orders/{second_created.json()['orderId']}/publish",
+                json={"version": second_created.json()["version"]},
+                headers={
+                    "X-CSRF-Token": admin_web.csrf_token or "",
+                    "Idempotency-Key": "order-api-publish-second",
+                },
+            )
+            assert second_published.status_code == 200
+
+            assert client.get("/api/v1/orders?category=帽子").json()["total"] == 2
+            assert client.get("/api/v1/orders?category=服装").json()["total"] == 0
+            multi_factory = client.get(
+                "/api/v1/orders",
+                params=[
+                    ("factoryIds", FACTORY_IDS[0]),
+                    ("factoryIds", FACTORY_IDS[2]),
+                ],
+            ).json()
+            assert multi_factory["total"] == 1
+            sorted_orders = client.get(
+                "/api/v1/orders?sortBy=orderNoDesc"
+            ).json()
+            assert [item["orderNo"] for item in sorted_orders["items"]] == [
+                "API-90",
+                "API-81",
+            ]
+
             with TestClient(app, base_url="https://testserver") as factory_client:
                 factory_client.headers["Authorization"] = f"Bearer {factory_a.access_token}"
                 listed = factory_client.get("/api/v1/orders").json()

@@ -1,20 +1,23 @@
 <template>
   <AdminShell>
-    <section class="section-card people-management-card">
-      <header class="people-management-header"><h1>人员管理</h1></header>
-      <PeopleTabs />
-      <div class="people-toolbar">
-        <label class="people-user-filter" for="application-status"><span>申请状态</span>
-        <select id="application-status" v-model="statusFilter" @change="load">
-          <option value="">全部状态</option>
-          <option value="pending">待审核</option>
-          <option value="approved">已通过</option>
-          <option value="rejected">已拒绝</option>
-        </select></label>
-      </div>
-      <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
-      <div class="people-table-scroll">
-        <table class="people-table data-grid-table people-admin-table">
+    <article class="people-management-page">
+      <section class="section-card people-management-filter-card">
+        <PeopleTabs />
+        <div class="people-toolbar">
+          <label class="people-user-filter" for="application-status"><span>申请状态</span>
+          <select id="application-status" v-model="statusFilter" @change="load">
+            <option value="">全部状态</option>
+            <option value="pending">待审核</option>
+            <option value="approved">已通过</option>
+            <option value="rejected">已拒绝</option>
+          </select></label>
+        </div>
+      </section>
+      <section class="section-card people-management-card">
+        <header class="people-management-header"><h1>人员管理</h1></header>
+        <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
+        <div class="people-table-scroll">
+          <table class="people-table data-grid-table people-admin-table">
           <thead><tr><th>序号</th><th>申请人</th><th>手机号</th><th>申请时间</th><th>申请状态</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="(application, index) in applications" :key="application.applicationId">
@@ -31,9 +34,10 @@
             </tr>
             <tr v-if="!loading && applications.length === 0"><td colspan="6" class="empty-cell">暂无管理员申请</td></tr>
           </tbody>
-        </table>
-      </div>
-    </section>
+          </table>
+        </div>
+      </section>
+    </article>
     <div v-if="decision" class="modal-backdrop" @click.self="decision = null">
       <form class="modal" @submit.prevent="confirmDecision">
         <header><h2>{{ decision.action === 'approve' ? '通过管理员申请' : '拒绝管理员申请' }}</h2><button type="button" aria-label="关闭" @click="decision = null">×</button></header>

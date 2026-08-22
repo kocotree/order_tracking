@@ -1,18 +1,21 @@
 <template>
   <AdminShell>
-    <section class="section-card people-management-card">
-      <header class="people-management-header"><h1>人员管理</h1></header>
-      <PeopleTabs />
-      <div class="people-toolbar">
-        <label class="people-user-filter" for="factory-user-filter"><span>所属工厂</span>
-        <select id="factory-user-filter" v-model="factoryFilter">
-          <option value="">全部工厂</option>
-          <option v-for="factory in factories" :key="factory.factoryId" :value="factory.factoryId">{{ factory.factoryName }}</option>
-        </select></label>
-      </div>
-      <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
-      <div class="people-table-scroll">
-        <table class="people-table data-grid-table people-user-table">
+    <article class="people-management-page">
+      <section class="section-card people-management-filter-card">
+        <PeopleTabs />
+        <div class="people-toolbar">
+          <label class="people-user-filter" for="factory-user-filter"><span>所属工厂</span>
+          <select id="factory-user-filter" v-model="factoryFilter">
+            <option value="">全部工厂</option>
+            <option v-for="factory in factories" :key="factory.factoryId" :value="factory.factoryId">{{ factory.factoryName }}</option>
+          </select></label>
+        </div>
+      </section>
+      <section class="section-card people-management-card">
+        <header class="people-management-header"><h1>人员管理</h1></header>
+        <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
+        <div class="people-table-scroll">
+          <table class="people-table data-grid-table people-user-table">
           <thead><tr><th>序号</th><th>姓名</th><th>角色</th><th>职位</th><th>所属工厂</th><th>启用状态</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="(account, index) in filteredUsers" :key="account.userId">
@@ -24,9 +27,10 @@
             </tr>
             <tr v-if="filteredUsers.length === 0"><td colspan="7" class="empty-cell">暂无用户</td></tr>
           </tbody>
-        </table>
-      </div>
-    </section>
+          </table>
+        </div>
+      </section>
+    </article>
     <div v-if="target" class="modal-backdrop" @click.self="target = null">
       <section class="modal" role="dialog" aria-modal="true">
         <header><h2>{{ target.isEnabled ? '停用用户' : '启用用户' }}</h2><button type="button" aria-label="关闭" @click="target = null">×</button></header>

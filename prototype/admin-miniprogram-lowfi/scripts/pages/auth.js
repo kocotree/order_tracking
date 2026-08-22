@@ -55,9 +55,9 @@
 
   function renderBrand() {
     return `
-      <div class="auth-brand" aria-label="KOCOTREE 订单管理系统">
+      <div class="auth-brand" aria-label="KOCOTREE 跟单管理系统">
         <div class="auth-brand__wordmark">KOCOTREE</div>
-        <p>订单管理系统</p>
+        <p>跟单管理系统</p>
       </div>
     `;
   }
@@ -71,7 +71,7 @@
       <header class="admin-auth-capsule-row">${renderCapsule()}</header>
       <main class="admin-auth-login-main">
         <div class="admin-auth-logo"><img src="../factory-miniprogram-lowfi/assets/logo-compact-ktk-transparent.png" alt="KOCOTREE KTK" /></div>
-        <div class="admin-auth-copy"><h1>订单管理系统</h1><p>查看订单、发货记录与返修进度</p></div>
+        <div class="admin-auth-copy"><h1>跟单管理系统</h1><p>查看订单、发货记录与返修进度</p></div>
         <button type="button" class="auth-primary-button admin-auth-login-button" data-bind-phone>微信授权登录</button>
         <label class="admin-auth-agreement"><input type="checkbox" data-auth-agreement ${agreementAccepted ? "checked" : ""} /><i></i><span>我已阅读并同意<a href="#" data-policy="用户协议">用户协议</a>和<a href="#" data-policy="隐私政策">隐私政策</a></span></label>
       </main>

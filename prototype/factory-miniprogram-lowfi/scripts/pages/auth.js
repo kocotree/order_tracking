@@ -40,7 +40,7 @@
         '<header class="auth-capsule-row">' + renderCapsule() + '</header>' +
         '<main class="auth-login-main">' +
           '<div class="auth-brand-logo"><img src="./assets/logo-compact-ktk-transparent.png" alt="KOCOTREE KTK" /></div>' +
-          '<div class="auth-login-copy"><h1>订单管理系统</h1><p>查看订单任务，完成装箱发货与返修处理</p></div>' +
+          '<div class="auth-login-copy"><h1>跟单管理系统</h1><p>查看订单任务，完成装箱发货与返修处理</p></div>' +
           '<button type="button" class="auth-primary-button" id="wechat-login">微信授权登录</button>' +
           '<label class="auth-agreement"><input type="checkbox" id="auth-agreement"' + (authState.agreementAccepted ? ' checked' : '') + ' /><i></i><span>我已阅读并同意<a href="#" data-policy="用户协议">用户协议</a>和<a href="#" data-policy="隐私政策">隐私政策</a></span></label>' +
         '</main>' +

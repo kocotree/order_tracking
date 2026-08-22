@@ -1,6 +1,6 @@
 <template>
   <main class="auth-page" :class="modifier">
-    <section class="auth-shell" aria-label="跟单看板账号访问">
+    <section class="auth-shell" aria-label="跟单管理系统账号访问">
       <header class="auth-brand">
         <BrandLogo />
         <div>

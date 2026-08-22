@@ -1,7 +1,7 @@
 <view class="status-page status-{{status}}">
   <view class="status-orbit status-orbit--one" />
   <view class="status-orbit status-orbit--two" />
-  <view class="status-brand"><text>KOCOTREE</text><text>订单管理系统</text></view>
+  <view class="status-brand"><text>KOCOTREE</text><text>跟单管理系统</text></view>
   <view class="status-card">
     <view class="status-mark status-mark--{{status}}">{{content.mark}}</view>
     <text class="status-eyebrow">管理员入口</text>

@@ -33,19 +33,19 @@ function renderRoute(route) {
     ? {
         content: renderLoginPage,
         bind: bindLoginPage,
-        title: "登录｜跟单看板低保真原型",
+        title: "登录｜跟单管理系统低保真原型",
       }
     : route === "/admin-apply"
       ? {
           content: renderAdminApplyPage,
           bind: bindAdminApplyPage,
-          title: "管理员申请｜跟单看板低保真原型",
+          title: "管理员申请｜跟单管理系统低保真原型",
         }
       : accessStatusMatch
         ? {
             content: () => renderAccessStatusPage(accessStatusMatch[1]),
             bind: () => bindAccessStatusPage(accessStatusMatch[1]),
-            title: "访问状态｜跟单看板低保真原型",
+            title: "访问状态｜跟单管理系统低保真原型",
           }
         : null;
 
@@ -69,7 +69,7 @@ function renderRoute(route) {
       sideNavItems: [{ label: "看板首页", icon: "dashboard", route: "/dashboard", isActive: true }],
       content: renderDashboardPage,
       bind: bindDashboardPage,
-      title: "订单看板｜跟单看板低保真原型",
+      title: "订单看板｜跟单管理系统低保真原型",
     },
     "/orders": {
       activeModule: "orders",
@@ -83,7 +83,7 @@ function renderRoute(route) {
       ],
       content: renderOrderListPage,
       bind: bindOrderListPage,
-      title: "订单列表｜跟单看板低保真原型",
+      title: "订单列表｜跟单管理系统低保真原型",
     },
     "/pending-imports": {
       activeModule: "orders",
@@ -97,7 +97,7 @@ function renderRoute(route) {
       ],
       content: renderPendingImportListPage,
       bind: bindPendingImportListPage,
-      title: "待导入订单｜跟单看板低保真原型",
+      title: "待导入订单｜跟单管理系统低保真原型",
     },
     "/shipments": {
       activeModule: "orders",
@@ -111,7 +111,7 @@ function renderRoute(route) {
       ],
       content: renderShipmentListPage,
       bind: bindShipmentListPage,
-      title: "发货单列表｜跟单看板低保真原型",
+      title: "发货单列表｜跟单管理系统低保真原型",
     },
     "/repairs": {
       activeModule: "orders",
@@ -125,7 +125,7 @@ function renderRoute(route) {
       ],
       content: renderRepairListPage,
       bind: bindRepairListPage,
-      title: "返修退回｜跟单看板低保真原型",
+      title: "返修退回｜跟单管理系统低保真原型",
     },
     "/repairs/new": {
       activeModule: "orders",
@@ -139,7 +139,7 @@ function renderRoute(route) {
       ],
       content: renderRepairCreatePage,
       bind: bindRepairCreatePage,
-      title: "新建返修单｜跟单看板低保真原型",
+      title: "新建返修单｜跟单管理系统低保真原型",
     },
     "/products": {
       activeModule: "products",
@@ -148,7 +148,7 @@ function renderRoute(route) {
       sideNavItems: [{ label: "产品列表", icon: "products", route: "/products", isActive: true }],
       content: renderProductListPage,
       bind: bindProductListPage,
-      title: "产品资料｜跟单看板低保真原型",
+      title: "产品资料｜跟单管理系统低保真原型",
     },
     "/factories": {
       activeModule: "factory",
@@ -157,7 +157,7 @@ function renderRoute(route) {
       sideNavItems: [{ label: "工厂列表", icon: "factory", route: "/factories", isActive: true }],
       content: renderFactoryListPage,
       bind: bindFactoryListPage,
-      title: "工厂资料｜跟单看板低保真原型",
+      title: "工厂资料｜跟单管理系统低保真原型",
     },
     "/people": {
       activeModule: "people",
@@ -166,7 +166,7 @@ function renderRoute(route) {
       sideNavItems: [{ label: "人员管理", icon: "people", route: "/people", isActive: true }],
       content: renderPeopleManagementPage,
       bind: bindPeopleManagementPage,
-      title: "人员管理｜跟单看板低保真原型",
+      title: "人员管理｜跟单管理系统低保真原型",
     },
   };
   const orderNo = orderDetailMatch ? decodeURIComponent(orderDetailMatch[1]) : "";
@@ -183,7 +183,7 @@ function renderRoute(route) {
         ],
         content: () => renderOrderDetailPage(orderNo),
         bind: () => bindOrderDetailPage(orderNo),
-        title: `${orderNo} 订单详情｜跟单看板低保真原型`,
+        title: `${orderNo} 订单详情｜跟单管理系统低保真原型`,
       }
     : null;
   const pendingImportOrderNo = pendingImportDetailMatch ? decodeURIComponent(pendingImportDetailMatch[1]) : "";
@@ -200,7 +200,7 @@ function renderRoute(route) {
         ],
         content: () => renderPendingImportDetailPage(pendingImportOrderNo),
         bind: () => bindPendingImportDetailPage(pendingImportOrderNo),
-        title: `${pendingImportOrderNo} 待导入订单详情｜跟单看板低保真原型`,
+        title: `${pendingImportOrderNo} 待导入订单详情｜跟单管理系统低保真原型`,
       }
     : null;
   const shipmentNo = shipmentDetailMatch ? decodeURIComponent(shipmentDetailMatch[1]) : "";
@@ -217,7 +217,7 @@ function renderRoute(route) {
         ],
         content: () => renderShipmentDetailPage(shipmentNo),
         bind: () => bindShipmentDetailPage(shipmentNo),
-        title: `${shipmentNo} 发货单详情｜跟单看板低保真原型`,
+        title: `${shipmentNo} 发货单详情｜跟单管理系统低保真原型`,
       }
     : null;
   const repairNo = repairDetailMatch ? decodeURIComponent(repairDetailMatch[1]) : "";
@@ -234,7 +234,7 @@ function renderRoute(route) {
         ],
         content: () => renderRepairDetailPage(repairNo),
         bind: () => bindRepairDetailPage(repairNo),
-        title: `${repairNo} 返修详情｜跟单看板低保真原型`,
+        title: `${repairNo} 返修详情｜跟单管理系统低保真原型`,
       }
     : null;
   const page = repairDetailPage ?? shipmentDetailPage ?? pendingImportDetailPage ?? detailPage ?? routes[route] ?? routes["/dashboard"];

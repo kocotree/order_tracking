@@ -7,7 +7,7 @@ const statusIcons = {
 function renderAuthFrame(content, modifier = "") {
   return `
     <main class="auth-page ${modifier}">
-      <section class="auth-shell" aria-label="跟单看板账号访问">
+      <section class="auth-shell" aria-label="跟单管理系统账号访问">
         <header class="auth-brand">
           <img src="./assets/logos/logo-compact-ktk.jpg" alt="KOCOTREE" />
           <div>

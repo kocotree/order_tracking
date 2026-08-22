@@ -53,7 +53,14 @@ def test_image_job_failure_retries_and_successfully_replaces_the_private_cache(
         retry_limits={"product-image-cache": 3},
         retry_delay_seconds=0,
     )
-    now = datetime(2026, 8, 21, 10, 0)
+    with session_factory() as session:
+        now = session.scalar(
+            select(BackgroundJob.available_at).where(
+                BackgroundJob.job_type == "product-image-cache",
+                BackgroundJob.status == "pending",
+            )
+        )
+    assert now is not None
 
     assert worker.run_once(now=now) is True
     with session_factory() as session:
@@ -96,7 +103,15 @@ def test_image_job_failure_retries_and_successfully_replaces_the_private_cache(
         request_id="request-image-v2",
         worker_id="sync-worker",
     )
-    assert worker.run_once(now=datetime(2026, 8, 21, 11, 0)) is True
+    with session_factory() as session:
+        incremental_now = session.scalar(
+            select(BackgroundJob.available_at).where(
+                BackgroundJob.job_type == "product-image-cache",
+                BackgroundJob.status == "pending",
+            )
+        )
+    assert incremental_now is not None
+    assert worker.run_once(now=incremental_now) is True
     with session_factory() as session:
         product = session.scalar(select(Product).where(Product.source_i_id == "HAT-IMAGE"))
     assert product is not None

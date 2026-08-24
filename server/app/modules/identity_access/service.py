@@ -59,6 +59,7 @@ class FeishuLoginStart:
 class WebLoginResult:
     user: UserSnapshot
     web_session_token: str
+    refresh_token: str
     csrf_token: str
     redirect_to: str
 
@@ -241,6 +242,7 @@ class IdentityAccessService:
             request_id=request_id,
         )
         session_token = secrets.token_urlsafe(32)
+        refresh_token = secrets.token_urlsafe(32)
         csrf_token = secrets.token_urlsafe(32)
         with self._session_factory() as session, session.begin():
             session.add(
@@ -249,14 +251,17 @@ class IdentityAccessService:
                     user_id=user.user_id,
                     terminal="web",
                     token_digest=self._digest(session_token),
+                    refresh_token_digest=self._digest(refresh_token),
                     csrf_digest=self._digest(csrf_token),
                     expires_at=now + timedelta(hours=12),
+                    refresh_expires_at=now + timedelta(days=30),
                     last_activity_at=now,
                 )
             )
         return WebLoginResult(
             user=user,
             web_session_token=session_token,
+            refresh_token=refresh_token,
             csrf_token=csrf_token,
             redirect_to=return_to,
         )
@@ -788,7 +793,7 @@ class IdentityAccessService:
             raise ValueError("unsupported terminal")
         now = self._now()
         access_token = secrets.token_urlsafe(32)
-        refresh_token = secrets.token_urlsafe(32) if terminal == "mini" else None
+        refresh_token = secrets.token_urlsafe(32)
         csrf_token = secrets.token_urlsafe(32) if terminal == "web" else None
         expires_at = now + (timedelta(minutes=15) if terminal == "mini" else timedelta(hours=12))
         with self._session_factory() as session, session.begin():
@@ -803,14 +808,10 @@ class IdentityAccessService:
                     user_id=user_id,
                     terminal=terminal,
                     token_digest=self._digest(access_token),
-                    refresh_token_digest=(
-                        self._digest(refresh_token) if refresh_token is not None else None
-                    ),
+                    refresh_token_digest=self._digest(refresh_token),
                     csrf_digest=self._digest(csrf_token) if csrf_token is not None else None,
                     expires_at=expires_at,
-                    refresh_expires_at=(
-                        now + timedelta(days=30) if refresh_token is not None else None
-                    ),
+                    refresh_expires_at=now + timedelta(days=30),
                     last_activity_at=now,
                 )
             )
@@ -906,6 +907,44 @@ class IdentityAccessService:
             access_token=new_access,
             refresh_token=new_refresh,
             csrf_token=None,
+            expires_at=expires_at,
+        )
+
+    def refresh_web_session(self, *, refresh_token: str) -> SessionTokens:
+        now = self._now()
+        new_access = secrets.token_urlsafe(32)
+        new_refresh = secrets.token_urlsafe(32)
+        new_csrf = secrets.token_urlsafe(32)
+        expires_at = now + timedelta(hours=12)
+        with self._session_factory() as session, session.begin():
+            active_session = session.scalar(
+                select(UserSession)
+                .where(
+                    UserSession.refresh_token_digest == self._digest(refresh_token),
+                    UserSession.terminal == "web",
+                )
+                .with_for_update()
+            )
+            if (
+                active_session is None
+                or active_session.revoked_at is not None
+                or active_session.refresh_expires_at is None
+                or active_session.refresh_expires_at <= now
+            ):
+                raise SessionInvalid("refresh token is invalid")
+            user = session.get(User, active_session.user_id)
+            if user is None or not user.is_enabled or user.role == "factory":
+                raise SessionInvalid("refresh token user is unavailable")
+            active_session.token_digest = self._digest(new_access)
+            active_session.refresh_token_digest = self._digest(new_refresh)
+            active_session.csrf_digest = self._digest(new_csrf)
+            active_session.expires_at = expires_at
+            active_session.refresh_expires_at = now + timedelta(days=30)
+            active_session.last_activity_at = now
+        return SessionTokens(
+            access_token=new_access,
+            refresh_token=new_refresh,
+            csrf_token=new_csrf,
             expires_at=expires_at,
         )
 

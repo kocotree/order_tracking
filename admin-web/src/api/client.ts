@@ -50,30 +50,59 @@ function readCookie(name: string): string | undefined {
     ?.slice(prefix.length);
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers);
-  if (init.body && !(init.body instanceof FormData)) {
-    headers.set("Content-Type", "application/json");
-  }
-  if (init.method && init.method !== "GET") {
-    const csrf = readCookie("ot_csrf");
-    if (csrf) headers.set("X-CSRF-Token", decodeURIComponent(csrf));
-  }
-  const response = await fetch(apiUrl(path), {
-    ...init,
+async function apiError(response: Response): Promise<ApiError> {
+  const payload = (await response.json().catch(() => ({}))) as {
+    code?: string;
+    message?: string;
+  };
+  return new ApiError(
+    response.status,
+    payload.code ?? "request_failed",
+    payload.message ?? "请求失败，请稍后重试",
+  );
+}
+
+let activeRefresh: Promise<void> | null = null;
+
+function refreshWebSession(): Promise<void> {
+  if (activeRefresh) return activeRefresh;
+  activeRefresh = fetch(apiUrl("/v1/auth/refresh"), {
+    method: "POST",
     credentials: "include",
-    headers,
-  });
+  })
+    .then(async (response) => {
+      if (!response.ok) throw await apiError(response);
+    })
+    .finally(() => {
+      activeRefresh = null;
+    });
+  return activeRefresh;
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const send = async (): Promise<Response> => {
+    const headers = new Headers(init.headers);
+    if (init.body && !(init.body instanceof FormData)) {
+      headers.set("Content-Type", "application/json");
+    }
+    if (init.method && init.method !== "GET") {
+      const csrf = readCookie("ot_csrf");
+      if (csrf) headers.set("X-CSRF-Token", decodeURIComponent(csrf));
+    }
+    return fetch(apiUrl(path), {
+      ...init,
+      credentials: "include",
+      headers,
+    });
+  };
+
+  let response = await send();
+  if (response.status === 401) {
+    await refreshWebSession();
+    response = await send();
+  }
   if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as {
-      code?: string;
-      message?: string;
-    };
-    throw new ApiError(
-      response.status,
-      payload.code ?? "request_failed",
-      payload.message ?? "请求失败，请稍后重试",
-    );
+    throw await apiError(response);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;

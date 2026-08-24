@@ -17,15 +17,25 @@ function authorizationHeader(): Record<string, string> {
   return accessToken() ? { Authorization: `Bearer ${accessToken()}` } : {};
 }
 
-async function refresh(): Promise<void> {
-  const token = refreshToken();
-  if (!token) throw { code: "session_invalid", message: "登录状态已失效" } satisfies ApiError;
-  const session = await request<MiniSession>({
-    url: "/mini/auth/refresh",
-    method: "POST",
-    data: { refreshToken: token },
+let activeRefresh: Promise<void> | null = null;
+
+function refresh(): Promise<void> {
+  if (activeRefresh) return activeRefresh;
+  activeRefresh = (async () => {
+    const token = refreshToken();
+    if (!token) {
+      throw { code: "session_invalid", message: "登录状态已失效" } satisfies ApiError;
+    }
+    const session = await request<MiniSession>({
+      url: "/mini/auth/refresh",
+      method: "POST",
+      data: { refreshToken: token },
+    });
+    replaceSession(session);
+  })().finally(() => {
+    activeRefresh = null;
   });
-  replaceSession(session);
+  return activeRefresh;
 }
 
 export async function authorizedRequest<T extends WechatMiniprogram.IAnyObject>(

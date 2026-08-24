@@ -193,6 +193,41 @@ def create_identity_router(
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
+    def set_web_session_cookies(
+        response: Response,
+        *,
+        access_token: str,
+        refresh_token: str,
+        csrf_token: str,
+    ) -> None:
+        response.set_cookie(
+            "ot_web_session",
+            access_token,
+            max_age=12 * 60 * 60,
+            secure=secure_web_cookies,
+            httponly=True,
+            samesite="lax",
+            path="/",
+        )
+        response.set_cookie(
+            "ot_web_refresh",
+            refresh_token,
+            max_age=30 * 24 * 60 * 60,
+            secure=secure_web_cookies,
+            httponly=True,
+            samesite="lax",
+            path="/",
+        )
+        response.set_cookie(
+            "ot_csrf",
+            csrf_token,
+            max_age=12 * 60 * 60,
+            secure=secure_web_cookies,
+            httponly=False,
+            samesite="lax",
+            path="/",
+        )
+
     def web_user(
         *,
         web_session: str | None,
@@ -245,23 +280,29 @@ def create_identity_router(
             request_id=request.state.request_id,
         )
         response = RedirectResponse(result.redirect_to, status_code=303)
-        response.set_cookie(
-            "ot_web_session",
-            result.web_session_token,
-            max_age=12 * 60 * 60,
-            secure=secure_web_cookies,
-            httponly=True,
-            samesite="lax",
-            path="/",
+        set_web_session_cookies(
+            response,
+            access_token=result.web_session_token,
+            refresh_token=result.refresh_token,
+            csrf_token=result.csrf_token,
         )
-        response.set_cookie(
-            "ot_csrf",
-            result.csrf_token,
-            max_age=12 * 60 * 60,
-            secure=secure_web_cookies,
-            httponly=False,
-            samesite="lax",
-            path="/",
+        return response
+
+    @router.post("/auth/refresh", status_code=204, tags=["identity"])
+    def refresh_web_session(
+        ot_web_refresh: str | None = Cookie(default=None),
+    ) -> Response:
+        if not ot_web_refresh:
+            raise SessionInvalid("web refresh token is missing")
+        tokens = service.refresh_web_session(refresh_token=ot_web_refresh)
+        if tokens.refresh_token is None or tokens.csrf_token is None:
+            raise RuntimeError("web refresh did not return complete session tokens")
+        response = Response(status_code=204)
+        set_web_session_cookies(
+            response,
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
+            csrf_token=tokens.csrf_token,
         )
         return response
 
@@ -303,6 +344,12 @@ def create_identity_router(
         response = Response(status_code=204)
         response.delete_cookie(
             "ot_web_session",
+            path="/",
+            secure=secure_web_cookies,
+            httponly=True,
+        )
+        response.delete_cookie(
+            "ot_web_refresh",
             path="/",
             secure=secure_web_cookies,
             httponly=True,

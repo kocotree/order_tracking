@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from app.modules.identity_access import IdentityAccessService, PermissionDenied, SessionInvalid
 from app.modules.identity_access.service import UserSnapshot
+from app.modules.order_import import OrderImportService
 from app.modules.orders import (
     AssignmentInput,
     DraftLineInput,
@@ -176,6 +177,7 @@ def _audit_response(item: OrderAuditSnapshot) -> AuditLogResponse:
 def create_order_router(
     service: OrderService,
     identity: IdentityAccessService,
+    order_import_service: OrderImportService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
@@ -446,7 +448,11 @@ def create_order_router(
         )
         return DashboardResponse(
             overdue_orders=sum(item.display_status == "已逾期" for item in items),
-            pending_import_orders=0,
+            pending_import_orders=(
+                order_import_service.pending_count(actor_id=actor.user_id)
+                if order_import_service is not None
+                else 0
+            ),
             today_shipments=0,
             recent_orders=[
                 _order_response(item, request.state.request_id) for item in items[:5]

@@ -20,6 +20,10 @@ export type DashboardOrders = components["schemas"]["DashboardResponse"];
 export type DraftCreate = components["schemas"]["DraftCreate"];
 export type DraftUpdate = components["schemas"]["DraftUpdate"];
 export type AuditLogList = components["schemas"]["AuditLogListResponse"];
+export type ImportRun = components["schemas"]["ImportRunResponse"];
+export type ImportCandidate = components["schemas"]["CandidateResponse"];
+export type ImportCandidateList = components["schemas"]["CandidateListResponse"];
+export type BatchConfirmResult = components["schemas"]["BatchConfirmResponse"];
 export type SmsChallenge = components["schemas"]["SmsChallengeResponse"];
 export type User = components["schemas"]["UserResponse"];
 
@@ -238,5 +242,58 @@ export const orderApi = {
       method: "POST",
       headers: idempotencyHeaders(),
       body: JSON.stringify({ reason }),
+    }),
+};
+
+export const orderImportApi = {
+  createRun: () => request<ImportRun>("/v1/admin/import-runs", { method: "POST", headers: idempotencyHeaders() }),
+  latestRun: () => request<ImportRun | null>("/v1/admin/import-runs/latest"),
+  getRun: (runId: string) =>
+    request<ImportRun>(`/v1/admin/import-runs/${encodeURIComponent(runId)}`),
+  list: (params: {
+    status?: "PENDING" | "IMPORTED";
+    keyword?: string;
+    category?: string;
+    factoryNames?: string[];
+    trackers?: string[];
+    validationState?: string;
+    sortBy?: string;
+    sortOrder?: "asc" | "desc";
+    page?: number;
+    pageSize?: number;
+  } = {}) => {
+    const query = new URLSearchParams({
+      status: params.status ?? "PENDING",
+      keyword: params.keyword ?? "",
+      page: String(params.page ?? 1),
+      pageSize: String(params.pageSize ?? 20),
+      sortBy: params.sortBy ?? "updatedAt",
+      sortOrder: params.sortOrder ?? "desc",
+    });
+    if (params.category) query.set("category", params.category);
+    if (params.validationState) query.set("validationState", params.validationState);
+    for (const name of params.factoryNames ?? []) query.append("factoryNames", name);
+    for (const tracker of params.trackers ?? []) query.append("trackers", tracker);
+    return request<ImportCandidateList>(`/v1/admin/import-candidates?${query}`);
+  },
+  get: (candidateId: string) =>
+    request<ImportCandidate>(
+      `/v1/admin/import-candidates/${encodeURIComponent(candidateId)}`,
+    ),
+  exclude: (candidateId: string) =>
+    request<void>(`/v1/admin/import-candidates/${encodeURIComponent(candidateId)}`, {
+      method: "DELETE",
+      headers: idempotencyHeaders(),
+    }),
+  confirm: (candidateId: string) =>
+    request<{ orderId: string; requestId: string }>(
+      `/v1/admin/import-candidates/${encodeURIComponent(candidateId)}/confirm`,
+      { method: "POST", headers: idempotencyHeaders() },
+    ),
+  confirmBatch: (candidateIds: string[]) =>
+    request<BatchConfirmResult>("/v1/admin/import-candidates/confirm", {
+      method: "POST",
+      headers: idempotencyHeaders(),
+      body: JSON.stringify({ candidateIds }),
     }),
 };

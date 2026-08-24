@@ -17,6 +17,7 @@ from app.adapters.sms import DisabledSmsSender, FakeSmsSender
 from app.adapters.wechat import DisabledWechatIdentity
 from app.api.factory_access import create_factory_router
 from app.api.identity import create_identity_router
+from app.api.order_import import create_order_import_router
 from app.api.orders import create_order_router
 from app.api.products import create_product_router
 from app.api.router import api_router
@@ -42,6 +43,7 @@ from app.modules.identity_access import (
     VerificationInvalid,
 )
 from app.modules.identity_access.service import IdentityAccessService
+from app.modules.order_import import OrderImportService
 from app.modules.orders import (
     OrderConflict,
     OrderError,
@@ -63,6 +65,7 @@ def create_app(
     factory_service: FactoryAccessService | None = None,
     product_service: ProductCatalogService | None = None,
     order_service: OrderService | None = None,
+    order_import_service: OrderImportService | None = None,
     extra_routers: Sequence[APIRouter] = (),
 ) -> FastAPI:
     settings = Settings(database_url=database_url) if database_url is not None else Settings()
@@ -135,6 +138,8 @@ def create_app(
         product_service = ProductCatalogService(session_factory)
     if order_service is None:
         order_service = OrderService(session_factory)
+    if order_import_service is None:
+        order_import_service = OrderImportService(session_factory)
     if local_demo_enabled:
         seed_local_demo_products(session_factory)
     app.include_router(
@@ -146,7 +151,12 @@ def create_app(
     )
     app.include_router(create_factory_router(factory_service, identity_service))
     app.include_router(create_product_router(product_service, identity_service))
-    app.include_router(create_order_router(order_service, identity_service))
+    app.include_router(
+        create_order_router(
+            order_service, identity_service, order_import_service=order_import_service
+        )
+    )
+    app.include_router(create_order_import_router(order_import_service, identity_service))
     if local_demo_enabled:
         app.include_router(create_local_demo_router())
 

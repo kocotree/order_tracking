@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     feishu_identity_scope: str = "unconfigured-feishu"
     wechat_identity_scope: str = "unconfigured-wechat"
     avatar_bucket: str = "unconfigured-avatar"
+    feishu_order_app_id: str = ""
+    feishu_order_app_secret: str = ""
+    feishu_order_app_token: str = ""
+    feishu_order_table_id: str = ""
+    feishu_order_view_id: str = ""
 
     model_config = SettingsConfigDict(
         env_prefix="ORDER_TRACKING_",

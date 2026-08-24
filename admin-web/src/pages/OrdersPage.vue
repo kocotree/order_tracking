@@ -1,5 +1,5 @@
 <template>
-  <AdminShell>
+  <AdminShell title="订单列表">
     <article class="order-list-page">
       <section class="order-list-filter-card" aria-label="订单筛选">
         <nav class="order-status-tabs" aria-label="订单状态">
@@ -93,12 +93,12 @@
                   <span v-for="value in displayCategories(item)" :key="value" class="category-tag" :class="value === '帽子' ? 'is-hat' : 'is-clothing'">{{ value }}</span>
                   <span v-if="displayCategories(item).length === 0">—</span>
                 </td>
-                <td><span class="tracker-tag">{{ item.tracker }}</span></td>
+                <td><span class="tracker-tag" :data-tracker="item.tracker">{{ item.tracker }}</span></td>
                 <td>{{ factorySummary(item) }}</td>
                 <td>{{ item.contractShipDate }}</td>
                 <td><div class="list-progress-line"><span class="progress-track"><span class="progress-bar" :style="{ width: `${item.progressPercent}%` }"></span></span><span class="list-progress-percent">{{ item.progressPercent }}%</span></div></td>
                 <td class="order-shipment-count">{{ number(item.shippedQuantity) }} / {{ number(item.totalQuantity) }}</td>
-                <td><span class="order-status" :data-status="item.displayStatus">{{ item.displayStatus }}</span></td>
+                <td><span class="status-badge" :class="statusTone(item)">{{ item.displayStatus }}</span></td>
                 <td><div class="order-row-actions"><RouterLink class="order-view-button" :to="`/orders/${item.orderId}`">详情</RouterLink><button v-if="item.lifecycle === 'DRAFT'" class="order-delete-button" type="button" @click="deleteTarget = item">删除</button></div></td>
               </tr>
               <tr v-if="items.length === 0"><td colspan="11"><div class="empty-state"><strong>没有符合当前条件的订单</strong><p>可以调整搜索词、状态或筛选条件后重新查询。</p></div></td></tr>
@@ -177,6 +177,13 @@ function displayCategories(order: Order) {
     values.add(line.category === "童装春夏" || line.category === "童装秋冬" ? "服装" : "帽子");
   }
   return (["服装", "帽子"] as const).filter((value) => values.has(value));
+}
+
+function statusTone(order: Order) {
+  if (order.lifecycle === "DRAFT" || order.displayStatus === "草稿") return "is-draft";
+  if (order.displayStatus === "已逾期") return "is-danger";
+  if (order.displayStatus === "已完成") return "is-success";
+  return "is-info";
 }
 
 async function load() {

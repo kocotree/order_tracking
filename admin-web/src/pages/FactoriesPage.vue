@@ -99,9 +99,8 @@
               <label class="factory-form-label" for="factory-legal-name"><span>单位全称</span></label><div class="factory-form-control is-wide"><input id="factory-legal-name" v-model="form.legalName" maxlength="200" placeholder="营业执照上的单位名称" /></div>
               <template v-for="(contact, index) in form.contacts" :key="index">
                 <label class="factory-form-label" :for="`contact-name-${index}`"><span>联系人</span></label><div class="factory-form-control"><input :id="`contact-name-${index}`" v-model="contact.name" placeholder="姓名" /></div>
-                <label class="factory-form-label" :for="`contact-phone-${index}`"><span>联系电话</span></label><div class="factory-form-control contact-control"><input :id="`contact-phone-${index}`" v-model="contact.phone" placeholder="手机或座机" /><button class="contact-remove" type="button" aria-label="删除联系人" @click="removeContact(index)">×</button></div>
+                <label class="factory-form-label" :for="`contact-phone-${index}`"><span>联系电话</span></label><div class="factory-form-control"><input :id="`contact-phone-${index}`" v-model="contact.phone" placeholder="手机或座机" /></div>
               </template>
-              <div class="factory-form-spacer"></div><button class="text-button contact-add" type="button" @click="addContact">添加联系人</button>
               <label class="factory-form-label" for="factory-address"><span>单位地址</span></label><div class="factory-form-control is-wide"><input id="factory-address" v-model="form.address" maxlength="500" /></div>
             </div>
           </div>
@@ -172,7 +171,6 @@ function openCreate() { editing.value = null; resetForm(emptyForm()); addContact
 function openEdit(factory: Factory) { editing.value = factory; resetForm({ supplierNumber: factory.supplierNumber, factoryName: factory.factoryName, factoryCode: factory.factoryCode, legalName: factory.legalName ?? "", address: factory.address ?? "", legalRepresentative: factory.legalRepresentative ?? "", contacts: factory.contacts.map(({ name, phone }) => ({ name, phone })) }); if (form.contacts.length === 0) addContact(); editorOpen.value = true; }
 function closeEditor() { editorOpen.value = false; editing.value = null; }
 function addContact() { form.contacts.push({ name: "", phone: "" }); }
-function removeContact(index: number) { form.contacts.splice(index, 1); }
 async function viewFactoryUsers(factory: Factory) { await router.push({ path: "/people/users", query: { factory: factory.factoryId } }); }
 
 async function save() {

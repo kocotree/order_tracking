@@ -27,6 +27,8 @@ describe("order list prototype alignment", () => {
     expect(wrapper.text()).not.toContain("手工新建订单");
     expect(wrapper.text()).toContain("服装");
     expect(wrapper.findAll('.data-grid-sort-button')).toHaveLength(9);
+    expect(wrapper.get('.status-badge').classes()).toContain('is-info');
+    expect(wrapper.get('.tracker-tag').attributes('data-tracker')).toBe('橄榄');
 
     await wrapper.get('.order-select-field select').setValue("服装");
     await flushPromises();

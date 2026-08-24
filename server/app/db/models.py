@@ -379,6 +379,156 @@ class ProductSyncRun(Base):
     )
 
 
+class OrderImportRun(Base):
+    __tablename__ = "order_import_runs"
+    __table_args__ = (
+        UniqueConstraint("active_key", name="uq_order_import_runs_active_key"),
+        UniqueConstraint("idempotency_key", name="uq_order_import_runs_idempotency_key"),
+        Index("ix_order_import_runs_latest", "started_at", "run_id"),
+    )
+
+    run_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    active_key: Mapped[str | None] = mapped_column(String(64))
+    started_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    requested_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(191))
+    pages_read: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    records_read: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    candidates_created: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    candidates_updated: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    skipped_records: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    failed_records: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class OrderImportSourceRecord(Base):
+    __tablename__ = "order_import_source_records"
+    __table_args__ = (
+        UniqueConstraint("source_scope", "source_record_id", name="uq_import_source_record"),
+        Index("ix_import_source_records_order", "order_no", "source_record_id"),
+    )
+
+    source_record_pk: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    source_scope: Mapped[str] = mapped_column(String(191), nullable=False)
+    source_record_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_detail_id: Mapped[str | None] = mapped_column(String(100))
+    order_no: Mapped[str | None] = mapped_column(String(100))
+    raw_fields: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    source_modified_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    parse_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(String(255))
+    first_seen_run_id: Mapped[str] = mapped_column(
+        ForeignKey("order_import_runs.run_id", ondelete="RESTRICT"), nullable=False
+    )
+    last_seen_run_id: Mapped[str] = mapped_column(
+        ForeignKey("order_import_runs.run_id", ondelete="RESTRICT"), nullable=False
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class OrderImportCandidate(Base):
+    __tablename__ = "order_import_candidates"
+    __table_args__ = (
+        UniqueConstraint("order_no", name="uq_order_import_candidates_order_no"),
+        Index("ix_order_import_candidates_list", "status", "validation_state", "updated_at"),
+    )
+
+    candidate_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    order_no: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    validation_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    validation_issues: Mapped[list[Any]] = mapped_column(JSON, nullable=False)
+    issue_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    source_record_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    order_date: Mapped[date | None] = mapped_column(Date)
+    tracker: Mapped[str | None] = mapped_column(String(32))
+    contract_ship_date: Mapped[date | None] = mapped_column(Date)
+    category: Mapped[str | None] = mapped_column(String(100))
+    total_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    shipped_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    pending_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    imported_order_id: Mapped[str | None] = mapped_column(
+        ForeignKey("orders.order_id", ondelete="RESTRICT")
+    )
+    imported_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    imported_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    excluded_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    excluded_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class OrderImportCandidateLine(Base):
+    __tablename__ = "order_import_candidate_lines"
+    __table_args__ = (
+        UniqueConstraint(
+            "candidate_id", "source_record_pk", name="uq_import_candidate_line_source"
+        ),
+        Index("ix_import_candidate_lines_candidate", "candidate_id", "candidate_line_id"),
+    )
+
+    candidate_line_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    candidate_id: Mapped[str] = mapped_column(
+        ForeignKey("order_import_candidates.candidate_id", ondelete="CASCADE"), nullable=False
+    )
+    source_record_pk: Mapped[int] = mapped_column(
+        ForeignKey("order_import_source_records.source_record_pk", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    source_sku_id: Mapped[str | None] = mapped_column(String(100))
+    product_name: Mapped[str | None] = mapped_column(String(255))
+    properties_value: Mapped[str | None] = mapped_column(String(255))
+    category: Mapped[str | None] = mapped_column(String(100))
+    factory_name: Mapped[str | None] = mapped_column(String(100))
+    order_quantity: Mapped[int | None] = mapped_column(Integer)
+    shipped_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    pending_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    matched_variant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("product_variants.variant_id", ondelete="RESTRICT")
+    )
+    matched_factory_id: Mapped[str | None] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT")
+    )
+    image_object_key_snapshot: Mapped[str | None] = mapped_column(String(500))
+    validation_issues: Mapped[list[Any]] = mapped_column(JSON, nullable=False)
+
+
+class OrderImportValidationIssue(Base):
+    __tablename__ = "order_import_validation_issues"
+    __table_args__ = (
+        Index("ix_import_validation_issues_candidate", "candidate_id", "sort_order"),
+    )
+
+    issue_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    candidate_id: Mapped[str] = mapped_column(
+        ForeignKey("order_import_candidates.candidate_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    candidate_line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("order_import_candidate_lines.candidate_line_id", ondelete="CASCADE")
+    )
+    code: Mapped[str] = mapped_column(String(100), nullable=False)
+    field_name: Mapped[str | None] = mapped_column(String(100))
+    message: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class Order(Base):
     __tablename__ = "orders"
     __table_args__ = (
@@ -408,9 +558,7 @@ class Order(Base):
         ForeignKey("users.user_id", ondelete="RESTRICT")
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
-    deleted_by: Mapped[str | None] = mapped_column(
-        ForeignKey("users.user_id", ondelete="RESTRICT")
-    )
+    deleted_by: Mapped[str | None] = mapped_column(ForeignKey("users.user_id", ondelete="RESTRICT"))
     created_by: Mapped[str] = mapped_column(
         ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
     )
@@ -457,9 +605,7 @@ class OrderLine(Base):
 class OrderAssignment(Base):
     __tablename__ = "order_assignments"
     __table_args__ = (
-        UniqueConstraint(
-            "order_line_id", "factory_id", name="uq_order_assignments_line_factory"
-        ),
+        UniqueConstraint("order_line_id", "factory_id", name="uq_order_assignments_line_factory"),
         CheckConstraint("assigned_quantity > 0", name="ck_order_assignments_quantity_positive"),
         Index("ix_order_assignments_factory", "factory_id", "order_line_id"),
     )

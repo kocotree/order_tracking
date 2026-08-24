@@ -56,7 +56,7 @@
           <button class="icon-button mobile-menu-button" type="button" aria-label="打开导航" @click="mobileMenuOpen = true">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
           </button>
-          <span class="topbar-title">{{ activeModule.label }}</span>
+          <span class="topbar-title">{{ title ?? activeModule.label }}</span>
         </div>
         <div class="topbar-right">
           <button class="user-chip" type="button" aria-label="查看当前账号信息" :aria-expanded="accountOpen" @click.stop="accountOpen = !accountOpen">
@@ -96,6 +96,8 @@ import { useRoute, useRouter } from "vue-router";
 import BrandLogo from "@/components/BrandLogo.vue";
 import { useIdentityStore } from "@/stores";
 
+defineProps<{ title?: string }>();
+
 type ShellModule = {
   id: "dashboard" | "orders" | "products" | "factory" | "people";
   label: string;
@@ -105,7 +107,7 @@ type ShellModule = {
 
 const modules: ShellModule[] = [
   { id: "dashboard", label: "订单看板", route: "/", items: [{ label: "看板首页", route: "/" }] },
-  { id: "orders", label: "订单与发货", route: "/orders", items: [{ label: "订单列表", route: "/orders" }] },
+  { id: "orders", label: "订单与发货", route: "/orders", items: [{ label: "订单列表", route: "/orders" }, { label: "待导入订单", route: "/orders/import" }] },
   { id: "products", label: "产品资料", route: "/products", items: [{ label: "产品列表", route: "/products" }] },
   { id: "factory", label: "工厂资料", route: "/factories", items: [{ label: "工厂列表", route: "/factories" }] },
   { id: "people", label: "人员管理", route: "/people/factory-applications", items: [{ label: "人员管理", route: "/people/factory-applications" }] },

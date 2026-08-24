@@ -179,35 +179,74 @@ class OrderService:
         order_id = str(uuid4())
         try:
             with self._session_factory() as session, session.begin():
-                self._require_admin(session, actor_id)
-                order = Order(
+                self.create_draft_in_session(
+                    session,
+                    actor_id=actor_id,
                     order_id=order_id,
                     order_no=normalized_order_no,
-                    source="manual",
                     order_date=order_date,
                     tracker=tracker,
                     contract_ship_date=contract_ship_date,
-                    lifecycle="DRAFT",
-                    version=1,
-                    created_by=actor_id,
-                    updated_by=actor_id,
-                    created_at=now,
-                    updated_at=now,
-                )
-                session.add(order)
-                session.flush()
-                self._replace_lines(session, order=order, lines=lines, now=now)
-                self._add_audit(
-                    session,
+                    lines=lines,
+                    source="manual",
                     request_id=request_id,
-                    action="order.draft_created",
-                    order_id=order_id,
-                    actor_id=actor_id,
-                    changes={"orderNo": normalized_order_no, "source": "manual"},
+                    now=now,
                 )
         except IntegrityError as error:
             raise OrderConflict("order number already exists") from error
         return self.get(order_id=order_id, today=self._business_today())
+
+    def create_draft_in_session(
+        self,
+        session: Session,
+        *,
+        actor_id: str,
+        order_id: str,
+        order_no: str,
+        order_date: date,
+        tracker: str,
+        contract_ship_date: date,
+        lines: list[DraftLineInput],
+        source: str,
+        request_id: str,
+        now: datetime,
+    ) -> Order:
+        """Create a draft inside the caller's transaction.
+
+        This is the shared atomic seam for manual creation and trusted import
+        workflows. HTTP callers never receive a database session or source switch.
+        """
+        normalized_order_no = self._normalize_order_no(order_no)
+        self._validate_header(tracker=tracker, lines=lines)
+        if source not in {"manual", "feishu"}:
+            raise OrderValidationError("order source is invalid")
+        self._require_admin(session, actor_id)
+        order = Order(
+            order_id=order_id,
+            order_no=normalized_order_no,
+            source=source,
+            order_date=order_date,
+            tracker=tracker,
+            contract_ship_date=contract_ship_date,
+            lifecycle="DRAFT",
+            version=1,
+            created_by=actor_id,
+            updated_by=actor_id,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(order)
+        session.flush()
+        self._replace_lines(session, order=order, lines=lines, now=now)
+        self._add_audit(
+            session,
+            request_id=request_id,
+            action="order.draft_created",
+            order_id=order_id,
+            actor_id=actor_id,
+            changes={"orderNo": normalized_order_no, "source": source},
+        )
+        return order
 
     def save_draft(
         self,

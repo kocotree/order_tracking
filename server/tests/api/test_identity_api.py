@@ -69,6 +69,20 @@ def test_web_identity_api_uses_secure_cookie_csrf_and_super_admin_authorization(
         assert callback.status_code == 303
         assert "HttpOnly" in callback.headers["set-cookie"]
         assert "Secure" in callback.headers["set-cookie"]
+        original_refresh = client.cookies.get("ot_web_refresh")
+        assert original_refresh
+
+        client.cookies.delete("ot_web_session")
+        client.cookies.delete("ot_csrf")
+        refreshed = client.post("/api/v1/auth/refresh")
+        assert refreshed.status_code == 204
+        assert client.cookies.get("ot_web_session")
+        assert client.cookies.get("ot_csrf")
+        assert client.cookies.get("ot_web_refresh") != original_refresh
+
+        with TestClient(app, base_url="https://testserver") as replay_client:
+            replay_client.cookies.set("ot_web_refresh", original_refresh)
+            assert replay_client.post("/api/v1/auth/refresh").status_code == 401
 
         me = client.get("/api/v1/me")
         assert me.status_code == 200
@@ -95,6 +109,18 @@ def test_web_identity_api_uses_secure_cookie_csrf_and_super_admin_authorization(
         forbidden = client.get("/api/v1/admin/admin-applications")
         assert forbidden.status_code == 403
         assert forbidden.json()["requestId"]
+
+        refresh_before_logout = client.cookies.get("ot_web_refresh")
+        logged_out = client.post(
+            "/api/v1/auth/logout",
+            headers={"X-CSRF-Token": client.cookies.get("ot_csrf") or ""},
+        )
+        assert logged_out.status_code == 204
+        assert client.cookies.get("ot_web_refresh") is None
+        assert refresh_before_logout
+        with TestClient(app, base_url="https://testserver") as logged_out_client:
+            logged_out_client.cookies.set("ot_web_refresh", refresh_before_logout)
+            assert logged_out_client.post("/api/v1/auth/refresh").status_code == 401
 
     super_admin = service.bootstrap_super_admin(
         scope="tenant-a/app-a",

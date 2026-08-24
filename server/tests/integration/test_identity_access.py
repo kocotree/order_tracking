@@ -108,8 +108,22 @@ def test_oauth_state_is_short_lived_single_use_and_callback_creates_web_session(
     assert started.authorization_url.endswith(started.state)
     assert completed.user.display_name == "煎饼"
     assert completed.web_session_token
+    assert completed.refresh_token
     assert completed.csrf_token
     assert completed.redirect_to == "/admin-apply"
+
+    restarted_service = IdentityAccessService(
+        sessionmaker(test_database_engine, class_=Session),
+        token_secret=b"test-token-secret-not-for-production",
+        clock=lambda: now,
+    )
+    assert (
+        restarted_service.authenticate_session(
+            token=completed.web_session_token,
+            terminal="web",
+        ).user_id
+        == completed.user.user_id
+    )
 
     with pytest.raises(OAuthStateInvalid):
         service.complete_feishu_login(
@@ -448,6 +462,7 @@ def test_disabling_admin_revokes_all_sessions_and_enable_does_not_revive_them(
     ordinary = service.get_user(user_id=candidate.user_id)
     web = service.issue_session(user_id=ordinary.user_id, terminal="web")
     mini = service.issue_session(user_id=ordinary.user_id, terminal="mini")
+    assert web.refresh_token is not None
     assert (
         service.authenticate_session(token=web.access_token, terminal="web").user_id
         == ordinary.user_id
@@ -469,6 +484,8 @@ def test_disabling_admin_revokes_all_sessions_and_enable_does_not_revive_them(
         service.authenticate_session(token=web.access_token, terminal="web")
     with pytest.raises(SessionInvalid):
         service.authenticate_session(token=mini.access_token, terminal="mini")
+    with pytest.raises(SessionInvalid):
+        service.refresh_web_session(refresh_token=web.refresh_token)
 
     enabled = service.set_admin_enabled(
         actor_id=super_admin.user_id,

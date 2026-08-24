@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { orderApi } from "@/api/client";
+import { identityApi, orderApi } from "@/api/client";
 
 describe("orderApi", () => {
   beforeEach(() => {
@@ -36,5 +36,37 @@ describe("orderApi", () => {
       "00000000-0000-4000-8000-000000000001",
     );
     expect(new Headers(publish?.headers).get("X-CSRF-Token")).toBe("csrf-value");
+  });
+
+  it("shares one refresh when concurrent requests receive 401, then retries both", async () => {
+    let meCalls = 0;
+    let refreshCalls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/v1/auth/refresh")) {
+        refreshCalls += 1;
+        return new Response(null, { status: 204 });
+      }
+      if (url.endsWith("/v1/me")) {
+        meCalls += 1;
+        if (meCalls <= 2) {
+          return new Response(JSON.stringify({ code: "session_invalid" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(
+          JSON.stringify({ userId: `user-${meCalls}`, role: "admin" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    const users = await Promise.all([identityApi.getMe(), identityApi.getMe()]);
+
+    expect(refreshCalls).toBe(1);
+    expect(meCalls).toBe(4);
+    expect(users).toHaveLength(2);
   });
 });

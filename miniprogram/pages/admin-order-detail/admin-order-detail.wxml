@@ -1,1 +1,73 @@
-<view class="order-mini-page"><mini-titlebar title="订单详情" showBack="{{true}}" bind:back="goBack" /><view wx:if="{{loading}}" class="mini-empty">正在加载订单…</view><view wx:elif="{{error}}" class="mini-empty mini-error">{{error}}</view><view wx:elif="{{order}}" class="mini-detail-content"><view class="mini-detail-hero"><view class="mini-card-head"><text>{{order.orderNo}}</text><text class="mini-status mini-status--{{statusTone}}">{{order.displayStatus}}</text></view><text class="mini-product-summary">{{productSummary}}</text><view class="mini-card-meta"><text>跟单人员 {{order.tracker}}</text><text>合同出货 {{order.contractShipDate}}</text></view></view><view class="mini-quantity-grid mini-detail-quantity"><view><text>{{totalText}}</text><text>订单数量</text></view><view><text>{{shippedText}}</text><text>已发数量</text></view><view><text>{{pendingText}}</text><text>未发数量</text></view></view><view class="mini-section"><view class="mini-section-title">订单明细</view><view wx:for="{{order.lines}}" wx:key="orderLineId" class="mini-line-row"><view><text>{{item.productName}}</text><text>{{item.propertiesValue}}</text></view><view><text>下单 {{item.orderQuantity}}</text><text>未发 {{item.pendingQuantity}}</text></view></view></view><view class="mini-section"><view class="mini-section-title">工厂进度</view><view wx:for="{{order.factoryProgress}}" wx:key="factoryId" class="mini-factory-row"><view class="mini-factory-head" data-id="{{item.factoryId}}" bindtap="toggleFactory"><text>{{item.factoryName}}</text><text>{{item.progressPercent}}% {{expandedFactory === item.factoryId ? '⌃' : '⌄'}}</text></view><view wx:if="{{expandedFactory === item.factoryId}}" class="mini-factory-body"><text>下单数量 {{item.orderQuantity}}</text><text>已发数量 {{item.shippedQuantity}}</text><text>未发数量 {{item.pendingQuantity}}</text></view></view></view></view></view>
+<view class="admin-detail-page">
+  <mini-titlebar title="订单详情" showBack="{{true}}" backLeft="{{true}}" bind:back="goBack" />
+
+  <view wx:if="{{loading}}" class="mini-empty">正在加载订单…</view>
+  <view wx:elif="{{error}}" class="mini-empty mini-error">{{error}}</view>
+  <view wx:elif="{{order}}" class="admin-detail-content">
+    <view class="admin-summary-card">
+      <view class="admin-summary-head">
+        <view class="admin-summary-copy">
+          <text class="admin-order-number">{{order.orderNo}}</text>
+          <text class="admin-product-summary">{{productSummary}}</text>
+        </view>
+        <text class="mini-status mini-status--{{statusTone}}">{{order.displayStatus}}</text>
+      </view>
+
+      <view class="admin-summary-facts">
+        <view class="admin-summary-fact">
+          <view class="admin-fact-icon admin-fact-icon--user" />
+          <text class="admin-fact-label">跟单人员</text>
+          <text class="admin-fact-value">{{order.tracker}}</text>
+        </view>
+        <view class="admin-summary-fact">
+          <view class="admin-fact-icon admin-fact-icon--order" />
+          <text class="admin-fact-label">订单数量</text>
+          <text class="admin-fact-value">{{totalText}}</text>
+        </view>
+      </view>
+
+      <view class="admin-summary-due {{statusTone === 'overdue' ? 'is-overdue' : ''}}">
+        <view class="admin-fact-icon admin-fact-icon--calendar" />
+        <text class="admin-fact-label">合同出货时间</text>
+        <text class="admin-due-value">{{order.contractShipDate}}</text>
+      </view>
+
+      <view class="admin-summary-progress">
+        <text class="admin-progress-label">发货进度</text>
+        <view class="admin-progress-track"><view class="admin-progress-fill" style="width: {{order.progressPercent}}%" /></view>
+        <text class="admin-progress-percent">{{order.progressPercent}}%</text>
+        <text class="admin-progress-numbers">{{shippedText}} / {{totalText}}</text>
+      </view>
+    </view>
+
+    <view class="admin-factory-section">
+      <view class="admin-section-head"><text>工厂进度</text><text>{{factoryProgress.length}} 个工厂</text></view>
+      <view class="admin-factory-list">
+        <view wx:for="{{factoryProgress}}" wx:key="factoryId" wx:for-item="factory" class="admin-factory-card {{expandedFactory === factory.factoryId ? 'is-open' : ''}}">
+          <view role="button" aria-label="{{factory.factoryName}}工厂进度" class="admin-factory-summary" data-id="{{factory.factoryId}}" bindtap="toggleFactory">
+            <view class="admin-factory-top">
+              <text class="admin-factory-name">{{factory.factoryName}}</text>
+              <view class="admin-factory-rate"><text>{{factory.progressPercent}}%</text><view class="admin-factory-arrow" /></view>
+            </view>
+            <view class="admin-factory-numbers">
+              <text>下单 <text>{{factory.orderText}}</text></text>
+              <text>已发 <text>{{factory.shippedText}}</text></text>
+              <text>未发 <text>{{factory.pendingText}}</text></text>
+            </view>
+            <view class="admin-factory-track"><view class="admin-factory-fill" style="width: {{factory.progressPercent}}%" /></view>
+          </view>
+
+          <view wx:if="{{expandedFactory === factory.factoryId}}" class="admin-factory-products">
+            <view class="admin-product-table-head"><text>序号</text><text>产品名称</text><text>颜色/规格</text><text>已发/下单</text></view>
+            <view wx:for="{{factory.products}}" wx:key="orderLineId" wx:for-item="product" class="admin-product-row">
+              <text class="admin-product-index">{{product.index}}</text>
+              <text class="admin-product-name">{{product.productName}}</text>
+              <text class="admin-product-spec">{{product.propertiesValue}}</text>
+              <text class="admin-product-quantity">{{product.shippedText}} / {{product.assignedText}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -34,3 +34,7 @@
   line-height: 70rpx;
   background: transparent;
 }
+
+.titlebar-back.is-left {
+  transform: translateX(-76rpx);
+}

@@ -8,6 +8,8 @@ export const orderApi = {
   list: (params: {
     keyword?: string;
     status?: string;
+    factoryId?: string;
+    trackers?: string[];
     shipDateFrom?: string;
     shipDateTo?: string;
     sortBy?: string;
@@ -21,6 +23,10 @@ export const orderApi = {
       ["page", String(params.page ?? 1)],
       ["pageSize", String(params.pageSize ?? 20)],
     ];
+    if (params.factoryId) values.push(["factoryId", params.factoryId]);
+    if (params.trackers) {
+      values.push(...params.trackers.map((tracker) => ["trackers", tracker]));
+    }
     if (params.shipDateFrom) values.push(["shipDateFrom", params.shipDateFrom]);
     if (params.shipDateTo) values.push(["shipDateTo", params.shipDateTo]);
     const query = values

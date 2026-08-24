@@ -1,1 +1,52 @@
-<view class="order-mini-page"><mini-titlebar title="任务详情" showBack="{{true}}" bind:back="goBack" /><view wx:if="{{loading}}" class="mini-empty">正在加载任务…</view><view wx:elif="{{error}}" class="mini-empty mini-error">{{error}}</view><view wx:elif="{{order}}" class="mini-detail-content"><view class="mini-detail-hero"><view class="mini-card-head"><text>{{order.orderNo}}</text><text class="mini-status mini-status--{{statusTone}}">{{order.displayStatus}}</text></view><text class="mini-product-summary">{{productSummary}}</text><view class="mini-card-meta"><text>合同出货 {{order.contractShipDate}}</text></view></view><view class="mini-quantity-grid mini-detail-quantity"><view><text>{{totalText}}</text><text>下单数量</text></view><view><text>{{shippedText}}</text><text>已发数量</text></view><view><text>{{pendingText}}</text><text>未发数量</text></view></view><view class="mini-section"><view class="mini-section-title">本厂产品规格</view><view wx:for="{{order.lines}}" wx:key="orderLineId" class="mini-line-row"><view><text>{{item.productName}}</text><text>{{item.propertiesValue}}</text></view><view><text>下单 {{item.orderQuantity}}</text><text>已发 {{item.shippedQuantity}}</text><text>未发 {{item.pendingQuantity}}</text></view></view></view><view class="mini-section"><view class="mini-section-title">发货进度</view><view class="mini-progress mini-detail-progress"><view><view style="width: {{order.progressPercent}}%" /></view><text>{{order.progressPercent}}%</text></view></view></view></view>
+<view class="order-mini-page factory-detail-page">
+  <mini-titlebar title="任务详情" showBack="{{true}}" backLeft="{{true}}" bind:back="goBack" />
+
+  <view wx:if="{{loading}}" class="mini-empty">正在加载任务…</view>
+  <view wx:elif="{{error}}" class="mini-empty mini-error">{{error}}</view>
+  <view wx:elif="{{order}}" class="factory-detail-content">
+    <view class="factory-summary-card">
+      <view class="factory-summary-head">
+        <view class="factory-summary-copy">
+          <text class="factory-order-number">{{order.orderNo}}</text>
+          <text class="factory-product-summary">{{productSummary}}</text>
+        </view>
+        <text class="mini-status mini-status--{{statusTone}}">{{order.displayStatus}}</text>
+      </view>
+
+      <view class="factory-due-row {{statusTone === 'overdue' ? 'is-overdue' : ''}}">
+        <view class="factory-calendar-icon" />
+        <text>合同出货时间</text>
+        <text class="factory-due-value">{{contractShipDateText}}</text>
+      </view>
+
+      <view class="factory-progress-row">
+        <text class="factory-progress-label">发货进度</text>
+        <view class="factory-progress-track"><view class="factory-progress-fill" style="width: {{order.progressPercent}}%" /></view>
+        <text class="factory-progress-percent">{{order.progressPercent}}%</text>
+      </view>
+
+      <view class="factory-quantity-grid">
+        <view><text>下单</text><text>{{totalText}}</text></view>
+        <view><text>已发</text><text>{{shippedText}}</text></view>
+        <view><text>未发</text><text class="{{order.pendingQuantity > 0 ? 'is-pending' : ''}}">{{pendingText}}</text></view>
+      </view>
+    </view>
+
+    <view class="factory-product-card">
+      <view class="factory-product-card-head"><text>产品明细</text><text>{{order.lines.length}} 条</text></view>
+      <view class="factory-product-table">
+        <view class="factory-product-table-head">
+          <text>序号</text><text>产品名称</text><text>颜色/规格</text><text>下单</text><text>已发</text><text>未发</text>
+        </view>
+        <view wx:for="{{order.lines}}" wx:key="orderLineId" class="factory-product-row">
+          <text class="factory-product-index">{{item.index}}</text>
+          <text class="factory-product-name">{{item.productName}}</text>
+          <text class="factory-product-spec">{{item.propertiesValue}}</text>
+          <text class="factory-product-number">{{item.orderText}}</text>
+          <text class="factory-product-number">{{item.shippedText}}</text>
+          <text class="factory-product-number {{item.pendingQuantity > 0 ? 'is-pending' : ''}}">{{item.pendingText}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

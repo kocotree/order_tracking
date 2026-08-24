@@ -1,6 +1,6 @@
 <view class="titlebar-shell">
   <view class="titlebar-grid">
-    <button wx:if="{{showBack}}" class="titlebar-back" aria-label="返回" bindtap="goBack">‹</button>
+    <button wx:if="{{showBack}}" class="titlebar-back {{backLeft ? 'is-left' : ''}}" aria-label="返回" bindtap="goBack">‹</button>
     <view wx:else class="titlebar-spacer" />
     <text class="titlebar-title">{{title}}</text>
   </view>

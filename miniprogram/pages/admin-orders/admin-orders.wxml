@@ -1,11 +1,98 @@
 <view class="order-mini-page">
   <mini-titlebar title="订单" />
-  <view class="mini-search-bar"><view class="mini-search-field"><text>⌕</text><input value="{{keyword}}" placeholder="搜索订单编号或产品名称" bindinput="keywordChanged" confirm-type="search" bindconfirm="search" /></view><button bindtap="toggleFilter">筛选</button></view>
-  <view wx:if="{{filterOpen}}" class="mini-filter-panel"><text>订单状态</text><view class="mini-status-options"><button data-status="all" bindtap="setStatus">全部</button><button data-status="未完成" bindtap="setStatus">未完成</button><button data-status="已逾期" bindtap="setStatus">已逾期</button><button data-status="已完成" bindtap="setStatus">已完成</button></view></view>
+  <view class="mini-search-bar">
+    <view class="mini-search-field"><image class="mini-search-icon" src="/assets/icons/search-gray.svg" mode="aspectFit" /><input value="{{keyword}}" placeholder="搜索订单编号或产品名称" bindinput="keywordChanged" confirm-type="search" bindconfirm="search" /></view>
+    <button class="mini-filter-button" bindtap="toggleFilter"><view class="mini-filter-icon" /><text>筛选</text><text wx:if="{{activeFilterCount}}" class="mini-filter-count">{{activeFilterCount}}</text></button>
+  </view>
   <view class="mini-order-content">
     <view wx:if="{{loading}}" class="mini-empty">正在加载订单…</view><view wx:elif="{{error}}" class="mini-empty mini-error">{{error}}</view>
     <view wx:elif="{{!items.length}}" class="mini-empty"><text>暂无正式订单</text><text>{{previewMode ? '预览模式不读取业务数据' : '草稿不会显示在管理员小程序'}}</text></view>
-    <view wx:else class="mini-order-list"><view wx:for="{{items}}" wx:key="orderId" class="mini-order-card" data-id="{{item.orderId}}" bindtap="openDetail"><view class="mini-card-head"><text>{{item.orderNo}}</text><text class="mini-status mini-status--{{item.statusTone}}">{{item.displayStatus}}</text></view><text class="mini-product-summary">{{item.productSummary}}</text><view class="mini-card-meta"><text>跟单人员 {{item.tracker}}</text><text>合同出货 {{item.contractShipDate}}</text></view><view class="mini-quantity-grid"><view><text>{{item.totalText}}</text><text>订单数量</text></view><view><text>{{item.shippedText}}</text><text>已发数量</text></view><view><text>{{item.pendingText}}</text><text>未发数量</text></view></view><view class="mini-progress"><view><view style="width: {{item.progressPercent}}%" /></view><text>{{item.progressPercent}}%</text></view></view></view>
+    <view wx:else class="mini-order-list">
+      <view wx:for="{{items}}" wx:key="orderId" class="mini-order-card" data-id="{{item.orderId}}" bindtap="openDetail">
+        <view class="mini-card-head">
+          <view class="mini-card-heading-copy">
+            <text class="mini-card-number">{{item.orderNo}}</text>
+            <text class="mini-product-summary">{{item.productSummary}}</text>
+          </view>
+          <text class="mini-status mini-status--{{item.statusTone}}">{{item.displayStatus}}</text>
+        </view>
+
+        <view class="mini-card-facts">
+          <view class="mini-card-fact">
+            <view class="mini-fact-icon mini-fact-icon--user" />
+            <text class="mini-fact-label">跟单人员</text>
+            <text class="mini-fact-value">{{item.tracker}}</text>
+          </view>
+          <view class="mini-card-fact">
+            <image class="mini-fact-icon mini-fact-icon--factory" src="/assets/icons/factory-blue.svg" mode="aspectFit" />
+            <text class="mini-fact-label">工厂</text>
+            <text class="mini-fact-value">{{item.factorySummary}}</text>
+          </view>
+        </view>
+
+        <view class="mini-card-due {{item.statusTone === 'overdue' ? 'is-overdue' : ''}}">
+          <view class="mini-fact-icon mini-fact-icon--calendar" />
+          <text>合同出货时间</text>
+          <text class="mini-due-value">{{item.contractShipDateText}}</text>
+        </view>
+
+        <view class="mini-card-quantities">
+          <view class="mini-quantity-item is-first"><text class="mini-quantity-label">下单</text><text class="mini-quantity-value">{{item.totalText}}</text></view>
+          <view class="mini-quantity-item"><text class="mini-quantity-label">已发</text><text class="mini-quantity-value">{{item.shippedText}}</text></view>
+          <view class="mini-quantity-item"><text class="mini-quantity-label">未发</text><text class="mini-quantity-value {{item.pendingQuantity > 0 ? 'is-pending' : ''}}">{{item.pendingText}}</text></view>
+        </view>
+
+        <view class="mini-card-progress">
+          <view class="mini-progress-track"><view class="mini-progress-fill" style="width: {{item.progressPercent}}%" /></view>
+          <text class="mini-progress-percent">{{item.progressPercent}}%</text>
+        </view>
+      </view>
+    </view>
   </view>
-  <view class="mini-tabbar"><button class="is-active">订单</button><button bindtap="openProfile">我的</button></view>
+  <view wx:if="{{filterOpen}}" class="mini-sheet-layer" bindtap="closeFilter">
+    <view class="mini-filter-sheet" catchtap="stopPropagation">
+      <view class="mini-sheet-handle" />
+      <view class="mini-sheet-header">
+        <view class="mini-sheet-title"><text class="mini-sheet-heading">筛选订单</text></view>
+        <view role="button" aria-label="关闭筛选" class="mini-sheet-close" bindtap="closeFilter"><view class="mini-sheet-close-line" /><view class="mini-sheet-close-line is-reversed" /></view>
+      </view>
+      <view class="mini-filter-body">
+        <view class="mini-filter-field">
+          <text class="mini-filter-label">订单状态</text>
+          <picker range="{{statusOptions}}" range-key="label" value="{{draftStatusIndex}}" bindchange="statusChanged"><view class="mini-picker-value"><text>{{statusOptions[draftStatusIndex].label}}</text><view class="mini-picker-arrow" /></view></picker>
+        </view>
+        <view class="mini-filter-field">
+          <text class="mini-filter-label">工厂</text>
+          <picker range="{{factoryOptions}}" range-key="label" value="{{draftFactoryIndex}}" bindchange="factoryChanged"><view class="mini-picker-value"><text>{{factoryOptions[draftFactoryIndex].label}}</text><view class="mini-picker-arrow" /></view></picker>
+        </view>
+        <view class="mini-filter-field">
+          <text class="mini-filter-label">跟单人员</text>
+          <picker range="{{trackerOptions}}" range-key="label" value="{{draftTrackerIndex}}" bindchange="trackerChanged"><view class="mini-picker-value"><text>{{trackerOptions[draftTrackerIndex].label}}</text><view class="mini-picker-arrow" /></view></picker>
+        </view>
+        <view class="mini-filter-field">
+          <text class="mini-filter-label">合同出货时间范围</text>
+          <view class="mini-date-range">
+            <picker mode="date" value="{{draftShipDateFrom}}" bindchange="shipDateFromChanged"><view class="mini-date-value"><text class="mini-date-copy {{draftShipDateFrom ? '' : 'is-placeholder'}}">{{draftShipDateFrom || 'yyyy/mm/日'}}</text><view class="mini-date-icon" /></view></picker>
+            <text class="mini-date-separator">至</text>
+            <picker mode="date" value="{{draftShipDateTo}}" bindchange="shipDateToChanged"><view class="mini-date-value"><text class="mini-date-copy {{draftShipDateTo ? '' : 'is-placeholder'}}">{{draftShipDateTo || 'yyyy/mm/日'}}</text><view class="mini-date-icon" /></view></picker>
+          </view>
+        </view>
+        <view class="mini-filter-field">
+          <text class="mini-filter-label">排序方式</text>
+          <picker range="{{sortOptions}}" range-key="label" value="{{draftSortIndex}}" bindchange="sortChanged"><view class="mini-picker-value"><text>{{sortOptions[draftSortIndex].label}}</text><view class="mini-picker-arrow" /></view></picker>
+        </view>
+      </view>
+      <view class="mini-filter-actions"><button class="mini-filter-reset" bindtap="resetFilter">重置</button><button class="mini-filter-apply" bindtap="applyFilter">查看结果</button></view>
+    </view>
+  </view>
+  <view class="mini-tabbar admin-order-tabbar">
+    <button class="admin-tabbar-item is-active">
+      <image class="admin-tabbar-icon" src="/assets/icons/admin-orders-active.svg" mode="aspectFit" />
+      <text>订单</text>
+    </button>
+    <button class="admin-tabbar-item" bindtap="openProfile">
+      <image class="admin-tabbar-icon" src="/assets/icons/admin-profile.svg" mode="aspectFit" />
+      <text>我的</text>
+    </button>
+  </view>
 </view>

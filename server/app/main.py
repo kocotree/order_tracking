@@ -12,8 +12,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.adapters.avatar import DisabledAvatarStore, FakeAvatarStore
 from app.adapters.errors import ExternalAdapterUnavailable
-from app.adapters.identity import DisabledFeishuIdentity
-from app.adapters.sms import DisabledSmsSender, FakeSmsSender
+from app.adapters.identity import (
+    AppCredentialFeishuIdentity,
+    DisabledFeishuIdentity,
+    FeishuIdentity,
+    FeishuIdentityConfig,
+)
 from app.adapters.wechat import DisabledWechatIdentity
 from app.api.factory_access import create_factory_router
 from app.api.identity import create_identity_router
@@ -24,7 +28,6 @@ from app.api.router import api_router
 from app.db.session import create_database_engine, create_session_factory
 from app.local_demo import (
     LOCAL_DEMO_FEISHU_SCOPE,
-    LOCAL_DEMO_VERIFICATION_CODE,
     LocalDemoFeishuIdentity,
     LocalDemoWechatIdentity,
     create_local_demo_router,
@@ -84,12 +87,33 @@ def create_app(
     app.include_router(api_router)
     local_demo_enabled = settings.app_env == "local_demo"
     if identity_service is None:
-        feishu_identity = (
-            LocalDemoFeishuIdentity()
-            if local_demo_enabled
-            else DisabledFeishuIdentity(scope=settings.feishu_identity_scope)
+        feishu_identity: FeishuIdentity
+        feishu_identity_app_id = (
+            settings.feishu_identity_app_id or settings.feishu_order_app_id
         )
-        sms_sender = FakeSmsSender() if local_demo_enabled else DisabledSmsSender()
+        feishu_identity_app_secret = (
+            settings.feishu_identity_app_secret or settings.feishu_order_app_secret
+        )
+        if local_demo_enabled:
+            feishu_identity = LocalDemoFeishuIdentity()
+        elif all(
+            (
+                feishu_identity_app_id,
+                feishu_identity_app_secret,
+                settings.feishu_identity_redirect_uri,
+            )
+        ):
+            feishu_identity = AppCredentialFeishuIdentity(
+                FeishuIdentityConfig(
+                    app_id=feishu_identity_app_id,
+                    app_secret=feishu_identity_app_secret,
+                    redirect_uri=settings.feishu_identity_redirect_uri,
+                )
+            )
+        else:
+            feishu_identity = DisabledFeishuIdentity(
+                scope=settings.feishu_identity_scope
+            )
         wechat_identity = (
             LocalDemoWechatIdentity()
             if local_demo_enabled
@@ -103,7 +127,6 @@ def create_app(
         identity_service = IdentityAccessService(
             session_factory,
             feishu_identity=feishu_identity,
-            sms_sender=sms_sender,
             wechat_identity=wechat_identity,
             avatar_store=avatar_store,
             token_secret=(
@@ -120,9 +143,6 @@ def create_app(
                 settings.phone_digest_secret.encode()
                 if settings.phone_digest_secret
                 else secrets.token_bytes(32)
-            ),
-            verification_code_factory=(
-                (lambda: LOCAL_DEMO_VERIFICATION_CODE) if local_demo_enabled else None
             ),
         )
         if local_demo_enabled:
@@ -146,7 +166,9 @@ def create_app(
         create_identity_router(
             identity_service,
             factory_service=factory_service,
-            secure_web_cookies=not local_demo_enabled,
+            secure_web_cookies=(
+                settings.web_cookie_secure if not local_demo_enabled else False
+            ),
         )
     )
     app.include_router(create_factory_router(factory_service, identity_service))

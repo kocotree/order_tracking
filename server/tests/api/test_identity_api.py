@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.avatar import FakeAvatarStore
 from app.adapters.identity import FakeFeishuIdentity
-from app.adapters.sms import FakeSmsSender
 from app.adapters.wechat import FakeWechatIdentity, WechatProfile
 from app.main import create_app
 from app.modules.identity_access import FeishuProfile, IdentityAccessService
@@ -35,17 +34,19 @@ def test_web_identity_api_uses_secure_cookie_csrf_and_super_admin_authorization(
     test_database_url: str,
 ) -> None:
     clean_identity_tables(test_database_engine)
-    sms = FakeSmsSender()
     feishu = FakeFeishuIdentity(
         profiles={
-            "applicant-code": FeishuProfile(subject="ou_applicant", display_name="煎饼")
+            "applicant-code": FeishuProfile(
+                subject="ou_applicant",
+                display_name="煎饼",
+                phone="13812345122",
+            )
         },
         scope="tenant-a/app-a",
     )
     service = IdentityAccessService(
         sessionmaker(test_database_engine, class_=Session),
         feishu_identity=feishu,
-        sms_sender=sms,
         wechat_identity=FakeWechatIdentity(
             scope="test-appid", login_profiles={}, phone_codes={}
         ),
@@ -75,25 +76,18 @@ def test_web_identity_api_uses_secure_cookie_csrf_and_super_admin_authorization(
         csrf_token = client.cookies.get("ot_csrf")
         assert csrf_token
 
-        missing_csrf = client.post(
-            "/api/v1/sms/challenges",
-            json={"phone": "13812345122"},
-        )
+        missing_csrf = client.post("/api/v1/admin-applications", json={})
         assert missing_csrf.status_code == 403
 
-        challenge = client.post(
+        assert client.post(
             "/api/v1/sms/challenges",
             headers={"X-CSRF-Token": csrf_token},
             json={"phone": "13812345122"},
-        )
-        assert challenge.status_code == 201
+        ).status_code == 404
         submitted = client.post(
             "/api/v1/admin-applications",
             headers={"X-CSRF-Token": csrf_token},
-            json={
-                "challengeId": challenge.json()["challengeId"],
-                "verificationCode": sms.last_code_for("13812345122"),
-            },
+            json={},
         )
         assert submitted.status_code == 201
         assert submitted.json()["status"] == "pending"
@@ -122,7 +116,6 @@ def test_mini_identity_api_binds_refreshes_uploads_avatar_and_logs_out(
     test_database_url: str,
 ) -> None:
     clean_identity_tables(test_database_engine)
-    sms = FakeSmsSender()
     wechat = FakeWechatIdentity(
         scope="test-appid",
         login_profiles={
@@ -136,7 +129,6 @@ def test_mini_identity_api_binds_refreshes_uploads_avatar_and_logs_out(
     avatar_store = FakeAvatarStore(bucket="test-private-avatar-bucket")
     service = IdentityAccessService(
         sessionmaker(test_database_engine, class_=Session),
-        sms_sender=sms,
         wechat_identity=wechat,
         avatar_store=avatar_store,
         token_secret=b"test-token-secret-not-for-production",
@@ -151,18 +143,15 @@ def test_mini_identity_api_binds_refreshes_uploads_avatar_and_logs_out(
     )
     applicant = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_applicant", display_name="煎饼"),
+        profile=FeishuProfile(
+            subject="ou_applicant",
+            display_name="煎饼",
+            phone="13812345122",
+        ),
         request_id="req-create-applicant",
-    )
-    challenge = service.send_admin_application_code(
-        user_id=applicant.user_id,
-        phone="13812345122",
-        request_id="req-send-code",
     )
     application = service.submit_admin_application(
         user_id=applicant.user_id,
-        challenge_id=challenge.challenge_id,
-        verification_code=sms.last_code_for("13812345122"),
         request_id="req-submit-application",
     )
     service.approve_admin_application(

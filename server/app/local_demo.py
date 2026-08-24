@@ -10,7 +10,6 @@ from app.adapters.wechat import WechatProfile, WechatUnavailable
 LOCAL_DEMO_FEISHU_SCOPE = "local-demo/feishu"
 LOCAL_DEMO_WECHAT_SCOPE = "local-demo/wechat"
 LOCAL_DEMO_PHONE = "10000000000"
-LOCAL_DEMO_VERIFICATION_CODE = "123456"
 
 
 class LocalDemoFeishuIdentity:
@@ -18,6 +17,7 @@ class LocalDemoFeishuIdentity:
         "applicant": FeishuProfile(
             subject="local-demo-applicant",
             display_name="演示申请人",
+            phone=LOCAL_DEMO_PHONE,
         ),
         "super": FeishuProfile(
             subject="local-demo-super",
@@ -103,7 +103,6 @@ def create_local_demo_router() -> APIRouter:
         <a href="/api/v1/local-demo/feishu-authorize?{escape(super_query)}">最高管理员登录</a>
       </div>
       <p>申请人手机号：<code>{LOCAL_DEMO_PHONE}</code></p>
-      <p>短信验证码：<code>{LOCAL_DEMO_VERIFICATION_CODE}</code></p>
     </main>
   </body>
 </html>"""

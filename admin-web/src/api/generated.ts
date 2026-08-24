@@ -774,23 +774,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/sms/challenges": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Send Sms Challenge */
-        post: operations["send_sms_challenge_api_v1_sms_challenges_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -829,13 +812,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** AdminApplicationCreateRequest */
-        AdminApplicationCreateRequest: {
-            /** Challengeid */
-            challengeId: string;
-            /** Verificationcode */
-            verificationCode: string;
-        };
         /** AdminApplicationListResponse */
         AdminApplicationListResponse: {
             /** Items */
@@ -1539,23 +1515,6 @@ export interface components {
             /** Refreshtoken */
             refreshToken: string | null;
         };
-        /** SmsChallengeRequest */
-        SmsChallengeRequest: {
-            /** Phone */
-            phone: string;
-        };
-        /** SmsChallengeResponse */
-        SmsChallengeResponse: {
-            /** Challengeid */
-            challengeId: string;
-            /**
-             * Expiresat
-             * Format: date-time
-             */
-            expiresAt: string;
-            /** Phonemasked */
-            phoneMasked: string;
-        };
         /** UserResponse */
         UserResponse: {
             /** Capabilities */
@@ -1642,11 +1601,7 @@ export interface operations {
                 ot_web_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AdminApplicationCreateRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             201: {
@@ -3377,43 +3332,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    send_sms_challenge_api_v1_sms_challenges_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-csrf-token"?: string | null;
-            };
-            path?: never;
-            cookie?: {
-                ot_web_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SmsChallengeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SmsChallengeResponse"];
                 };
             };
             /** @description Validation Error */

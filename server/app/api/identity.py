@@ -41,21 +41,6 @@ class UserResponse(ApiModel):
     capabilities: list[str]
 
 
-class SmsChallengeRequest(ApiModel):
-    phone: str
-
-
-class SmsChallengeResponse(ApiModel):
-    challenge_id: str
-    phone_masked: str
-    expires_at: datetime
-
-
-class AdminApplicationCreateRequest(ApiModel):
-    challenge_id: str
-    verification_code: str
-
-
 class AdminApplicationResponse(ApiModel):
     application_id: str
     user_id: str
@@ -326,37 +311,12 @@ def create_identity_router(
         return response
 
     @router.post(
-        "/sms/challenges",
-        response_model=SmsChallengeResponse,
-        status_code=201,
-        tags=["identity"],
-    )
-    def send_sms_challenge(
-        payload: SmsChallengeRequest,
-        request: Request,
-        ot_web_session: str | None = Cookie(default=None),
-        x_csrf_token: str | None = Header(default=None),
-    ) -> SmsChallengeResponse:
-        user = web_user(
-            web_session=ot_web_session,
-            csrf_token=x_csrf_token,
-            require_csrf=True,
-        )
-        challenge = service.send_admin_application_code(
-            user_id=user.user_id,
-            phone=payload.phone,
-            request_id=request.state.request_id,
-        )
-        return SmsChallengeResponse.model_validate(challenge, from_attributes=True)
-
-    @router.post(
         "/admin-applications",
         response_model=AdminApplicationResponse,
         status_code=201,
         tags=["identity"],
     )
     def create_admin_application(
-        payload: AdminApplicationCreateRequest,
         request: Request,
         ot_web_session: str | None = Cookie(default=None),
         x_csrf_token: str | None = Header(default=None),
@@ -368,8 +328,6 @@ def create_identity_router(
         )
         application = service.submit_admin_application(
             user_id=user.user_id,
-            challenge_id=payload.challenge_id,
-            verification_code=payload.verification_code,
             request_id=request.state.request_id,
         )
         return _application_response(application)

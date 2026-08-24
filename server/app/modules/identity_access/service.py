@@ -349,11 +349,74 @@ class IdentityAccessService:
         self,
         *,
         user_id: str,
-        challenge_id: str,
-        verification_code: str,
         request_id: str,
+        challenge_id: str | None = None,
+        verification_code: str | None = None,
     ) -> AdminApplicationSnapshot:
         now = self._now()
+        if challenge_id is None and verification_code is None:
+            with self._session_factory() as session, session.begin():
+                pending = session.scalar(
+                    select(AdminApplication).where(
+                        AdminApplication.pending_user_id == user_id
+                    )
+                )
+                if pending is not None:
+                    raise ApplicationConflict("an application is already pending")
+                user = session.get(User, user_id)
+                if user is None or user.role is not None:
+                    raise ApplicationConflict(
+                        "user cannot submit an administrator application"
+                    )
+                if not all(
+                    (user.phone_encrypted, user.phone_digest, user.phone_masked)
+                ):
+                    raise VerificationInvalid("verified Feishu phone is unavailable")
+                previous = session.scalar(
+                    select(AdminApplication)
+                    .where(AdminApplication.user_id == user_id)
+                    .order_by(AdminApplication.submitted_at.desc())
+                    .limit(1)
+                )
+                application = AdminApplication(
+                    application_id=str(uuid4()),
+                    user_id=user_id,
+                    pending_user_id=user_id,
+                    feishu_display_name_snapshot=user.feishu_display_name,
+                    feishu_avatar_url_snapshot=user.feishu_avatar_url,
+                    phone_encrypted=user.phone_encrypted,
+                    phone_digest=user.phone_digest,
+                    phone_masked=user.phone_masked,
+                    status="pending",
+                    submitted_at=now,
+                    version=1,
+                    previous_application_id=(
+                        previous.application_id if previous else None
+                    ),
+                )
+                session.add(application)
+                session.add(
+                    AuditLog(
+                        request_id=request_id,
+                        action=(
+                            "admin_application.resubmitted"
+                            if previous
+                            else "admin_application.submitted"
+                        ),
+                        target_type="admin_application",
+                        target_id=application.application_id,
+                        changes={
+                            "status": "pending",
+                            "phone": user.phone_masked,
+                            "phoneSource": "feishu",
+                        },
+                        actor_id=user_id,
+                        source_terminal="web",
+                    )
+                )
+                return self._application_snapshot(application)
+        if challenge_id is None or verification_code is None:
+            raise VerificationInvalid("verification challenge is incomplete")
         verification_error: str | None = None
         result: AdminApplicationSnapshot | None = None
         with self._session_factory() as session, session.begin():
@@ -467,6 +530,9 @@ class IdentityAccessService:
         request_id: str,
     ) -> UserSnapshot:
         now = self._now()
+        phone = profile.phone
+        if phone is not None and re.fullmatch(r"1\d{10}", phone) is None:
+            raise VerificationInvalid("Feishu phone is invalid")
         with self._session_factory() as session, session.begin():
             identity = session.scalar(
                 select(ExternalIdentity).where(
@@ -476,10 +542,21 @@ class IdentityAccessService:
                 )
             )
             if identity is None:
+                if phone is not None:
+                    duplicate = session.scalar(
+                        select(User).where(User.phone_digest == self._phone.digest(phone))
+                    )
+                    if duplicate is not None:
+                        raise ApplicationConflict(
+                            "Feishu phone is already bound to another user"
+                        )
                 user = User(
                     user_id=str(uuid4()),
                     feishu_display_name=profile.display_name,
                     feishu_avatar_url=profile.avatar_url,
+                    phone_encrypted=self._phone.encrypt(phone) if phone else None,
+                    phone_digest=self._phone.digest(phone) if phone else None,
+                    phone_masked=self._phone.mask(phone) if phone else None,
                 )
                 session.add(user)
                 session.flush()
@@ -511,6 +588,21 @@ class IdentityAccessService:
                 identity.last_login_at = now
                 user.feishu_display_name = profile.display_name
                 user.feishu_avatar_url = profile.avatar_url
+                if phone is not None:
+                    phone_digest = self._phone.digest(phone)
+                    duplicate = session.scalar(
+                        select(User).where(
+                            User.phone_digest == phone_digest,
+                            User.user_id != user.user_id,
+                        )
+                    )
+                    if duplicate is not None:
+                        raise ApplicationConflict(
+                            "Feishu phone is already bound to another user"
+                        )
+                    user.phone_encrypted = self._phone.encrypt(phone)
+                    user.phone_digest = phone_digest
+                    user.phone_masked = self._phone.mask(phone)
 
             return self._user_snapshot(user)
 

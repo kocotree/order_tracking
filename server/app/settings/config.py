@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     phone_encryption_secret: str = ""
     phone_digest_secret: str = ""
     feishu_identity_scope: str = "unconfigured-feishu"
+    feishu_identity_app_id: str = ""
+    feishu_identity_app_secret: str = ""
+    feishu_identity_redirect_uri: str = ""
+    web_cookie_secure: bool = True
     wechat_identity_scope: str = "unconfigured-wechat"
     avatar_bucket: str = "unconfigured-avatar"
     feishu_order_app_id: str = ""
@@ -34,4 +38,6 @@ class Settings(BaseSettings):
             ]
         ):
             raise ValueError("identity security secrets are required outside local development")
+        if self.app_env == "production" and not self.web_cookie_secure:
+            raise ValueError("secure web cookies are required in production")
         return self

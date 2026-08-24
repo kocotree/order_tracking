@@ -50,7 +50,8 @@ def test_local_demo_completes_cross_terminal_identity_flow_over_public_http(
         chooser = client.get(started.headers["location"])
         assert chooser.status_code == 200
         assert "仅限本机演示" in chooser.text
-        assert "123456" in chooser.text
+        assert "10000000000" in chooser.text
+        assert "短信验证码" not in chooser.text
 
         selected = client.get(
             f"{started.headers['location']}&identity={identity}",
@@ -80,19 +81,10 @@ def test_local_demo_completes_cross_terminal_identity_flow_over_public_http(
 
         csrf_token = client.cookies.get("ot_csrf")
         assert csrf_token
-        challenge = client.post(
-            "/api/v1/sms/challenges",
-            headers={"X-CSRF-Token": csrf_token},
-            json={"phone": "10000000000"},
-        )
-        assert challenge.status_code == 201
         submitted = client.post(
             "/api/v1/admin-applications",
             headers={"X-CSRF-Token": csrf_token},
-            json={
-                "challengeId": challenge.json()["challengeId"],
-                "verificationCode": "123456",
-            },
+            json={},
         )
         assert submitted.status_code == 201
         assert submitted.json()["status"] == "pending"
@@ -157,3 +149,36 @@ def test_local_demo_routes_are_absent_in_normal_development(
         )
 
     assert response.status_code == 404
+
+
+def test_normal_development_reuses_order_app_for_configured_feishu_oauth(
+    test_database_engine: Engine,
+    test_database_url: str,
+    monkeypatch,
+) -> None:
+    clean_identity_tables(test_database_engine)
+    monkeypatch.setenv("ORDER_TRACKING_APP_ENV", "development")
+    monkeypatch.setenv("ORDER_TRACKING_FEISHU_IDENTITY_APP_ID", "")
+    monkeypatch.setenv("ORDER_TRACKING_FEISHU_IDENTITY_APP_SECRET", "")
+    monkeypatch.setenv("ORDER_TRACKING_FEISHU_ORDER_APP_ID", "cli_test_app")
+    monkeypatch.setenv("ORDER_TRACKING_FEISHU_ORDER_APP_SECRET", "test-secret")
+    monkeypatch.setenv(
+        "ORDER_TRACKING_FEISHU_IDENTITY_REDIRECT_URI",
+        "http://127.0.0.1:5175/api/v1/auth/feishu/callback",
+    )
+
+    app = create_app(database_url=test_database_url)
+
+    with TestClient(app, base_url="http://testserver") as client:
+        response = client.get(
+            "/api/v1/auth/feishu/start",
+            params={"returnTo": "/"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 307
+    assert response.headers["location"].startswith(
+        "https://accounts.feishu.cn/open-apis/authen/v1/authorize?"
+    )
+    assert "client_id=cli_test_app" in response.headers["location"]
+    assert "state=" in response.headers["location"]

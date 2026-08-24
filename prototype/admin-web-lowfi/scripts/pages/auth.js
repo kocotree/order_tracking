@@ -71,17 +71,10 @@ export function renderAdminApplyPage() {
       </div>
 
       <div class="auth-field">
-        <label for="apply-phone">手机号</label>
-        <input id="apply-phone" name="phone" type="tel" inputmode="numeric" maxlength="11" autocomplete="tel" placeholder="请输入本人手机号" />
+        <label>飞书手机号</label>
+        <div class="auth-readonly-value">138****5122</div>
       </div>
-
-      <div class="auth-field">
-        <label for="apply-code">验证码</label>
-        <div class="auth-code-row">
-          <input id="apply-code" name="code" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="请输入 6 位验证码" />
-          <button class="auth-secondary-button" type="button" data-send-code>获取验证码</button>
-        </div>
-      </div>
+      <p class="auth-form-hint">手机号由飞书企业身份提供，无需短信验证。</p>
 
       <p class="auth-form-message" aria-live="polite" data-form-message></p>
       <button class="auth-primary-button" type="submit">提交申请</button>
@@ -89,63 +82,18 @@ export function renderAdminApplyPage() {
   `, "auth-page--apply");
 }
 
-function isValidPhone(phone) {
-  return /^1\d{10}$/.test(phone);
-}
-
 export function bindAdminApplyPage() {
   const form = document.querySelector("[data-admin-apply-form]");
-  const phoneInput = document.querySelector("#apply-phone");
-  const codeInput = document.querySelector("#apply-code");
-  const sendButton = document.querySelector("[data-send-code]");
   const message = document.querySelector("[data-form-message]");
-  if (!form || !phoneInput || !codeInput || !sendButton || !message) return;
+  if (!form || !message) return;
 
   const setMessage = (text, tone = "") => {
     message.textContent = text;
     message.dataset.tone = tone;
   };
 
-  [phoneInput, codeInput].forEach((input) => {
-    input.addEventListener("input", () => {
-      input.value = input.value.replace(/\D/g, "");
-      setMessage("");
-    });
-  });
-
-  sendButton.addEventListener("click", () => {
-    if (!isValidPhone(phoneInput.value)) {
-      setMessage("请输入正确的 11 位手机号", "danger");
-      phoneInput.focus();
-      return;
-    }
-
-    let seconds = 60;
-    sendButton.disabled = true;
-    sendButton.textContent = `${seconds}s 后重新获取`;
-    setMessage(`验证码已发送至 ${phoneInput.value.slice(0, 3)}****${phoneInput.value.slice(-4)}，原型中输入任意 6 位数字即可`, "success");
-    const countdown = window.setInterval(() => {
-      seconds -= 1;
-      sendButton.textContent = seconds > 0 ? `${seconds}s 后重新获取` : "重新获取";
-      if (seconds <= 0) {
-        window.clearInterval(countdown);
-        sendButton.disabled = false;
-      }
-    }, 1000);
-  });
-
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (!isValidPhone(phoneInput.value)) {
-      setMessage("请输入正确的 11 位手机号", "danger");
-      phoneInput.focus();
-      return;
-    }
-    if (!/^\d{6}$/.test(codeInput.value)) {
-      setMessage("请输入 6 位验证码", "danger");
-      codeInput.focus();
-      return;
-    }
     window.location.hash = "/access-status/pending";
   });
 }

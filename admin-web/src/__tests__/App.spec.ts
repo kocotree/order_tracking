@@ -51,15 +51,12 @@ describe("administrator identity web", () => {
     expect(wrapper.text()).not.toContain("手机号");
   });
 
-  it("submits the confirmed phone-and-code application without a position field", async () => {
-    const applicant = user({ role: null, phoneMasked: null, capabilities: [] });
+  it("submits the application using the verified Feishu phone without SMS", async () => {
+    const applicant = user({ role: null, capabilities: [] });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/v1/me")) return response(applicant);
       if (url.endsWith("/v1/admin-applications/me")) return response(null);
-      if (url.endsWith("/v1/sms/challenges")) {
-        return response({ challengeId: "challenge-1", phoneMasked: "138****5122", expiresAt: "2026-08-20T08:05:00" }, 201);
-      }
       if (url.endsWith("/v1/admin-applications") && init?.method === "POST") {
         return response({ applicationId: "application-1", userId: applicant.userId, displayName: "煎饼", phoneMasked: "138****5122", status: "pending", rejectionReason: null, submittedAt: "2026-08-20T08:00:00", reviewedAt: null, reviewedBy: null, version: 1 }, 201);
       }
@@ -73,11 +70,9 @@ describe("administrator identity web", () => {
     const wrapper = mount(App, { global: { plugins: [pinia, router] } });
 
     expect(wrapper.text()).toContain("管理员申请");
+    expect(wrapper.text()).toContain("138****5122");
+    expect(wrapper.text()).not.toContain("验证码");
     expect(wrapper.text()).not.toContain("职位");
-    await wrapper.get("#apply-phone").setValue("13812345122");
-    await wrapper.get(".auth-secondary-button").trigger("click");
-    await flushPromises();
-    await wrapper.get("#apply-code").setValue("123456");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 

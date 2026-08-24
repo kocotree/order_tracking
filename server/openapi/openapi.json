@@ -1,24 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AdminApplicationCreateRequest": {
-        "properties": {
-          "challengeId": {
-            "title": "Challengeid",
-            "type": "string"
-          },
-          "verificationCode": {
-            "title": "Verificationcode",
-            "type": "string"
-          }
-        },
-        "required": [
-          "challengeId",
-          "verificationCode"
-        ],
-        "title": "AdminApplicationCreateRequest",
-        "type": "object"
-      },
       "AdminApplicationListResponse": {
         "properties": {
           "items": {
@@ -1971,43 +1953,6 @@
         "title": "SessionResponse",
         "type": "object"
       },
-      "SmsChallengeRequest": {
-        "properties": {
-          "phone": {
-            "title": "Phone",
-            "type": "string"
-          }
-        },
-        "required": [
-          "phone"
-        ],
-        "title": "SmsChallengeRequest",
-        "type": "object"
-      },
-      "SmsChallengeResponse": {
-        "properties": {
-          "challengeId": {
-            "title": "Challengeid",
-            "type": "string"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "title": "Expiresat",
-            "type": "string"
-          },
-          "phoneMasked": {
-            "title": "Phonemasked",
-            "type": "string"
-          }
-        },
-        "required": [
-          "challengeId",
-          "phoneMasked",
-          "expiresAt"
-        ],
-        "title": "SmsChallengeResponse",
-        "type": "object"
-      },
       "UserResponse": {
         "properties": {
           "capabilities": {
@@ -2288,16 +2233,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdminApplicationCreateRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "201": {
             "content": {
@@ -5934,81 +5869,6 @@
         "summary": "Get Order",
         "tags": [
           "orders"
-        ]
-      }
-    },
-    "/api/v1/sms/challenges": {
-      "post": {
-        "operationId": "send_sms_challenge_api_v1_sms_challenges_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-csrf-token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Csrf-Token"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "ot_web_session",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Ot Web Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SmsChallengeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SmsChallengeResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Send Sms Challenge",
-        "tags": [
-          "identity"
         ]
       }
     },

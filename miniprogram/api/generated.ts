@@ -227,6 +227,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/import-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Candidates */
+        get: operations["list_candidates_api_v1_admin_import_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/import-candidates/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Batch */
+        post: operations["confirm_batch_api_v1_admin_import_candidates_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/import-candidates/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Candidate */
+        get: operations["get_candidate_api_v1_admin_import_candidates__candidate_id__get"];
+        put?: never;
+        post?: never;
+        /** Exclude Candidate */
+        delete: operations["exclude_candidate_api_v1_admin_import_candidates__candidate_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/import-candidates/{candidate_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Candidate */
+        post: operations["confirm_candidate_api_v1_admin_import_candidates__candidate_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/import-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Run */
+        post: operations["create_run_api_v1_admin_import_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/import-runs/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Latest Run */
+        get: operations["latest_run_api_v1_admin_import_runs_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/import-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_v1_admin_import_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/orders": {
         parameters: {
             query?: never;
@@ -654,23 +774,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/sms/challenges": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Send Sms Challenge */
-        post: operations["send_sms_challenge_api_v1_sms_challenges_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -709,13 +812,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** AdminApplicationCreateRequest */
-        AdminApplicationCreateRequest: {
-            /** Challengeid */
-            challengeId: string;
-            /** Verificationcode */
-            verificationCode: string;
-        };
         /** AdminApplicationListResponse */
         AdminApplicationListResponse: {
             /** Items */
@@ -827,10 +923,105 @@ export interface components {
             /** Sizebytes */
             sizeBytes: number;
         };
+        /** BatchConfirmItemResponse */
+        BatchConfirmItemResponse: {
+            /** Candidateid */
+            candidateId: string;
+            /** Error */
+            error: string | null;
+            /** Orderid */
+            orderId: string | null;
+            /** Succeeded */
+            succeeded: boolean;
+        };
+        /** BatchConfirmResponse */
+        BatchConfirmResponse: {
+            /** Items */
+            items: components["schemas"]["BatchConfirmItemResponse"][];
+            /** Requestid */
+            requestId: string;
+        };
+        /** BatchConfirmWrite */
+        BatchConfirmWrite: {
+            /** Candidateids */
+            candidateIds: string[];
+        };
         /** Body_replace_mini_avatar_api_v1_mini_me_avatar_post */
         Body_replace_mini_avatar_api_v1_mini_me_avatar_post: {
             /** Avatar */
             avatar: string;
+        };
+        /** CandidateLineResponse */
+        CandidateLineResponse: {
+            /** Candidatelineid */
+            candidateLineId: number;
+            /** Category */
+            category: string | null;
+            /** Factoryname */
+            factoryName: string | null;
+            /** Orderquantity */
+            orderQuantity: number | null;
+            /** Pendingquantity */
+            pendingQuantity: number;
+            /** Productname */
+            productName: string | null;
+            /** Propertiesvalue */
+            propertiesValue: string | null;
+            /** Shippedquantity */
+            shippedQuantity: number;
+            /** Sourceskuid */
+            sourceSkuId: string | null;
+            /** Validationissues */
+            validationIssues: string[];
+        };
+        /** CandidateListResponse */
+        CandidateListResponse: {
+            /** Items */
+            items: components["schemas"]["CandidateResponse"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            /** Requestid */
+            requestId: string;
+            /** Total */
+            total: number;
+        };
+        /** CandidateResponse */
+        CandidateResponse: {
+            /** Candidateid */
+            candidateId: string;
+            /** Category */
+            category: string | null;
+            /** Contractshipdate */
+            contractShipDate: string | null;
+            /** Importedorderid */
+            importedOrderId: string | null;
+            /** Lines */
+            lines: components["schemas"]["CandidateLineResponse"][];
+            /** Orderdate */
+            orderDate: string | null;
+            /** Orderno */
+            orderNo: string;
+            /** Pendingquantity */
+            pendingQuantity: number;
+            /** Shippedquantity */
+            shippedQuantity: number;
+            /** Status */
+            status: string;
+            /** Totalquantity */
+            totalQuantity: number;
+            /** Tracker */
+            tracker: string | null;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            /** Validationissues */
+            validationIssues: string[];
+            /** Validationstate */
+            validationState: string;
         };
         /** ContactResponse */
         ContactResponse: {
@@ -1109,6 +1300,39 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** ImportRunResponse */
+        ImportRunResponse: {
+            /** Candidatescreated */
+            candidatesCreated: number;
+            /** Candidatesupdated */
+            candidatesUpdated: number;
+            /** Errorcode */
+            errorCode: string | null;
+            /** Failedrecords */
+            failedRecords: number;
+            /** Finishedat */
+            finishedAt: string | null;
+            /** Pagesread */
+            pagesRead: number;
+            /** Recordsread */
+            recordsRead: number;
+            /**
+             * Requestid
+             * @default
+             */
+            requestId: string;
+            /** Runid */
+            runId: string;
+            /** Skippedrecords */
+            skippedRecords: number;
+            /**
+             * Startedat
+             * Format: date-time
+             */
+            startedAt: string;
+            /** Status */
+            status: string;
+        };
         /** MiniLoginResponse */
         MiniLoginResponse: {
             /** Bindingtoken */
@@ -1291,23 +1515,6 @@ export interface components {
             /** Refreshtoken */
             refreshToken: string | null;
         };
-        /** SmsChallengeRequest */
-        SmsChallengeRequest: {
-            /** Phone */
-            phone: string;
-        };
-        /** SmsChallengeResponse */
-        SmsChallengeResponse: {
-            /** Challengeid */
-            challengeId: string;
-            /**
-             * Expiresat
-             * Format: date-time
-             */
-            expiresAt: string;
-            /** Phonemasked */
-            phoneMasked: string;
-        };
         /** UserResponse */
         UserResponse: {
             /** Capabilities */
@@ -1394,11 +1601,7 @@ export interface operations {
                 ot_web_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AdminApplicationCreateRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             201: {
@@ -1901,6 +2104,289 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactoryApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_candidates_api_v1_admin_import_candidates_get: {
+        parameters: {
+            query?: {
+                status?: string;
+                keyword?: string;
+                category?: string | null;
+                factoryNames?: string[] | null;
+                trackers?: string[] | null;
+                validationState?: string | null;
+                sortBy?: string;
+                sortOrder?: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_batch_api_v1_admin_import_candidates_confirm_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchConfirmWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchConfirmResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_candidate_api_v1_admin_import_candidates__candidate_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exclude_candidate_api_v1_admin_import_candidates__candidate_id__delete: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                candidate_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_candidate_api_v1_admin_import_candidates__candidate_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                candidate_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_run_api_v1_admin_import_runs_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    latest_run_api_v1_admin_import_runs_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRunResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_v1_admin_import_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRunResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2846,43 +3332,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    send_sms_challenge_api_v1_sms_challenges_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-csrf-token"?: string | null;
-            };
-            path?: never;
-            cookie?: {
-                ot_web_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SmsChallengeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SmsChallengeResponse"];
                 };
             };
             /** @description Validation Error */

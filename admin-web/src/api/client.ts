@@ -24,7 +24,6 @@ export type ImportRun = components["schemas"]["ImportRunResponse"];
 export type ImportCandidate = components["schemas"]["CandidateResponse"];
 export type ImportCandidateList = components["schemas"]["CandidateListResponse"];
 export type BatchConfirmResult = components["schemas"]["BatchConfirmResponse"];
-export type SmsChallenge = components["schemas"]["SmsChallengeResponse"];
 export type User = components["schemas"]["UserResponse"];
 
 export class ApiError extends Error {
@@ -86,17 +85,12 @@ export const feishuLoginUrl = (returnTo = "/") =>
 export const identityApi = {
   getMe: () => request<User>("/v1/me"),
   logout: () => request<void>("/v1/auth/logout", { method: "POST" }),
-  sendSms: (phone: string) =>
-    request<SmsChallenge>("/v1/sms/challenges", {
-      method: "POST",
-      body: JSON.stringify({ phone }),
-    }),
   getMyApplication: () =>
     request<AdminApplication | null>("/v1/admin-applications/me"),
-  submitApplication: (challengeId: string, verificationCode: string) =>
+  submitApplication: () =>
     request<AdminApplication>("/v1/admin-applications", {
       method: "POST",
-      body: JSON.stringify({ challengeId, verificationCode }),
+      body: JSON.stringify({}),
     }),
   listApplications: (status?: string) =>
     request<AdminApplicationList>(

@@ -85,6 +85,8 @@ h1, h2, p { margin-top: 0; }
 .auth-field label { color: var(--ink); font-size: 13px; font-weight: 700; }
 .auth-field input { width: 100%; height: 44px; padding: 0 13px; color: var(--ink-strong); font-size: 14px; font-weight: 600; background: #fff; border: 1px solid var(--line-strong); border-radius: 6px; }
 .auth-field input:focus { border-color: var(--blue); outline: 3px solid rgb(13 143 233 / 12%); }
+.auth-readonly-value { display: flex; align-items: center; width: 100%; height: 44px; padding: 0 13px; color: var(--ink-strong); font-size: 14px; font-weight: 600; background: var(--surface-muted); border: 1px solid var(--line-strong); border-radius: 6px; }
+.auth-form-hint { margin: 8px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 1.5; }
 .auth-code-row { display: grid; grid-template-columns: 1fr 132px; gap: 10px; }
 .auth-secondary-button { padding: 0 12px; color: var(--blue-dark); background: var(--blue-pale); border: 1px solid #b8dcf4; }
 .auth-form-message, .auth-feedback { min-height: 20px; margin: 10px 0 6px; color: var(--subtle); font-size: 12px; line-height: 1.6; }

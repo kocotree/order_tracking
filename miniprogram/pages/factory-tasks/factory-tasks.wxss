@@ -280,21 +280,3 @@
 }
 
 .mini-filter-apply { color: #fff; background: #1677ff; border-color: #1677ff; box-shadow: 0 16rpx 36rpx rgba(22, 119, 255, .24); }
-
-.factory-tabbar-item {
-  display: flex;
-  height: 92rpx;
-  align-items: center;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6rpx;
-  font-size: 22rpx;
-  line-height: 1.2;
-}
-
-.factory-tabbar-icon {
-  width: 46rpx;
-  height: 46rpx;
-  flex: 0 0 46rpx;
-  transform: translateY(25rpx);
-}

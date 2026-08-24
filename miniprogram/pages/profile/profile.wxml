@@ -31,7 +31,7 @@
     <button class="profile-logout-button" bindtap="logout">退出登录</button>
   </view>
 
-  <view class="mini-tabbar"><button bindtap="openOrders">{{user.role === 'admin' ? '订单' : '任务'}}</button><button class="is-active">我的</button></view>
+  <mini-tabbar items="{{navigationItems}}" active-key="profile" />
 
   <view wx:if="{{user.role === 'admin' && avatarSheetOpen}}" class="action-layer" bindtap="closeAvatarActions">
     <view class="action-sheet" catchtap="noop">

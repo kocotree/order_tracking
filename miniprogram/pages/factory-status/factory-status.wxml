@@ -2,18 +2,17 @@
   <view class="factory-status-content">
   <view class="state-card">
     <view class="state-mark"><view wx:if="{{status === 'pending'}}" class="pending-clock"><view/></view><text wx:else>{{status === 'disabled' ? '×' : '!'}}</text></view>
-    <text class="state-kicker">{{status === 'disabled' ? '账号权限' : status === 'rejected' ? '审核结果' : '工厂身份申请'}}</text>
+    <text wx:if="{{status !== 'rejected'}}" class="state-kicker">{{status === 'disabled' ? '账号权限' : '工厂身份申请'}}</text>
     <text class="state-title">{{status === 'disabled' ? '当前账号暂不可使用' : status === 'rejected' ? '申请未通过' : '申请审核中'}}</text>
-    <text class="state-description">{{status === 'disabled' ? '账号已停用或没有访问权限，请联系管理员处理。' : status === 'rejected' ? '请根据拒绝原因修改资料后重新提交。' : '管理员审核通过后，即可查看所属工厂的订单与返修任务。'}}</text>
+    <text wx:if="{{status !== 'rejected'}}" class="state-description">{{status === 'disabled' ? '账号已停用或没有访问权限，请联系管理员处理。' : '管理员审核通过后，即可查看所属工厂的订单与返修任务。'}}</text>
     <view wx:if="{{status === 'disabled' && factoryName}}" class="disabled-factory"><text>所属工厂</text><text>{{factoryName}}</text></view>
     <view wx:if="{{application}}" class="application-facts">
       <view><text>真实姓名</text><text>{{application.realName}}</text></view>
       <view><text>联系电话</text><text>{{application.phoneMasked}}</text></view>
       <view><text>职位</text><text>{{application.position === 'owner' ? '老板' : '工厂员工'}}</text></view>
       <view><text>申请工厂</text><text>{{application.requestedFactoryName}}</text></view>
-      <view><text>提交时间</text><text>{{application.submittedAt}}</text></view>
+      <view class="application-fact--submitted"><text>提交时间</text><text>{{application.submittedAt}}</text></view>
       <view wx:if="{{application.rejectionReason}}" class="reject-row"><text>拒绝原因</text><text>{{application.rejectionReason}}</text></view>
-      <view wx:if="{{application.reviewedAt}}"><text>审核时间</text><text>{{application.reviewedAt}}</text></view>
     </view>
   </view>
   <button wx:if="{{status === 'pending'}}" class="primary-action" loading="{{loading}}" bindtap="refresh">刷新审核结果</button>

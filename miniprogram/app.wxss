@@ -51,9 +51,6 @@ button {
 .mini-empty { display: flex; min-height: 360rpx; align-items: center; justify-content: center; flex-direction: column; gap: 14rpx; color: #8b95a2; font-size: 25rpx; text-align: center; }
 .mini-empty text:first-child { color: #657080; font-size: 29rpx; font-weight: 750; }
 .mini-error { color: #d84f51; }
-.mini-tabbar { position: fixed; right: 0; bottom: 0; left: 0; z-index: 40; display: grid; grid-template-columns: repeat(2, 1fr); padding: 12rpx 80rpx max(12rpx, env(safe-area-inset-bottom)); background: rgba(255,255,255,.97); border-top: 1rpx solid #e0e5eb; }
-.mini-tabbar button { height: 78rpx; color: #7b8592; font-size: 24rpx; line-height: 78rpx; background: transparent; }
-.mini-tabbar button.is-active { color: #1677ff; font-weight: 800; }
 .task-tabs { display: grid; grid-template-columns: repeat(2, 1fr); padding: 0 28rpx; background: #fff; border-bottom: 1rpx solid #e2e7ed; }
 .task-tabs button { height: 86rpx; color: #6f7987; font-size: 28rpx; background: transparent; border-bottom: 5rpx solid transparent; }
 .task-tabs button.is-active { color: #1677ff; font-weight: 800; border-bottom-color: #1677ff; }

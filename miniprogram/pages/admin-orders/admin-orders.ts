@@ -88,6 +88,10 @@ Page({
     loading: true,
     error: "",
     previewMode: false,
+    navigationItems: [
+      { key: "primary", label: "订单", path: "/pages/admin-orders/admin-orders", icon: "/assets/icons/admin-orders.svg", activeIcon: "/assets/icons/admin-orders-active.svg" },
+      { key: "profile", label: "我的", path: "/pages/profile/profile", icon: "/assets/icons/admin-profile.svg", activeIcon: "/assets/icons/admin-profile-active.svg" },
+    ],
   },
   onLoad(options: Record<string, string | undefined>) {
     const previewMode = isDevPreview(options);
@@ -209,5 +213,4 @@ Page({
     };
   },
   openDetail(event: WechatMiniprogram.TouchEvent) { const preview = this.data.previewMode ? "&preview=1" : ""; wx.navigateTo({ url: `/pages/admin-order-detail/admin-order-detail?orderId=${encodeURIComponent(event.currentTarget.dataset.id)}${preview}` }); },
-  openProfile() { wx.reLaunch({ url: "/pages/profile/profile" }); },
 });

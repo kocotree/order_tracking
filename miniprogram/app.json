@@ -18,7 +18,8 @@
     "backgroundColor": "#f3f5f8"
   },
   "usingComponents": {
-    "mini-titlebar": "/components/mini-titlebar/mini-titlebar"
+    "mini-titlebar": "/components/mini-titlebar/mini-titlebar",
+    "mini-tabbar": "/components/mini-tabbar/mini-tabbar"
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json"

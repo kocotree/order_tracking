@@ -421,21 +421,3 @@
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
-
-.admin-tabbar-item {
-  display: flex;
-  height: 92rpx;
-  align-items: center;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6rpx;
-  font-size: 22rpx;
-  line-height: 1.2;
-}
-
-.admin-tabbar-icon {
-  width: 46rpx;
-  height: 46rpx;
-  flex: 0 0 46rpx;
-  transform: translateY(25rpx);
-}

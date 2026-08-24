@@ -1,0 +1,13 @@
+<view class="mini-tabbar-shell" style="grid-template-columns: repeat({{items.length}}, minmax(0, 1fr));">
+  <button
+    wx:for="{{items}}"
+    wx:key="key"
+    class="mini-tabbar-item {{item.key === activeKey ? 'is-active' : ''}}"
+    data-key="{{item.key}}"
+    data-path="{{item.path}}"
+    bindtap="openItem"
+  >
+    <image class="mini-tabbar-icon" src="{{item.key === activeKey && item.activeIcon ? item.activeIcon : item.icon}}" mode="aspectFit" />
+    <text>{{item.label}}</text>
+  </button>
+</view>

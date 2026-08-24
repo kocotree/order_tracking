@@ -7,7 +7,6 @@ Page({
     realName: "",
     phoneMasked: "",
     position: "employee" as "owner" | "employee",
-    keyword: "",
     factories: [] as FactoryOption[],
     selectedFactoryId: "",
     busy: false,
@@ -64,7 +63,7 @@ Page({
 
   async loadFactories() {
     try {
-      const result = await factoryApi.listFactories(this.data.keyword);
+      const result = await factoryApi.listFactories();
       this.setData({ factories: result.items });
     } catch {
       clearSession();
@@ -74,23 +73,6 @@ Page({
 
   nameChanged(event: WechatMiniprogram.Input) {
     this.setData({ realName: event.detail.value });
-  },
-
-  keywordChanged(event: WechatMiniprogram.Input) {
-    this.setData({ keyword: event.detail.value });
-  },
-
-  searchFactories() {
-    if (this.data.previewMode) {
-      const keyword = this.data.keyword.trim();
-      this.setData({
-        factories: PREVIEW_FACTORIES.filter((factory) =>
-          `${factory.supplierNumber}${factory.factoryName}`.includes(keyword),
-        ),
-      });
-      return;
-    }
-    void this.loadFactories();
   },
 
   selectPosition(event: WechatMiniprogram.TouchEvent) {

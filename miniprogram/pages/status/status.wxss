@@ -1,10 +1,13 @@
 .status-page { position: relative; display: flex; min-height: 100vh; overflow: hidden; flex-direction: column; align-items: center; padding: max(116rpx, calc(env(safe-area-inset-top) + 68rpx)) 48rpx max(56rpx, env(safe-area-inset-bottom)); color: #1c2430; background: linear-gradient(158deg,rgba(235,244,255,.96) 0%,#f8fafc 48%,#f4f6f8 100%); }
+.status-unmatched, .status-pending { background-color: #f5f8ef; background-image: linear-gradient(180deg,#f5f8ef,#f2f5f0 42%); }
 .status-orbit { position: absolute; border: 1rpx solid rgba(22,119,255,.12); border-radius: 50%; pointer-events: none; }
+.status-unmatched .status-orbit, .status-pending .status-orbit { display: none; }
 .status-orbit--one { top: -236rpx; right: -192rpx; width: 500rpx; height: 500rpx; box-shadow: 0 0 0 48rpx rgba(22,119,255,.03); }
 .status-orbit--two { bottom: 48rpx; left: -228rpx; width: 340rpx; height: 340rpx; }
 .status-brand { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 18rpx; color: #687586; font-size: 26rpx; font-weight: 600; letter-spacing: 8rpx; }
 .status-brand text:first-child { color: #1677ff; font-size: 46rpx; font-weight: 800; letter-spacing: 8rpx; line-height: 1; }
 .status-card { position: relative; z-index: 1; display: flex; width: 100%; flex-direction: column; align-items: center; padding: 68rpx 48rpx 48rpx; margin: auto 0; border: 1rpx solid rgba(229,233,239,.86); border-radius: 44rpx; background: rgba(255,255,255,.94); box-shadow: 0 44rpx 112rpx rgba(32,58,91,.12); }
+.status-unmatched .status-card { padding: 52rpx 36rpx 40rpx; margin: 260rpx 0 auto; border-radius: 32rpx; background: #fff; box-shadow: 0 12rpx 34rpx rgba(32,48,68,.07); }
 .status-mark { display: grid; width: 116rpx; height: 116rpx; margin-bottom: 44rpx; place-items: center; color: #fff; font-size: 46rpx; font-weight: 800; background: #1677ff; border-radius: 36rpx; box-shadow: 0 24rpx 48rpx rgba(22,119,255,.25); }
 .status-mark--pending { background: #e97b19; box-shadow: 0 24rpx 48rpx rgba(233,123,25,.22); }
 .status-mark--rejected { background: #e5484d; box-shadow: 0 24rpx 48rpx rgba(229,72,77,.22); }
@@ -13,7 +16,11 @@
 .status-eyebrow { margin-bottom: 16rpx; color: #1677ff; font-size: 24rpx; font-weight: 750; letter-spacing: 5rpx; }
 .status-title { font-size: 48rpx; font-weight: 800; text-align: center; }
 .status-description, .status-reason { margin-top: 24rpx; color: #687586; font-size: 26rpx; line-height: 1.7; text-align: center; }
+.status-unmatched .status-title { font-size: 42rpx; }
+.status-unmatched .status-description { margin-top: 20rpx; font-size: 24rpx; line-height: 1.6; }
 .status-reason { color: #d83f45; }
+.status-inline-note { display: flex; width: 100%; margin-top: 30rpx; padding-top: 28rpx; align-items: center; justify-content: center; gap: 12rpx; color: #a25f0b; font-size: 24rpx; line-height: 1.5; text-align: left; border-top: 1rpx solid #edf0eb; }
+.status-inline-note__icon { display: grid; box-sizing: border-box; width: 36rpx; height: 36rpx; flex: 0 0 36rpx; place-items: center; color: #e97b19; font-size: 24rpx; font-weight: 800; line-height: 1; border: 3rpx solid #e97b19; border-radius: 50%; }
 .status-note { width: 100%; margin-top: 36rpx; padding: 24rpx; color: #a25f0b; font-size: 24rpx; text-align: center; background: #fff5e6; border-radius: 16rpx; }
 .status-rejected .status-note { color: #c93e43; background: #fff0f1; }
 .status-disabled .status-note, .status-logged-out .status-note { color: #66717e; background: #eef1f4; }

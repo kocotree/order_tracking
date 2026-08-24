@@ -15,12 +15,13 @@ Page({
     avatarSheetOpen: false,
     uploading: false,
     previewMode: false,
+    navigationItems: [] as Array<{ key: string; label: string; path: string; icon: string; activeIcon: string }>,
   },
 
   onLoad(options: Record<string, string | undefined>) {
     if (isDevPreview(options)) {
       const user = previewUser(options.variant);
-      this.setData({ previewMode: true, user, avatarFallback: user.displayName.slice(0, 1) });
+      this.setData({ previewMode: true, user, avatarFallback: user.displayName.slice(0, 1), navigationItems: this.navigationFor(user) });
       return;
     }
     void this.loadProfile();
@@ -31,7 +32,7 @@ Page({
       const cached = storedUser();
       const user = await identityApi.getMe();
       updateStoredUser(user);
-      this.setData({ user, avatarFallback: user.displayName.slice(0, 1) });
+      this.setData({ user, avatarFallback: user.displayName.slice(0, 1), navigationItems: this.navigationFor(user) });
       if (user.role === "factory") return;
       if (user.miniAvatarFileId) {
         this.setData({ avatarPath: await identityApi.downloadAvatar() });
@@ -42,6 +43,25 @@ Page({
       clearSession();
       wx.reLaunch({ url: "/pages/auth/auth" });
     }
+  },
+
+  navigationFor(user: User) {
+    return [
+      {
+        key: "primary",
+        label: user.role === "admin" ? "订单" : "任务",
+        path: user.role === "admin" ? "/pages/admin-orders/admin-orders" : "/pages/factory-tasks/factory-tasks",
+        icon: "/assets/icons/admin-orders.svg",
+        activeIcon: "/assets/icons/admin-orders-active.svg",
+      },
+      {
+        key: "profile",
+        label: "我的",
+        path: "/pages/profile/profile",
+        icon: "/assets/icons/admin-profile.svg",
+        activeIcon: "/assets/icons/admin-profile-active.svg",
+      },
+    ];
   },
 
   openAvatarActions() {
@@ -105,10 +125,4 @@ Page({
     });
   },
 
-  openOrders() {
-    const url = this.data.user?.role === "factory"
-      ? "/pages/factory-tasks/factory-tasks"
-      : "/pages/admin-orders/admin-orders";
-    wx.reLaunch({ url });
-  },
 });

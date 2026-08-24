@@ -1,0 +1,38 @@
+.mini-tabbar-shell {
+  position: fixed;
+  z-index: 40;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  min-height: calc(132rpx + env(safe-area-inset-bottom));
+  padding: 14rpx 40rpx env(safe-area-inset-bottom);
+  border-top: 1rpx solid #e0e5eb;
+  background: rgba(255, 255, 255, .97);
+  box-shadow: 0 -16rpx 48rpx rgba(39, 52, 69, .07);
+}
+
+.mini-tabbar-item {
+  display: flex;
+  min-width: 0;
+  height: 104rpx;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4rpx;
+  color: #4c5664;
+  font-size: 22rpx;
+  line-height: 1.2;
+  background: transparent;
+}
+
+.mini-tabbar-item.is-active {
+  color: #1677ff;
+  font-weight: 750;
+}
+
+.mini-tabbar-icon {
+  width: 50rpx;
+  height: 50rpx;
+  flex: 0 0 50rpx;
+}

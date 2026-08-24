@@ -46,6 +46,10 @@ Page({
     loading: true,
     error: "",
     previewMode: false,
+    navigationItems: [
+      { key: "primary", label: "任务", path: "/pages/factory-tasks/factory-tasks", icon: "/assets/icons/admin-orders.svg", activeIcon: "/assets/icons/admin-orders-active.svg" },
+      { key: "profile", label: "我的", path: "/pages/profile/profile", icon: "/assets/icons/admin-profile.svg", activeIcon: "/assets/icons/admin-profile-active.svg" },
+    ],
   },
   onLoad(options: Record<string, string | undefined>) {
     const previewMode = isDevPreview(options);
@@ -126,5 +130,4 @@ Page({
     const preview = this.data.previewMode ? "&preview=1" : "";
     wx.navigateTo({ url: `/pages/factory-task-detail/factory-task-detail?orderId=${encodeURIComponent(event.currentTarget.dataset.id)}${preview}` });
   },
-  openProfile() { wx.reLaunch({ url: "/pages/profile/profile" }); },
 });

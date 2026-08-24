@@ -51,8 +51,5 @@
     </view>
   </view>
 
-  <view class="mini-tabbar factory-tabbar">
-    <button class="factory-tabbar-item is-active"><image class="factory-tabbar-icon" src="/assets/icons/admin-orders-active.svg" mode="aspectFit" /><text>任务</text></button>
-    <button class="factory-tabbar-item" bindtap="openProfile"><image class="factory-tabbar-icon" src="/assets/icons/admin-profile.svg" mode="aspectFit" /><text>我的</text></button>
-  </view>
+  <mini-tabbar items="{{navigationItems}}" active-key="primary" />
 </view>

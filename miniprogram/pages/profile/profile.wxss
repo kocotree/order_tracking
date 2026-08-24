@@ -1,13 +1,12 @@
 .profile-page { min-height: 100vh; background: #f3f5f8; }
 .profile-content { display: grid; gap: 26rpx; padding: 28rpx 28rpx calc(156rpx + env(safe-area-inset-bottom)); }
 .profile-hero, .profile-card { position: relative; overflow: hidden; border: 1rpx solid #e2e7ed; border-radius: 32rpx; background: #fff; box-shadow: 0 12rpx 34rpx rgba(32,48,68,.07); }
-.profile-hero { display: flex; min-height: 256rpx; align-items: center; gap: 30rpx; padding: 42rpx 36rpx; background: linear-gradient(135deg,#fff 0%,#f5f9ff 64%,#eaf3ff 100%); }
-.profile-hero::after { position: absolute; top: -70rpx; right: -48rpx; width: 224rpx; height: 224rpx; border: 36rpx solid rgba(22,119,255,.06); border-radius: 50%; content: ""; pointer-events: none; }
-.profile-avatar { position: relative; z-index: 1; display: grid; width: 132rpx !important; height: 132rpx; flex: 0 0 132rpx; place-items: center; padding: 0; overflow: hidden; color: #fff; font-size: 50rpx; font-weight: 800; line-height: 132rpx; background: linear-gradient(145deg,#2f91ff,#0f68dd); border: 6rpx solid #fff; border-radius: 50%; box-shadow: 0 16rpx 40rpx rgba(22,119,255,.22); }
+.profile-hero { display: grid; min-height: 256rpx; grid-template-columns: 136rpx minmax(0,1fr); align-items: center; column-gap: 30rpx; padding: 42rpx 36rpx; background: linear-gradient(135deg,#fff 0%,#f5f9ff 64%,#eaf3ff 100%); }
+.profile-avatar { position: relative; z-index: 1; display: grid; box-sizing: border-box; width: 136rpx !important; height: 136rpx; place-items: center; justify-self: start; padding: 0; margin: 0; overflow: hidden; color: #fff; font-size: 50rpx; font-weight: 800; line-height: 136rpx; background: linear-gradient(145deg,#2f91ff,#0f68dd); border: 6rpx solid #fff; border-radius: 50%; box-shadow: 0 16rpx 40rpx rgba(22,119,255,.22); }
 .profile-avatar image, .profile-avatar text { width: 100%; height: 100%; }
 .profile-avatar text { display: grid; place-items: center; line-height: 1; }
 .profile-avatar--static { box-sizing: border-box; }
-.profile-identity { position: relative; z-index: 1; display: flex; min-width: 0; flex-direction: column; gap: 12rpx; }
+.profile-identity { position: relative; z-index: 1; display: flex; width: 100%; min-width: 0; flex-direction: column; align-items: flex-start; gap: 12rpx; text-align: left; }
 .profile-identity text:first-child { color: #1c2430; font-size: 42rpx; font-weight: 800; }
 .profile-identity text:last-child { color: #566273; font-size: 26rpx; font-weight: 650; }
 .profile-card__header { display: flex; min-height: 104rpx; align-items: center; padding: 0 34rpx; color: #1c2430; font-size: 32rpx; font-weight: 800; border-bottom: 1rpx solid #e4e8ed; }
@@ -17,7 +16,7 @@
 .profile-account-row text:last-child { color: #1c2430; font-size: 26rpx; font-weight: 750; text-align: right; }
 .profile-account-row text.is-normal { color: #388a62; }
 .factory-profile-card { margin-top: 0; }
-.profile-logout-button { width: 100%; min-height: 96rpx; color: #d84f51; font-size: 28rpx; font-weight: 750; line-height: 96rpx; background: #fff; border: 1rpx solid #f0d3d5; border-radius: 28rpx; box-shadow: 0 12rpx 34rpx rgba(32,48,68,.07); }
+.profile-logout-button { width: 100% !important; min-height: 96rpx; justify-self: stretch; margin: 0; color: #d84f51; font-size: 28rpx; font-weight: 750; line-height: 96rpx; background: #fff; border: 1rpx solid #f0d3d5; border-radius: 28rpx; box-shadow: 0 12rpx 34rpx rgba(32,48,68,.07); }
 .action-layer { position: fixed; z-index: 90; inset: 0; display: flex; align-items: flex-end; padding: 0 24rpx max(24rpx, env(safe-area-inset-bottom)); background: rgba(17,24,32,.45); }
 .action-sheet { width: 100%; }
 .action-sheet button { width: 100%; min-height: 104rpx; color: #1c2430; font-size: 30rpx; font-weight: 700; line-height: 104rpx; background: #fff; border-radius: 0; }

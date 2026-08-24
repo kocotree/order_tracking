@@ -1,5 +1,9 @@
 .factory-status-page { min-height: 100vh; background: linear-gradient(180deg,#f5f8ef,#f2f5f0 42%); }
-.factory-status-content { display: grid; gap: 28rpx; padding: max(140rpx, calc(env(safe-area-inset-top) + 46rpx)) 28rpx 60rpx; }
+.factory-status-content { box-sizing: border-box; display: grid; width: 100%; gap: 28rpx; padding: max(140rpx, calc(env(safe-area-inset-top) + 46rpx)) 28rpx 60rpx; margin: 0 auto; }
+.status-pending .factory-status-content { padding-top: max(260rpx, calc(env(safe-area-inset-top) + 166rpx)); }
+.status-rejected .factory-status-content { padding-top: max(220rpx, calc(env(safe-area-inset-top) + 126rpx)); }
+.status-pending .state-card { padding-bottom: 0; }
+.status-rejected .state-card { padding-bottom: 0; }
 .state-card { display: flex; flex-direction: column; align-items: center; padding: 50rpx 36rpx 16rpx; overflow: hidden; background: #fff; border: 1rpx solid #e1e7ee; border-radius: 32rpx; box-shadow: 0 12rpx 34rpx rgba(32,48,68,.07); }
 .state-mark { display: grid; width: 112rpx; height: 112rpx; margin-bottom: 30rpx; place-items: center; color: #245948; font-size: 52rpx; font-weight: 800; background: #e9f5e3; border-radius: 50%; }
 .status-rejected .state-mark { color: #d84f51; background: #fff0f0; }
@@ -12,14 +16,17 @@
 .status-rejected .state-kicker { color: #d84f51; }
 .status-disabled .state-kicker { color: #66717e; }
 .state-title { margin-top: 16rpx; color: #1c2430; font-size: 46rpx; font-weight: 800; text-align: center; }
+.status-rejected .state-title { margin-bottom: 40rpx; }
 .state-description { margin: 20rpx 0 40rpx; color: #687586; font-size: 24rpx; line-height: 1.7; text-align: center; }
 .application-facts { width: calc(100% + 72rpx); border-top: 1rpx solid #e4e8ed; }
 .application-facts view { display: flex; min-height: 90rpx; align-items: center; justify-content: space-between; gap: 36rpx; padding: 0 36rpx; border-bottom: 1rpx solid #e4e8ed; }
+.status-pending .application-fact--submitted { border-bottom: 0; }
 .application-facts text { color: #1c2430; font-size: 24rpx; font-weight: 750; text-align: right; }
 .application-facts text:first-child { color: #667281; font-size: 22rpx; font-weight: 500; text-align: left; }
 .application-facts .reject-row { display: grid; align-items: start; padding-top: 24rpx; padding-bottom: 24rpx; }
+.status-rejected .application-facts .reject-row { border-bottom: 0; }
 .application-facts .reject-row text:last-child { color: #d84f51; line-height: 1.6; text-align: left; }
 .disabled-factory { display: flex; width: 100%; justify-content: space-between; padding: 30rpx 32rpx; margin-bottom: 34rpx; color: #687586; font-size: 26rpx; background: #fff; border: 1rpx solid #e1e6ec; border-radius: 24rpx; }
 .disabled-factory text:last-child { color: #1c2430; font-weight: 750; }
-.primary-action { width: 100%; min-height: 104rpx; color: #fff; font-size: 32rpx; font-weight: 800; line-height: 104rpx; background: #245948; border-radius: 26rpx; box-shadow: 0 18rpx 40rpx rgba(36,89,72,.22); }
+.primary-action { width: 100% !important; min-height: 104rpx; justify-self: stretch; margin: 0; color: #fff; font-size: 32rpx; font-weight: 800; line-height: 104rpx; background: #245948; border-radius: 26rpx; box-shadow: 0 18rpx 40rpx rgba(36,89,72,.22); }
 .logout-action { min-height: 88rpx; color: #687586; font-size: 26rpx; font-weight: 700; line-height: 88rpx; background: transparent; }

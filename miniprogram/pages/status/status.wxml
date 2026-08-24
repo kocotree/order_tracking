@@ -1,14 +1,18 @@
 <view class="status-page status-{{status}}">
   <view class="status-orbit status-orbit--one" />
   <view class="status-orbit status-orbit--two" />
-  <view class="status-brand"><text>KOCOTREE</text><text>跟单管理系统</text></view>
+  <view wx:if="{{status !== 'unmatched'}}" class="status-brand"><text>KOCOTREE</text><text>跟单管理系统</text></view>
   <view class="status-card">
-    <view class="status-mark status-mark--{{status}}">{{content.mark}}</view>
-    <text class="status-eyebrow">管理员入口</text>
+    <view wx:if="{{status !== 'unmatched'}}" class="status-mark status-mark--{{status}}">{{content.mark}}</view>
+    <text wx:if="{{status !== 'unmatched'}}" class="status-eyebrow">管理员入口</text>
     <text class="status-title">{{content.title}}</text>
     <text class="status-description">{{content.description}}</text>
     <text wx:if="{{status === 'rejected' && reason}}" class="status-reason">拒绝原因：{{reason}}</text>
-    <text class="status-note">{{content.note}}</text>
+    <view wx:if="{{status === 'unmatched'}}" class="status-inline-note">
+      <text class="status-inline-note__icon">!</text>
+      <text>{{content.note}}</text>
+    </view>
+    <text wx:else class="status-note">{{content.note}}</text>
     <button wx:if="{{content.action}}" class="status-button" bindtap="act">{{content.action}}</button>
   </view>
 </view>

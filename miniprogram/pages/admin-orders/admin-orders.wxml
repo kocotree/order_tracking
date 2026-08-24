@@ -85,14 +85,5 @@
       <view class="mini-filter-actions"><button class="mini-filter-reset" bindtap="resetFilter">重置</button><button class="mini-filter-apply" bindtap="applyFilter">查看结果</button></view>
     </view>
   </view>
-  <view class="mini-tabbar admin-order-tabbar">
-    <button class="admin-tabbar-item is-active">
-      <image class="admin-tabbar-icon" src="/assets/icons/admin-orders-active.svg" mode="aspectFit" />
-      <text>订单</text>
-    </button>
-    <button class="admin-tabbar-item" bindtap="openProfile">
-      <image class="admin-tabbar-icon" src="/assets/icons/admin-profile.svg" mode="aspectFit" />
-      <text>我的</text>
-    </button>
-  </view>
+  <mini-tabbar items="{{navigationItems}}" active-key="primary" />
 </view>

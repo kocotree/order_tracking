@@ -21,6 +21,11 @@ Page({
       { label: "管理员订单详情", description: "全部工厂进度折叠展示", url: "/pages/admin-order-detail/admin-order-detail?orderId=preview&preview=1" },
       { label: "工厂订单任务", description: "仅本厂下单数量", url: "/pages/factory-tasks/factory-tasks?preview=1" },
       { label: "工厂任务详情", description: "无其他工厂和发货入口", url: "/pages/factory-task-detail/factory-task-detail?orderId=preview&preview=1" },
+      { label: "工厂创建发货单", description: "箱号、装箱、凭证与提交四步", url: "/pages/factory-create-shipment/factory-create-shipment?preview=1" },
+      { label: "工厂发货记录", description: "本工厂已提交发货单", url: "/pages/factory-shipments/factory-shipments?preview=1" },
+      { label: "工厂发货单详情", description: "发货明细与装箱明细", url: "/pages/factory-shipment-detail/factory-shipment-detail?shipmentId=preview-shipment&preview=1" },
+      { label: "管理员发货单", description: "跨工厂发货记录", url: "/pages/admin-shipments/admin-shipments?preview=1" },
+      { label: "管理员发货单详情", description: "只读发货与装箱信息", url: "/pages/admin-shipment-detail/admin-shipment-detail?shipmentId=preview-shipment&preview=1" },
     ] satisfies PreviewItem[],
   },
 

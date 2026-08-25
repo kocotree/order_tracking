@@ -38,7 +38,10 @@
             @click="mobileMenuOpen = false"
           >
             <span class="nav-icon" aria-hidden="true">
-              <svg v-if="activeModule.id === 'dashboard'" viewBox="0 0 24 24" fill="none"><path d="M4 4h6v7H4zM14 4h6v4h-6zM14 12h6v8h-6zM4 15h6v5H4z" /></svg>
+              <svg v-if="item.icon === 'orders'" viewBox="0 0 24 24" fill="none"><path d="M7 4h10v3H7zM5 7h14v13H5zM8 11h8M8 15h5" /></svg>
+              <svg v-else-if="item.icon === 'import'" viewBox="0 0 24 24" fill="none"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 16v4h14v-4" /></svg>
+              <svg v-else-if="item.icon === 'shipment'" viewBox="0 0 24 24" fill="none"><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm10 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" /></svg>
+              <svg v-else-if="activeModule.id === 'dashboard'" viewBox="0 0 24 24" fill="none"><path d="M4 4h6v7H4zM14 4h6v4h-6zM14 12h6v8h-6zM4 15h6v5H4z" /></svg>
               <svg v-else-if="activeModule.id === 'orders'" viewBox="0 0 24 24" fill="none"><path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" /></svg>
               <svg v-else-if="activeModule.id === 'products'" viewBox="0 0 24 24" fill="none"><path d="M4 7.5 12 4l8 3.5-8 3.5-8-3.5ZM4 7.5V16l8 4 8-4V7.5M12 11v9" /></svg>
               <svg v-else-if="activeModule.id === 'factory'" viewBox="0 0 24 24" fill="none"><path d="M4 20V9l6 3V8l6 3V5h4v15H4ZM8 16h1M13 16h1M18 16h1" /></svg>
@@ -102,12 +105,12 @@ type ShellModule = {
   id: "dashboard" | "orders" | "products" | "factory" | "people";
   label: string;
   route: string;
-  items: { label: string; route: string }[];
+  items: { label: string; route: string; icon?: "orders" | "import" | "shipment" }[];
 };
 
 const modules: ShellModule[] = [
   { id: "dashboard", label: "订单看板", route: "/", items: [{ label: "看板首页", route: "/" }] },
-  { id: "orders", label: "订单与发货", route: "/orders", items: [{ label: "订单列表", route: "/orders" }, { label: "待导入订单", route: "/orders/import" }] },
+  { id: "orders", label: "订单与发货", route: "/orders", items: [{ label: "订单列表", route: "/orders", icon: "orders" }, { label: "待导入订单", route: "/orders/import", icon: "import" }, { label: "发货单列表", route: "/shipments", icon: "shipment" }] },
   { id: "products", label: "产品资料", route: "/products", items: [{ label: "产品列表", route: "/products" }] },
   { id: "factory", label: "工厂资料", route: "/factories", items: [{ label: "工厂列表", route: "/factories" }] },
   { id: "people", label: "人员管理", route: "/people/factory-applications", items: [{ label: "人员管理", route: "/people/factory-applications" }] },
@@ -121,7 +124,7 @@ const accountOpen = ref(false);
 const sidebarCollapsed = ref(window.localStorage?.getItem("order-tracking-sidebar-collapsed") === "true");
 
 const activeModule = computed(() => {
-  if (route.path.startsWith("/orders")) return modules[1];
+  if (route.path.startsWith("/orders") || route.path.startsWith("/shipments")) return modules[1];
   if (route.path.startsWith("/products")) return modules[2];
   if (route.path.startsWith("/factories")) return modules[3];
   if (route.path.startsWith("/people")) return modules[4];

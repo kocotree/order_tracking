@@ -1,0 +1,49 @@
+<view class="ship-page">
+  <mini-titlebar title="创建发货单" showBack="{{true}}" backLeft="{{true}}" bind:back="goBack" />
+  <view class="ship-steps step-{{step}}">
+    <view wx:for="{{['箱号','装箱','凭证','提交']}}" wx:key="*this" class="ship-step {{step >= index + 1 ? 'is-active' : ''}}"><text>{{step > index + 1 ? '✓' : index + 1}}</text><text>{{item}}</text></view>
+  </view>
+
+  <view class="ship-content">
+    <view wx:if="{{step === 1}}" class="ship-card">
+      <view class="ship-card-head"><text>箱号</text><text>共 {{boxes.length}} 箱</text></view>
+      <view class="ship-card-body">
+        <view class="ship-box-form"><text class="ship-label">本次发货总箱数</text><view class="ship-inline"><input type="number" value="{{boxCount}}" placeholder="填写总箱数" bindinput="boxCountChanged" /><button bindtap="generateBoxes">生成箱号</button></view><text class="ship-help">例如填写 6，系统自动生成箱号 1、2、3、4、5、6。</text></view>
+        <view wx:if="{{boxes.length}}" class="ship-box-summary"><image src="/assets/icons/shipment-box.svg" mode="aspectFit" /><view><text>箱号 1–{{boxes.length}}</text><text>共 {{boxes.length}} 箱，每箱分别填写装箱内容</text></view></view>
+        <view wx:else class="ship-box-empty"><image src="/assets/icons/shipment-box-muted.svg" mode="aspectFit" /><text>填写本次发货总箱数</text><text>系统将从箱号 1 开始自动排列</text></view>
+        <view class="ship-box-strip"><text wx:for="{{boxes}}" wx:key="boxNo">{{item.boxNo}}</text></view>
+      </view>
+    </view>
+
+    <block wx:elif="{{step === 2}}">
+      <view class="ship-card"><view class="ship-card-head"><text>当前装箱</text><text>{{packedBoxCount}} / {{boxes.length}} 已填写</text></view><view class="ship-card-body"><text class="ship-label">选择箱号</text><scroll-view scroll-x class="ship-box-switch"><button wx:for="{{boxes}}" wx:key="boxNo" class="{{currentBox === index ? 'is-current' : ''}} {{item.total ? 'is-packed' : ''}}" data-index="{{index}}" bindtap="selectBox"><text>{{item.boxNo}}</text><text>{{item.total ? item.total + '件' : '未装'}}</text></button></scroll-view><view class="ship-current-summary"><text>箱号 {{boxes[currentBox].boxNo}} 已装</text><b>{{boxes[currentBox].total}} 件</b></view></view></view>
+
+      <view class="ship-card">
+        <view class="ship-card-head"><text>添加产品规格</text></view>
+        <view class="ship-card-body ship-pack-form">
+          <text class="ship-label">产品名称</text><picker range="{{productNames}}" value="{{productIndex}}" bindchange="productChanged"><view class="ship-picker">{{productNames[productIndex] || '暂无可发产品'}}<text>⌄</text></view></picker>
+          <text class="ship-label">颜色/规格</text><picker range="{{specOptions}}" range-key="propertiesValue" value="{{specIndex}}" bindchange="specChanged"><view class="ship-picker">{{specOptions[specIndex].propertiesValue || '暂无规格'}}<text>⌄</text></view></picker>
+          <text class="ship-label">订单编号</text><picker range="{{orderOptions}}" range-key="orderLabel" value="{{orderIndex}}" bindchange="orderChanged"><view class="ship-picker">{{orderOptions[orderIndex].orderLabel || '暂无订单'}}<text>⌄</text></view></picker>
+          <view class="ship-availability"><view><text>总可发</text><b>{{selectedCatalog.pendingQuantity || 0}}</b></view><view><text>已装</text><b>{{selectedPackedQuantity}}</b></view><view><text>剩余</text><b class="is-remaining">{{selectedRemainingQuantity}}</b></view></view>
+          <text class="ship-label">装箱数量</text><view class="ship-inline"><input type="number" value="{{quantity}}" placeholder="填写数量" bindinput="quantityChanged" /><button bindtap="addItem">添加明细</button></view>
+        </view>
+      </view>
+
+      <view class="ship-card"><view class="ship-card-head"><text>箱号 {{boxes[currentBox].boxNo}} 明细</text><text>{{currentItems.length}} 个规格</text></view><view class="ship-pack-row" wx:for="{{currentItems}}" wx:key="assignmentId"><view><text>{{item.productName}}</text><text>{{item.propertiesValue}} · {{item.orderNo}}</text></view><view class="ship-pack-quantity"><text>{{item.quantity}} 件</text><button data-assignment-id="{{item.assignmentId}}" bindtap="removeItem">×</button></view></view><view wx:if="{{!currentItems.length}}" class="ship-empty">当前箱子还没有装箱明细</view></view>
+    </block>
+
+    <block wx:elif="{{step === 3}}">
+      <view class="ship-card"><view class="ship-card-head"><text>发货凭证</text><text>选填，最多 3 张</text></view><view class="ship-photo-grid"><view wx:for="{{photos}}" wx:key="*this" class="ship-photo"><image src="{{item}}" mode="aspectFill" /><button data-index="{{index}}" bindtap="removePhoto">×</button></view><button wx:if="{{photos.length < 3}}" class="ship-photo-add" bindtap="choosePhoto"><text>＋</text><text>添加照片</text><text>{{photos.length}} / 3</text></button></view></view>
+      <view class="ship-card"><view class="ship-card-head"><text>工厂备注</text><text>选填</text></view><textarea value="{{note}}" placeholder="填写物流或其他说明" bindinput="noteChanged" /></view>
+    </block>
+
+    <block wx:else>
+      <view class="ship-preview-overview"><view><text>总箱数</text><b>{{boxes.length}}</b></view><view><text>总数量</text><b>{{totalQuantity}}</b></view></view>
+      <view class="ship-card"><view class="ship-card-head"><text>产品规格汇总</text><text>{{productSummaries.length}} 个规格</text></view><view wx:for="{{productSummaries}}" wx:key="productName" class="ship-expand-group"><view role="button" class="ship-summary-row" data-product-name="{{item.productName}}" bindtap="toggleProduct"><text>{{item.productName}}</text><view><b>合计 {{item.quantity}}</b><text class="ship-chevron {{item.expanded ? 'is-open' : ''}}">›</text></view></view><view wx:if="{{item.expanded}}" class="mini-expand-table"><view class="mini-expand-table-head"><text>序号</text><text>订单编号</text><text>颜色/规格</text><text>数量</text></view><view wx:for="{{item.items}}" wx:key="assignmentId" class="mini-expand-table-row"><text>{{index + 1}}</text><text>{{item.orderNo}}</text><text>{{item.propertiesValue}}</text><b>{{item.quantity}}</b></view></view></view></view>
+      <view class="ship-card"><view class="ship-card-head"><text>装箱明细</text><text>{{previewBoxes.length}} 项</text></view><view class="ship-preview-boxes"><view wx:for="{{previewBoxes}}" wx:key="boxNo" class="ship-preview-group"><view role="button" class="ship-preview-box" data-box-no="{{item.boxNo}}" bindtap="toggleBox"><image src="/assets/icons/shipment-box.svg" mode="aspectFit" /><view><text>箱号 {{item.boxNo}}</text><text>{{item.itemCount}} 个产品规格</text></view><b>合计 {{item.total}}</b><text class="ship-chevron {{item.expanded ? 'is-open' : ''}}">›</text></view><view wx:if="{{item.expanded}}" class="mini-expand-table"><view class="mini-expand-table-head"><text>序号</text><text>产品名称</text><text>颜色/规格</text><text>数量</text></view><view wx:for="{{item.items}}" wx:key="assignmentId" class="mini-expand-table-row"><text>{{index + 1}}</text><text>{{item.productName}}　{{item.orderNo}}</text><text>{{item.propertiesValue}}</text><b>{{item.quantity}}</b></view></view></view></view></view>
+      <view class="ship-submit-notice">提交后立即计入订单已发数量，不能直接编辑或删除；如需撤销，请从发货记录使用“撤回发货”。</view>
+    </block>
+  </view>
+
+  <view class="ship-bottom"><button wx:if="{{step > 1}}" class="ship-secondary" bindtap="previous">上一步</button><button wx:if="{{step < 4}}" class="ship-primary" bindtap="next">下一步：{{step === 1 ? '装箱' : step === 2 ? '凭证' : '预览'}}</button><button wx:else class="ship-primary" loading="{{loading}}" bindtap="submit">提交发货单</button></view>
+</view>

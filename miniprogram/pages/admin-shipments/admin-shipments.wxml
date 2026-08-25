@@ -1,0 +1,33 @@
+<view class="ship-record-page">
+  <mini-titlebar title="发货"/>
+  <view class="admin-ship-search-row">
+    <view class="admin-ship-search"><image src="/assets/icons/search-gray.svg" mode="aspectFit"/><input value="{{keyword}}" placeholder="订单编号或产品名称" bindinput="keywordChanged"/></view>
+    <view role="button" aria-label="筛选" class="admin-ship-filter" bindtap="toggleFilter"><image src="/assets/icons/filter-blue.svg" mode="aspectFit"/><text>筛选</text><text wx:if="{{activeFilterCount}}" class="admin-ship-filter-count">{{activeFilterCount}}</text></view>
+  </view>
+  <view class="ship-record-content">
+    <view wx:if="{{!loading}}" class="admin-ship-result"><text>共 {{items.length}} 张发货单</text><text>按发货日期倒序</text></view>
+    <view wx:if="{{loading}}" class="mini-empty">正在加载发货单…</view>
+    <view wx:elif="{{!items.length}}" class="mini-empty"><text>没有符合条件的发货记录</text><text>可以调整搜索词后再试</text></view>
+    <view wx:for="{{items}}" wx:key="shipmentId" role="button" class="admin-ship-card" data-id="{{item.shipmentId}}" bindtap="open">
+      <view class="admin-ship-head"><text>{{item.productSummary}}　{{item.orderSummary}}</text><text>›</text></view>
+      <view class="admin-ship-meta"><view><image src="/assets/icons/factory-blue.svg" mode="aspectFit"/><text>工厂</text><b>{{item.factoryName}}</b></view><view><image src="/assets/icons/calendar-blue.svg" mode="aspectFit"/><text>发货日期</text><b>{{item.businessDate}}</b></view></view>
+      <view class="admin-ship-stats"><view><text>发货数量</text><b>{{item.totalQuantity}}</b></view><view><text>总箱数</text><b>{{item.totalBoxes}}</b></view></view>
+      <view class="admin-ship-number"><text>发货单号</text><b>{{item.shipmentNo}}</b></view>
+    </view>
+  </view>
+  <view wx:if="{{filterOpen}}" class="admin-ship-sheet-layer" bindtap="closeFilter">
+    <view class="admin-ship-filter-sheet" catchtap="stopPropagation">
+      <view class="admin-ship-sheet-handle" />
+      <view class="admin-ship-sheet-header">
+        <text class="admin-ship-sheet-heading">筛选发货记录</text>
+        <view role="button" aria-label="关闭筛选" class="admin-ship-sheet-close" bindtap="closeFilter"><view class="admin-ship-sheet-close-line"/><view class="admin-ship-sheet-close-line is-reversed"/></view>
+      </view>
+      <view class="admin-ship-filter-body">
+        <view class="admin-ship-filter-field"><text class="admin-ship-filter-label">工厂</text><picker range="{{factoryOptions}}" range-key="label" value="{{draftFactoryIndex}}" bindchange="factoryChanged"><view class="admin-ship-picker-value"><text>{{factoryOptions[draftFactoryIndex].label}}</text><view class="admin-ship-picker-arrow"/></view></picker></view>
+        <view class="admin-ship-filter-field"><text class="admin-ship-filter-label">发货日期范围</text><view class="admin-ship-date-range"><picker mode="date" value="{{draftShipDateFrom}}" bindchange="shipDateFromChanged"><view class="admin-ship-date-value"><text class="admin-ship-date-copy {{draftShipDateFrom ? '' : 'is-placeholder'}}">{{draftShipDateFrom || 'yyyy/mm/日'}}</text><view class="admin-ship-date-icon"/></view></picker><text class="admin-ship-date-separator">至</text><picker mode="date" value="{{draftShipDateTo}}" bindchange="shipDateToChanged"><view class="admin-ship-date-value"><text class="admin-ship-date-copy {{draftShipDateTo ? '' : 'is-placeholder'}}">{{draftShipDateTo || 'yyyy/mm/日'}}</text><view class="admin-ship-date-icon"/></view></picker></view></view>
+      </view>
+      <view class="admin-ship-filter-actions"><view role="button" class="admin-ship-filter-reset" bindtap="resetFilter">重置</view><view role="button" class="admin-ship-filter-apply" bindtap="applyFilter">查看结果</view></view>
+    </view>
+  </view>
+  <mini-tabbar items="{{navigationItems}}" active-key="shipments"/>
+</view>

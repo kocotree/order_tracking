@@ -1,4 +1,4 @@
-<view class="order-mini-page factory-task-page">
+<view class="order-mini-page factory-task-page {{activeTab === 'orders' ? 'has-create-shipment' : ''}}">
   <mini-titlebar title="任务" />
 
   <view class="factory-task-tabs" role="tablist">
@@ -38,6 +38,10 @@
   </block>
 
   <view wx:else class="mini-empty repair-empty"><text>暂无返修任务</text><text>S09 接入返修流程后显示</text></view>
+
+  <view wx:if="{{activeTab === 'orders'}}" class="factory-create-shipment-bar">
+    <button class="factory-create-shipment-button" bindtap="createShipment">创建发货单</button>
+  </view>
 
   <view wx:if="{{filterOpen}}" class="mini-sheet-layer" bindtap="closeFilter">
     <view class="mini-filter-sheet" catchtap="stopPropagation">

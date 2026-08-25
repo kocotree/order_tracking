@@ -1,0 +1,52 @@
+.admin-ship-search-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18rpx; padding: 20rpx 28rpx 28rpx; background: #fff; }
+.admin-ship-search { display: flex; min-width: 0; height: 88rpx; align-items: center; gap: 18rpx; padding: 0 26rpx; background: #f7f9fb; border: 1rpx solid #dce2e9; border-radius: 24rpx; }
+.admin-ship-search image { width: 38rpx; height: 38rpx; flex: 0 0 38rpx; }
+.admin-ship-search input { min-width: 0; flex: 1; font-size: 27rpx; }
+.admin-ship-filter { position: relative; display: flex; width: 152rpx; min-width: 152rpx; max-width: 152rpx; height: 88rpx; box-sizing: border-box; align-items: center; justify-content: center; gap: 10rpx; color: #1677ff; font-size: 27rpx; font-weight: 750; background: #fff; border: 1rpx solid #cfe0f8; border-radius: 24rpx; }
+.admin-ship-filter image { width: 36rpx; height: 36rpx; }
+.admin-ship-filter-count { position: absolute; top: -10rpx; right: -10rpx; display: grid; width: 34rpx; height: 34rpx; place-items: center; color: #fff; font-size: 18rpx; line-height: 1; background: #e65355; border: 4rpx solid #fff; border-radius: 50%; }
+.ship-record-content { display: block; padding: 24rpx 28rpx 40rpx; }
+.admin-ship-result { display: flex; align-items: center; justify-content: space-between; padding: 0 8rpx 18rpx; color: #6f7a87; font-size: 23rpx; }
+.admin-ship-result text:last-child { color: #929ba6; }
+.admin-ship-card { display: block; box-sizing: border-box; width: calc(100vw - 56rpx); margin: 0 0 24rpx; overflow: hidden; color: #1c2430; text-align: left; background: #fff; border: 1rpx solid #e2e7ed; border-radius: 32rpx; box-shadow: 0 10rpx 28rpx rgba(34,50,70,.06); }
+.admin-ship-card:active { background: #fbfdff; border-color: #bdd8ff; }
+.admin-ship-head { display: flex; min-height: 100rpx; align-items: center; justify-content: space-between; gap: 24rpx; padding: 24rpx 32rpx; border-bottom: 0; }
+.admin-ship-head > text:first-child { min-width: 0; overflow: hidden; font-size: 30rpx; font-weight: 800; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.admin-ship-head > text:last-child { color: #7b8694; font-size: 38rpx; }
+.admin-ship-meta { display: grid; grid-template-columns: .85fr 1.15fr; padding: 24rpx 32rpx; border-top: 1rpx solid #e6e9ed; border-bottom: 1rpx solid #e6e9ed; }
+.admin-ship-meta view { display: flex; min-width: 0; align-items: center; gap: 12rpx; }
+.admin-ship-meta view + view { padding-left: 28rpx; border-left: 1rpx solid #e6e9ed; }
+.admin-ship-meta image { width: 34rpx; height: 34rpx; flex: 0 0 34rpx; }
+.admin-ship-meta text,.admin-ship-number text { color: #788493; font-size: 21rpx; font-weight: 600; white-space: nowrap; }
+.admin-ship-meta b { min-width: 0; overflow: hidden; font-size: 27rpx; text-overflow: ellipsis; white-space: nowrap; }
+.admin-ship-stats { display: grid; grid-template-columns: repeat(2,1fr); margin: 0; padding: 26rpx 32rpx; background: #fff; border-radius: 0; }
+.admin-ship-stats view { display: grid; justify-items: start; gap: 10rpx; border-right: 0; }
+.admin-ship-stats view + view { padding-left: 26rpx; border-left: 1rpx solid #e1e5ea; }
+.admin-ship-stats text { color: #788493; font-size: 20rpx; }
+.admin-ship-stats b { font-size: 30rpx; }
+.admin-ship-number { display: flex; min-height: 74rpx; align-items: center; gap: 14rpx; padding: 0 32rpx; background: #fbfcfd; border-top: 1rpx solid #e6e9ed; }
+.admin-ship-number b { color: #7a8592; font-size: 23rpx; letter-spacing: .02em; }
+
+.admin-ship-sheet-layer { position: fixed; z-index: 80; inset: 0; display: flex; align-items: flex-end; justify-content: center; background: rgba(12,20,30,.46); }
+.admin-ship-filter-sheet { position: relative; width: 100%; max-height: 88vh; padding: 16rpx 36rpx calc(36rpx + env(safe-area-inset-bottom)); overflow-y: auto; background: #fff; border-radius: 48rpx 48rpx 0 0; }
+.admin-ship-sheet-handle { width: 84rpx; height: 8rpx; margin: 4rpx auto 28rpx; background: #d8dde4; border-radius: 6rpx; }
+.admin-ship-sheet-header { display: flex; min-height: 76rpx; align-items: center; padding-right: 96rpx; }
+.admin-ship-sheet-heading { color: #1c2430; font-size: 44rpx; font-weight: 800; }
+.admin-ship-sheet-close { position: absolute; z-index: 1; top: 66rpx; right: 36rpx; width: 76rpx; height: 76rpx; background: #f1f3f6; border-radius: 50%; }
+.admin-ship-sheet-close-line { position: absolute; top: 36rpx; left: 23rpx; width: 30rpx; border-top: 3rpx solid #28313d; transform: rotate(45deg); }
+.admin-ship-sheet-close-line.is-reversed { transform: rotate(-45deg); }
+.admin-ship-filter-body { display: grid; gap: 32rpx; margin-top: 44rpx; }
+.admin-ship-filter-field { display: grid; gap: 14rpx; }
+.admin-ship-filter-label { color: #596574; font-size: 26rpx; font-weight: 700; }
+.admin-ship-picker-value,.admin-ship-date-value { display: flex; width: 100%; height: 88rpx; align-items: center; justify-content: space-between; padding: 0 28rpx; color: #1c2430; font-size: 28rpx; background: #f8fafb; border: 1rpx solid #dce2e9; border-radius: 22rpx; }
+.admin-ship-picker-arrow { width: 14rpx; height: 14rpx; margin: -8rpx 4rpx 0 20rpx; border-right: 3rpx solid #47525f; border-bottom: 3rpx solid #47525f; transform: rotate(45deg); }
+.admin-ship-date-range { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 16rpx; }
+.admin-ship-date-separator { color: #7a8491; font-size: 24rpx; }
+.admin-ship-date-value { padding: 0 20rpx; }
+.admin-ship-date-copy { min-width: 0; font-size: 26rpx; white-space: nowrap; }
+.admin-ship-date-copy.is-placeholder { color: #1c2430; font-weight: 650; }
+.admin-ship-date-icon { position: relative; width: 26rpx; height: 24rpx; flex: 0 0 26rpx; margin-left: 8rpx; border: 3rpx solid #28313d; border-radius: 4rpx; }
+.admin-ship-date-icon::before { position: absolute; top: 5rpx; right: -3rpx; left: -3rpx; content: ""; border-top: 3rpx solid #28313d; }
+.admin-ship-filter-actions { display: grid; grid-template-columns: minmax(0,.7fr) minmax(0,1.3fr); gap: 20rpx; margin-top: 48rpx; }
+.admin-ship-filter-actions .admin-ship-filter-reset,.admin-ship-filter-actions .admin-ship-filter-apply { display: flex; min-width: 0; width: 100%; height: 92rpx; box-sizing: border-box; align-items: center; justify-content: center; color: #1c2430; font-size: 28rpx; font-weight: 750; background: #fff; border: 1rpx solid #d9e0e7; border-radius: 24rpx; }
+.admin-ship-filter-actions .admin-ship-filter-apply { color: #fff; background: #1677ff; border-color: #1677ff; box-shadow: 0 16rpx 36rpx rgba(22,119,255,.24); }

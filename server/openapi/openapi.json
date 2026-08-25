@@ -927,52 +927,58 @@
         "title": "DashboardResponse",
         "type": "object"
       },
-      "DraftCreate": {
+      "DraftBoxWrite": {
         "properties": {
-          "contractShipDate": {
-            "format": "date",
-            "title": "Contractshipdate",
-            "type": "string"
+          "boxNo": {
+            "exclusiveMinimum": 0.0,
+            "title": "Boxno",
+            "type": "integer"
           },
-          "lines": {
+          "groupKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groupkey"
+          },
+          "items": {
             "items": {
-              "$ref": "#/components/schemas/DraftLineWrite"
+              "$ref": "#/components/schemas/DraftItemWrite"
             },
             "minItems": 1,
-            "title": "Lines",
+            "title": "Items",
             "type": "array"
-          },
-          "orderDate": {
-            "format": "date",
-            "title": "Orderdate",
-            "type": "string"
-          },
-          "orderNo": {
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Orderno",
-            "type": "string"
-          },
-          "tracker": {
-            "enum": [
-              "烧麦",
-              "松子",
-              "橄榄",
-              "大葱",
-              "青椒"
-            ],
-            "title": "Tracker",
-            "type": "string"
           }
         },
         "required": [
-          "orderNo",
-          "orderDate",
-          "tracker",
-          "contractShipDate",
-          "lines"
+          "boxNo",
+          "items"
         ],
-        "title": "DraftCreate",
+        "title": "DraftBoxWrite",
+        "type": "object"
+      },
+      "DraftItemWrite": {
+        "properties": {
+          "assignmentId": {
+            "exclusiveMinimum": 0.0,
+            "title": "Assignmentid",
+            "type": "integer"
+          },
+          "quantity": {
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assignmentId",
+          "quantity"
+        ],
+        "title": "DraftItemWrite",
         "type": "object"
       },
       "DraftLineWrite": {
@@ -1001,6 +1007,29 @@
           "orderQuantity"
         ],
         "title": "DraftLineWrite",
+        "type": "object"
+      },
+      "DraftSave": {
+        "properties": {
+          "boxes": {
+            "items": {
+              "$ref": "#/components/schemas/DraftBoxWrite"
+            },
+            "minItems": 1,
+            "title": "Boxes",
+            "type": "array"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "boxes"
+        ],
+        "title": "DraftSave",
         "type": "object"
       },
       "DraftUpdate": {
@@ -2137,6 +2166,295 @@
         "title": "SessionResponse",
         "type": "object"
       },
+      "ShipmentBoxResponse": {
+        "properties": {
+          "boxNo": {
+            "title": "Boxno",
+            "type": "integer"
+          },
+          "groupKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groupkey"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShipmentLineResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "boxNo",
+          "groupKey",
+          "items"
+        ],
+        "title": "ShipmentBoxResponse",
+        "type": "object"
+      },
+      "ShipmentCatalogItemResponse": {
+        "properties": {
+          "assignedQuantity": {
+            "title": "Assignedquantity",
+            "type": "integer"
+          },
+          "assignmentId": {
+            "title": "Assignmentid",
+            "type": "integer"
+          },
+          "contractShipDate": {
+            "format": "date",
+            "title": "Contractshipdate",
+            "type": "string"
+          },
+          "orderId": {
+            "title": "Orderid",
+            "type": "string"
+          },
+          "orderNo": {
+            "title": "Orderno",
+            "type": "string"
+          },
+          "pendingQuantity": {
+            "title": "Pendingquantity",
+            "type": "integer"
+          },
+          "productName": {
+            "title": "Productname",
+            "type": "string"
+          },
+          "propertiesValue": {
+            "title": "Propertiesvalue",
+            "type": "string"
+          },
+          "shippedQuantity": {
+            "title": "Shippedquantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assignmentId",
+          "orderId",
+          "orderNo",
+          "contractShipDate",
+          "productName",
+          "propertiesValue",
+          "assignedQuantity",
+          "shippedQuantity",
+          "pendingQuantity"
+        ],
+        "title": "ShipmentCatalogItemResponse",
+        "type": "object"
+      },
+      "ShipmentCatalogResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShipmentCatalogItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ShipmentCatalogResponse",
+        "type": "object"
+      },
+      "ShipmentDraftResponse": {
+        "properties": {
+          "boxes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ShipmentBoxResponse"
+            },
+            "title": "Boxes",
+            "type": "array"
+          },
+          "businessDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Businessdate"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdBy": {
+            "title": "Createdby",
+            "type": "string"
+          },
+          "factoryId": {
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "factoryName": {
+            "default": "",
+            "title": "Factoryname",
+            "type": "string"
+          },
+          "lines": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ShipmentLineResponse"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "preferredOrderId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferredorderid"
+          },
+          "shipmentId": {
+            "title": "Shipmentid",
+            "type": "string"
+          },
+          "shipmentNo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipmentno"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submittedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submittedat"
+          },
+          "totalBoxes": {
+            "default": 0,
+            "title": "Totalboxes",
+            "type": "integer"
+          },
+          "totalQuantity": {
+            "default": 0,
+            "title": "Totalquantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shipmentId",
+          "status",
+          "factoryId",
+          "createdBy",
+          "preferredOrderId",
+          "createdAt"
+        ],
+        "title": "ShipmentDraftResponse",
+        "type": "object"
+      },
+      "ShipmentLineResponse": {
+        "properties": {
+          "assignmentId": {
+            "title": "Assignmentid",
+            "type": "integer"
+          },
+          "orderId": {
+            "title": "Orderid",
+            "type": "string"
+          },
+          "orderNo": {
+            "title": "Orderno",
+            "type": "string"
+          },
+          "productName": {
+            "title": "Productname",
+            "type": "string"
+          },
+          "propertiesValue": {
+            "title": "Propertiesvalue",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "skuId": {
+            "title": "Skuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assignmentId",
+          "orderId",
+          "orderNo",
+          "skuId",
+          "productName",
+          "propertiesValue",
+          "quantity"
+        ],
+        "title": "ShipmentLineResponse",
+        "type": "object"
+      },
+      "ShipmentListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShipmentDraftResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ShipmentListResponse",
+        "type": "object"
+      },
       "UserResponse": {
         "properties": {
           "capabilities": {
@@ -2370,6 +2688,71 @@
           "phoneCode"
         ],
         "title": "WechatPhoneRequest",
+        "type": "object"
+      },
+      "app__api__orders__DraftCreate": {
+        "properties": {
+          "contractShipDate": {
+            "format": "date",
+            "title": "Contractshipdate",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/DraftLineWrite"
+            },
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          },
+          "orderDate": {
+            "format": "date",
+            "title": "Orderdate",
+            "type": "string"
+          },
+          "orderNo": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Orderno",
+            "type": "string"
+          },
+          "tracker": {
+            "enum": [
+              "烧麦",
+              "松子",
+              "橄榄",
+              "大葱",
+              "青椒"
+            ],
+            "title": "Tracker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "orderNo",
+          "orderDate",
+          "tracker",
+          "contractShipDate",
+          "lines"
+        ],
+        "title": "DraftCreate",
+        "type": "object"
+      },
+      "app__api__shipments__DraftCreate": {
+        "properties": {
+          "preferredOrderId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferredorderid"
+          }
+        },
+        "title": "DraftCreate",
         "type": "object"
       }
     }
@@ -4197,7 +4580,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DraftCreate"
+                "$ref": "#/components/schemas/app__api__orders__DraftCreate"
               }
             }
           },
@@ -5072,6 +5455,145 @@
         ]
       }
     },
+    "/api/v1/admin/shipments": {
+      "get": {
+        "operationId": "admin_shipments_api_v1_admin_shipments_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Shipments",
+        "tags": [
+          "shipment-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/shipments/{shipment_id}": {
+      "get": {
+        "operationId": "admin_shipment_api_v1_admin_shipments__shipment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipment_id",
+            "required": true,
+            "schema": {
+              "title": "Shipment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Shipment",
+        "tags": [
+          "shipment-admin"
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "operationId": "list_admin_users_api_v1_admin_users_get",
@@ -5661,6 +6183,412 @@
         "summary": "My Factory Application",
         "tags": [
           "factory-mini"
+        ]
+      }
+    },
+    "/api/v1/factory/shipment-catalog": {
+      "get": {
+        "operationId": "shipment_catalog_api_v1_factory_shipment_catalog_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Shipment Catalog",
+        "tags": [
+          "shipment-factory"
+        ]
+      }
+    },
+    "/api/v1/factory/shipments": {
+      "get": {
+        "operationId": "factory_shipments_api_v1_factory_shipments_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Factory Shipments",
+        "tags": [
+          "shipment-factory"
+        ]
+      }
+    },
+    "/api/v1/factory/shipments/drafts": {
+      "post": {
+        "operationId": "create_draft_api_v1_factory_shipments_drafts_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__api__shipments__DraftCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Draft",
+        "tags": [
+          "shipment-factory"
+        ]
+      }
+    },
+    "/api/v1/factory/shipments/drafts/current": {
+      "get": {
+        "operationId": "current_draft_api_v1_factory_shipments_drafts_current_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Current Draft",
+        "tags": [
+          "shipment-factory"
+        ]
+      }
+    },
+    "/api/v1/factory/shipments/drafts/{shipment_id}": {
+      "put": {
+        "operationId": "save_draft_api_v1_factory_shipments_drafts__shipment_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipment_id",
+            "required": true,
+            "schema": {
+              "title": "Shipment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Draft",
+        "tags": [
+          "shipment-factory"
+        ]
+      }
+    },
+    "/api/v1/factory/shipments/drafts/{shipment_id}/submit": {
+      "post": {
+        "operationId": "submit_draft_api_v1_factory_shipments_drafts__shipment_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipment_id",
+            "required": true,
+            "schema": {
+              "title": "Shipment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Draft",
+        "tags": [
+          "shipment-factory"
+        ]
+      }
+    },
+    "/api/v1/factory/shipments/{shipment_id}": {
+      "get": {
+        "operationId": "factory_shipment_api_v1_factory_shipments__shipment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipment_id",
+            "required": true,
+            "schema": {
+              "title": "Shipment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Factory Shipment",
+        "tags": [
+          "shipment-factory"
         ]
       }
     },

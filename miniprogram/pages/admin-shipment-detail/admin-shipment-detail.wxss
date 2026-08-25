@@ -1,0 +1,20 @@
+/* shared in app.wxss */
+.ship-log {
+  display: grid;
+  grid-template-columns: 20rpx minmax(0, 1fr);
+}
+
+.ship-log .ship-log-dot {
+  width: 18rpx;
+  height: 18rpx;
+  box-sizing: border-box;
+  margin-top: 5rpx;
+  background: #1677ff;
+  border: 4rpx solid #dcecff;
+  border-radius: 50%;
+}
+
+.ship-log > view:last-child {
+  display: grid;
+  gap: 8rpx;
+}

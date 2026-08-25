@@ -737,6 +737,134 @@ class ContractExport(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
 
 
+class Shipment(Base):
+    __tablename__ = "shipments"
+    __table_args__ = (
+        UniqueConstraint("shipment_no", name="uq_shipments_no"),
+        UniqueConstraint("active_draft_owner_id", name="uq_shipments_active_draft_owner"),
+        CheckConstraint("status IN ('DRAFT', 'SHIPPED')", name="ck_shipments_status"),
+        Index("ix_shipments_factory_status", "factory_id", "status", "created_at"),
+    )
+
+    shipment_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    shipment_no: Mapped[str | None] = mapped_column(String(32))
+    factory_id: Mapped[str] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    business_date: Mapped[date | None] = mapped_column(Date)
+    preferred_order_id: Mapped[str | None] = mapped_column(
+        ForeignKey("orders.order_id", ondelete="RESTRICT")
+    )
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    active_draft_owner_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    submitted_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    deleted_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        server_onupdate=text("CURRENT_TIMESTAMP(6)"),
+    )
+
+
+class ShipmentBox(Base):
+    __tablename__ = "shipment_boxes"
+    __table_args__ = (
+        UniqueConstraint("shipment_id", "box_no", name="uq_shipment_boxes_no"),
+        CheckConstraint("box_no > 0", name="ck_shipment_boxes_no_positive"),
+    )
+
+    box_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    shipment_id: Mapped[str] = mapped_column(
+        ForeignKey("shipments.shipment_id", ondelete="CASCADE"), nullable=False
+    )
+    box_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    group_key: Mapped[str | None] = mapped_column(String(36))
+
+
+class ShipmentBoxItem(Base):
+    __tablename__ = "shipment_box_items"
+    __table_args__ = (
+        UniqueConstraint("box_id", "order_assignment_id", name="uq_shipment_box_items_line"),
+        CheckConstraint("quantity > 0", name="ck_shipment_box_items_quantity_positive"),
+    )
+
+    item_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    box_id: Mapped[int] = mapped_column(
+        ForeignKey("shipment_boxes.box_id", ondelete="CASCADE"), nullable=False
+    )
+    order_assignment_id: Mapped[int] = mapped_column(
+        ForeignKey("order_assignments.order_assignment_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ShipmentLine(Base):
+    __tablename__ = "shipment_lines"
+    __table_args__ = (
+        UniqueConstraint("shipment_id", "order_assignment_id", name="uq_shipment_lines_assignment"),
+        CheckConstraint("quantity > 0", name="ck_shipment_lines_quantity_positive"),
+    )
+
+    line_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    shipment_id: Mapped[str] = mapped_column(
+        ForeignKey("shipments.shipment_id", ondelete="RESTRICT"), nullable=False
+    )
+    order_assignment_id: Mapped[int] = mapped_column(
+        ForeignKey("order_assignments.order_assignment_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    order_no_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    sku_id_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    product_name_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
+    properties_value_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
+class QuantityLedger(Base):
+    __tablename__ = "quantity_ledger"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_type", "source_id", "order_assignment_id", name="uq_quantity_ledger_source"
+        ),
+        CheckConstraint("quantity_delta <> 0", name="ck_quantity_ledger_nonzero"),
+        Index("ix_quantity_ledger_assignment", "order_assignment_id", "created_at"),
+    )
+
+    ledger_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    order_assignment_id: Mapped[int] = mapped_column(
+        ForeignKey("order_assignments.order_assignment_id", ondelete="RESTRICT"), nullable=False
+    )
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    quantity_delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class ShipmentNumberCounter(Base):
+    __tablename__ = "shipment_number_counters"
+
+    business_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    next_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
 class MiniLoginAttempt(Base):
     __tablename__ = "mini_login_attempts"
     __table_args__ = (UniqueConstraint("token_digest", name="uq_mini_login_attempt_token"),)

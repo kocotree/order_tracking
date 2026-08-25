@@ -20,6 +20,7 @@ from app.db.models import (
     OutboxMessage,
     Product,
     ProductVariant,
+    QuantityLedger,
     User,
 )
 
@@ -971,7 +972,7 @@ class OrderService:
                     )
             assignment_snapshots = []
             for item in assignments:
-                shipped = item.initial_shipped_quantity
+                shipped = self._assignment_shipped(session, item)
                 pending = max(item.assigned_quantity - shipped, 0)
                 over = max(shipped - item.assigned_quantity, 0)
                 progress = round(shipped * 100 / item.assigned_quantity)
@@ -1066,7 +1067,7 @@ class OrderService:
             )
             or 0
         )
-        shipped = int(
+        initial_shipped = int(
             session.scalar(
                 select(func.coalesce(func.sum(OrderAssignment.initial_shipped_quantity), 0))
                 .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
@@ -1074,6 +1075,19 @@ class OrderService:
             )
             or 0
         )
+        system_shipped = int(
+            session.scalar(
+                select(func.coalesce(func.sum(QuantityLedger.quantity_delta), 0))
+                .join(
+                    OrderAssignment,
+                    OrderAssignment.order_assignment_id == QuantityLedger.order_assignment_id,
+                )
+                .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+                .where(OrderLine.order_id == order_id)
+            )
+            or 0
+        )
+        shipped = initial_shipped + system_shipped
         pending = max(total - shipped, 0)
         return {
             "orderQuantity": total,
@@ -1082,6 +1096,18 @@ class OrderService:
             "overQuantity": max(shipped - total, 0),
             "shortQuantity": pending,
         }
+
+    @staticmethod
+    def _assignment_shipped(session: Session, assignment: OrderAssignment) -> int:
+        system_quantity = int(
+            session.scalar(
+                select(func.coalesce(func.sum(QuantityLedger.quantity_delta), 0)).where(
+                    QuantityLedger.order_assignment_id == assignment.order_assignment_id
+                )
+            )
+            or 0
+        )
+        return assignment.initial_shipped_quantity + system_quantity
 
     def _factory_ids(self, session: Session, order_id: str) -> set[str]:
         return set(

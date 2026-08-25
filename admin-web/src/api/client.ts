@@ -17,7 +17,7 @@ export type ProductListItem = components["schemas"]["ProductListItemResponse"];
 export type Order = components["schemas"]["OrderResponse"];
 export type OrderList = components["schemas"]["OrderListResponse"];
 export type DashboardOrders = components["schemas"]["DashboardResponse"];
-export type DraftCreate = components["schemas"]["DraftCreate"];
+export type DraftCreate = components["schemas"]["app__api__orders__DraftCreate"];
 export type DraftUpdate = components["schemas"]["DraftUpdate"];
 export type AuditLogList = components["schemas"]["AuditLogListResponse"];
 export type ImportRun = components["schemas"]["ImportRunResponse"];
@@ -28,6 +28,42 @@ export type User = components["schemas"]["UserResponse"];
 export type ContractFactoryStatus = components["schemas"]["ContractFactoryStatusResponse"];
 export type ContractFactoryStatusList = components["schemas"]["ContractFactoryStatusListResponse"];
 export type ContractExport = components["schemas"]["ContractExportResponse"];
+
+export interface ShipmentLine {
+  assignmentId: number;
+  orderId: string;
+  orderNo: string;
+  skuId: string;
+  productName: string;
+  propertiesValue: string;
+  quantity: number;
+}
+
+export interface ShipmentBox {
+  boxNo: number;
+  groupKey: string | null;
+  items: ShipmentLine[];
+}
+
+export interface Shipment {
+  shipmentId: string;
+  shipmentNo: string | null;
+  status: string;
+  factoryId: string;
+  factoryName: string;
+  createdBy: string;
+  preferredOrderId: string | null;
+  businessDate: string | null;
+  note: string;
+  totalBoxes: number;
+  totalQuantity: number;
+  lines: ShipmentLine[];
+  boxes: ShipmentBox[];
+  createdAt: string;
+  submittedAt: string | null;
+}
+
+export interface ShipmentList { items: Shipment[]; total: number }
 
 export class ApiError extends Error {
   constructor(
@@ -303,6 +339,12 @@ export const contractApi = {
       },
     ),
   download: (value: ContractExport) => download(value.downloadUrl, value.filename),
+};
+
+export const shipmentApi = {
+  list: () => request<ShipmentList>("/v1/admin/shipments"),
+  get: (shipmentId: string) =>
+    request<Shipment>(`/v1/admin/shipments/${encodeURIComponent(shipmentId)}`),
 };
 
 export const orderImportApi = {

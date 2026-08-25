@@ -22,6 +22,8 @@ import OrdersPage from "@/pages/OrdersPage.vue";
 import OrderImportPage from "@/pages/OrderImportPage.vue";
 import OrderImportDetailPage from "@/pages/OrderImportDetailPage.vue";
 import ProductsPage from "@/pages/ProductsPage.vue";
+import ShipmentDetailPage from "@/pages/ShipmentDetailPage.vue";
+import ShipmentsPage from "@/pages/ShipmentsPage.vue";
 import { useIdentityStore } from "@/stores";
 
 export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
@@ -36,6 +38,8 @@ export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
       { path: "/orders/new", name: "order-new", component: OrderFormPage },
       { path: "/orders/:orderId/edit", name: "order-edit", component: OrderFormPage },
       { path: "/orders/:orderId", name: "order-detail", component: OrderDetailPage },
+      { path: "/shipments", name: "shipments", component: ShipmentsPage },
+      { path: "/shipments/:shipmentId", name: "shipment-detail", component: ShipmentDetailPage },
       { path: "/factories", name: "factories", component: FactoriesPage },
       { path: "/products", name: "products", component: ProductsPage },
       { path: "/admin-apply", name: "admin-apply", component: AdminApplyPage },

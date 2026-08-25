@@ -44,16 +44,17 @@
           <div class="detail-table-scroll"><table class="data-grid-table detail-data-table related-shipment-table"><thead><tr><th>发货单号</th><th>发货日期</th><th>发货数量</th><th>物流单号</th><th>状态</th><th>操作</th></tr></thead><tbody><tr><td class="detail-empty-row" colspan="6">当前订单暂无关联发货单</td></tr></tbody></table></div>
         </section>
 
-        <section class="section-card detail-section-card order-audit-card">
-          <header class="detail-section-header"><h2>操作日志</h2></header>
-          <div v-if="auditLogs.length" class="order-audit-list">
-            <article v-for="(log, index) in auditLogs" :key="`${log.createdAt}-${index}`">
-              <time :datetime="log.createdAt">{{ dateTime(log.createdAt) }}</time>
-              <strong>{{ log.operatorName }}</strong>
-              <p>{{ log.content }}</p>
-            </article>
-          </div>
-          <p v-else class="detail-empty-log">当前订单暂无操作日志</p>
+        <section class="section-card detail-section-card order-audit-card" :class="{ 'is-expanded': auditExpanded }">
+          <button class="order-audit-toggle" type="button" :aria-expanded="auditExpanded" aria-controls="order-audit-list" :disabled="!auditLogs.length" @click="auditExpanded = !auditExpanded">
+            <span class="order-audit-toggle-title">操作记录<em>（{{ auditLogs.length }}）</em></span>
+            <span class="order-audit-toggle-action">{{ auditLogs.length ? (auditExpanded ? '收起' : '展开') : '暂无记录' }}<svg v-if="auditLogs.length" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg></span>
+          </button>
+          <ol v-if="auditExpanded && auditLogs.length" id="order-audit-list" class="order-audit-list shipment-log-list">
+            <li v-for="(log, index) in auditLogs" :key="`${log.createdAt}-${index}`" class="shipment-log-item">
+              <span class="shipment-log-dot" :class="{ 'is-warning': isQuantityRollback(log.action) }" aria-hidden="true"></span>
+              <div><strong>{{ log.content }}</strong><span>{{ dateTime(log.createdAt) }} · {{ log.operatorName }} · {{ sourceTerminalLabel(log.sourceTerminal) }}</span></div>
+            </li>
+          </ol>
         </section>
 
       </template>
@@ -96,6 +97,7 @@ const detailColumns: { key: DetailSortKey; label: string }[] = [{ key: "skuId", 
 const route = useRoute(); const router = useRouter(); const orderId = String(route.params.orderId);
 const order = ref<Order | null>(null); const loading = ref(true); const errorMessage = ref(""); const pendingAction = ref<Action | null>(null); const reopenReason = ref(""); const actionError = ref(""); const acting = ref(false); const detailSortKey = ref<DetailSortKey | null>(null); const detailSortOrder = ref<"asc" | "desc">("asc");
 const auditLogs = ref<AuditLogList["items"]>([]);
+const auditExpanded = ref(false);
 const contractFactories = ref<ContractFactoryStatus[]>([]); const loadingContracts = ref(false); const contractDialogOpen = ref(false); const selectedContractFactory = ref<ContractFactoryStatus | null>(null); const contractSigningDate = ref(""); const contractError = ref(""); const exportingContract = ref(false);
 const number = (value: number) => value.toLocaleString("zh-CN");
 const dateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
@@ -108,6 +110,8 @@ const sortedDetailRows = computed(() => { const key = detailSortKey.value; if (!
 const modalTitle = computed(() => ({ publish: "发布订单", withdraw: "撤回订单", delete: "删除订单", complete: "确认订单完成", reopen: "撤销完成" }[pendingAction.value ?? "publish"]));
 const modalDescription = computed(() => pendingAction.value === "publish" ? "发布后工厂将看到各自派工任务，确认发布？" : pendingAction.value === "withdraw" ? "撤回后订单恢复为草稿，工厂任务将不可见。" : pendingAction.value === "delete" ? "删除后订单不再出现在订单列表和工厂任务中。" : pendingAction.value === "complete" ? "请核对数量摘要。完成状态不会根据发货数量自动产生。" : "撤销后订单恢复为正式订单，并按当前日期重新计算状态。" );
 function statusTone(value: Order) { return value.lifecycle === "DRAFT" ? "is-draft" : value.displayStatus === "已逾期" ? "is-danger" : value.lifecycle === "COMPLETED" ? "is-success" : "is-info"; }
+function isQuantityRollback(action: string) { return action === "shipment_void_approved" || action === "shipment_line_returned"; }
+function sourceTerminalLabel(source: string | null) { const labels: Record<string, string> = { web: "管理员网页", "admin-web": "管理员网页", web_admin: "管理员网页", "admin-mini": "管理员小程序", "factory-mini": "工厂小程序" }; return source ? (labels[source] || source) : "系统"; }
 function toggleDetailSort(key: DetailSortKey) { if (detailSortKey.value === key) detailSortOrder.value = detailSortOrder.value === "asc" ? "desc" : "asc"; else { detailSortKey.value = key; detailSortOrder.value = "asc"; } }
 function sortClass(key: DetailSortKey) { return { "is-sorted": detailSortKey.value === key, "is-sort-desc": detailSortKey.value === key && detailSortOrder.value === "desc" }; }
 function openAction(action: Action) { pendingAction.value = action; reopenReason.value = ""; actionError.value = ""; }

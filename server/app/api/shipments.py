@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Header, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
@@ -9,8 +10,11 @@ from app.modules.shipments import (
     DraftBoxInput,
     DraftItemInput,
     ShipmentDraftSnapshot,
+    ShipmentReturnEventSnapshot,
+    ShipmentReturnInput,
     ShipmentService,
     ShipmentValidationError,
+    ShipmentVoidRequestSnapshot,
 )
 
 
@@ -25,6 +29,19 @@ class ApiModel(BaseModel):
 
 class DraftCreate(ApiModel):
     preferred_order_id: str | None = None
+
+
+class ShipmentVoidRequestResponse(ApiModel):
+    request_id: str
+    shipment_id: str
+    status: str
+    reason: str
+    requested_by: str
+    requested_by_name: str
+    requested_at: datetime
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    review_comment: str | None = None
 
 
 class ShipmentDraftResponse(ApiModel):
@@ -43,6 +60,8 @@ class ShipmentDraftResponse(ApiModel):
     submitted_at: datetime | None = None
     lines: list["ShipmentLineResponse"] = []
     boxes: list["ShipmentBoxResponse"] = []
+    void_request: ShipmentVoidRequestResponse | None = None
+    return_events: list["ShipmentReturnEventResponse"] = []
 
 
 class DraftItemWrite(ApiModel):
@@ -61,6 +80,24 @@ class DraftSave(ApiModel):
     note: str = Field(default="", max_length=500)
 
 
+class VoidRequestCreate(ApiModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class VoidReviewWrite(ApiModel):
+    comment: str = Field(default="", max_length=500)
+
+
+class ShipmentReturnLineWrite(ApiModel):
+    shipment_line_id: StrictInt = Field(gt=0)
+    quantity: StrictInt = Field(gt=0)
+
+
+class ShipmentReturnWrite(ApiModel):
+    reason: str = Field(min_length=1, max_length=500)
+    lines: list[ShipmentReturnLineWrite] = Field(min_length=1)
+
+
 class ShipmentLineResponse(ApiModel):
     assignment_id: int
     order_id: str
@@ -69,6 +106,30 @@ class ShipmentLineResponse(ApiModel):
     product_name: str
     properties_value: str
     quantity: int
+    line_id: int | None = None
+    returned_quantity: int = 0
+    returnable_quantity: int = 0
+
+
+class ShipmentReturnLineResponse(ApiModel):
+    shipment_line_id: int
+    order_no: str
+    sku_id: str
+    product_name: str
+    properties_value: str
+    quantity: int
+    before_shipped_quantity: int
+    after_shipped_quantity: int
+
+
+class ShipmentReturnEventResponse(ApiModel):
+    event_id: str
+    shipment_id: str
+    return_date: date
+    reason: str
+    returned_by: str
+    returned_at: datetime
+    lines: list[ShipmentReturnLineResponse]
 
 
 class ShipmentBoxResponse(ApiModel):
@@ -103,6 +164,18 @@ def _draft_response(draft: ShipmentDraftSnapshot) -> ShipmentDraftResponse:
     return ShipmentDraftResponse.model_validate(draft, from_attributes=True)
 
 
+def _void_request_response(
+    request: ShipmentVoidRequestSnapshot,
+) -> ShipmentVoidRequestResponse:
+    return ShipmentVoidRequestResponse.model_validate(request, from_attributes=True)
+
+
+def _return_event_response(
+    event: ShipmentReturnEventSnapshot,
+) -> ShipmentReturnEventResponse:
+    return ShipmentReturnEventResponse.model_validate(event, from_attributes=True)
+
+
 def create_shipment_router(
     service: ShipmentService,
     identity: IdentityAccessService,
@@ -128,6 +201,24 @@ def create_shipment_router(
             if token:
                 return identity.authenticate_session(token=token, terminal="mini"), "mini"
         raise SessionInvalid("session is missing")
+
+    def web_admin(
+        token: str | None,
+        csrf_token: str | None,
+        *,
+        require_csrf: bool,
+    ) -> UserSnapshot:
+        if not token:
+            raise SessionInvalid("web session is missing")
+        actor = identity.authenticate_session(
+            token=token,
+            terminal="web",
+            csrf_token=csrf_token,
+            require_csrf=require_csrf,
+        )
+        if actor.role != "admin":
+            raise PermissionDenied("administrator role required")
+        return actor
 
     @router.post(
         "/factory/shipments/drafts",
@@ -240,6 +331,31 @@ def create_shipment_router(
         ]
         return ShipmentListResponse(items=items, total=len(items))
 
+    @router.post(
+        "/factory/shipments/{shipment_id}/void-requests",
+        response_model=ShipmentVoidRequestResponse,
+        status_code=201,
+        tags=["shipment-factory"],
+    )
+    def request_void(
+        shipment_id: str,
+        payload: VoidRequestCreate,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> ShipmentVoidRequestResponse:
+        actor = factory_user(authorization)
+        if not idempotency_key:
+            raise ShipmentValidationError("Idempotency-Key is required")
+        return _void_request_response(
+            service.request_void(
+                actor_id=actor.user_id,
+                factory_id=actor.factory_id or "",
+                shipment_id=shipment_id,
+                reason=payload.reason,
+                idempotency_key=idempotency_key,
+            )
+        )
+
     @router.get(
         "/factory/shipments/{shipment_id}",
         response_model=ShipmentDraftResponse,
@@ -278,5 +394,110 @@ def create_shipment_router(
         if actor.role != "admin":
             raise PermissionDenied("administrator role required")
         return _draft_response(service.get_shipment(shipment_id=shipment_id))
+
+    @router.get(
+        "/admin/shipments/{shipment_id}/export",
+        tags=["shipment-admin"],
+    )
+    def export_shipment(
+        shipment_id: str,
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> Response:
+        web_admin(ot_web_session, None, require_csrf=False)
+        result = service.export_shipment(shipment_id=shipment_id)
+        encoded_filename = quote(result.filename)
+        return Response(
+            content=result.content,
+            media_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+            },
+        )
+
+    @router.post(
+        "/admin/shipments/{shipment_id}/returns",
+        response_model=ShipmentReturnEventResponse,
+        status_code=201,
+        tags=["shipment-admin"],
+    )
+    def return_shipment(
+        shipment_id: str,
+        payload: ShipmentReturnWrite,
+        response: Response,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> ShipmentReturnEventResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        if not idempotency_key:
+            raise ShipmentValidationError("Idempotency-Key is required")
+        event, created = service.return_shipment(
+            actor_id=actor.user_id,
+            shipment_id=shipment_id,
+            reason=payload.reason,
+            lines=[
+                ShipmentReturnInput(
+                    shipment_line_id=line.shipment_line_id,
+                    quantity=line.quantity,
+                )
+                for line in payload.lines
+            ],
+            idempotency_key=idempotency_key,
+        )
+        if not created:
+            response.status_code = 200
+        return _return_event_response(event)
+
+    @router.post(
+        "/admin/shipment-void-requests/{request_id}/approve",
+        response_model=ShipmentVoidRequestResponse,
+        tags=["shipment-admin"],
+    )
+    def approve_void_request(
+        request_id: str,
+        payload: VoidReviewWrite,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> ShipmentVoidRequestResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        if not idempotency_key:
+            raise ShipmentValidationError("Idempotency-Key is required")
+        return _void_request_response(
+            service.review_void(
+                actor_id=actor.user_id,
+                request_id=request_id,
+                approve=True,
+                comment=payload.comment,
+                idempotency_key=idempotency_key,
+            )
+        )
+
+    @router.post(
+        "/admin/shipment-void-requests/{request_id}/reject",
+        response_model=ShipmentVoidRequestResponse,
+        tags=["shipment-admin"],
+    )
+    def reject_void_request(
+        request_id: str,
+        payload: VoidReviewWrite,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> ShipmentVoidRequestResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        if not idempotency_key:
+            raise ShipmentValidationError("Idempotency-Key is required")
+        return _void_request_response(
+            service.review_void(
+                actor_id=actor.user_id,
+                request_id=request_id,
+                approve=False,
+                comment=payload.comment,
+                idempotency_key=idempotency_key,
+            )
+        )
 
     return router

@@ -1,6 +1,8 @@
 from datetime import date, datetime
+from io import BytesIO
 
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -10,6 +12,7 @@ from app.db.models import (
     IdempotencyRecord,
     Order,
     OrderAssignment,
+    OrderCompletionRecord,
     OrderLine,
     OutboxMessage,
     Product,
@@ -20,6 +23,9 @@ from app.db.models import (
     ShipmentBoxItem,
     ShipmentLine,
     ShipmentNumberCounter,
+    ShipmentReturnEvent,
+    ShipmentReturnLine,
+    ShipmentVoidRequest,
     User,
     UserSession,
 )
@@ -27,6 +33,7 @@ from app.main import create_app
 from app.modules.identity_access import IdentityAccessService
 
 USER_IDS = ["shipment-api-factory-a-user", "shipment-api-factory-b-user"]
+ADMIN_ID = "shipment-api-admin"
 FACTORY_IDS = ["shipment-api-factory-a", "shipment-api-factory-b"]
 ORDER_ID = "shipment-api-order-a"
 PRODUCT_ID = "shipment-api-product"
@@ -39,6 +46,18 @@ def _clean(engine: Engine) -> None:
         box_ids = select(ShipmentBox.box_id).where(ShipmentBox.shipment_id.in_(shipment_ids))
         assignment_ids = select(OrderAssignment.order_assignment_id).where(
             OrderAssignment.factory_id.in_(FACTORY_IDS)
+        )
+        session.execute(
+            delete(ShipmentVoidRequest).where(ShipmentVoidRequest.shipment_id.in_(shipment_ids))
+        )
+        return_event_ids = select(ShipmentReturnEvent.event_id).where(
+            ShipmentReturnEvent.shipment_id.in_(shipment_ids)
+        )
+        session.execute(
+            delete(ShipmentReturnLine).where(ShipmentReturnLine.event_id.in_(return_event_ids))
+        )
+        session.execute(
+            delete(ShipmentReturnEvent).where(ShipmentReturnEvent.shipment_id.in_(shipment_ids))
         )
         session.execute(delete(QuantityLedger).where(QuantityLedger.source_id.in_(shipment_ids)))
         session.execute(delete(ShipmentLine).where(ShipmentLine.shipment_id.in_(shipment_ids)))
@@ -56,12 +75,15 @@ def _clean(engine: Engine) -> None:
             delete(QuantityLedger).where(QuantityLedger.order_assignment_id.in_(assignment_ids))
         )
         session.execute(delete(OrderAssignment).where(OrderAssignment.factory_id.in_(FACTORY_IDS)))
+        session.execute(
+            delete(OrderCompletionRecord).where(OrderCompletionRecord.order_id == ORDER_ID)
+        )
         session.execute(delete(OrderLine).where(OrderLine.order_id == ORDER_ID))
         session.execute(delete(Order).where(Order.order_id == ORDER_ID))
-        session.execute(delete(UserSession).where(UserSession.user_id.in_(USER_IDS)))
+        session.execute(delete(UserSession).where(UserSession.user_id.in_([*USER_IDS, ADMIN_ID])))
         session.execute(delete(ProductVariant).where(ProductVariant.variant_id == VARIANT_ID))
         session.execute(delete(Product).where(Product.product_id == PRODUCT_ID))
-        session.execute(delete(User).where(User.user_id.in_(USER_IDS)))
+        session.execute(delete(User).where(User.user_id.in_([*USER_IDS, ADMIN_ID])))
         session.execute(delete(Factory).where(Factory.factory_id.in_(FACTORY_IDS)))
         session.execute(
             delete(ShipmentNumberCounter).where(
@@ -89,16 +111,24 @@ def _seed(engine: Engine, *, initial_shipped_quantity: int = 0) -> int:
         session.add_all(
             [
                 User(
-                    user_id=user_id,
-                    role="factory",
+                    user_id=ADMIN_ID,
+                    role="admin",
                     is_enabled=True,
-                    feishu_display_name=f"S07工厂用户{index}",
-                    factory_id=factory_id,
-                    factory_position="employee",
-                )
-                for index, (user_id, factory_id) in enumerate(
-                    zip(USER_IDS, FACTORY_IDS, strict=True), 1
-                )
+                    feishu_display_name="S08管理员",
+                ),
+                *[
+                    User(
+                        user_id=user_id,
+                        role="factory",
+                        is_enabled=True,
+                        feishu_display_name=f"S07工厂用户{index}",
+                        factory_id=factory_id,
+                        factory_position="employee",
+                    )
+                    for index, (user_id, factory_id) in enumerate(
+                        zip(USER_IDS, FACTORY_IDS, strict=True), 1
+                    )
+                ],
             ]
         )
         session.add(
@@ -359,5 +389,467 @@ def test_factory_catalog_returns_only_its_published_assignments_with_initial_pro
                     "items": [],
                     "total": 0,
                 }
+    finally:
+        _clean(test_database_engine)
+
+
+def test_factory_requests_shipment_withdrawal_without_changing_quantity(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    _clean(test_database_engine)
+    assignment_id = _seed(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"shipment-void-token-secret",
+        phone_encryption_secret=b"shipment-void-phone-encryption",
+        phone_digest_secret=b"shipment-void-phone-digest",
+    )
+    factory = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    app = create_app(database_url=test_database_url, identity_service=identity)
+
+    try:
+        with TestClient(app, base_url="https://testserver") as client:
+            client.headers["Authorization"] = f"Bearer {factory.access_token}"
+            shipment_id = client.post(
+                "/api/v1/factory/shipments/drafts",
+                json={"preferredOrderId": ORDER_ID},
+            ).json()["shipmentId"]
+            client.put(
+                f"/api/v1/factory/shipments/drafts/{shipment_id}",
+                json={
+                    "boxes": [
+                        {
+                            "boxNo": 1,
+                            "groupKey": None,
+                            "items": [{"assignmentId": assignment_id, "quantity": 12}],
+                        }
+                    ],
+                    "note": "",
+                },
+            )
+            client.post(
+                f"/api/v1/factory/shipments/drafts/{shipment_id}/submit",
+                headers={"Idempotency-Key": "shipment-void-submit"},
+            )
+
+            response = client.post(
+                f"/api/v1/factory/shipments/{shipment_id}/void-requests",
+                headers={"Idempotency-Key": "shipment-void-request"},
+                json={"reason": "  装箱数量填写错误  "},
+            )
+
+            assert response.status_code == 201
+            assert response.json()["shipmentId"] == shipment_id
+            assert response.json()["status"] == "PENDING"
+            assert response.json()["reason"] == "装箱数量填写错误"
+            assert response.json()["requestedByName"] == "S07工厂用户1"
+            detail = client.get(f"/api/v1/factory/shipments/{shipment_id}").json()
+            assert detail["status"] == "VOID_PENDING"
+            assert detail["voidRequest"]["requestId"] == response.json()["requestId"]
+            assert detail["voidRequest"]["requestedByName"] == "S07工厂用户1"
+            catalog = client.get("/api/v1/factory/shipment-catalog").json()["items"][0]
+            assert catalog["shippedQuantity"] == 12
+            assert catalog["pendingQuantity"] == 28
+    finally:
+        _clean(test_database_engine)
+
+
+def test_admin_approves_withdrawal_once_and_reverses_the_original_quantity(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    _clean(test_database_engine)
+    assignment_id = _seed(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"shipment-approve-token-secret",
+        phone_encryption_secret=b"shipment-approve-phone-encryption",
+        phone_digest_secret=b"shipment-approve-phone-digest",
+    )
+    factory = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    admin = identity.issue_session(user_id=ADMIN_ID, terminal="web")
+    app = create_app(database_url=test_database_url, identity_service=identity)
+
+    try:
+        with TestClient(app, base_url="https://testserver") as factory_client:
+            factory_client.headers["Authorization"] = f"Bearer {factory.access_token}"
+            shipment_id = factory_client.post(
+                "/api/v1/factory/shipments/drafts", json={"preferredOrderId": ORDER_ID}
+            ).json()["shipmentId"]
+            factory_client.put(
+                f"/api/v1/factory/shipments/drafts/{shipment_id}",
+                json={
+                    "boxes": [
+                        {
+                            "boxNo": 1,
+                            "groupKey": None,
+                            "items": [{"assignmentId": assignment_id, "quantity": 12}],
+                        }
+                    ],
+                    "note": "",
+                },
+            )
+            factory_client.post(
+                f"/api/v1/factory/shipments/drafts/{shipment_id}/submit",
+                headers={"Idempotency-Key": "shipment-approve-submit"},
+            )
+            with Session(test_database_engine) as session, session.begin():
+                order = session.get(Order, ORDER_ID)
+                assert order is not None
+                order.lifecycle = "COMPLETED"
+                order.completed_at = datetime(2026, 8, 25, 9, 0)
+                order.completed_by = ADMIN_ID
+            request = factory_client.post(
+                f"/api/v1/factory/shipments/{shipment_id}/void-requests",
+                headers={"Idempotency-Key": "shipment-approve-request"},
+                json={"reason": "装箱数量填写错误"},
+            ).json()
+
+        with TestClient(app, base_url="https://testserver") as admin_client:
+            admin_client.cookies.set("ot_web_session", admin.access_token)
+            admin_client.cookies.set("ot_csrf", admin.csrf_token or "")
+            response = admin_client.post(
+                f"/api/v1/admin/shipment-void-requests/{request['requestId']}/approve",
+                headers={
+                    "Idempotency-Key": "shipment-approve-review",
+                    "X-CSRF-Token": admin.csrf_token or "",
+                },
+                json={"comment": "确认撤回"},
+            )
+            assert response.status_code == 200
+            assert response.json()["status"] == "APPROVED"
+            detail = admin_client.get(f"/api/v1/admin/shipments/{shipment_id}").json()
+            assert detail["status"] == "VOIDED"
+            audit_contents = [
+                item["content"]
+                for item in admin_client.get(
+                    f"/api/v1/admin/orders/{ORDER_ID}/audit-logs"
+                ).json()["items"]
+            ]
+            assert "通过撤回发货申请，已发数量回退 12 件" in audit_contents
+            assert "提交发货单，发货 12 件" in audit_contents
+            repeated = admin_client.post(
+                f"/api/v1/admin/shipment-void-requests/{request['requestId']}/approve",
+                headers={
+                    "Idempotency-Key": "shipment-approve-review",
+                    "X-CSRF-Token": admin.csrf_token or "",
+                },
+                json={"comment": "确认撤回"},
+            )
+            assert repeated.status_code == 200
+            assert repeated.json()["status"] == "APPROVED"
+
+        with Session(test_database_engine) as session:
+            deltas = list(
+                session.scalars(
+                    select(QuantityLedger.quantity_delta)
+                    .where(QuantityLedger.order_assignment_id == assignment_id)
+                    .order_by(QuantityLedger.ledger_id)
+                )
+            )
+            assert deltas == [12, -12]
+            order = session.get(Order, ORDER_ID)
+            assert order is not None
+            assert order.lifecycle == "PUBLISHED"
+            reopen = session.scalar(
+                select(OrderCompletionRecord)
+                .where(OrderCompletionRecord.order_id == ORDER_ID)
+                .order_by(OrderCompletionRecord.record_id.desc())
+            )
+            assert reopen is not None
+            assert reopen.action == "REOPEN"
+    finally:
+        _clean(test_database_engine)
+
+
+def test_admin_partially_returns_original_shipment_line_and_quantity_can_be_resent(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    _clean(test_database_engine)
+    assignment_id = _seed(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"shipment-return-token-secret",
+        phone_encryption_secret=b"shipment-return-phone-encryption",
+        phone_digest_secret=b"shipment-return-phone-digest",
+    )
+    factory = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    admin = identity.issue_session(user_id=ADMIN_ID, terminal="web")
+    app = create_app(database_url=test_database_url, identity_service=identity)
+
+    try:
+        with TestClient(app, base_url="https://testserver") as factory_client:
+            factory_client.headers["Authorization"] = f"Bearer {factory.access_token}"
+            shipment_id = factory_client.post(
+                "/api/v1/factory/shipments/drafts", json={"preferredOrderId": ORDER_ID}
+            ).json()["shipmentId"]
+            factory_client.put(
+                f"/api/v1/factory/shipments/drafts/{shipment_id}",
+                json={
+                    "boxes": [
+                        {
+                            "boxNo": 1,
+                            "groupKey": None,
+                            "items": [{"assignmentId": assignment_id, "quantity": 12}],
+                        }
+                    ],
+                    "note": "",
+                },
+            )
+            factory_client.post(
+                f"/api/v1/factory/shipments/drafts/{shipment_id}/submit",
+                headers={"Idempotency-Key": "shipment-return-submit"},
+            )
+        with Session(test_database_engine) as session:
+            shipment_line_id = session.scalar(
+                select(ShipmentLine.line_id).where(ShipmentLine.shipment_id == shipment_id)
+            )
+            assert shipment_line_id is not None
+
+        with TestClient(app, base_url="https://testserver") as admin_client:
+            admin_client.cookies.set("ot_web_session", admin.access_token)
+            admin_client.cookies.set("ot_csrf", admin.csrf_token or "")
+            response = admin_client.post(
+                f"/api/v1/admin/shipments/{shipment_id}/returns",
+                headers={
+                    "Idempotency-Key": "shipment-return-once",
+                    "X-CSRF-Token": admin.csrf_token or "",
+                },
+                json={
+                    "reason": "仓库验货退回",
+                    "lines": [{"shipmentLineId": shipment_line_id, "quantity": 5}],
+                },
+            )
+            assert response.status_code == 201
+            assert response.json()["shipmentId"] == shipment_id
+            assert response.json()["lines"][0]["orderNo"] == "S07-ORDER-A"
+            assert response.json()["lines"][0]["quantity"] == 5
+            repeated = admin_client.post(
+                f"/api/v1/admin/shipments/{shipment_id}/returns",
+                headers={
+                    "Idempotency-Key": "shipment-return-once",
+                    "X-CSRF-Token": admin.csrf_token or "",
+                },
+                json={
+                    "reason": "仓库验货退回",
+                    "lines": [{"shipmentLineId": shipment_line_id, "quantity": 5}],
+                },
+            )
+            assert repeated.status_code == 200
+            assert repeated.json()["eventId"] == response.json()["eventId"]
+            detail = admin_client.get(f"/api/v1/admin/shipments/{shipment_id}").json()
+            assert detail["lines"][0]["lineId"] == shipment_line_id
+            assert detail["lines"][0]["quantity"] == 12
+            assert detail["lines"][0]["returnedQuantity"] == 5
+            assert detail["lines"][0]["returnableQuantity"] == 7
+            over_return = admin_client.post(
+                f"/api/v1/admin/shipments/{shipment_id}/returns",
+                headers={
+                    "Idempotency-Key": "shipment-return-over-limit",
+                    "X-CSRF-Token": admin.csrf_token or "",
+                },
+                json={
+                    "reason": "超量退回应失败",
+                    "lines": [{"shipmentLineId": shipment_line_id, "quantity": 8}],
+                },
+            )
+            assert over_return.status_code == 409
+            decimal_return = admin_client.post(
+                f"/api/v1/admin/shipments/{shipment_id}/returns",
+                headers={
+                    "Idempotency-Key": "shipment-return-decimal",
+                    "X-CSRF-Token": admin.csrf_token or "",
+                },
+                json={
+                    "reason": "小数退回应失败",
+                    "lines": [{"shipmentLineId": shipment_line_id, "quantity": 1.5}],
+                },
+            )
+            assert decimal_return.status_code == 422
+
+        with Session(test_database_engine) as session:
+            deltas = list(
+                session.scalars(
+                    select(QuantityLedger.quantity_delta)
+                    .where(QuantityLedger.order_assignment_id == assignment_id)
+                    .order_by(QuantityLedger.ledger_id)
+                )
+            )
+            assert deltas == [12, -5]
+    finally:
+        _clean(test_database_engine)
+
+
+def test_returned_shipment_may_request_withdrawal_but_can_only_be_rejected(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    _clean(test_database_engine)
+    assignment_id = _seed(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"shipment-return-void-token",
+        phone_encryption_secret=b"shipment-return-void-phone",
+        phone_digest_secret=b"shipment-return-void-digest",
+    )
+    factory = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    admin = identity.issue_session(user_id=ADMIN_ID, terminal="web")
+    app = create_app(database_url=test_database_url, identity_service=identity)
+
+    try:
+        with TestClient(app, base_url="https://testserver") as factory_client:
+            factory_client.headers["Authorization"] = f"Bearer {factory.access_token}"
+            shipment_id = factory_client.post(
+                "/api/v1/factory/shipments/drafts", json={"preferredOrderId": ORDER_ID}
+            ).json()["shipmentId"]
+            factory_client.put(
+                f"/api/v1/factory/shipments/drafts/{shipment_id}",
+                json={
+                    "boxes": [
+                        {
+                            "boxNo": 1,
+                            "groupKey": None,
+                            "items": [{"assignmentId": assignment_id, "quantity": 12}],
+                        }
+                    ],
+                    "note": "",
+                },
+            )
+            factory_client.post(
+                f"/api/v1/factory/shipments/drafts/{shipment_id}/submit",
+                headers={"Idempotency-Key": "shipment-return-void-submit"},
+            )
+        with Session(test_database_engine) as session:
+            shipment_line_id = session.scalar(
+                select(ShipmentLine.line_id).where(ShipmentLine.shipment_id == shipment_id)
+            )
+            assert shipment_line_id is not None
+
+        with TestClient(app, base_url="https://testserver") as admin_client:
+            admin_client.cookies.set("ot_web_session", admin.access_token)
+            admin_client.cookies.set("ot_csrf", admin.csrf_token or "")
+            write_headers = {"X-CSRF-Token": admin.csrf_token or ""}
+            returned = admin_client.post(
+                f"/api/v1/admin/shipments/{shipment_id}/returns",
+                headers={**write_headers, "Idempotency-Key": "return-before-void"},
+                json={
+                    "reason": "部分退回",
+                    "lines": [{"shipmentLineId": shipment_line_id, "quantity": 3}],
+                },
+            )
+            assert returned.status_code == 201
+
+        with TestClient(app, base_url="https://testserver") as factory_client:
+            factory_client.headers["Authorization"] = f"Bearer {factory.access_token}"
+            request = factory_client.post(
+                f"/api/v1/factory/shipments/{shipment_id}/void-requests",
+                headers={"Idempotency-Key": "void-after-return"},
+                json={"reason": "仍需申请撤回"},
+            )
+            assert request.status_code == 201
+
+        with TestClient(app, base_url="https://testserver") as admin_client:
+            admin_client.cookies.set("ot_web_session", admin.access_token)
+            admin_client.cookies.set("ot_csrf", admin.csrf_token or "")
+            write_headers = {"X-CSRF-Token": admin.csrf_token or ""}
+            blocked_return = admin_client.post(
+                f"/api/v1/admin/shipments/{shipment_id}/returns",
+                headers={**write_headers, "Idempotency-Key": "return-while-void-pending"},
+                json={
+                    "reason": "待审期间不可退回",
+                    "lines": [{"shipmentLineId": shipment_line_id, "quantity": 1}],
+                },
+            )
+            assert blocked_return.status_code == 409
+            blocked_approve = admin_client.post(
+                f"/api/v1/admin/shipment-void-requests/{request.json()['requestId']}/approve",
+                headers={**write_headers, "Idempotency-Key": "approve-returned-shipment"},
+                json={"comment": ""},
+            )
+            assert blocked_approve.status_code == 409
+            rejected = admin_client.post(
+                f"/api/v1/admin/shipment-void-requests/{request.json()['requestId']}/reject",
+                headers={**write_headers, "Idempotency-Key": "reject-returned-shipment"},
+                json={"comment": "已有退回，只能拒绝"},
+            )
+            assert rejected.status_code == 200
+            detail = admin_client.get(f"/api/v1/admin/shipments/{shipment_id}").json()
+            assert detail["status"] == "SHIPPED"
+            assert detail["lines"][0]["returnableQuantity"] == 9
+
+        with Session(test_database_engine) as session:
+            deltas = list(
+                session.scalars(
+                    select(QuantityLedger.quantity_delta)
+                    .where(QuantityLedger.order_assignment_id == assignment_id)
+                    .order_by(QuantityLedger.ledger_id)
+                )
+            )
+            assert deltas == [12, -3]
+    finally:
+        _clean(test_database_engine)
+
+
+def test_web_admin_downloads_shipment_workbook_from_submitted_facts(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    _clean(test_database_engine)
+    assignment_id = _seed(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"shipment-export-token",
+        phone_encryption_secret=b"shipment-export-phone",
+        phone_digest_secret=b"shipment-export-digest",
+    )
+    factory = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    admin = identity.issue_session(user_id=ADMIN_ID, terminal="web")
+    app = create_app(database_url=test_database_url, identity_service=identity)
+
+    try:
+        with TestClient(app, base_url="https://testserver") as factory_client:
+            factory_client.headers["Authorization"] = f"Bearer {factory.access_token}"
+            shipment_id = factory_client.post(
+                "/api/v1/factory/shipments/drafts", json={"preferredOrderId": ORDER_ID}
+            ).json()["shipmentId"]
+            factory_client.put(
+                f"/api/v1/factory/shipments/drafts/{shipment_id}",
+                json={
+                    "boxes": [
+                        {
+                            "boxNo": 1,
+                            "groupKey": None,
+                            "items": [{"assignmentId": assignment_id, "quantity": 12}],
+                        }
+                    ],
+                    "note": "",
+                },
+            )
+            submitted = factory_client.post(
+                f"/api/v1/factory/shipments/drafts/{shipment_id}/submit",
+                headers={"Idempotency-Key": "shipment-export-submit"},
+            ).json()
+
+        with TestClient(app, base_url="https://testserver") as admin_client:
+            admin_client.cookies.set("ot_web_session", admin.access_token)
+            response = admin_client.get(f"/api/v1/admin/shipments/{shipment_id}/export")
+            assert response.status_code == 200
+            assert response.headers["content-type"] == (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            assert "filename*=UTF-8''" in response.headers["content-disposition"]
+            workbook = load_workbook(BytesIO(response.content), data_only=False)
+            assert workbook.sheetnames == ["发货明细", "汇总"]
+            assert workbook["发货明细"]["A3"].value == "S07-ORDER-A"
+            assert workbook["发货明细"]["F3"].value == 12
+            assert workbook["汇总"]["D2"].value == 12
+            assert submitted["shipmentNo"] in response.headers["content-disposition"]
     finally:
         _clean(test_database_engine)

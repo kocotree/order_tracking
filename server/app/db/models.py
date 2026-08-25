@@ -742,7 +742,10 @@ class Shipment(Base):
     __table_args__ = (
         UniqueConstraint("shipment_no", name="uq_shipments_no"),
         UniqueConstraint("active_draft_owner_id", name="uq_shipments_active_draft_owner"),
-        CheckConstraint("status IN ('DRAFT', 'SHIPPED')", name="ck_shipments_status"),
+        CheckConstraint(
+            "status IN ('DRAFT', 'SHIPPED', 'VOID_PENDING', 'VOIDED')",
+            name="ck_shipments_status",
+        ),
         Index("ix_shipments_factory_status", "factory_id", "status", "created_at"),
     )
 
@@ -832,6 +835,89 @@ class ShipmentLine(Base):
     sku_id_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
     product_name_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
     properties_value_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
+class ShipmentVoidRequest(Base):
+    __tablename__ = "shipment_void_requests"
+    __table_args__ = (
+        UniqueConstraint(
+            "requested_by",
+            "idempotency_key",
+            name="uq_shipment_void_request_actor_idempotency",
+        ),
+        UniqueConstraint("active_shipment_id", name="uq_shipment_void_request_active"),
+        CheckConstraint(
+            "status IN ('PENDING', 'APPROVED', 'REJECTED')",
+            name="ck_shipment_void_requests_status",
+        ),
+        Index("ix_shipment_void_requests_shipment", "shipment_id", "created_at"),
+    )
+
+    request_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    shipment_id: Mapped[str] = mapped_column(
+        ForeignKey("shipments.shipment_id", ondelete="RESTRICT"), nullable=False
+    )
+    active_shipment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("shipments.shipment_id", ondelete="RESTRICT")
+    )
+    requested_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    reviewed_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    review_comment: Mapped[str | None] = mapped_column(String(500))
+    idempotency_key: Mapped[str] = mapped_column(String(191), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class ShipmentReturnEvent(Base):
+    __tablename__ = "shipment_return_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "returned_by",
+            "idempotency_key",
+            name="uq_shipment_return_actor_idempotency",
+        ),
+        Index("ix_shipment_return_events_shipment", "shipment_id", "created_at"),
+    )
+
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    shipment_id: Mapped[str] = mapped_column(
+        ForeignKey("shipments.shipment_id", ondelete="RESTRICT"), nullable=False
+    )
+    returned_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    return_date: Mapped[date] = mapped_column(Date, nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(191), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class ShipmentReturnLine(Base):
+    __tablename__ = "shipment_return_lines"
+    __table_args__ = (
+        UniqueConstraint(
+            "event_id", "shipment_line_id", name="uq_shipment_return_lines_event_line"
+        ),
+        CheckConstraint("quantity > 0", name="ck_shipment_return_lines_quantity_positive"),
+        Index("ix_shipment_return_lines_shipment_line", "shipment_line_id"),
+    )
+
+    return_line_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("shipment_return_events.event_id", ondelete="RESTRICT"), nullable=False
+    )
+    shipment_line_id: Mapped[int] = mapped_column(
+        ForeignKey("shipment_lines.line_id", ondelete="RESTRICT"), nullable=False
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    before_shipped_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    after_shipped_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class QuantityLedger(Base):

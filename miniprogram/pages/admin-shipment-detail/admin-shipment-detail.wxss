@@ -18,3 +18,8 @@
   display: grid;
   gap: 8rpx;
 }
+.admin-ship-title { display: flex; gap: 20rpx; align-items: center; justify-content: space-between; }
+.admin-ship-status { padding: 8rpx 14rpx; color: #a45d00; font-size: 22rpx; font-weight: 750; background: #fff3dc; border-radius: 12rpx; }
+.admin-ship-status.is-voided { color: #c62828; background: #fff0f0; }
+.ship-log.is-warning .ship-log-dot { background: #f59e0b; border-color: #fff3dc; }
+.ship-log + .ship-log { border-top: 1rpx solid #edf0f3; }

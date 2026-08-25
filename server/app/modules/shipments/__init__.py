@@ -6,11 +6,16 @@ from app.modules.shipments.service import (
     ShipmentConflict,
     ShipmentDraftSnapshot,
     ShipmentError,
+    ShipmentExportResult,
     ShipmentLineSnapshot,
     ShipmentNotFound,
     ShipmentPermissionDenied,
+    ShipmentReturnEventSnapshot,
+    ShipmentReturnInput,
+    ShipmentReturnLineSnapshot,
     ShipmentService,
     ShipmentValidationError,
+    ShipmentVoidRequestSnapshot,
 )
 
 __all__ = [
@@ -21,9 +26,14 @@ __all__ = [
     "ShipmentConflict",
     "ShipmentDraftSnapshot",
     "ShipmentError",
+    "ShipmentExportResult",
     "ShipmentLineSnapshot",
     "ShipmentNotFound",
     "ShipmentPermissionDenied",
+    "ShipmentReturnEventSnapshot",
+    "ShipmentReturnInput",
+    "ShipmentReturnLineSnapshot",
     "ShipmentService",
     "ShipmentValidationError",
+    "ShipmentVoidRequestSnapshot",
 ]

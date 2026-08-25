@@ -1,1 +1,37 @@
-/* shared in app.wxss */
+/* Shared detail cards live in app.wxss; S08 withdrawal states follow the approved sheet. */
+.ship-detail-page.has-withdraw-bar { padding-bottom: calc(136rpx + env(safe-area-inset-bottom)); }
+.ship-detail-title { display: flex; gap: 20rpx; align-items: center; justify-content: space-between; }
+.withdraw-status { padding: 8rpx 14rpx; color: #a45d00; font-size: 22rpx; font-weight: 750; background: #fff3dc; border-radius: 12rpx; }
+.withdraw-status.is-voided { color: #c62828; background: #fff0f0; }
+.shipment-operation { display: flex; gap: 22rpx; padding: 26rpx 30rpx; border-top: 1rpx solid #edf0f3; }
+.shipment-operation > i { width: 14rpx; height: 14rpx; margin-top: 8rpx; background: #1677ff; border: 4rpx solid #dff1ff; border-radius: 50%; }
+.shipment-operation.is-withdraw > i { background: #f59e0b; border-color: #fff3dc; }
+.shipment-operation > view { display: grid; flex: 1; gap: 8rpx; }
+.shipment-operation b { font-size: 26rpx; }
+.shipment-operation text { color: #6f7b88; font-size: 22rpx; line-height: 1.5; }
+.shipment-withdraw-bar { position: fixed; z-index: 25; right: 0; bottom: 0; left: 0; box-sizing: border-box; width: 100%; max-width: 860rpx; margin: 0 auto; padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom)); background: rgba(255,255,255,.96); border-top: 1rpx solid #e2e7ed; }
+.shipment-withdraw-bar button { height: 96rpx; color: #d43838; font-size: 30rpx; font-weight: 800; line-height: 96rpx; background: #fff7f7; border: 1rpx solid #ffb5b5; border-radius: 26rpx; }
+.shipment-withdraw-layer { position: fixed; z-index: 80; inset: 0; display: flex; align-items: flex-end; justify-content: center; background: rgba(20,28,38,.48); }
+.shipment-withdraw-sheet { box-sizing: border-box; width: 100%; max-width: 860rpx; padding: 16rpx 36rpx calc(32rpx + env(safe-area-inset-bottom)); background: #fff; border-radius: 44rpx 44rpx 0 0; box-shadow: 0 -32rpx 84rpx rgba(20,36,58,.18); }
+.sheet-handle { width: 72rpx; height: 8rpx; margin: 0 auto 14rpx; background: #d7dce2; border-radius: 8rpx; }
+.withdraw-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 12rpx 0 28rpx; border-bottom: 1rpx solid #e2e7ed; }
+.withdraw-sheet-head > view { display: grid; gap: 6rpx; }
+.withdraw-sheet-head text { color: #1677ff; font-size: 22rpx; font-weight: 700; }
+.withdraw-sheet-head b { font-size: 40rpx; }
+.withdraw-sheet-head button { width: 76rpx; height: 76rpx; margin: 0; padding: 0; color: #566273; font-size: 42rpx; line-height: 72rpx; background: #f4f6f8; border-radius: 50%; }
+.withdraw-form, .withdraw-confirm { display: grid; gap: 26rpx; padding: 30rpx 0; }
+.withdraw-summary { display: grid; grid-template-columns: repeat(2, 1fr); padding: 24rpx 28rpx; background: #f5f8fc; border-radius: 24rpx; }
+.withdraw-summary > view { display: grid; gap: 6rpx; }
+.withdraw-summary > view + view { padding-left: 28rpx; border-left: 1rpx solid #dfe5ec; }
+.withdraw-summary text, .withdraw-reason-field > text { color: #6f7b88; font-size: 22rpx; font-weight: 700; }
+.withdraw-summary b { font-size: 30rpx; }
+.withdraw-reason-field { position: relative; display: grid; gap: 14rpx; }
+.withdraw-reason-field textarea { box-sizing: border-box; width: 100%; min-height: 196rpx; padding: 24rpx 26rpx 50rpx; font-size: 28rpx; border: 1rpx solid #dce2e9; border-radius: 24rpx; }
+.withdraw-reason-field > text:last-child { position: absolute; right: 22rpx; bottom: 16rpx; font-size: 20rpx; }
+.withdraw-confirm > text:first-child { padding: 22rpx 24rpx; color: #78561c; font-size: 24rpx; line-height: 1.55; background: #fff8e8; border-radius: 20rpx; }
+.withdraw-confirm > view { display: grid; grid-template-columns: 156rpx 1fr; gap: 24rpx; padding: 18rpx 0; font-size: 24rpx; border-bottom: 1rpx solid #e2e7ed; }
+.withdraw-confirm > view text { color: #6f7b88; }
+.withdraw-error { min-height: 30rpx; color: #d43838; font-size: 22rpx; }
+.withdraw-actions { display: grid; grid-template-columns: 1fr 1.5fr; gap: 20rpx; }
+.withdraw-actions button { height: 94rpx; font-size: 28rpx; font-weight: 800; line-height: 94rpx; border-radius: 24rpx; }
+.withdraw-actions .is-danger { color: #fff; background: #d43838; }

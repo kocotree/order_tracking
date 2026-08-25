@@ -37,7 +37,14 @@ export interface ShipmentLine {
   productName: string;
   propertiesValue: string;
   quantity: number;
+  lineId: number | null;
+  returnedQuantity: number;
+  returnableQuantity: number;
 }
+
+export interface ShipmentVoidRequest { requestId:string; shipmentId:string; status:"PENDING"|"APPROVED"|"REJECTED"; reason:string; requestedBy:string; requestedByName:string; requestedAt:string; reviewedBy:string|null; reviewedAt:string|null; reviewComment:string|null }
+export interface ShipmentReturnLine { shipmentLineId:number; orderNo:string; skuId:string; productName:string; propertiesValue:string; quantity:number; beforeShippedQuantity:number; afterShippedQuantity:number }
+export interface ShipmentReturnEvent { eventId:string; shipmentId:string; returnDate:string; reason:string; returnedBy:string; returnedAt:string; lines:ShipmentReturnLine[] }
 
 export interface ShipmentBox {
   boxNo: number;
@@ -59,6 +66,8 @@ export interface Shipment {
   totalQuantity: number;
   lines: ShipmentLine[];
   boxes: ShipmentBox[];
+  voidRequest: ShipmentVoidRequest | null;
+  returnEvents: ShipmentReturnEvent[];
   createdAt: string;
   submittedAt: string | null;
 }
@@ -345,6 +354,22 @@ export const shipmentApi = {
   list: () => request<ShipmentList>("/v1/admin/shipments"),
   get: (shipmentId: string) =>
     request<Shipment>(`/v1/admin/shipments/${encodeURIComponent(shipmentId)}`),
+  download: (shipment: Shipment) => download(
+    `/v1/admin/shipments/${encodeURIComponent(shipment.shipmentId)}/export`,
+    `${shipment.factoryName || shipment.factoryId}_${shipment.businessDate || ""}_${shipment.shipmentNo || shipment.shipmentId}.xlsx`,
+  ),
+  approveVoid: (requestId: string, comment = "") => request<ShipmentVoidRequest>(
+    `/v1/admin/shipment-void-requests/${encodeURIComponent(requestId)}/approve`,
+    { method: "POST", headers: idempotencyHeaders(), body: JSON.stringify({ comment }) },
+  ),
+  rejectVoid: (requestId: string, comment: string) => request<ShipmentVoidRequest>(
+    `/v1/admin/shipment-void-requests/${encodeURIComponent(requestId)}/reject`,
+    { method: "POST", headers: idempotencyHeaders(), body: JSON.stringify({ comment }) },
+  ),
+  createReturn: (shipmentId: string, reason: string, lines: { shipmentLineId:number; quantity:number }[]) => request<ShipmentReturnEvent>(
+    `/v1/admin/shipments/${encodeURIComponent(shipmentId)}/returns`,
+    { method: "POST", headers: idempotencyHeaders(), body: JSON.stringify({ reason, lines }) },
+  ),
 };
 
 export const orderImportApi = {

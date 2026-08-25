@@ -562,6 +562,7 @@ h1, h2, p { margin-top: 0; }
 .order-detail-page .detail-data-table th, .order-detail-page .detail-data-table td { height: 48px; padding: 8px 14px; font-size: 14px; font-weight: 700; text-align: left; vertical-align: middle; }
 .order-detail-page .detail-data-table th { height: 40px; font-weight: 800; }
 .order-detail-page .product-detail-table { min-width: 1080px; }
+.order-workspace.order-detail-page .product-detail-table th, .pending-import-detail-page .pending-import-detail-table th { padding-top: 0; padding-bottom: 0; }
 .order-detail-page .product-detail-table th:nth-child(1) { width: 56px; }
 .order-detail-page .product-detail-table th:nth-child(2) { width: 72px; }
 .order-detail-page .product-detail-table th:nth-child(3) { width: 110px; }
@@ -593,13 +594,20 @@ h1, h2, p { margin-top: 0; }
 .order-detail-page .detail-progress em { font-size: 12px; font-style: normal; font-weight: 700; text-align: right; }
 .order-detail-page .related-shipment-table { min-width: 900px; }
 .order-detail-page .related-shipment-table th { width: calc(100% / 6); }
-.order-audit-list article { display: grid; grid-template-columns: 170px 96px minmax(0, 1fr); gap: 16px; align-items: start; padding: 14px 20px; border-top: 1px solid var(--line); }
-.order-audit-list article:first-child { border-top: 0; }
-.order-audit-list time { color: var(--subtle); font-size: 13px; white-space: nowrap; }
-.order-audit-list strong { font-size: 14px; font-weight: 600; }
-.order-audit-list p { margin: 0; color: var(--text); line-height: 1.55; }
+.order-audit-card { overflow: hidden; }
+.order-audit-toggle { display: flex; width: 100%; min-height: 56px; align-items: center; justify-content: space-between; padding: 0 20px; color: var(--ink-strong); background: #fff; border: 0; cursor: pointer; }
+.order-audit-toggle:hover { background: #fafbfd; }
+.order-audit-toggle:focus-visible { outline: 2px solid var(--erp-blue); outline-offset: -2px; }
+.order-audit-toggle:disabled { cursor: default; }
+.order-audit-toggle:disabled:hover { background: #fff; }
+.order-audit-toggle-title { font-size: 18px; font-weight: 800; }
+.order-audit-toggle-title em { color: var(--subtle); font-size: 13px; font-style: normal; font-weight: 700; }
+.order-audit-toggle-action { display: flex; gap: 6px; align-items: center; color: var(--erp-blue-dark); font-size: 13px; font-weight: 750; }
+.order-audit-toggle:disabled .order-audit-toggle-action { color: var(--subtle); }
+.order-audit-toggle-action svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .16s ease; }
+.order-audit-card.is-expanded .order-audit-toggle-action svg { transform: rotate(180deg); }
+.order-audit-list { border-top: 1px solid var(--line); }
 .detail-empty-log { margin: 0; padding: 28px 20px; color: var(--subtle); text-align: center; }
-@media (max-width: 760px) { .order-audit-list article { grid-template-columns: 1fr; gap: 6px; } }
 .order-detail-page .detail-data-table td.detail-empty-row { height: 64px; color: var(--subtle); font-weight: 600; text-align: center; }
 .order-detail-page .validation-callout { margin: 12px 0 0; }
 @media (max-width: 760px) {
@@ -1156,8 +1164,11 @@ h1, h2, p { margin-top: 0; }
 .shipment-log-list {
   display: grid;
   gap: 0;
+  max-height: 320px;
   margin: 0;
   padding: 10px 18px 14px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   list-style: none;
 }
 
@@ -1234,3 +1245,32 @@ h1, h2, p { margin-top: 0; }
   .user-chip { display: none; }
   .topbar-title { color: var(--ink); font-size: 15px; }
 }
+
+/* S08 发货撤回审核、按原订单退回与清单下载。 */
+.shipment-void-card { overflow: hidden; }
+.shipment-void-content { display: flex; gap: 18px; align-items: flex-end; justify-content: space-between; padding: 16px; }
+.shipment-void-content dl { display: grid; flex: 1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 0; }
+.shipment-void-content dl > div { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 10px; font-size: 13px; }
+.shipment-void-content dl > div.is-wide { grid-column: 1 / -1; }
+.shipment-void-content dt { color: var(--subtle); font-weight: 700; }
+.shipment-void-content dd { margin: 0; color: var(--ink-strong); font-weight: 700; overflow-wrap: anywhere; }
+.shipment-void-actions { display: flex; gap: 12px; flex: 0 0 auto; }
+.shipment-log-dot.is-warning { background: #f59e0b; border-color: #fff3dc; }
+.status-badge.is-warning { color: #a45d00; background: #fff3dc; }
+.shipment-return-dialog { width: min(1120px, calc(100vw - 40px)); }
+.shipment-return-dialog .modal-body { display: grid; gap: 18px; }
+.shipment-return-table { width: 100%; min-width: 980px; table-layout: fixed; border-collapse: collapse; }
+.shipment-return-table th, .shipment-return-table td { height: 44px; padding: 0 10px; font-size: 13px; text-align: left; border: 1px solid #dde1e7; }
+.shipment-return-table th { height: 40px; color: #37404b; font-weight: 800; white-space: nowrap; background: #f1f3f6; }
+.shipment-return-table th:nth-child(1) { width: 52px; text-align: center; }
+.shipment-return-table th:nth-child(2) { width: 112px; }
+.shipment-return-table th:nth-child(3) { width: 118px; }
+.shipment-return-table th:nth-child(4) { width: 180px; }
+.shipment-return-table th:nth-child(5) { width: 145px; }
+.shipment-return-table th:nth-child(6), .shipment-return-table th:nth-child(7) { width: 90px; }
+.shipment-return-table th:nth-child(8) { width: 125px; }
+.shipment-return-table td:first-child { padding: 0 8px; text-align: center; }
+.return-quantity-input { box-sizing: border-box; width: 100%; height: 30px; padding: 0 8px; border: 1px solid #cfd6de; border-radius: 4px; }
+.return-reason-field, .reopen-field { display: grid; gap: 8px; color: var(--ink-strong); font-size: 13px; font-weight: 700; }
+.return-reason-field textarea, .reopen-field textarea { box-sizing: border-box; width: 100%; min-height: 84px; padding: 10px 12px; resize: vertical; border: 1px solid #cfd6de; border-radius: 4px; font: inherit; font-weight: 500; }
+@media (max-width: 760px) { .shipment-void-content { align-items: stretch; flex-direction: column; } .shipment-void-content dl { grid-template-columns: 1fr; } .shipment-void-content dl > div.is-wide { grid-column: auto; } }

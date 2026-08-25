@@ -1,4 +1,5 @@
 from app.modules.shipments.service import (
+    ShipmentCatalogItem,
     ShipmentDraftSnapshot,
     ShipmentError,
     ShipmentNotFound,
@@ -8,6 +9,7 @@ from app.modules.shipments.service import (
 
 __all__ = [
     "ShipmentDraftSnapshot",
+    "ShipmentCatalogItem",
     "ShipmentError",
     "ShipmentNotFound",
     "ShipmentPermissionDenied",

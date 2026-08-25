@@ -38,7 +38,7 @@ def _clean(engine: Engine) -> None:
         session.execute(delete(Factory).where(Factory.factory_id.in_(FACTORY_IDS)))
 
 
-def _seed(engine: Engine) -> None:
+def _seed(engine: Engine, *, initial_shipped_quantity: int = 0) -> int:
     now = datetime(2026, 8, 25, 8, 0)
     with Session(engine) as session, session.begin():
         session.add_all(
@@ -127,17 +127,18 @@ def _seed(engine: Engine) -> None:
         )
         session.add(line)
         session.flush()
-        session.add(
-            OrderAssignment(
+        assignment = OrderAssignment(
                 order_line_id=line.order_line_id,
                 factory_id=FACTORY_IDS[0],
                 assigned_quantity=40,
-                initial_shipped_quantity=0,
+                initial_shipped_quantity=initial_shipped_quantity,
                 factory_name_snapshot="S07接口工厂1",
                 created_at=now,
                 updated_at=now,
             )
-        )
+        session.add(assignment)
+        session.flush()
+        return assignment.order_assignment_id
 
 
 def test_factory_creates_one_server_draft_scoped_to_its_factory(
@@ -189,5 +190,54 @@ def test_factory_creates_one_server_draft_scoped_to_its_factory(
                 assert other_created.status_code == 201
                 assert other_created.json()["factoryId"] == FACTORY_IDS[1]
                 assert other_created.json()["shipmentId"] != created.json()["shipmentId"]
+    finally:
+        _clean(test_database_engine)
+
+
+def test_factory_catalog_returns_only_its_published_assignments_with_initial_progress(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    _clean(test_database_engine)
+    assignment_id = _seed(test_database_engine, initial_shipped_quantity=5)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"shipment-catalog-token-secret",
+        phone_encryption_secret=b"shipment-catalog-phone-encryption",
+        phone_digest_secret=b"shipment-catalog-phone-digest",
+    )
+    factory_a = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    factory_b = identity.issue_session(user_id=USER_IDS[1], terminal="mini")
+    app = create_app(database_url=test_database_url, identity_service=identity)
+
+    try:
+        with TestClient(app, base_url="https://testserver") as client:
+            client.headers["Authorization"] = f"Bearer {factory_a.access_token}"
+            response = client.get("/api/v1/factory/shipment-catalog")
+            assert response.status_code == 200
+            assert response.json() == {
+                "items": [
+                    {
+                        "assignmentId": assignment_id,
+                        "orderId": ORDER_ID,
+                        "orderNo": "S07-ORDER-A",
+                        "contractShipDate": "2026-09-01",
+                        "productName": "S07接口测试产品",
+                        "propertiesValue": "海军蓝 / 120",
+                        "assignedQuantity": 40,
+                        "shippedQuantity": 5,
+                        "pendingQuantity": 35,
+                    }
+                ],
+                "total": 1,
+            }
+
+            with TestClient(app, base_url="https://testserver") as other_factory:
+                other_factory.headers["Authorization"] = f"Bearer {factory_b.access_token}"
+                assert other_factory.get("/api/v1/factory/shipment-catalog").json() == {
+                    "items": [],
+                    "total": 0,
+                }
     finally:
         _clean(test_database_engine)

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from uuid import uuid4
 
 from sqlalchemy import Select, select
@@ -28,6 +28,19 @@ class ShipmentDraftSnapshot:
     created_by: str
     preferred_order_id: str | None
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class ShipmentCatalogItem:
+    assignment_id: int
+    order_id: str
+    order_no: str
+    contract_ship_date: date
+    product_name: str
+    properties_value: str
+    assigned_quantity: int
+    shipped_quantity: int
+    pending_quantity: int
 
 
 class ShipmentService:
@@ -71,6 +84,42 @@ class ShipmentService:
             session.add(draft)
             session.flush()
             return self._snapshot(draft), True
+
+    def list_catalog(self, *, factory_id: str) -> list[ShipmentCatalogItem]:
+        with self._sessions() as session:
+            rows = session.execute(
+                select(OrderAssignment, OrderLine, Order)
+                .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+                .join(Order, Order.order_id == OrderLine.order_id)
+                .where(
+                    OrderAssignment.factory_id == factory_id,
+                    Order.lifecycle == "PUBLISHED",
+                    Order.deleted_at.is_(None),
+                )
+                .order_by(
+                    Order.contract_ship_date,
+                    Order.order_no,
+                    OrderLine.order_line_id,
+                )
+            ).all()
+            return [
+                ShipmentCatalogItem(
+                    assignment_id=assignment.order_assignment_id,
+                    order_id=order.order_id,
+                    order_no=order.order_no,
+                    contract_ship_date=order.contract_ship_date,
+                    product_name=line.product_name_snapshot,
+                    properties_value=line.properties_value_snapshot,
+                    assigned_quantity=assignment.assigned_quantity,
+                    shipped_quantity=assignment.initial_shipped_quantity,
+                    pending_quantity=max(
+                        assignment.assigned_quantity
+                        - assignment.initial_shipped_quantity,
+                        0,
+                    ),
+                )
+                for assignment, line, order in rows
+            ]
 
     @staticmethod
     def _preferred_order_query(*, order_id: str, factory_id: str) -> Select[tuple[str]]:

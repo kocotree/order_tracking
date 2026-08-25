@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Header, Request, Response
 from pydantic import BaseModel, ConfigDict
 
@@ -25,6 +27,23 @@ class ShipmentDraftResponse(ApiModel):
     factory_id: str
     created_by: str
     preferred_order_id: str | None
+
+
+class ShipmentCatalogItemResponse(ApiModel):
+    assignment_id: int
+    order_id: str
+    order_no: str
+    contract_ship_date: date
+    product_name: str
+    properties_value: str
+    assigned_quantity: int
+    shipped_quantity: int
+    pending_quantity: int
+
+
+class ShipmentCatalogResponse(ApiModel):
+    items: list[ShipmentCatalogItemResponse]
+    total: int
 
 
 def _draft_response(draft: ShipmentDraftSnapshot) -> ShipmentDraftResponse:
@@ -70,5 +89,21 @@ def create_shipment_router(
         if not created:
             response.status_code = 200
         return _draft_response(draft)
+
+    @router.get(
+        "/factory/shipment-catalog",
+        response_model=ShipmentCatalogResponse,
+        tags=["shipment-factory"],
+    )
+    def shipment_catalog(
+        authorization: str | None = Header(default=None),
+    ) -> ShipmentCatalogResponse:
+        actor = factory_user(authorization)
+        items = service.list_catalog(factory_id=actor.factory_id or "")
+        responses = [
+            ShipmentCatalogItemResponse.model_validate(item, from_attributes=True)
+            for item in items
+        ]
+        return ShipmentCatalogResponse(items=responses, total=len(responses))
 
     return router

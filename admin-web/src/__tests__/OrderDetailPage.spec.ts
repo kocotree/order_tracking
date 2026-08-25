@@ -21,7 +21,7 @@ const sampleOrder = {
 afterEach(() => vi.restoreAllMocks());
 beforeEach(() => {
   vi.spyOn(orderApi, "auditLogs").mockResolvedValue({
-    items: [{ action: "order.imported_from_feishu", changes: {}, actorId: "admin-1", operatorName: "松子", content: "从飞书导入订单：订单数量 400，初始已发数量 100，未发数量 300。", sourceTerminal: "web_admin", createdAt: "2026-08-25T01:00:00Z" }],
+    items: [{ action: "order.imported_from_feishu", changes: {}, actorId: "admin-1", operatorName: "松子", content: "从飞书导入订单：订单数量 400，初始已发数量 100，未发数量 300。", sourceTerminal: "web", createdAt: "2026-08-25T01:00:00Z" }],
     total: 1,
     requestId: "audit-request",
   });
@@ -60,7 +60,10 @@ describe("order detail prototype alignment", () => {
     await toggle.trigger("click");
     expect(toggle.attributes("aria-expanded")).toBe("true");
     expect(wrapper.find(".order-audit-list").exists()).toBe(true);
+    expect(wrapper.findAll(".order-audit-list .shipment-log-item")).toHaveLength(1);
+    expect(wrapper.find(".order-audit-list .shipment-log-dot").exists()).toBe(true);
     expect(wrapper.text()).toContain("松子");
+    expect(wrapper.text()).toContain("管理员网页");
     expect(wrapper.text()).toContain("从飞书导入订单：订单数量 400，初始已发数量 100，未发数量 300。");
 
     await toggle.trigger("click");

@@ -523,6 +523,14 @@ def test_admin_approves_withdrawal_once_and_reverses_the_original_quantity(
             assert response.json()["status"] == "APPROVED"
             detail = admin_client.get(f"/api/v1/admin/shipments/{shipment_id}").json()
             assert detail["status"] == "VOIDED"
+            audit_contents = [
+                item["content"]
+                for item in admin_client.get(
+                    f"/api/v1/admin/orders/{ORDER_ID}/audit-logs"
+                ).json()["items"]
+            ]
+            assert "通过撤回发货申请，已发数量回退 12 件" in audit_contents
+            assert "提交发货单，发货 12 件" in audit_contents
             repeated = admin_client.post(
                 f"/api/v1/admin/shipment-void-requests/{request['requestId']}/approve",
                 headers={

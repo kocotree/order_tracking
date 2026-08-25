@@ -697,6 +697,15 @@ class OrderService:
         explicit = changes.get("content")
         if isinstance(explicit, str) and explicit.strip():
             return explicit
+        quantity = changes.get("quantity")
+        if action == "shipment_submitted" and isinstance(quantity, int):
+            return f"提交发货单，发货 {quantity:,} 件"
+        if action == "shipment_void_approved" and isinstance(quantity, int):
+            return f"通过撤回发货申请，已发数量回退 {abs(quantity):,} 件"
+        if action == "shipment_line_returned" and isinstance(quantity, int):
+            reason = changes.get("reason")
+            suffix = f"：{reason}" if isinstance(reason, str) and reason.strip() else ""
+            return f"按发货单退回 {quantity:,} 件{suffix}"
         labels = {
             "order.draft_created": "创建订单草稿",
             "order.draft_updated": "更新订单草稿",

@@ -49,13 +49,12 @@
             <span class="order-audit-toggle-title">操作记录<em>（{{ auditLogs.length }}）</em></span>
             <span class="order-audit-toggle-action">{{ auditLogs.length ? (auditExpanded ? '收起' : '展开') : '暂无记录' }}<svg v-if="auditLogs.length" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg></span>
           </button>
-          <div v-if="auditExpanded && auditLogs.length" id="order-audit-list" class="order-audit-list">
-            <article v-for="(log, index) in auditLogs" :key="`${log.createdAt}-${index}`">
-              <time :datetime="log.createdAt">{{ dateTime(log.createdAt) }}</time>
-              <strong>{{ log.operatorName }}</strong>
-              <p>{{ log.content }}</p>
-            </article>
-          </div>
+          <ol v-if="auditExpanded && auditLogs.length" id="order-audit-list" class="order-audit-list shipment-log-list">
+            <li v-for="(log, index) in auditLogs" :key="`${log.createdAt}-${index}`" class="shipment-log-item">
+              <span class="shipment-log-dot" :class="{ 'is-warning': isQuantityRollback(log.action) }" aria-hidden="true"></span>
+              <div><strong>{{ log.content }}</strong><span>{{ dateTime(log.createdAt) }} · {{ log.operatorName }} · {{ sourceTerminalLabel(log.sourceTerminal) }}</span></div>
+            </li>
+          </ol>
         </section>
 
       </template>
@@ -111,6 +110,8 @@ const sortedDetailRows = computed(() => { const key = detailSortKey.value; if (!
 const modalTitle = computed(() => ({ publish: "发布订单", withdraw: "撤回订单", delete: "删除订单", complete: "确认订单完成", reopen: "撤销完成" }[pendingAction.value ?? "publish"]));
 const modalDescription = computed(() => pendingAction.value === "publish" ? "发布后工厂将看到各自派工任务，确认发布？" : pendingAction.value === "withdraw" ? "撤回后订单恢复为草稿，工厂任务将不可见。" : pendingAction.value === "delete" ? "删除后订单不再出现在订单列表和工厂任务中。" : pendingAction.value === "complete" ? "请核对数量摘要。完成状态不会根据发货数量自动产生。" : "撤销后订单恢复为正式订单，并按当前日期重新计算状态。" );
 function statusTone(value: Order) { return value.lifecycle === "DRAFT" ? "is-draft" : value.displayStatus === "已逾期" ? "is-danger" : value.lifecycle === "COMPLETED" ? "is-success" : "is-info"; }
+function isQuantityRollback(action: string) { return action === "shipment_void_approved" || action === "shipment_line_returned"; }
+function sourceTerminalLabel(source: string | null) { const labels: Record<string, string> = { web: "管理员网页", "admin-web": "管理员网页", web_admin: "管理员网页", "admin-mini": "管理员小程序", "factory-mini": "工厂小程序" }; return source ? (labels[source] || source) : "系统"; }
 function toggleDetailSort(key: DetailSortKey) { if (detailSortKey.value === key) detailSortOrder.value = detailSortOrder.value === "asc" ? "desc" : "asc"; else { detailSortKey.value = key; detailSortOrder.value = "asc"; } }
 function sortClass(key: DetailSortKey) { return { "is-sorted": detailSortKey.value === key, "is-sort-desc": detailSortKey.value === key && detailSortOrder.value === "desc" }; }
 function openAction(action: Action) { pendingAction.value = action; reopenReason.value = ""; actionError.value = ""; }

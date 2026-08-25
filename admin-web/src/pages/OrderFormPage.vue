@@ -56,12 +56,12 @@ const assigned = (line: LineForm) => line.assignments.reduce((sum, item) => sum 
 
 async function save() {
   errorMessage.value = "";
-  if (!form.orderNo || !form.orderDate || !form.tracker || !form.contractShipDate || form.lines.some((line) => !line.variantId || !Number.isInteger(line.orderQuantity) || line.orderQuantity <= 0)) { errorMessage.value = "请完整填写基本信息、产品规格和正整数订单数量"; return; }
+  if (!form.orderNo || (!isEdit && !form.orderDate) || !form.tracker || !form.contractShipDate || form.lines.some((line) => !line.variantId || !Number.isInteger(line.orderQuantity) || line.orderQuantity <= 0)) { errorMessage.value = "请完整填写基本信息、产品规格和正整数订单数量"; return; }
   if (form.lines.some((line) => line.assignments.some((item) => !item.factoryId || !Number.isInteger(item.quantity) || item.quantity <= 0))) { errorMessage.value = "派工数量只接受正整数"; return; }
-  const payload = { orderNo: form.orderNo, orderDate: form.orderDate, tracker: form.tracker as "烧麦", contractShipDate: form.contractShipDate, lines: form.lines.map((line) => ({ variantId: line.variantId, orderQuantity: line.orderQuantity, assignments: line.assignments.map((item) => ({ factoryId: item.factoryId, quantity: item.quantity })) })) };
+  const payload = { orderNo: form.orderNo, tracker: form.tracker as "烧麦", contractShipDate: form.contractShipDate, lines: form.lines.map((line) => ({ variantId: line.variantId, orderQuantity: line.orderQuantity, assignments: line.assignments.map((item) => ({ factoryId: item.factoryId, quantity: item.quantity })) })) };
   saving.value = true;
   try {
-    const result = isEdit ? await orderApi.saveDraft(orderId, { ...payload, version: version.value }) : await orderApi.createDraft(payload);
+    const result = isEdit ? await orderApi.saveDraft(orderId, { ...payload, orderDate: form.orderDate || null, version: version.value }) : await orderApi.createDraft({ ...payload, orderDate: form.orderDate });
     await router.replace(`/orders/${result.orderId}`);
   } catch (error) { errorMessage.value = error instanceof ApiError && error.status === 409 ? "数据已被其他管理员更新，请重新加载后再保存" : error instanceof ApiError ? error.message : "草稿保存失败"; }
   finally { saving.value = false; }
@@ -72,7 +72,7 @@ onMounted(async () => {
   if (!isEdit) return;
   try {
     const order = await orderApi.get(orderId); if (order.lifecycle !== "DRAFT") { errorMessage.value = "只有草稿可以编辑"; return; }
-    form.orderNo = order.orderNo; form.orderDate = order.orderDate; form.tracker = order.tracker; form.contractShipDate = order.contractShipDate; version.value = order.version;
+    form.orderNo = order.orderNo; form.orderDate = order.orderDate ?? ""; form.tracker = order.tracker; form.contractShipDate = order.contractShipDate; version.value = order.version;
     form.lines = order.lines.map((line) => ({ key: key(), variantId: line.variantId, orderQuantity: line.orderQuantity, assignments: line.assignments.map((item) => ({ key: key(), factoryId: item.factoryId, quantity: item.assignedQuantity })) }));
   } catch (error) { errorMessage.value = error instanceof ApiError ? error.message : "草稿加载失败"; }
 });

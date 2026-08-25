@@ -27,7 +27,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("pending order import page", () => {
   it("shows confirmed filters and only selects ready pending candidates", async () => {
     vi.spyOn(orderImportApi, "latestRun").mockResolvedValue(null);
-    const list = vi.spyOn(orderImportApi, "list").mockResolvedValue({ items: [candidate, { ...candidate, candidateId: "candidate-2", orderNo: "E101", validationState: "INVALID", validationIssues: ["ALREADY_SHIPPED"] }], total: 2, page: 1, pageSize: 10, requestId: "request" });
+    const list = vi.spyOn(orderImportApi, "list").mockResolvedValue({ items: [candidate, { ...candidate, candidateId: "candidate-2", orderNo: "E101", validationState: "INVALID", validationIssues: ["FACTORY_NOT_MATCHED"] }], total: 2, page: 1, pageSize: 10, requestId: "request" });
     const wrapper = mount(OrderImportPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { template: "<a><slot /></a>" } } } });
     await flushPromises();
 

@@ -45,7 +45,12 @@ class DraftCreate(ApiModel):
     lines: list[DraftLineWrite] = Field(min_length=1)
 
 
-class DraftUpdate(DraftCreate):
+class DraftUpdate(ApiModel):
+    order_no: str = Field(min_length=1, max_length=100)
+    order_date: date | None = None
+    tracker: Literal["烧麦", "松子", "橄榄", "大葱", "青椒"]
+    contract_ship_date: date
+    lines: list[DraftLineWrite] = Field(min_length=1)
     version: StrictInt = Field(gt=0)
 
 
@@ -101,7 +106,7 @@ class OrderResponse(ApiModel):
     order_id: str
     order_no: str
     source: str
-    order_date: date
+    order_date: date | None
     tracker: str
     contract_ship_date: date
     lifecycle: str
@@ -141,6 +146,8 @@ class AuditLogResponse(ApiModel):
     action: str
     changes: dict[str, object]
     actor_id: str | None
+    operator_name: str
+    content: str
     source_terminal: str | None
     created_at: datetime
 
@@ -199,9 +206,7 @@ def create_order_router(
             raise PermissionDenied("administrator role required")
         return actor
 
-    def query_user(
-        web_token: str | None, authorization: str | None
-    ) -> tuple[UserSnapshot, str]:
+    def query_user(web_token: str | None, authorization: str | None) -> tuple[UserSnapshot, str]:
         if web_token:
             return identity.authenticate_session(token=web_token, terminal="web"), "web"
         if authorization and authorization.startswith("Bearer "):
@@ -283,9 +288,7 @@ def create_order_router(
         )
         return _order_response(result, request.state.request_id)
 
-    def transition_actor(
-        ot_web_session: str | None, x_csrf_token: str | None
-    ) -> UserSnapshot:
+    def transition_actor(ot_web_session: str | None, x_csrf_token: str | None) -> UserSnapshot:
         return web_admin(ot_web_session, x_csrf_token, require_csrf=True)
 
     @router.post(
@@ -454,9 +457,7 @@ def create_order_router(
                 else 0
             ),
             today_shipments=0,
-            recent_orders=[
-                _order_response(item, request.state.request_id) for item in items[:5]
-            ],
+            recent_orders=[_order_response(item, request.state.request_id) for item in items[:5]],
             request_id=request.state.request_id,
         )
 

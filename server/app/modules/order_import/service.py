@@ -246,7 +246,7 @@ class OrderImportService:
             failed = len(rows) - sum(len(group) for group in groups.values())
             skipped = 0
             for order_no, group in groups.items():
-                if all(row.pending_quantity <= 0 for row, _ in group):
+                if not any(self._is_below_half(row) for row, _ in group):
                     candidate = session.scalar(
                         select(OrderImportCandidate).where(
                             OrderImportCandidate.order_no == order_no,
@@ -254,6 +254,16 @@ class OrderImportService:
                         )
                     )
                     if candidate is not None:
+                        session.execute(
+                            delete(OrderImportValidationIssue).where(
+                                OrderImportValidationIssue.candidate_id == candidate.candidate_id
+                            )
+                        )
+                        session.execute(
+                            delete(OrderImportCandidateLine).where(
+                                OrderImportCandidateLine.candidate_id == candidate.candidate_id
+                            )
+                        )
                         session.delete(candidate)
                     skipped += len(group)
                     continue
@@ -496,12 +506,7 @@ class OrderImportService:
                         .order_by(OrderImportCandidateLine.candidate_line_id)
                     )
                 )
-                if (
-                    candidate.order_date is None
-                    or candidate.contract_ship_date is None
-                    or candidate.tracker is None
-                    or not rows
-                ):
+                if candidate.contract_ship_date is None or candidate.tracker is None or not rows:
                     raise ValueError("candidate is incomplete")
                 self._validate_candidate_for_confirm(session, candidate, rows)
                 lines = [
@@ -512,6 +517,7 @@ class OrderImportService:
                             AssignmentInput(
                                 factory_id=self._required(line.matched_factory_id),
                                 quantity=self._required_quantity(line.order_quantity),
+                                initial_shipped_quantity=line.shipped_quantity,
                             )
                         ],
                     )
@@ -542,6 +548,31 @@ class OrderImportService:
                     action="order_import.candidate_imported",
                     candidate=candidate,
                     actor_id=actor_id,
+                )
+                total = candidate.total_quantity
+                initial = candidate.shipped_quantity
+                pending = max(total - initial, 0)
+                session.add(
+                    AuditLog(
+                        request_id=request_id,
+                        action="order.imported_from_feishu",
+                        target_type="order",
+                        target_id=order_id,
+                        changes={
+                            "orderQuantity": total,
+                            "initialShippedQuantity": initial,
+                            "pendingQuantity": pending,
+                            "content": (
+                                "从飞书导入订单："
+                                f"订单数量 {total:,}，"
+                                f"初始已发数量 {initial:,}，"
+                                f"未发数量 {pending:,}。"
+                            ),
+                        },
+                        actor_id=actor_id,
+                        source_terminal="web_admin",
+                        created_at=now,
+                    )
                 )
                 session.flush()
         except IntegrityError as error:
@@ -574,15 +605,11 @@ class OrderImportService:
     ) -> None:
         rows = [row for row, _ in group]
         issues: list[str] = []
-        if any(row.shipped_quantity > 0 for row in rows):
-            issues.append("ALREADY_SHIPPED")
         tracker = self._unique_value([row.tracker for row in rows])
-        order_date = self._unique_value([row.order_date for row in rows])
+        order_date = next((row.order_date for row in rows if row.order_date is not None), None)
         contract_date = self._unique_value([row.contract_ship_date for row in rows])
         if tracker is None or tracker not in TRACKERS:
             issues.append("INVALID_TRACKER")
-        if order_date is None:
-            issues.append("INCONSISTENT_ORDER_DATE")
         if contract_date is None:
             issues.append("INCONSISTENT_CONTRACT_SHIP_DATE")
         categories = {self._display_category(row.category) for row in rows if row.category}
@@ -596,7 +623,9 @@ class OrderImportService:
         )
         candidate.total_quantity = sum(row.order_quantity or 0 for row in rows)
         candidate.shipped_quantity = sum(row.shipped_quantity for row in rows)
-        candidate.pending_quantity = sum(row.pending_quantity for row in rows)
+        candidate.pending_quantity = sum(
+            max((row.order_quantity or 0) - row.shipped_quantity, 0) for row in rows
+        )
         candidate.source_record_count = len(rows)
         for row, source in group:
             line_issues: list[str] = []
@@ -641,6 +670,10 @@ class OrderImportService:
                 or row.order_quantity <= 0
             ):
                 line_issues.append("INVALID_ORDER_QUANTITY")
+            elif row.shipped_quantity < 0:
+                line_issues.append("INVALID_INITIAL_SHIPPED_QUANTITY")
+            elif row.shipped_quantity > row.order_quantity:
+                line_issues.append("INITIAL_SHIPPED_EXCEEDS_ORDER_QUANTITY")
             issues.extend(line_issues)
             candidate_line = OrderImportCandidateLine(
                 candidate_id=candidate.candidate_id,
@@ -652,7 +685,7 @@ class OrderImportService:
                 factory_name=row.factory_name,
                 order_quantity=row.order_quantity,
                 shipped_quantity=row.shipped_quantity,
-                pending_quantity=row.pending_quantity,
+                pending_quantity=max((row.order_quantity or 0) - row.shipped_quantity, 0),
                 matched_variant_id=variant.variant_id if variant else None,
                 matched_factory_id=factory.factory_id if factory else None,
                 image_object_key_snapshot=(
@@ -684,9 +717,7 @@ class OrderImportService:
     @staticmethod
     def _issue_details(code: str) -> tuple[str | None, str]:
         details = {
-            "ALREADY_SHIPPED": ("出货总数", "已有发货记录，不在首次导入范围"),
             "INVALID_TRACKER": ("跟单人员", "跟单人员缺失、不一致或不在允许范围"),
-            "INCONSISTENT_ORDER_DATE": ("下单时间", "订单日期缺失或明细不一致"),
             "INCONSISTENT_CONTRACT_SHIP_DATE": (
                 "合同出货时间",
                 "合同出货时间缺失或明细不一致",
@@ -695,6 +726,14 @@ class OrderImportService:
             "FACTORY_NOT_MATCHED": ("工厂", "工厂不存在或未启用"),
             "FACTORY_HAS_NO_ENABLED_USER": ("工厂", "工厂没有已启用账号"),
             "INVALID_ORDER_QUANTITY": ("下单数", "下单数必须为正整数"),
+            "INVALID_INITIAL_SHIPPED_QUANTITY": (
+                "出货总数",
+                "初始已发数量必须为非负整数",
+            ),
+            "INITIAL_SHIPPED_EXCEEDS_ORDER_QUANTITY": (
+                "出货总数",
+                "初始已发数量不能大于下单数量",
+            ),
         }
         return details.get(code, (None, "来源资料待处理"))
 
@@ -841,6 +880,13 @@ class OrderImportService:
             return None
         unique = {value for value in values if value is not None}
         return next(iter(unique)) if len(unique) == 1 else None
+
+    @staticmethod
+    def _is_below_half(row: SourceOrderRow) -> bool:
+        quantity = row.order_quantity
+        if quantity is None or type(quantity) is not int or quantity <= 0:
+            return True
+        return row.shipped_quantity * 2 < quantity
 
     @staticmethod
     def _snapshot(run: OrderImportRun) -> ImportRunSnapshot:

@@ -35,6 +35,22 @@ afterEach(() => {
 });
 
 describe("pending order import detail page", () => {
+  it("keeps detailed failures at the top but shows only failed in the row cell", async () => {
+    vi.spyOn(orderImportApi, "get").mockResolvedValue({
+      ...candidate,
+      validationState: "INVALID",
+      validationIssues: ["FACTORY_NOT_MATCHED"],
+      lines: [{ ...candidate.lines[0], validationIssues: ["FACTORY_NOT_MATCHED"] }],
+    });
+    const wrapper = mount(OrderImportDetailPage, {
+      global: { stubs: { AdminShell: { template: "<div><slot /></div>" } } },
+    });
+    await flushPromises();
+
+    expect(wrapper.get(".validation-callout").text()).toBe("工厂资料未匹配");
+    expect(wrapper.get(".pending-import-detail-table tbody .status-badge").text()).toBe("未通过");
+  });
+
   it("shows the confirmed fields and imports one ready candidate as a draft", async () => {
     vi.spyOn(orderImportApi, "get").mockResolvedValue(candidate);
     const confirm = vi.spyOn(orderImportApi, "confirm").mockResolvedValue({

@@ -106,6 +106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/contract-exports/{export_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Export */
+        get: operations["download_export_api_v1_admin_contract_exports__export_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/dashboard/orders": {
         parameters: {
             query?: never;
@@ -410,6 +427,40 @@ export interface paths {
         put?: never;
         /** Complete */
         post: operations["complete_api_v1_admin_orders__order_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/contracts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Contracts */
+        get: operations["list_contracts_api_v1_admin_orders__order_id__contracts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/contracts/{factory_id}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Export */
+        post: operations["create_export_api_v1_admin_orders__order_id__contracts__factory_id__exports_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -923,11 +974,15 @@ export interface components {
             changes: {
                 [key: string]: unknown;
             };
+            /** Content */
+            content: string;
             /**
              * Createdat
              * Format: date-time
              */
             createdAt: string;
+            /** Operatorname */
+            operatorName: string;
             /** Sourceterminal */
             sourceTerminal: string | null;
         };
@@ -1058,6 +1113,59 @@ export interface components {
             /** Phone */
             phone: string;
         };
+        /** ContractExportResponse */
+        ContractExportResponse: {
+            /** Contractid */
+            contractId: string;
+            /** Contractno */
+            contractNo: string;
+            /** Downloadurl */
+            downloadUrl: string;
+            /** Exportid */
+            exportId: string;
+            /** Filename */
+            filename: string;
+            /** Requestid */
+            requestId: string;
+            /**
+             * Signingdate
+             * Format: date
+             */
+            signingDate: string;
+            /** Status */
+            status: string;
+        };
+        /** ContractExportWrite */
+        ContractExportWrite: {
+            /** Signingdate */
+            signingDate?: string | null;
+        };
+        /** ContractFactoryStatusListResponse */
+        ContractFactoryStatusListResponse: {
+            /** Items */
+            items: components["schemas"]["ContractFactoryStatusResponse"][];
+            /** Requestid */
+            requestId: string;
+        };
+        /** ContractFactoryStatusResponse */
+        ContractFactoryStatusResponse: {
+            /** Contractno */
+            contractNo: string | null;
+            /** Contractready */
+            contractReady: boolean;
+            /** Eligible */
+            eligible: boolean;
+            /** Factoryid */
+            factoryId: string;
+            /** Factoryname */
+            factoryName: string;
+            /** Ineligiblereason */
+            ineligibleReason: string | null;
+            /** Missingcontractfields */
+            missingContractFields: string[];
+            /** Signingdate */
+            signingDate: string | null;
+        };
         /** DashboardResponse */
         DashboardResponse: {
             /** Overdueorders */
@@ -1114,11 +1222,8 @@ export interface components {
             contractShipDate: string;
             /** Lines */
             lines: components["schemas"]["DraftLineWrite"][];
-            /**
-             * Orderdate
-             * Format: date
-             */
-            orderDate: string;
+            /** Orderdate */
+            orderDate?: string | null;
             /** Orderno */
             orderNo: string;
             /**
@@ -1430,11 +1535,8 @@ export interface components {
             lifecycle: string;
             /** Lines */
             lines: components["schemas"]["OrderLineResponse"][];
-            /**
-             * Orderdate
-             * Format: date
-             */
-            orderDate: string;
+            /** Orderdate */
+            orderDate: string | null;
             /** Orderid */
             orderId: string;
             /** Orderno */
@@ -1802,6 +1904,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_export_api_v1_admin_contract_exports__export_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                export_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -2583,6 +2718,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_contracts_api_v1_admin_orders__order_id__contracts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContractFactoryStatusListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_export_api_v1_admin_orders__order_id__contracts__factory_id__exports_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+                factory_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContractExportWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContractExportResponse"];
                 };
             };
             /** @description Validation Error */

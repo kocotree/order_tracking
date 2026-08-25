@@ -38,16 +38,12 @@ VARIANT_ID = "contract-variant"
 def _clean(engine: Engine) -> None:
     with Session(engine) as session, session.begin():
         session.execute(delete(ContractExport).where(ContractExport.exported_by == ADMIN_ID))
-        session.execute(
-            delete(StoredFile).where(StoredFile.uploaded_by == ADMIN_ID)
-        )
+        session.execute(delete(StoredFile).where(StoredFile.uploaded_by == ADMIN_ID))
         session.execute(
             delete(ProcessingContract).where(ProcessingContract.factory_id == FACTORY_ID)
         )
         session.execute(
-            delete(ContractNumberCounter).where(
-                ContractNumberCounter.factory_id == FACTORY_ID
-            )
+            delete(ContractNumberCounter).where(ContractNumberCounter.factory_id == FACTORY_ID)
         )
         session.execute(delete(OrderAssignment).where(OrderAssignment.factory_id == FACTORY_ID))
         session.execute(
@@ -222,6 +218,26 @@ def test_published_order_lists_factory_as_ready_for_first_contract_export(
         _clean(test_database_engine)
 
 
+def test_initial_shipped_quantity_makes_contract_ineligible(
+    test_database_engine: Engine,
+) -> None:
+    _clean(test_database_engine)
+    _seed_published_order(test_database_engine)
+    with Session(test_database_engine) as session, session.begin():
+        session.query(OrderAssignment).filter_by(
+            factory_id=FACTORY_ID
+        ).one().initial_shipped_quantity = 1
+    service = ContractService(
+        sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    )
+    try:
+        state = service.list_for_order(actor_id=ADMIN_ID, order_id=ORDER_ID)[0]
+        assert state.eligible is False
+        assert state.ineligible_reason == "order_has_shipments"
+    finally:
+        _clean(test_database_engine)
+
+
 def test_first_export_allocates_stable_number_snapshot_and_private_xlsx(
     test_database_engine: Engine,
 ) -> None:
@@ -256,9 +272,7 @@ def test_first_export_allocates_stable_number_snapshot_and_private_xlsx(
         )
         assert filename == result.filename
         assert content == file_store.get(object_key=result.object_key)
-        assert content_type == (
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        assert content_type == ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         with Session(test_database_engine) as session:
             contract = session.get(ProcessingContract, result.contract_id)
             assert contract is not None
@@ -440,9 +454,10 @@ def test_failed_upload_keeps_contract_number_but_never_creates_downloadable_file
             assert export is not None
             assert export.status == "FAILED"
             assert export.stored_file_id is None
-            assert session.scalar(
-                select(StoredFile.file_id).where(StoredFile.uploaded_by == ADMIN_ID)
-            ) is None
+            assert (
+                session.scalar(select(StoredFile.file_id).where(StoredFile.uploaded_by == ADMIN_ID))
+                is None
+            )
     finally:
         _clean(test_database_engine)
 
@@ -475,9 +490,7 @@ def test_concurrent_first_exports_for_same_order_create_one_stable_contract(
 
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
-            results = list(
-                executor.map(export, ["same-order-a", "same-order-b"])
-            )
+            results = list(executor.map(export, ["same-order-a", "same-order-b"]))
 
         assert {result.contract_id for result in results} == {results[0].contract_id}
         assert {result.contract_no for result in results} == {"20260824-KK-HT"}

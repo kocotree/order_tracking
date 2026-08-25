@@ -535,6 +535,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/shipment-void-requests/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Void Request */
+        post: operations["approve_void_request_api_v1_admin_shipment_void_requests__request_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/shipment-void-requests/{request_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Void Request */
+        post: operations["reject_void_request_api_v1_admin_shipment_void_requests__request_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/shipments": {
         parameters: {
             query?: never;
@@ -563,6 +597,40 @@ export interface paths {
         get: operations["admin_shipment_api_v1_admin_shipments__shipment_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/shipments/{shipment_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Shipment */
+        get: operations["export_shipment_api_v1_admin_shipments__shipment_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/shipments/{shipment_id}/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return Shipment */
+        post: operations["return_shipment_api_v1_admin_shipments__shipment_id__returns_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -852,6 +920,23 @@ export interface paths {
         get: operations["factory_shipment_api_v1_factory_shipments__shipment_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/shipments/{shipment_id}/void-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Void */
+        post: operations["request_void_api_v1_factory_shipments__shipment_id__void_requests_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1866,6 +1951,11 @@ export interface components {
             note: string;
             /** Preferredorderid */
             preferredOrderId: string | null;
+            /**
+             * Returnevents
+             * @default []
+             */
+            returnEvents: components["schemas"]["ShipmentReturnEventResponse"][];
             /** Shipmentid */
             shipmentId: string;
             /** Shipmentno */
@@ -1884,11 +1974,14 @@ export interface components {
              * @default 0
              */
             totalQuantity: number;
+            voidRequest?: components["schemas"]["ShipmentVoidRequestResponse"] | null;
         };
         /** ShipmentLineResponse */
         ShipmentLineResponse: {
             /** Assignmentid */
             assignmentId: number;
+            /** Lineid */
+            lineId?: number | null;
             /** Orderid */
             orderId: string;
             /** Orderno */
@@ -1899,6 +1992,16 @@ export interface components {
             propertiesValue: string;
             /** Quantity */
             quantity: number;
+            /**
+             * Returnablequantity
+             * @default 0
+             */
+            returnableQuantity: number;
+            /**
+             * Returnedquantity
+             * @default 0
+             */
+            returnedQuantity: number;
             /** Skuid */
             skuId: string;
         };
@@ -1908,6 +2011,88 @@ export interface components {
             items: components["schemas"]["ShipmentDraftResponse"][];
             /** Total */
             total: number;
+        };
+        /** ShipmentReturnEventResponse */
+        ShipmentReturnEventResponse: {
+            /** Eventid */
+            eventId: string;
+            /** Lines */
+            lines: components["schemas"]["ShipmentReturnLineResponse"][];
+            /** Reason */
+            reason: string;
+            /**
+             * Returndate
+             * Format: date
+             */
+            returnDate: string;
+            /**
+             * Returnedat
+             * Format: date-time
+             */
+            returnedAt: string;
+            /** Returnedby */
+            returnedBy: string;
+            /** Shipmentid */
+            shipmentId: string;
+        };
+        /** ShipmentReturnLineResponse */
+        ShipmentReturnLineResponse: {
+            /** Aftershippedquantity */
+            afterShippedQuantity: number;
+            /** Beforeshippedquantity */
+            beforeShippedQuantity: number;
+            /** Orderno */
+            orderNo: string;
+            /** Productname */
+            productName: string;
+            /** Propertiesvalue */
+            propertiesValue: string;
+            /** Quantity */
+            quantity: number;
+            /** Shipmentlineid */
+            shipmentLineId: number;
+            /** Skuid */
+            skuId: string;
+        };
+        /** ShipmentReturnLineWrite */
+        ShipmentReturnLineWrite: {
+            /** Quantity */
+            quantity: number;
+            /** Shipmentlineid */
+            shipmentLineId: number;
+        };
+        /** ShipmentReturnWrite */
+        ShipmentReturnWrite: {
+            /** Lines */
+            lines: components["schemas"]["ShipmentReturnLineWrite"][];
+            /** Reason */
+            reason: string;
+        };
+        /** ShipmentVoidRequestResponse */
+        ShipmentVoidRequestResponse: {
+            /** Reason */
+            reason: string;
+            /** Requestid */
+            requestId: string;
+            /**
+             * Requestedat
+             * Format: date-time
+             */
+            requestedAt: string;
+            /** Requestedby */
+            requestedBy: string;
+            /** Requestedbyname */
+            requestedByName: string;
+            /** Reviewcomment */
+            reviewComment?: string | null;
+            /** Reviewedat */
+            reviewedAt?: string | null;
+            /** Reviewedby */
+            reviewedBy?: string | null;
+            /** Shipmentid */
+            shipmentId: string;
+            /** Status */
+            status: string;
         };
         /** UserResponse */
         UserResponse: {
@@ -1962,6 +2147,19 @@ export interface components {
         VersionWrite: {
             /** Version */
             version: number;
+        };
+        /** VoidRequestCreate */
+        VoidRequestCreate: {
+            /** Reason */
+            reason: string;
+        };
+        /** VoidReviewWrite */
+        VoidReviewWrite: {
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
         };
         /** WechatLoginRequest */
         WechatLoginRequest: {
@@ -3260,6 +3458,86 @@ export interface operations {
             };
         };
     };
+    approve_void_request_api_v1_admin_shipment_void_requests__request_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidReviewWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentVoidRequestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_void_request_api_v1_admin_shipment_void_requests__request_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidReviewWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentVoidRequestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     admin_shipments_api_v1_admin_shipments_get: {
         parameters: {
             query?: never;
@@ -3315,6 +3593,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShipmentDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_shipment_api_v1_admin_shipments__shipment_id__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    return_shipment_api_v1_admin_shipments__shipment_id__returns_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShipmentReturnWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentReturnEventResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3880,6 +4231,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShipmentDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_void_api_v1_factory_shipments__shipment_id__void_requests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentVoidRequestResponse"];
                 };
             };
             /** @description Validation Error */

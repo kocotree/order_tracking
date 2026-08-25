@@ -83,6 +83,7 @@ from app.modules.shipments import (
     ShipmentService,
     ShipmentValidationError,
 )
+from app.modules.shipments.workbook import ShipmentWorkbookRenderer
 from app.product_demo import seed_local_demo_products
 from app.settings.config import Settings
 
@@ -182,7 +183,12 @@ def create_app(
     if product_service is None:
         product_service = ProductCatalogService(session_factory)
     if shipment_service is None:
-        shipment_service = ShipmentService(session_factory)
+        shipment_service = ShipmentService(
+            session_factory,
+            workbook_renderer=ShipmentWorkbookRenderer(
+                template_path=Path(__file__).resolve().parent / "templates/shipment_list_v1.xlsx"
+            ),
+        )
     if order_service is None:
         order_service = OrderService(session_factory, execution_guard=shipment_service)
     if order_import_service is None:

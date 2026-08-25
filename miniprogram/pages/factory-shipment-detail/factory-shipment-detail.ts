@@ -11,7 +11,7 @@ function buildLineGroups(lines: ShipmentLine[]): LineGroup[] {
 }
 
 Page({
-  data: { shipment: null as Shipment | null, lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], loading: true },
+  data: { shipment: null as Shipment | null, lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], loading: true, withdrawStep: "" as ""|"form"|"confirm", withdrawReason: "", withdrawError: "", submitting: false },
   onLoad(options: Record<string, string | undefined>) {
     if (isDevPreview(options)) { this.showShipment(PREVIEW_SHIPMENT); return; }
     if (options.shipmentId) void this.load(options.shipmentId);
@@ -30,6 +30,17 @@ Page({
   toggleBoxGroup(event: WechatMiniprogram.TouchEvent) {
     const boxNo = Number(event.currentTarget.dataset.boxNo);
     this.setData({ boxGroups: this.data.boxGroups.map((box) => box.boxNo === boxNo ? { ...box, expanded: !box.expanded } : box) });
+  },
+  openWithdraw() { this.setData({ withdrawStep: "form", withdrawReason: "", withdrawError: "" }); },
+  closeWithdraw() { if (!this.data.submitting) this.setData({ withdrawStep: "", withdrawError: "" }); },
+  stopPropagation() {},
+  updateWithdrawReason(event: WechatMiniprogram.Input) { this.setData({ withdrawReason: String(event.detail.value), withdrawError: "" }); },
+  nextWithdraw() { const reason = this.data.withdrawReason.trim(); if (!reason) { this.setData({ withdrawError: "请填写撤回原因" }); return; } this.setData({ withdrawReason: reason, withdrawStep: "confirm" }); },
+  async confirmWithdraw() {
+    const shipment = this.data.shipment; if (!shipment || this.data.submitting) return;
+    this.setData({ submitting: true, withdrawError: "" });
+    try { await shipmentApi.requestVoid(shipment.shipmentId, this.data.withdrawReason); await this.load(shipment.shipmentId); this.setData({ withdrawStep: "", submitting: false }); wx.showToast({ title: "撤回申请已提交", icon: "success" }); }
+    catch { this.setData({ submitting: false, withdrawError: "撤回申请提交失败" }); }
   },
   goBack() { wx.navigateBack(); },
 });

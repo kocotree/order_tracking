@@ -4,6 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { orderImportApi, type ImportCandidate } from "@/api/client";
 import OrderImportPage from "@/pages/OrderImportPage.vue";
 
+const router = vi.hoisted(() => ({ replace: vi.fn().mockResolvedValue(undefined) }));
+
+vi.mock("vue-router", () => ({
+  useRoute: () => ({ query: {} }),
+  useRouter: () => router,
+}));
+
 const candidate = {
   candidateId: "candidate-1",
   orderNo: "E100",
@@ -22,12 +29,15 @@ const candidate = {
   updatedAt: "2026-08-22T09:00:00",
 } satisfies ImportCandidate;
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  router.replace.mockClear();
+});
 
 describe("pending order import page", () => {
   it("shows confirmed filters and only selects ready pending candidates", async () => {
     vi.spyOn(orderImportApi, "latestRun").mockResolvedValue(null);
-    const list = vi.spyOn(orderImportApi, "list").mockResolvedValue({ items: [candidate, { ...candidate, candidateId: "candidate-2", orderNo: "E101", validationState: "INVALID", validationIssues: ["ALREADY_SHIPPED"] }], total: 2, page: 1, pageSize: 10, requestId: "request" });
+    const list = vi.spyOn(orderImportApi, "list").mockResolvedValue({ items: [candidate, { ...candidate, candidateId: "candidate-2", orderNo: "E101", validationState: "INVALID", validationIssues: ["FACTORY_NOT_MATCHED"] }], total: 2, page: 1, pageSize: 10, requestId: "request" });
     const wrapper = mount(OrderImportPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { template: "<a><slot /></a>" } } } });
     await flushPromises();
 

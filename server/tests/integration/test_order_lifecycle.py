@@ -9,6 +9,7 @@ from app.db.models import (
     Factory,
     IdempotencyRecord,
     Order,
+    OrderAssignment,
     OrderCompletionRecord,
     OutboxMessage,
     Product,
@@ -48,24 +49,18 @@ def _clean_order_tables(engine: Engine) -> None:
         session.execute(delete(Order))
         session.execute(delete(OutboxMessage))
         session.execute(delete(AuditLog))
-        session.execute(
-            delete(IdempotencyRecord).where(IdempotencyRecord.scope.like("order.%"))
-        )
+        session.execute(delete(IdempotencyRecord).where(IdempotencyRecord.scope.like("order.%")))
         session.execute(
             delete(ProductVariant).where(ProductVariant.variant_id == "variant-order-1")
         )
         session.execute(delete(Product).where(Product.product_id == "product-order-1"))
         session.execute(
             delete(User).where(
-                User.user_id.in_(
-                    ["admin-order-service", "factory-user-a", "factory-user-b"]
-                )
+                User.user_id.in_(["admin-order-service", "factory-user-a", "factory-user-b"])
             )
         )
         session.execute(
-            delete(Factory).where(
-                Factory.factory_id.in_(["factory-order-a", "factory-order-b"])
-            )
+            delete(Factory).where(Factory.factory_id.in_(["factory-order-a", "factory-order-b"]))
         )
 
 
@@ -208,21 +203,67 @@ def test_admin_creates_and_publishes_complete_multi_factory_draft(
     )
     assert repeated.order_id == published.order_id
     with Session(test_database_engine) as session:
-        assert (
-            session.query(OutboxMessage)
-            .filter_by(event_type="order_published")
-            .count()
-            == 2
-        )
+        assert session.query(OutboxMessage).filter_by(event_type="order_published").count() == 2
         assert session.query(AuditLog).filter_by(action="order.published").count() == 1
+
+
+def test_draft_edit_preserves_initial_shipped_baseline_and_rejects_lower_quantity(
+    test_database_engine: Engine,
+) -> None:
+    _clean_order_tables(test_database_engine)
+    admin_id, factory_a_id, _factory_b_id, variant_id = _seed_order_dependencies(
+        test_database_engine
+    )
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    service = OrderService(sessions)
+    draft = service.create_draft(
+        actor_id=admin_id,
+        order_no="E-BASELINE",
+        order_date=date(2026, 8, 21),
+        tracker="松子",
+        contract_ship_date=date(2026, 8, 30),
+        lines=[DraftLineInput(variant_id, 100, [AssignmentInput(factory_a_id, 100)])],
+        request_id="baseline-create",
+    )
+    with Session(test_database_engine) as session, session.begin():
+        assignment = session.query(OrderAssignment).one()
+        assignment.initial_shipped_quantity = 40
+        session.get(Order, draft.order_id).order_date = None
+
+    preserved = service.save_draft(
+        actor_id=admin_id,
+        order_id=draft.order_id,
+        version=draft.version,
+        order_no="E-BASELINE",
+        order_date=None,
+        tracker="松子",
+        contract_ship_date=date(2026, 8, 30),
+        lines=[DraftLineInput(variant_id, 100, [AssignmentInput(factory_a_id, 100)])],
+        request_id="baseline-preserve",
+    )
+    assert preserved.shipped_quantity == 40
+    assert preserved.pending_quantity == 60
+    assert preserved.order_date is None
+
+    with pytest.raises(OrderValidationError, match="initial shipped baseline"):
+        service.save_draft(
+            actor_id=admin_id,
+            order_id=draft.order_id,
+            version=preserved.version,
+            order_no="E-BASELINE",
+            order_date=None,
+            tracker="松子",
+            contract_ship_date=date(2026, 8, 30),
+            lines=[DraftLineInput(variant_id, 30, [AssignmentInput(factory_a_id, 30)])],
+            request_id="baseline-lower",
+        )
+    _clean_order_tables(test_database_engine)
 
 
 def test_publish_validation_rolls_back_without_outbox_or_state_change(
     test_database_engine: Engine,
 ) -> None:
-    admin_id, factory_a_id, _, variant_id = _seed_order_dependencies(
-        test_database_engine
-    )
+    admin_id, factory_a_id, _, variant_id = _seed_order_dependencies(test_database_engine)
     service = OrderService(
         sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
     )
@@ -258,9 +299,7 @@ def test_publish_validation_rolls_back_without_outbox_or_state_change(
 def test_draft_update_merges_duplicates_and_rejects_stale_version(
     test_database_engine: Engine,
 ) -> None:
-    admin_id, factory_a_id, _, variant_id = _seed_order_dependencies(
-        test_database_engine
-    )
+    admin_id, factory_a_id, _, variant_id = _seed_order_dependencies(test_database_engine)
     service = OrderService(
         sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
     )
@@ -353,9 +392,7 @@ def test_withdraw_complete_reopen_delete_and_factory_visibility(
         idempotency_key="life-publish",
     )
     assert published.display_status == "已逾期"
-    factory_view = service.get_visible(
-        actor_id="factory-user-a", order_id=draft.order_id
-    )
+    factory_view = service.get_visible(actor_id="factory-user-a", order_id=draft.order_id)
     assert factory_view.total_quantity == 40
     assert [item.factory_id for item in factory_view.factory_progress] == [factory_a_id]
     assert factory_b_id not in repr(factory_view)
@@ -384,9 +421,7 @@ def test_withdraw_complete_reopen_delete_and_factory_visibility(
     )
     assert reopened.display_status == "已逾期"
     with Session(test_database_engine) as session:
-        records = session.query(OrderCompletionRecord).order_by(
-            OrderCompletionRecord.record_id
-        )
+        records = session.query(OrderCompletionRecord).order_by(OrderCompletionRecord.record_id)
         assert [item.action for item in records] == ["COMPLETE", "REOPEN"]
 
     withdrawn = service.withdraw(
@@ -447,12 +482,8 @@ def test_display_status_uses_east_eight_business_date(
 def test_execution_guard_blocks_withdraw_delete_and_complete(
     test_database_engine: Engine,
 ) -> None:
-    admin_id, factory_a_id, _, variant_id = _seed_order_dependencies(
-        test_database_engine
-    )
-    sessions = sessionmaker(
-        test_database_engine, class_=Session, expire_on_commit=False
-    )
+    admin_id, factory_a_id, _, variant_id = _seed_order_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
     setup_service = OrderService(sessions)
     draft = setup_service.create_draft(
         actor_id=admin_id,

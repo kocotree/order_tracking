@@ -1,5 +1,5 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { contractApi, orderApi, type Order } from "@/api/client";
 import OrderDetailPage from "@/pages/OrderDetailPage.vue";
@@ -19,6 +19,13 @@ const sampleOrder = {
 } satisfies Order;
 
 afterEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.spyOn(orderApi, "auditLogs").mockResolvedValue({
+    items: [{ action: "order.imported_from_feishu", changes: {}, actorId: "admin-1", operatorName: "松子", content: "从飞书导入订单：订单数量 400，初始已发数量 100，未发数量 300。", sourceTerminal: "web_admin", createdAt: "2026-08-25T01:00:00Z" }],
+    total: 1,
+    requestId: "audit-request",
+  });
+});
 
 describe("order detail prototype alignment", () => {
   it("shows the S06 export entry disabled for draft orders", async () => {
@@ -36,7 +43,9 @@ describe("order detail prototype alignment", () => {
     expect(contractButton.attributes("disabled")).toBeDefined();
     expect(contractButton.attributes("title")).toContain("请先发布订单");
     expect(wrapper.text()).not.toContain("工厂派工与进度");
-    expect(wrapper.text()).not.toContain("操作日志");
+    expect(wrapper.text()).toContain("操作日志");
+    expect(wrapper.text()).toContain("松子");
+    expect(wrapper.text()).toContain("从飞书导入订单：订单数量 400，初始已发数量 100，未发数量 300。");
   });
 
   it("opens the confirmed single-factory export dialog for a published unshipped order", async () => {

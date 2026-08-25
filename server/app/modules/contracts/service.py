@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime
 from typing import Any, Protocol
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -107,9 +107,7 @@ class ContractService:
         self._clock = clock
         self._template_version = template_version
 
-    def list_for_order(
-        self, *, actor_id: str, order_id: str
-    ) -> list[ContractFactoryStatus]:
+    def list_for_order(self, *, actor_id: str, order_id: str) -> list[ContractFactoryStatus]:
         with self._session_factory() as session:
             self._require_admin(session, actor_id)
             order = session.get(Order, order_id)
@@ -124,7 +122,7 @@ class ContractService:
                     .order_by(OrderAssignment.factory_id)
                 )
             )
-            has_shipments = self._execution_guard.has_valid_shipments(order_id=order_id)
+            has_shipments = self._has_unified_shipments(session, order_id=order_id)
             result: list[ContractFactoryStatus] = []
             for factory_id in factory_ids:
                 factory = session.get(Factory, factory_id)
@@ -181,9 +179,7 @@ class ContractService:
                 )
             )
             if existing_export is not None:
-                existing_contract = session.get(
-                    ProcessingContract, existing_export.contract_id
-                )
+                existing_contract = session.get(ProcessingContract, existing_export.contract_id)
                 if (
                     existing_contract is None
                     or existing_contract.order_id != order_id
@@ -199,9 +195,7 @@ class ContractService:
                     existing_export.error_message = None
             else:
                 factory = session.scalar(
-                    select(Factory)
-                    .where(Factory.factory_id == factory_id)
-                    .with_for_update()
+                    select(Factory).where(Factory.factory_id == factory_id).with_for_update()
                 )
                 order = session.scalar(
                     select(Order).where(Order.order_id == order_id).with_for_update()
@@ -210,7 +204,7 @@ class ContractService:
                     raise ContractNotFound("order not found")
                 if order.lifecycle != "PUBLISHED":
                     raise ContractConflict("only published orders can export contracts")
-                if self._execution_guard.has_valid_shipments(order_id=order_id):
+                if self._has_unified_shipments(session, order_id=order_id):
                     raise ContractConflict("order has valid shipments")
                 if factory is None or not self._factory_is_assigned(
                     session, order_id=order_id, factory_id=factory_id
@@ -388,9 +382,7 @@ class ContractService:
             )
 
     @staticmethod
-    def _factory_is_assigned(
-        session: Session, *, order_id: str, factory_id: str
-    ) -> bool:
+    def _factory_is_assigned(session: Session, *, order_id: str, factory_id: str) -> bool:
         assignment_id = session.scalar(
             select(OrderAssignment.order_assignment_id)
             .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
@@ -475,7 +467,7 @@ class ContractService:
             "signingDate": signing_date.isoformat(),
             "orderId": order.order_id,
             "orderNo": order.order_no,
-            "orderDate": order.order_date.isoformat(),
+            "orderDate": order.order_date.isoformat() if order.order_date else None,
             "contractShipDate": order.contract_ship_date.isoformat(),
             "factory": {
                 "factoryId": factory.factory_id,
@@ -497,6 +489,20 @@ class ContractService:
                 for line, assignment, _variant, product in rows
             ],
         }
+
+    def _has_unified_shipments(self, session: Session, *, order_id: str) -> bool:
+        initial_quantity = int(
+            session.scalar(
+                select(func.coalesce(func.sum(OrderAssignment.initial_shipped_quantity), 0))
+                .join(
+                    OrderLine,
+                    OrderLine.order_line_id == OrderAssignment.order_line_id,
+                )
+                .where(OrderLine.order_id == order_id)
+            )
+            or 0
+        )
+        return initial_quantity > 0 or self._execution_guard.has_valid_shipments(order_id=order_id)
 
     @staticmethod
     def _filename(snapshot: dict[str, Any]) -> str:
@@ -529,9 +535,7 @@ class ContractService:
         return [name for name, value in fields if not value or not value.strip()]
 
     @staticmethod
-    def _ineligible_reason(
-        *, order: Order, missing: list[str], has_shipments: bool
-    ) -> str | None:
+    def _ineligible_reason(*, order: Order, missing: list[str], has_shipments: bool) -> str | None:
         if order.lifecycle != "PUBLISHED":
             return "order_not_published"
         if has_shipments:

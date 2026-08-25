@@ -974,11 +974,15 @@ export interface components {
             changes: {
                 [key: string]: unknown;
             };
+            /** Content */
+            content: string;
             /**
              * Createdat
              * Format: date-time
              */
             createdAt: string;
+            /** Operatorname */
+            operatorName: string;
             /** Sourceterminal */
             sourceTerminal: string | null;
         };
@@ -1218,11 +1222,8 @@ export interface components {
             contractShipDate: string;
             /** Lines */
             lines: components["schemas"]["DraftLineWrite"][];
-            /**
-             * Orderdate
-             * Format: date
-             */
-            orderDate: string;
+            /** Orderdate */
+            orderDate?: string | null;
             /** Orderno */
             orderNo: string;
             /**
@@ -1534,11 +1535,8 @@ export interface components {
             lifecycle: string;
             /** Lines */
             lines: components["schemas"]["OrderLineResponse"][];
-            /**
-             * Orderdate
-             * Format: date
-             */
-            orderDate: string;
+            /** Orderdate */
+            orderDate: string | null;
             /** Orderid */
             orderId: string;
             /** Orderno */

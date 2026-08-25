@@ -590,6 +590,13 @@ h1, h2, p { margin-top: 0; }
 .order-detail-page .detail-progress em { font-size: 12px; font-style: normal; font-weight: 700; text-align: right; }
 .order-detail-page .related-shipment-table { min-width: 900px; }
 .order-detail-page .related-shipment-table th { width: calc(100% / 6); }
+.order-audit-list article { display: grid; grid-template-columns: 170px 96px minmax(0, 1fr); gap: 16px; align-items: start; padding: 14px 20px; border-top: 1px solid var(--line); }
+.order-audit-list article:first-child { border-top: 0; }
+.order-audit-list time { color: var(--subtle); font-size: 13px; white-space: nowrap; }
+.order-audit-list strong { font-size: 14px; font-weight: 600; }
+.order-audit-list p { margin: 0; color: var(--text); line-height: 1.55; }
+.detail-empty-log { margin: 0; padding: 28px 20px; color: var(--subtle); text-align: center; }
+@media (max-width: 760px) { .order-audit-list article { grid-template-columns: 1fr; gap: 6px; } }
 .order-detail-page .detail-data-table td.detail-empty-row { height: 64px; color: var(--subtle); font-weight: 600; text-align: center; }
 .order-detail-page .validation-callout { margin: 12px 0 0; }
 @media (max-width: 760px) {

@@ -263,9 +263,17 @@
             "title": "Changes",
             "type": "object"
           },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
+            "type": "string"
+          },
+          "operatorName": {
+            "title": "Operatorname",
             "type": "string"
           },
           "sourceTerminal": {
@@ -284,6 +292,8 @@
           "action",
           "changes",
           "actorId",
+          "operatorName",
+          "content",
           "sourceTerminal",
           "createdAt"
         ],
@@ -1009,9 +1019,16 @@
             "type": "array"
           },
           "orderDate": {
-            "format": "date",
-            "title": "Orderdate",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderdate"
           },
           "orderNo": {
             "maxLength": 100,
@@ -1038,7 +1055,6 @@
         },
         "required": [
           "orderNo",
-          "orderDate",
           "tracker",
           "contractShipDate",
           "lines",
@@ -1859,9 +1875,16 @@
             "type": "array"
           },
           "orderDate": {
-            "format": "date",
-            "title": "Orderdate",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderdate"
           },
           "orderId": {
             "title": "Orderid",

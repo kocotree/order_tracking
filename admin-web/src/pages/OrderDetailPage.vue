@@ -44,6 +44,18 @@
           <div class="detail-table-scroll"><table class="data-grid-table detail-data-table related-shipment-table"><thead><tr><th>发货单号</th><th>发货日期</th><th>发货数量</th><th>物流单号</th><th>状态</th><th>操作</th></tr></thead><tbody><tr><td class="detail-empty-row" colspan="6">当前订单暂无关联发货单</td></tr></tbody></table></div>
         </section>
 
+        <section class="section-card detail-section-card order-audit-card">
+          <header class="detail-section-header"><h2>操作日志</h2></header>
+          <div v-if="auditLogs.length" class="order-audit-list">
+            <article v-for="(log, index) in auditLogs" :key="`${log.createdAt}-${index}`">
+              <time :datetime="log.createdAt">{{ dateTime(log.createdAt) }}</time>
+              <strong>{{ log.operatorName }}</strong>
+              <p>{{ log.content }}</p>
+            </article>
+          </div>
+          <p v-else class="detail-empty-log">当前订单暂无操作日志</p>
+        </section>
+
       </template>
 
       <div v-if="pendingAction && order" class="modal-backdrop" role="dialog" aria-modal="true"><section class="modal action-modal"><header><h2>{{ modalTitle }}</h2><button type="button" @click="pendingAction = null">×</button></header><div class="modal-body"><p>{{ modalDescription }}</p><dl v-if="pendingAction === 'complete'" class="completion-summary"><div><dt>订单数量</dt><dd>{{ number(order.totalQuantity) }}</dd></div><div><dt>已发数量</dt><dd>{{ number(order.shippedQuantity) }}</dd></div><div><dt>未发数量</dt><dd>{{ number(order.pendingQuantity) }}</dd></div></dl><label v-if="pendingAction === 'reopen'" class="reopen-field">撤销原因<textarea v-model="reopenReason" maxlength="500" placeholder="请填写撤销完成原因"></textarea></label><p v-if="actionError" class="page-error">{{ actionError }}</p></div><footer><button class="order-secondary-button" type="button" @click="pendingAction = null">取消</button><button class="order-primary-button" type="button" :disabled="acting || (pendingAction === 'reopen' && !reopenReason.trim())" @click="confirmAction">{{ acting ? '处理中…' : '确认' }}</button></footer></section></div>
@@ -74,7 +86,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, contractApi, orderApi, type ContractFactoryStatus, type Order } from "@/api/client";
+import { ApiError, contractApi, orderApi, type AuditLogList, type ContractFactoryStatus, type Order } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 
 type Action = "publish" | "withdraw" | "delete" | "complete" | "reopen";
@@ -83,8 +95,10 @@ type DetailRow = { key: string; skuId: string; productName: string; propertiesVa
 const detailColumns: { key: DetailSortKey; label: string }[] = [{ key: "skuId", label: "产品编码" }, { key: "productName", label: "产品名称" }, { key: "propertiesValue", label: "颜色/规格" }, { key: "factoryName", label: "工厂" }, { key: "orderQuantity", label: "下单数量" }, { key: "shippedQuantity", label: "已发数量" }, { key: "pendingQuantity", label: "未发数量" }, { key: "progressPercent", label: "发货进度" }];
 const route = useRoute(); const router = useRouter(); const orderId = String(route.params.orderId);
 const order = ref<Order | null>(null); const loading = ref(true); const errorMessage = ref(""); const pendingAction = ref<Action | null>(null); const reopenReason = ref(""); const actionError = ref(""); const acting = ref(false); const detailSortKey = ref<DetailSortKey | null>(null); const detailSortOrder = ref<"asc" | "desc">("asc");
+const auditLogs = ref<AuditLogList["items"]>([]);
 const contractFactories = ref<ContractFactoryStatus[]>([]); const loadingContracts = ref(false); const contractDialogOpen = ref(false); const selectedContractFactory = ref<ContractFactoryStatus | null>(null); const contractSigningDate = ref(""); const contractError = ref(""); const exportingContract = ref(false);
 const number = (value: number) => value.toLocaleString("zh-CN");
+const dateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
 const pageTitle = computed(() => order.value ? `订单详情 · ${order.value.orderNo}` : "订单详情");
 const contractButtonEnabled = computed(() => order.value?.lifecycle === "PUBLISHED" && order.value.shippedQuantity === 0 && contractFactories.value.length > 0 && !loadingContracts.value);
 const contractButtonTitle = computed(() => order.value?.lifecycle === "DRAFT" ? "请先发布订单后再导出加工合同" : order.value?.lifecycle !== "PUBLISHED" ? "只有已发布订单才能导出加工合同" : (order.value?.shippedQuantity ?? 0) > 0 ? "订单已产生发货记录，不能导出加工合同" : contractFactories.value.length === 0 ? "订单尚未派工，不能导出加工合同" : "导出加工合同");
@@ -100,7 +114,7 @@ function openAction(action: Action) { pendingAction.value = action; reopenReason
 function localDate() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`; }
 function contractReadyLabel(factory: ContractFactoryStatus) { const labels: Record<string, string> = { factoryCode: "工厂代码", legalName: "单位全称", address: "单位地址", legalRepresentative: "法定代表人" }; return factory.contractReady ? "完整" : `缺少：${factory.missingContractFields.map((field) => labels[field] || field).join("、")}`; }
 async function loadContracts() { if (order.value?.lifecycle !== "PUBLISHED") { contractFactories.value = []; return; } loadingContracts.value = true; try { contractFactories.value = (await contractApi.list(orderId)).items; } catch (error) { contractError.value = error instanceof ApiError ? error.message : "合同状态加载失败"; } finally { loadingContracts.value = false; } }
-async function load() { loading.value = true; try { order.value = await orderApi.get(orderId); await loadContracts(); } catch (error) { errorMessage.value = error instanceof ApiError ? error.message : "订单详情加载失败"; } finally { loading.value = false; } }
+async function load() { loading.value = true; try { order.value = await orderApi.get(orderId); auditLogs.value = (await orderApi.auditLogs(orderId)).items; await loadContracts(); } catch (error) { errorMessage.value = error instanceof ApiError ? error.message : "订单详情加载失败"; } finally { loading.value = false; } }
 function selectContractFactory(factory: ContractFactoryStatus) { selectedContractFactory.value = factory; contractSigningDate.value = factory.signingDate || localDate(); contractError.value = ""; }
 function openContractExport() { if (!order.value || order.value.shippedQuantity > 0) return; contractError.value = ""; contractDialogOpen.value = true; if (contractFactories.value.length === 1) selectContractFactory(contractFactories.value[0]); else selectedContractFactory.value = null; }
 function closeContractExport() { contractDialogOpen.value = false; selectedContractFactory.value = null; contractError.value = ""; }

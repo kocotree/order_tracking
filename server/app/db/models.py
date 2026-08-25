@@ -511,9 +511,7 @@ class OrderImportCandidateLine(Base):
 
 class OrderImportValidationIssue(Base):
     __tablename__ = "order_import_validation_issues"
-    __table_args__ = (
-        Index("ix_import_validation_issues_candidate", "candidate_id", "sort_order"),
-    )
+    __table_args__ = (Index("ix_import_validation_issues_candidate", "candidate_id", "sort_order"),)
 
     issue_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     candidate_id: Mapped[str] = mapped_column(
@@ -544,7 +542,7 @@ class Order(Base):
     order_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     order_no: Mapped[str] = mapped_column(String(100), nullable=False)
     source: Mapped[str] = mapped_column(String(32), nullable=False)
-    order_date: Mapped[date] = mapped_column(Date, nullable=False)
+    order_date: Mapped[date | None] = mapped_column(Date)
     tracker: Mapped[str] = mapped_column(String(32), nullable=False)
     contract_ship_date: Mapped[date] = mapped_column(Date, nullable=False)
     lifecycle: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -607,6 +605,14 @@ class OrderAssignment(Base):
     __table_args__ = (
         UniqueConstraint("order_line_id", "factory_id", name="uq_order_assignments_line_factory"),
         CheckConstraint("assigned_quantity > 0", name="ck_order_assignments_quantity_positive"),
+        CheckConstraint(
+            "initial_shipped_quantity >= 0",
+            name="ck_order_assignments_initial_shipped_nonnegative",
+        ),
+        CheckConstraint(
+            "assigned_quantity >= initial_shipped_quantity",
+            name="ck_order_assignments_quantity_covers_initial_shipped",
+        ),
         Index("ix_order_assignments_factory", "factory_id", "order_line_id"),
     )
 
@@ -620,6 +626,9 @@ class OrderAssignment(Base):
         ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
     )
     assigned_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    initial_shipped_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
     factory_name_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")

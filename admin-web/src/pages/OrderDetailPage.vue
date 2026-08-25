@@ -44,16 +44,18 @@
           <div class="detail-table-scroll"><table class="data-grid-table detail-data-table related-shipment-table"><thead><tr><th>发货单号</th><th>发货日期</th><th>发货数量</th><th>物流单号</th><th>状态</th><th>操作</th></tr></thead><tbody><tr><td class="detail-empty-row" colspan="6">当前订单暂无关联发货单</td></tr></tbody></table></div>
         </section>
 
-        <section class="section-card detail-section-card order-audit-card">
-          <header class="detail-section-header"><h2>操作日志</h2></header>
-          <div v-if="auditLogs.length" class="order-audit-list">
+        <section class="section-card detail-section-card order-audit-card" :class="{ 'is-expanded': auditExpanded }">
+          <button class="order-audit-toggle" type="button" :aria-expanded="auditExpanded" aria-controls="order-audit-list" :disabled="!auditLogs.length" @click="auditExpanded = !auditExpanded">
+            <span class="order-audit-toggle-title">操作记录<em>（{{ auditLogs.length }}）</em></span>
+            <span class="order-audit-toggle-action">{{ auditLogs.length ? (auditExpanded ? '收起' : '展开') : '暂无记录' }}<svg v-if="auditLogs.length" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg></span>
+          </button>
+          <div v-if="auditExpanded && auditLogs.length" id="order-audit-list" class="order-audit-list">
             <article v-for="(log, index) in auditLogs" :key="`${log.createdAt}-${index}`">
               <time :datetime="log.createdAt">{{ dateTime(log.createdAt) }}</time>
               <strong>{{ log.operatorName }}</strong>
               <p>{{ log.content }}</p>
             </article>
           </div>
-          <p v-else class="detail-empty-log">当前订单暂无操作日志</p>
         </section>
 
       </template>
@@ -96,6 +98,7 @@ const detailColumns: { key: DetailSortKey; label: string }[] = [{ key: "skuId", 
 const route = useRoute(); const router = useRouter(); const orderId = String(route.params.orderId);
 const order = ref<Order | null>(null); const loading = ref(true); const errorMessage = ref(""); const pendingAction = ref<Action | null>(null); const reopenReason = ref(""); const actionError = ref(""); const acting = ref(false); const detailSortKey = ref<DetailSortKey | null>(null); const detailSortOrder = ref<"asc" | "desc">("asc");
 const auditLogs = ref<AuditLogList["items"]>([]);
+const auditExpanded = ref(false);
 const contractFactories = ref<ContractFactoryStatus[]>([]); const loadingContracts = ref(false); const contractDialogOpen = ref(false); const selectedContractFactory = ref<ContractFactoryStatus | null>(null); const contractSigningDate = ref(""); const contractError = ref(""); const exportingContract = ref(false);
 const number = (value: number) => value.toLocaleString("zh-CN");
 const dateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });

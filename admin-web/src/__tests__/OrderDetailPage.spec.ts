@@ -43,9 +43,28 @@ describe("order detail prototype alignment", () => {
     expect(contractButton.attributes("disabled")).toBeDefined();
     expect(contractButton.attributes("title")).toContain("请先发布订单");
     expect(wrapper.text()).not.toContain("工厂派工与进度");
-    expect(wrapper.text()).toContain("操作日志");
+    expect(wrapper.text()).toContain("操作记录（1）");
+    expect(wrapper.find(".order-audit-list").exists()).toBe(false);
+  });
+
+  it("collapses order operation records to one row and toggles the full list", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
+    await flushPromises();
+
+    const toggle = wrapper.find(".order-audit-toggle");
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+    expect(wrapper.find(".order-audit-list").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("从飞书导入订单：订单数量 400，初始已发数量 100，未发数量 300。");
+
+    await toggle.trigger("click");
+    expect(toggle.attributes("aria-expanded")).toBe("true");
+    expect(wrapper.find(".order-audit-list").exists()).toBe(true);
     expect(wrapper.text()).toContain("松子");
     expect(wrapper.text()).toContain("从飞书导入订单：订单数量 400，初始已发数量 100，未发数量 300。");
+
+    await toggle.trigger("click");
+    expect(wrapper.find(".order-audit-list").exists()).toBe(false);
   });
 
   it("opens the confirmed single-factory export dialog for a published unshipped order", async () => {

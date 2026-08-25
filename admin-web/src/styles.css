@@ -593,6 +593,19 @@ h1, h2, p { margin-top: 0; }
 .order-detail-page .detail-progress em { font-size: 12px; font-style: normal; font-weight: 700; text-align: right; }
 .order-detail-page .related-shipment-table { min-width: 900px; }
 .order-detail-page .related-shipment-table th { width: calc(100% / 6); }
+.order-audit-card { overflow: hidden; }
+.order-audit-toggle { display: flex; width: 100%; min-height: 56px; align-items: center; justify-content: space-between; padding: 0 20px; color: var(--ink-strong); background: #fff; border: 0; cursor: pointer; }
+.order-audit-toggle:hover { background: #fafbfd; }
+.order-audit-toggle:focus-visible { outline: 2px solid var(--erp-blue); outline-offset: -2px; }
+.order-audit-toggle:disabled { cursor: default; }
+.order-audit-toggle:disabled:hover { background: #fff; }
+.order-audit-toggle-title { font-size: 18px; font-weight: 800; }
+.order-audit-toggle-title em { color: var(--subtle); font-size: 13px; font-style: normal; font-weight: 700; }
+.order-audit-toggle-action { display: flex; gap: 6px; align-items: center; color: var(--erp-blue-dark); font-size: 13px; font-weight: 750; }
+.order-audit-toggle:disabled .order-audit-toggle-action { color: var(--subtle); }
+.order-audit-toggle-action svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .16s ease; }
+.order-audit-card.is-expanded .order-audit-toggle-action svg { transform: rotate(180deg); }
+.order-audit-list { border-top: 1px solid var(--line); }
 .order-audit-list article { display: grid; grid-template-columns: 170px 96px minmax(0, 1fr); gap: 16px; align-items: start; padding: 14px 20px; border-top: 1px solid var(--line); }
 .order-audit-list article:first-child { border-top: 0; }
 .order-audit-list time { color: var(--subtle); font-size: 13px; white-space: nowrap; }
@@ -1156,8 +1169,11 @@ h1, h2, p { margin-top: 0; }
 .shipment-log-list {
   display: grid;
   gap: 0;
+  max-height: 320px;
   margin: 0;
   padding: 10px 18px 14px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   list-style: none;
 }
 

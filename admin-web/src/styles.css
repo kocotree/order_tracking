@@ -562,6 +562,7 @@ h1, h2, p { margin-top: 0; }
 .order-detail-page .detail-data-table th, .order-detail-page .detail-data-table td { height: 48px; padding: 8px 14px; font-size: 14px; font-weight: 700; text-align: left; vertical-align: middle; }
 .order-detail-page .detail-data-table th { height: 40px; font-weight: 800; }
 .order-detail-page .product-detail-table { min-width: 1080px; }
+.order-workspace.order-detail-page .product-detail-table th, .pending-import-detail-page .pending-import-detail-table th { padding-top: 0; padding-bottom: 0; }
 .order-detail-page .product-detail-table th:nth-child(1) { width: 56px; }
 .order-detail-page .product-detail-table th:nth-child(2) { width: 72px; }
 .order-detail-page .product-detail-table th:nth-child(3) { width: 110px; }

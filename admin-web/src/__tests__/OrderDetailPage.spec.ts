@@ -1,7 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { orderApi, type Order } from "@/api/client";
+import { contractApi, orderApi, type Order } from "@/api/client";
 import OrderDetailPage from "@/pages/OrderDetailPage.vue";
 
 vi.mock("vue-router", () => ({
@@ -21,7 +21,7 @@ const sampleOrder = {
 afterEach(() => vi.restoreAllMocks());
 
 describe("order detail prototype alignment", () => {
-  it("uses the approved summary and ten-column detail table without opening S06 export", async () => {
+  it("shows the S06 export entry disabled for draft orders", async () => {
     vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
     const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
     await flushPromises();
@@ -30,10 +30,52 @@ describe("order detail prototype alignment", () => {
     expect(wrapper.findAll(".detail-summary-grid > div")).toHaveLength(6);
     expect(wrapper.findAll(".product-detail-table th")).toHaveLength(10);
     expect(wrapper.findAll(".product-detail-table .data-grid-sort-button")).toHaveLength(8);
-    expect(wrapper.text()).toContain("编辑草稿");
-    expect(wrapper.text()).toContain("删除订单");
-    expect(wrapper.text()).not.toContain("导出加工合同");
+    expect(wrapper.text()).not.toContain("编辑草稿");
+    expect(wrapper.text()).not.toContain("删除订单");
+    const contractButton = wrapper.find('[data-testid="contract-export-open"]');
+    expect(contractButton.attributes("disabled")).toBeDefined();
+    expect(contractButton.attributes("title")).toContain("请先发布订单");
     expect(wrapper.text()).not.toContain("工厂派工与进度");
     expect(wrapper.text()).not.toContain("操作日志");
+  });
+
+  it("opens the confirmed single-factory export dialog for a published unshipped order", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue({ ...sampleOrder, lifecycle: "PUBLISHED", displayStatus: "未完成" });
+    vi.spyOn(contractApi, "list").mockResolvedValue({
+      items: [{ factoryId: "factory-1", factoryName: "盛泰", contractReady: true, missingContractFields: [], eligible: true, ineligibleReason: null, contractNo: null, signingDate: null }],
+      requestId: "contract-list-request",
+    });
+    const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
+    await flushPromises();
+
+    const exportButton = wrapper.find('[data-testid="contract-export-open"]');
+    expect(exportButton.exists()).toBe(true);
+    expect(exportButton.attributes("disabled")).toBeUndefined();
+    await exportButton.trigger("click");
+
+    expect(wrapper.text()).toContain("合同资料");
+    expect(wrapper.text()).toContain("首次导出后生成");
+    expect(wrapper.find('input[type="date"]').attributes("readonly")).toBeUndefined();
+  });
+
+  it("re-exports with the immutable signing date and downloads the generated workbook", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue({ ...sampleOrder, lifecycle: "PUBLISHED", displayStatus: "未完成" });
+    vi.spyOn(contractApi, "list").mockResolvedValue({
+      items: [{ factoryId: "factory-1", factoryName: "盛泰", contractReady: true, missingContractFields: [], eligible: true, ineligibleReason: null, contractNo: "20260824-KK-ST", signingDate: "2026-08-24" }],
+      requestId: "contract-list-request",
+    });
+    const exportSpy = vi.spyOn(contractApi, "export").mockResolvedValue({ exportId: "export-1", contractId: "contract-1", contractNo: "20260824-KK-ST", signingDate: "2026-08-24", filename: "20260824-KK-ST.xlsx", status: "READY", downloadUrl: "/api/v1/admin/contract-exports/export-1/download", requestId: "contract-export-request" });
+    const downloadSpy = vi.spyOn(contractApi, "download").mockResolvedValue();
+    const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="contract-export-open"]').trigger("click");
+    expect(wrapper.find('input[type="date"]').attributes("readonly")).toBeDefined();
+    await wrapper.find(".contract-export-dialog .order-primary-button").trigger("click");
+    await flushPromises();
+
+    expect(exportSpy).toHaveBeenCalledWith("order-1", "factory-1", "2026-08-24");
+    expect(downloadSpy).toHaveBeenCalledOnce();
+    expect(wrapper.find(".contract-export-dialog").exists()).toBe(false);
   });
 });

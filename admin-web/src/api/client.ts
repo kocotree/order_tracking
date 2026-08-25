@@ -25,6 +25,9 @@ export type ImportCandidate = components["schemas"]["CandidateResponse"];
 export type ImportCandidateList = components["schemas"]["CandidateListResponse"];
 export type BatchConfirmResult = components["schemas"]["BatchConfirmResponse"];
 export type User = components["schemas"]["UserResponse"];
+export type ContractFactoryStatus = components["schemas"]["ContractFactoryStatusResponse"];
+export type ContractFactoryStatusList = components["schemas"]["ContractFactoryStatusListResponse"];
+export type ContractExport = components["schemas"]["ContractExportResponse"];
 
 export class ApiError extends Error {
   constructor(
@@ -106,6 +109,23 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+async function download(path: string, filename: string): Promise<void> {
+  const apiRelativePath = path.startsWith("/api/") ? path.slice(4) : path;
+  const send = () => fetch(apiUrl(apiRelativePath), { credentials: "include" });
+  let response = await send();
+  if (response.status === 401) {
+    await refreshWebSession();
+    response = await send();
+  }
+  if (!response.ok) throw await apiError(response);
+  const href = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(href);
 }
 
 export const feishuLoginUrl = (returnTo = "/") =>
@@ -266,6 +286,23 @@ export const orderApi = {
       headers: idempotencyHeaders(),
       body: JSON.stringify({ reason }),
     }),
+};
+
+export const contractApi = {
+  list: (orderId: string) =>
+    request<ContractFactoryStatusList>(
+      `/v1/admin/orders/${encodeURIComponent(orderId)}/contracts`,
+    ),
+  export: (orderId: string, factoryId: string, signingDate: string) =>
+    request<ContractExport>(
+      `/v1/admin/orders/${encodeURIComponent(orderId)}/contracts/${encodeURIComponent(factoryId)}/exports`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(),
+        body: JSON.stringify({ signingDate }),
+      },
+    ),
+  download: (value: ContractExport) => download(value.downloadUrl, value.filename),
 };
 
 export const orderImportApi = {

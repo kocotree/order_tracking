@@ -720,6 +720,167 @@
         "title": "ContactWrite",
         "type": "object"
       },
+      "ContractExportResponse": {
+        "properties": {
+          "contractId": {
+            "title": "Contractid",
+            "type": "string"
+          },
+          "contractNo": {
+            "title": "Contractno",
+            "type": "string"
+          },
+          "downloadUrl": {
+            "title": "Downloadurl",
+            "type": "string"
+          },
+          "exportId": {
+            "title": "Exportid",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "requestId": {
+            "title": "Requestid",
+            "type": "string"
+          },
+          "signingDate": {
+            "format": "date",
+            "title": "Signingdate",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exportId",
+          "contractId",
+          "contractNo",
+          "signingDate",
+          "filename",
+          "status",
+          "downloadUrl",
+          "requestId"
+        ],
+        "title": "ContractExportResponse",
+        "type": "object"
+      },
+      "ContractExportWrite": {
+        "properties": {
+          "signingDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signingdate"
+          }
+        },
+        "title": "ContractExportWrite",
+        "type": "object"
+      },
+      "ContractFactoryStatusListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContractFactoryStatusResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "requestId": {
+            "title": "Requestid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "requestId"
+        ],
+        "title": "ContractFactoryStatusListResponse",
+        "type": "object"
+      },
+      "ContractFactoryStatusResponse": {
+        "properties": {
+          "contractNo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractno"
+          },
+          "contractReady": {
+            "title": "Contractready",
+            "type": "boolean"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "factoryId": {
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          },
+          "ineligibleReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ineligiblereason"
+          },
+          "missingContractFields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missingcontractfields",
+            "type": "array"
+          },
+          "signingDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signingdate"
+          }
+        },
+        "required": [
+          "factoryId",
+          "factoryName",
+          "contractReady",
+          "missingContractFields",
+          "eligible",
+          "ineligibleReason",
+          "contractNo",
+          "signingDate"
+        ],
+        "title": "ContractFactoryStatusResponse",
+        "type": "object"
+      },
       "DashboardResponse": {
         "properties": {
           "overdueOrders": {
@@ -2609,6 +2770,62 @@
         ]
       }
     },
+    "/api/v1/admin/contract-exports/{export_id}/download": {
+      "get": {
+        "operationId": "download_export_api_v1_admin_contract_exports__export_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Export",
+        "tags": [
+          "contract-admin"
+        ]
+      }
+    },
     "/api/v1/admin/dashboard/orders": {
       "get": {
         "operationId": "dashboard_api_v1_admin_dashboard_orders_get",
@@ -4287,6 +4504,166 @@
         "summary": "Complete",
         "tags": [
           "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/contracts": {
+      "get": {
+        "operationId": "list_contracts_api_v1_admin_orders__order_id__contracts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractFactoryStatusListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Contracts",
+        "tags": [
+          "contract-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/contracts/{factory_id}/exports": {
+      "post": {
+        "operationId": "create_export_api_v1_admin_orders__order_id__contracts__factory_id__exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "factory_id",
+            "required": true,
+            "schema": {
+              "title": "Factory Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractExportWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Export",
+        "tags": [
+          "contract-admin"
         ]
       }
     },

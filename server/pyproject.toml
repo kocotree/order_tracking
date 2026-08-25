@@ -7,6 +7,9 @@ dependencies = [
   "alembic>=1.16,<2",
   "cryptography>=46,<47",
   "fastapi>=0.116,<1",
+  "minio>=7.2,<8",
+  "openpyxl>=3.1,<4",
+  "pillow>=11,<12",
   "pydantic-settings>=2.10,<3",
   "pymysql>=1.1,<2",
   "python-multipart>=0.0.20,<1",
@@ -21,6 +24,7 @@ dev = [
   "pytest>=8.4,<9",
   "pytest-cov>=6.2,<7",
   "ruff>=0.12,<1",
+  "types-openpyxl>=3.1.5.20260807",
 ]
 
 [tool.pytest.ini_options]

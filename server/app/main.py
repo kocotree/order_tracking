@@ -1,6 +1,7 @@
 import secrets
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -18,7 +19,14 @@ from app.adapters.identity import (
     FeishuIdentity,
     FeishuIdentityConfig,
 )
+from app.adapters.private_files import (
+    DisabledPrivateFileStore,
+    FakePrivateFileStore,
+    MinioPrivateFileStore,
+    PrivateFileStore,
+)
 from app.adapters.wechat import DisabledWechatIdentity
+from app.api.contracts import create_contract_router
 from app.api.factory_access import create_factory_router
 from app.api.identity import create_identity_router
 from app.api.order_import import create_order_import_router
@@ -33,6 +41,16 @@ from app.local_demo import (
     create_local_demo_router,
 )
 from app.logging import StructuredLogger, configure_uvicorn_access_log_redaction
+from app.modules.contracts import (
+    ContractConflict,
+    ContractError,
+    ContractGenerationError,
+    ContractNotFound,
+    ContractPermissionDenied,
+    ContractService,
+    ContractValidationError,
+)
+from app.modules.contracts.workbook import ContractWorkbookRenderer
 from app.modules.factory_access import FactoryAccessService
 from app.modules.identity_access import (
     ApplicationConflict,
@@ -69,6 +87,7 @@ def create_app(
     product_service: ProductCatalogService | None = None,
     order_service: OrderService | None = None,
     order_import_service: OrderImportService | None = None,
+    contract_service: ContractService | None = None,
     extra_routers: Sequence[APIRouter] = (),
 ) -> FastAPI:
     settings = Settings(database_url=database_url) if database_url is not None else Settings()
@@ -160,6 +179,41 @@ def create_app(
         order_service = OrderService(session_factory)
     if order_import_service is None:
         order_import_service = OrderImportService(session_factory)
+    if contract_service is None:
+        private_file_store: PrivateFileStore
+        if local_demo_enabled:
+            private_file_store = FakePrivateFileStore(bucket="local-demo-contract-files")
+        elif all(
+            (
+                settings.private_file_endpoint,
+                settings.private_file_access_key,
+                settings.private_file_secret_key,
+            )
+        ):
+            private_file_store = MinioPrivateFileStore(
+                endpoint=settings.private_file_endpoint,
+                access_key=settings.private_file_access_key,
+                secret_key=settings.private_file_secret_key,
+                bucket=settings.private_file_bucket,
+                secure=settings.private_file_secure,
+            )
+        else:
+            private_file_store = DisabledPrivateFileStore(
+                bucket=settings.private_file_bucket
+            )
+        contract_service = ContractService(
+            session_factory,
+            workbook_renderer=ContractWorkbookRenderer(
+                template_path=(
+                    Path(__file__).resolve().parent
+                    / "templates/processing_contract_v1.xlsx"
+                ),
+                image_loader=lambda object_key: private_file_store.get(
+                    object_key=object_key
+                ),
+            ),
+            file_store=private_file_store,
+        )
     if local_demo_enabled:
         seed_local_demo_products(session_factory)
     app.include_router(
@@ -179,6 +233,7 @@ def create_app(
         )
     )
     app.include_router(create_order_import_router(order_import_service, identity_service))
+    app.include_router(create_contract_router(contract_service, identity_service))
     if local_demo_enabled:
         app.include_router(create_local_demo_router())
 
@@ -276,6 +331,27 @@ def create_app(
             status_code, code, message = 400, "validation_failed", str(error)
         else:
             status_code, code, message = 400, "order_error", "订单操作失败"
+        return JSONResponse(
+            status_code=status_code,
+            content={"code": code, "message": message, "requestId": request.state.request_id},
+        )
+
+    @app.exception_handler(ContractError)
+    async def handle_contract_error(
+        request: Request, error: ContractError
+    ) -> JSONResponse:
+        if isinstance(error, ContractPermissionDenied):
+            status_code, code, message = 403, "permission_denied", "没有权限执行该操作"
+        elif isinstance(error, ContractNotFound):
+            status_code, code, message = 404, "not_found", "合同或导出文件不存在"
+        elif isinstance(error, ContractConflict):
+            status_code, code, message = 409, "conflict", str(error)
+        elif isinstance(error, ContractValidationError):
+            status_code, code, message = 422, "validation_failed", str(error)
+        elif isinstance(error, ContractGenerationError):
+            status_code, code, message = 500, "contract_generation_failed", "合同文件生成失败"
+        else:
+            status_code, code, message = 400, "contract_error", "合同操作失败"
         return JSONResponse(
             status_code=status_code,
             content={"code": code, "message": message, "requestId": request.state.request_id},

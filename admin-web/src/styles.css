@@ -345,6 +345,35 @@ h1, h2, p { margin-top: 0; }
 .completion-summary dd { margin-top: 5px; font-weight: 800; }
 .reopen-field { display: grid; gap: 8px; margin-top: 18px; font-size: 13px; font-weight: 700; }
 .reopen-field textarea { min-height: 96px; padding: 10px; resize: vertical; border: 1px solid var(--line-strong); border-radius: 5px; }
+.contract-export-dialog { width: min(520px, calc(100vw - 40px)); }
+.contract-export-dialog.is-factory-list { width: min(820px, calc(100vw - 40px)); }
+.contract-export-body { padding: 20px; }
+.contract-export-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; overflow: hidden; border-top: 1px solid #d9dee5; border-left: 1px solid #d9dee5; }
+.contract-export-summary > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); }
+.contract-export-summary dt, .contract-export-summary dd { display: flex; align-items: center; min-height: 48px; margin: 0; padding: 10px 12px; color: var(--ink-strong); font-size: 14px; border-right: 1px solid #d9dee5; border-bottom: 1px solid #d9dee5; }
+.contract-export-summary dt { font-weight: 800; background: #eef1f5; }
+.contract-export-summary dd { font-weight: 600; background: #fff; }
+.contract-date-field { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; margin-top: 18px; color: var(--ink-strong); font-size: 14px; font-weight: 700; }
+.contract-date-field input { height: 38px; padding: 0 12px; color: var(--ink-strong); font: inherit; background: #fff; border: 1px solid var(--line-strong); border-radius: 4px; }
+.contract-date-field input[readonly] { color: #59636e; background: #f4f6f8; }
+.contract-export-warning { margin: 16px 0 0; padding: 10px 12px; color: #a86b00; font-size: 13px; line-height: 1.6; background: #fff8e8; border: 1px solid #f4dfae; border-radius: 4px; }
+.contract-repeat-hint { margin: 14px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.contract-export-error { margin: 16px 0 0; }
+.contract-export-intro { margin: 0 0 14px; color: var(--ink); }
+.contract-factory-table-wrap { overflow-x: auto; }
+.contract-factory-table { width: 100%; min-width: 680px; color: var(--ink); font-size: 14px; border-collapse: collapse; table-layout: fixed; }
+.contract-factory-table th, .contract-factory-table td { height: 46px; padding: 9px 12px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--line); }
+.contract-factory-table th { color: #37404b; font-weight: 800; white-space: nowrap; background: #f1f3f6; }
+.contract-factory-table th:nth-child(1) { width: 110px; }
+.contract-factory-table th:nth-child(2) { width: 110px; }
+.contract-factory-table th:nth-child(3) { width: 190px; }
+.contract-factory-table th:nth-child(4) { width: 130px; }
+.contract-factory-table th:nth-child(5) { width: 90px; }
+.contract-ready-badge { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 9px; font-size: 12px; font-weight: 700; white-space: nowrap; border-radius: 999px; }
+.contract-ready-badge.is-ready { color: var(--success); background: var(--success-bg); }
+.contract-ready-badge.is-missing { color: var(--warning); background: var(--warning-bg); }
+.detail-text-button { padding: 0; color: var(--erp-blue-dark); font: inherit; font-weight: 700; background: transparent; border: 0; cursor: pointer; }
+.detail-text-button:disabled { color: #9aa3ad; cursor: not-allowed; }
 
 @media (max-width: 700px) {
   .auth-card { padding-right: 24px; padding-left: 24px; }
@@ -736,6 +765,7 @@ h1, h2, p { margin-top: 0; }
 .people-table th:first-child, .people-table td:first-child { width: 52px; padding-right: 8px; padding-left: 8px; text-align: center; white-space: nowrap; }
 .people-table tbody tr:hover td { background: #f7fbfe; }
 .people-row-actions { display: flex; gap: 12px; align-items: center; }
+.people-management-page .status-badge::before { display: none; }
 .text-button { padding: 5px 2px; color: var(--erp-blue); font-size: 13px; font-weight: 700; background: transparent; border: 0; }
 .text-button:hover { color: var(--erp-blue-dark); text-decoration: underline; text-underline-offset: 3px; }
 .text-button.danger { color: var(--danger); }

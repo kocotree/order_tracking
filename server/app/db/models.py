@@ -654,6 +654,80 @@ class OrderCompletionRecord(Base):
     )
 
 
+class ProcessingContract(Base):
+    __tablename__ = "processing_contracts"
+    __table_args__ = (
+        UniqueConstraint("order_id", "factory_id", name="uq_processing_contract_order_factory"),
+        UniqueConstraint("contract_no", name="uq_processing_contract_no"),
+        UniqueConstraint(
+            "signing_date",
+            "factory_id",
+            "daily_sequence",
+            name="uq_processing_contract_daily_sequence",
+        ),
+        Index("ix_processing_contract_order", "order_id", "factory_id"),
+    )
+
+    contract_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    order_id: Mapped[str] = mapped_column(
+        ForeignKey("orders.order_id", ondelete="RESTRICT"), nullable=False
+    )
+    factory_id: Mapped[str] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
+    )
+    signing_date: Mapped[date] = mapped_column(Date, nullable=False)
+    daily_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    contract_no: Mapped[str] = mapped_column(String(191), nullable=False)
+    contract_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    template_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class ContractNumberCounter(Base):
+    __tablename__ = "contract_number_counters"
+
+    signing_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    factory_id: Mapped[str] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT"), primary_key=True
+    )
+    next_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class ContractExport(Base):
+    __tablename__ = "contract_exports"
+    __table_args__ = (
+        UniqueConstraint(
+            "exported_by",
+            "idempotency_key",
+            name="uq_contract_export_actor_idempotency",
+        ),
+        Index("ix_contract_exports_contract", "contract_id", "created_at"),
+    )
+
+    export_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    contract_id: Mapped[str] = mapped_column(
+        ForeignKey("processing_contracts.contract_id", ondelete="RESTRICT"), nullable=False
+    )
+    exported_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(191), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    export_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    template_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    stored_file_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stored_files.file_id", ondelete="RESTRICT", use_alter=True)
+    )
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+
+
 class MiniLoginAttempt(Base):
     __tablename__ = "mini_login_attempts"
     __table_args__ = (UniqueConstraint("token_digest", name="uq_mini_login_attempt_token"),)

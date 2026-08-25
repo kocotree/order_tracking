@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     feishu_order_app_token: str = ""
     feishu_order_table_id: str = ""
     feishu_order_view_id: str = ""
+    private_file_endpoint: str = ""
+    private_file_access_key: str = ""
+    private_file_secret_key: str = ""
+    private_file_bucket: str = "unconfigured-contract-files"
+    private_file_secure: bool = True
 
     model_config = SettingsConfigDict(
         env_prefix="ORDER_TRACKING_",

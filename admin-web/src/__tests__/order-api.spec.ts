@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { identityApi, orderApi } from "@/api/client";
+import { contractApi, identityApi, orderApi } from "@/api/client";
 
 describe("orderApi", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   beforeEach(() => {
     document.cookie = "ot_csrf=csrf-value";
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
@@ -68,5 +70,29 @@ describe("orderApi", () => {
     expect(refreshCalls).toBe(1);
     expect(meCalls).toBe(4);
     expect(users).toHaveLength(2);
+  });
+
+  it("does not duplicate the api prefix when downloading a contract", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(new Blob(["xlsx"]), { status: 200 }),
+    );
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:contract");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    await contractApi.download({
+      exportId: "export-1",
+      contractId: "contract-1",
+      contractNo: "20260824-KK-HT",
+      signingDate: "2026-08-24",
+      filename: "contract.xlsx",
+      status: "READY",
+      downloadUrl: "/api/v1/admin/contract-exports/export-1/download",
+      requestId: "request-1",
+    });
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "/api/v1/admin/contract-exports/export-1/download",
+    );
   });
 });

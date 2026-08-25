@@ -4,6 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { orderImportApi, type ImportCandidate } from "@/api/client";
 import OrderImportPage from "@/pages/OrderImportPage.vue";
 
+const router = vi.hoisted(() => ({ replace: vi.fn().mockResolvedValue(undefined) }));
+
+vi.mock("vue-router", () => ({
+  useRoute: () => ({ query: {} }),
+  useRouter: () => router,
+}));
+
 const candidate = {
   candidateId: "candidate-1",
   orderNo: "E100",
@@ -22,7 +29,10 @@ const candidate = {
   updatedAt: "2026-08-22T09:00:00",
 } satisfies ImportCandidate;
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  router.replace.mockClear();
+});
 
 describe("pending order import page", () => {
   it("shows confirmed filters and only selects ready pending candidates", async () => {

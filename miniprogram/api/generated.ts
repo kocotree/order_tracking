@@ -535,6 +535,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/shipments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin Shipments */
+        get: operations["admin_shipments_api_v1_admin_shipments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/shipments/{shipment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin Shipment */
+        get: operations["admin_shipment_api_v1_admin_shipments__shipment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -697,6 +731,125 @@ export interface paths {
         };
         /** My Factory Application */
         get: operations["my_factory_application_api_v1_factory_applications_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/shipment-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Shipment Catalog */
+        get: operations["shipment_catalog_api_v1_factory_shipment_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/shipments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Factory Shipments */
+        get: operations["factory_shipments_api_v1_factory_shipments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/shipments/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Draft */
+        post: operations["create_draft_api_v1_factory_shipments_drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/shipments/drafts/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current Draft */
+        get: operations["current_draft_api_v1_factory_shipments_drafts_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/shipments/drafts/{shipment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Draft */
+        put: operations["save_draft_api_v1_factory_shipments_drafts__shipment_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/shipments/drafts/{shipment_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Draft */
+        post: operations["submit_draft_api_v1_factory_shipments_drafts__shipment_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/shipments/{shipment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Factory Shipment */
+        get: operations["factory_shipment_api_v1_factory_shipments__shipment_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1179,27 +1332,21 @@ export interface components {
             /** Todayshipments */
             todayShipments: number;
         };
-        /** DraftCreate */
-        DraftCreate: {
-            /**
-             * Contractshipdate
-             * Format: date
-             */
-            contractShipDate: string;
-            /** Lines */
-            lines: components["schemas"]["DraftLineWrite"][];
-            /**
-             * Orderdate
-             * Format: date
-             */
-            orderDate: string;
-            /** Orderno */
-            orderNo: string;
-            /**
-             * Tracker
-             * @enum {string}
-             */
-            tracker: "烧麦" | "松子" | "橄榄" | "大葱" | "青椒";
+        /** DraftBoxWrite */
+        DraftBoxWrite: {
+            /** Boxno */
+            boxNo: number;
+            /** Groupkey */
+            groupKey?: string | null;
+            /** Items */
+            items: components["schemas"]["DraftItemWrite"][];
+        };
+        /** DraftItemWrite */
+        DraftItemWrite: {
+            /** Assignmentid */
+            assignmentId: number;
+            /** Quantity */
+            quantity: number;
         };
         /** DraftLineWrite */
         DraftLineWrite: {
@@ -1212,6 +1359,16 @@ export interface components {
             orderQuantity: number;
             /** Variantid */
             variantId: string;
+        };
+        /** DraftSave */
+        DraftSave: {
+            /** Boxes */
+            boxes: components["schemas"]["DraftBoxWrite"][];
+            /**
+             * Note
+             * @default
+             */
+            note: string;
         };
         /** DraftUpdate */
         DraftUpdate: {
@@ -1634,6 +1791,124 @@ export interface components {
             /** Refreshtoken */
             refreshToken: string | null;
         };
+        /** ShipmentBoxResponse */
+        ShipmentBoxResponse: {
+            /** Boxno */
+            boxNo: number;
+            /** Groupkey */
+            groupKey: string | null;
+            /** Items */
+            items: components["schemas"]["ShipmentLineResponse"][];
+        };
+        /** ShipmentCatalogItemResponse */
+        ShipmentCatalogItemResponse: {
+            /** Assignedquantity */
+            assignedQuantity: number;
+            /** Assignmentid */
+            assignmentId: number;
+            /**
+             * Contractshipdate
+             * Format: date
+             */
+            contractShipDate: string;
+            /** Orderid */
+            orderId: string;
+            /** Orderno */
+            orderNo: string;
+            /** Pendingquantity */
+            pendingQuantity: number;
+            /** Productname */
+            productName: string;
+            /** Propertiesvalue */
+            propertiesValue: string;
+            /** Shippedquantity */
+            shippedQuantity: number;
+        };
+        /** ShipmentCatalogResponse */
+        ShipmentCatalogResponse: {
+            /** Items */
+            items: components["schemas"]["ShipmentCatalogItemResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** ShipmentDraftResponse */
+        ShipmentDraftResponse: {
+            /**
+             * Boxes
+             * @default []
+             */
+            boxes: components["schemas"]["ShipmentBoxResponse"][];
+            /** Businessdate */
+            businessDate?: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Createdby */
+            createdBy: string;
+            /** Factoryid */
+            factoryId: string;
+            /**
+             * Factoryname
+             * @default
+             */
+            factoryName: string;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["ShipmentLineResponse"][];
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Preferredorderid */
+            preferredOrderId: string | null;
+            /** Shipmentid */
+            shipmentId: string;
+            /** Shipmentno */
+            shipmentNo?: string | null;
+            /** Status */
+            status: string;
+            /** Submittedat */
+            submittedAt?: string | null;
+            /**
+             * Totalboxes
+             * @default 0
+             */
+            totalBoxes: number;
+            /**
+             * Totalquantity
+             * @default 0
+             */
+            totalQuantity: number;
+        };
+        /** ShipmentLineResponse */
+        ShipmentLineResponse: {
+            /** Assignmentid */
+            assignmentId: number;
+            /** Orderid */
+            orderId: string;
+            /** Orderno */
+            orderNo: string;
+            /** Productname */
+            productName: string;
+            /** Propertiesvalue */
+            propertiesValue: string;
+            /** Quantity */
+            quantity: number;
+            /** Skuid */
+            skuId: string;
+        };
+        /** ShipmentListResponse */
+        ShipmentListResponse: {
+            /** Items */
+            items: components["schemas"]["ShipmentDraftResponse"][];
+            /** Total */
+            total: number;
+        };
         /** UserResponse */
         UserResponse: {
             /** Capabilities */
@@ -1699,6 +1974,33 @@ export interface components {
             bindingToken: string;
             /** Phonecode */
             phoneCode: string;
+        };
+        /** DraftCreate */
+        app__api__orders__DraftCreate: {
+            /**
+             * Contractshipdate
+             * Format: date
+             */
+            contractShipDate: string;
+            /** Lines */
+            lines: components["schemas"]["DraftLineWrite"][];
+            /**
+             * Orderdate
+             * Format: date
+             */
+            orderDate: string;
+            /** Orderno */
+            orderNo: string;
+            /**
+             * Tracker
+             * @enum {string}
+             */
+            tracker: "烧麦" | "松子" | "橄榄" | "大葱" | "青椒";
+        };
+        /** DraftCreate */
+        app__api__shipments__DraftCreate: {
+            /** Preferredorderid */
+            preferredOrderId?: string | null;
         };
     };
     responses: never;
@@ -2565,7 +2867,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DraftCreate"];
+                "application/json": components["schemas"]["app__api__orders__DraftCreate"];
             };
         };
         responses: {
@@ -2958,6 +3260,74 @@ export interface operations {
             };
         };
     };
+    admin_shipments_api_v1_admin_shipments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_shipment_api_v1_admin_shipments__shipment_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_admin_users_api_v1_admin_users_get: {
         parameters: {
             query?: {
@@ -3278,6 +3648,238 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactoryApplicationResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shipment_catalog_api_v1_factory_shipment_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentCatalogResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_shipments_api_v1_factory_shipments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_draft_api_v1_factory_shipments_drafts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app__api__shipments__DraftCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    current_draft_api_v1_factory_shipments_drafts_current_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_draft_api_v1_factory_shipments_drafts__shipment_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_draft_api_v1_factory_shipments_drafts__shipment_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_shipment_api_v1_factory_shipments__shipment_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDraftResponse"];
                 };
             };
             /** @description Validation Error */

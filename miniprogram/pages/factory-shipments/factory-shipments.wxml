@@ -1,0 +1,29 @@
+<view class="ship-record-page">
+  <mini-titlebar title="发货记录" />
+  <view class="ship-record-actions">
+    <view class="ship-record-search"><image src="/assets/icons/search-gray.svg" mode="aspectFit" /><input value="{{keyword}}" placeholder="订单编号或产品名称" bindinput="keywordChanged" /></view>
+    <view role="button" class="ship-record-filter" bindtap="openFilter"><image class="filter-icon" src="/assets/icons/filter-blue.svg" mode="aspectFit" /><text>筛选</text><b wx:if="{{filterCount}}">{{filterCount}}</b></view>
+  </view>
+
+  <view class="ship-record-content">
+    <text class="ship-record-count" wx:if="{{!loading}}">共 {{items.length}} 张发货单</text>
+    <view wx:if="{{loading}}" class="mini-empty">正在加载发货记录…</view>
+    <view wx:elif="{{!items.length}}" class="mini-empty"><text>没有符合条件的记录</text><text>可以调整搜索词或日期后再试</text><button class="ship-clear-filter" bindtap="clearFilters">清除筛选</button></view>
+    <view wx:for="{{items}}" wx:key="shipmentId" role="button" class="ship-record-card" data-id="{{item.shipmentId}}" bindtap="open">
+      <view class="ship-record-title"><text>{{item.productSummary}}　{{item.orderSummary}}</text><text>›</text></view>
+      <view class="ship-record-date"><text><view class="record-calendar"><view /></view>发货日期</text><b>{{item.businessDate}}</b></view>
+      <view class="ship-record-stats"><view><text>发货数量</text><b>{{item.totalQuantity}}</b></view><view><text>总箱数</text><b>{{item.totalBoxes}}</b></view></view>
+      <view class="ship-record-number"><text>发货单号</text><b>{{item.shipmentNo}}</b></view>
+    </view>
+  </view>
+  <mini-tabbar items="{{navigationItems}}" active-key="shipments" />
+
+  <view wx:if="{{filterOpen}}" class="record-sheet-layer" bindtap="closeFilter">
+    <view class="record-filter-sheet" catchtap="stopPropagation">
+      <view class="record-sheet-handle" />
+      <view class="record-sheet-header"><b>筛选发货记录</b><button bindtap="closeFilter">×</button></view>
+      <view class="record-filter-body"><text>发货日期范围</text><view class="record-date-range"><picker mode="date" value="{{draftShipDateFrom}}" bindchange="shipDateFromChanged"><view>{{draftShipDateFrom || '开始日期'}}</view></picker><text>至</text><picker mode="date" value="{{draftShipDateTo}}" bindchange="shipDateToChanged"><view>{{draftShipDateTo || '结束日期'}}</view></picker></view></view>
+      <view class="record-filter-actions"><button class="record-filter-reset" bindtap="resetFilter">重置</button><button class="record-filter-apply" bindtap="applyFilter">查看结果</button></view>
+    </view>
+  </view>
+</view>

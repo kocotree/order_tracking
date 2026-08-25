@@ -1,17 +1,29 @@
 from app.modules.shipments.service import (
+    DraftBoxInput,
+    DraftItemInput,
+    ShipmentBoxSnapshot,
     ShipmentCatalogItem,
+    ShipmentConflict,
     ShipmentDraftSnapshot,
     ShipmentError,
+    ShipmentLineSnapshot,
     ShipmentNotFound,
     ShipmentPermissionDenied,
     ShipmentService,
+    ShipmentValidationError,
 )
 
 __all__ = [
-    "ShipmentDraftSnapshot",
+    "DraftBoxInput",
+    "DraftItemInput",
+    "ShipmentBoxSnapshot",
     "ShipmentCatalogItem",
+    "ShipmentConflict",
+    "ShipmentDraftSnapshot",
     "ShipmentError",
+    "ShipmentLineSnapshot",
     "ShipmentNotFound",
     "ShipmentPermissionDenied",
     "ShipmentService",
+    "ShipmentValidationError",
 ]

@@ -37,6 +37,9 @@
   --content-max: 1800px;
 }
 
+/* S07 shipment pages: dimensions and hierarchy follow the approved shipment prototypes. */
+.shipment-list-page,.shipment-detail-page{display:grid;gap:14px}.shipment-filter-card{padding:14px 16px;background:#fff;border:1px solid #e0e4e9;border-radius:4px}.shipment-filter-form{display:flex;align-items:center;gap:10px}.shipment-filter-form label{display:flex;align-items:center;gap:8px;color:#596574;font-size:13px;font-weight:700}.shipment-filter-form input{box-sizing:border-box;height:36px;padding:0 11px;border:1px solid #d8dde4;border-radius:4px;background:#fff}.shipment-filter-form button{height:36px;padding:0 18px;color:#44505d;font-weight:750;background:#fff;border:1px solid #cfd5dc;border-radius:4px}.shipment-filter-form button.is-primary{color:#fff;background:#1677ff;border-color:#1677ff}.shipment-search{flex:1;max-width:360px}.shipment-search input{width:100%}.shipment-card-title{display:flex;align-items:center;height:54px;padding:0 16px;border-bottom:1px solid #dde1e7}.shipment-card-title h1{margin:0;font-size:18px;font-weight:800}.shipment-list-table{min-width:1120px;table-layout:fixed}.shipment-list-table th{height:40px;padding:0 14px;font-size:13px;font-weight:800}.shipment-list-table td{box-sizing:border-box;height:48px;padding:0 14px;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.shipment-list-table th:first-child,.shipment-list-table td:first-child{width:52px;padding:0 8px;text-align:center}.shipment-list-table th:nth-child(2){width:142px}.shipment-list-table th:nth-child(3){width:110px}.shipment-list-table th:nth-child(4){width:150px}.shipment-list-table th:nth-child(5){width:190px}.shipment-list-table th:nth-child(6){width:112px}.shipment-list-table th:nth-child(7),.shipment-list-table th:nth-child(8){width:92px}.shipment-list-table th:nth-child(9){width:88px}.shipment-list-table th:nth-child(10){width:86px}.number-cell{text-align:right;font-variant-numeric:tabular-nums}.shipment-list-footer{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 16px;color:#77818d;font-size:12px;border-top:1px solid #e4e8ec}.shipment-list-footer button{width:30px;height:30px;color:#fff;background:#1677ff;border:0;border-radius:4px}.shipment-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:0;overflow:hidden;border-top:1px solid #d8dde5;border-left:1px solid #d8dde5}.shipment-summary-grid>div{display:grid;grid-template-columns:minmax(96px,.85fr) minmax(0,1.15fr);min-height:58px;border-right:1px solid #d8dde5;border-bottom:1px solid #d8dde5}.shipment-summary-grid dt,.shipment-summary-grid dd{display:flex;align-items:center;margin:0;padding:12px 14px;font-size:14px;font-weight:750}.shipment-summary-grid dt{background:#eef1f4;border-right:1px solid #d8dde5}.shipment-product-table{min-width:980px}.packing-detail-table{min-width:950px}.shipment-product-table th,.shipment-product-table td,.packing-detail-table th,.packing-detail-table td{font-size:14px}.shipment-product-table td,.packing-detail-table td{box-sizing:border-box;height:48px;padding-top:8px;padding-bottom:8px}.packing-box-number{color:#1263a2;font-size:17px!important;font-weight:800;text-align:center!important;background:#f7fbfe}.product-placeholder{display:grid;width:34px;height:34px;place-items:center;color:#9aa5b1;background:#f2f4f7;border:1px solid #dfe3e8}.shipment-support-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(360px,.8fr);gap:14px}.shipment-support-content{display:grid;gap:18px;padding:16px}.shipment-support-content h3{margin:0 0 10px;font-size:13px}.shipment-proof-empty{padding:18px;color:#7d8793;text-align:center;background:#f8f9fb;border:1px dashed #d9dee4}.shipment-factory-remark{min-height:52px;margin:0;padding:12px 14px;font-size:13px;line-height:1.7;background:#f8f9fb;border:1px solid #e1e5ea}.shipment-log-list{margin:0;padding:10px 18px 14px;list-style:none}.shipment-log-item{display:grid;grid-template-columns:14px 1fr;gap:10px;padding:10px 0}.shipment-log-dot{width:11px;height:11px;margin-top:4px;background:#1677ff;border:2px solid #dff1ff;border-radius:50%}.shipment-log-item div{display:grid;gap:4px}.shipment-log-item strong{font-size:13px}.shipment-log-item span{color:#7d8793;font-size:11px}@media(max-width:900px){.shipment-filter-form{flex-wrap:wrap}.shipment-support-grid{grid-template-columns:1fr}}
+
 * { box-sizing: border-box; }
 body { min-width: 320px; min-height: 100vh; margin: 0; }
 button, input, select, textarea { font: inherit; }
@@ -792,6 +795,411 @@ h1, h2, p { margin-top: 0; }
   .factory-form-control.is-wide { grid-column: auto; }
   .factory-detail-grid { grid-template-columns: 100px minmax(0, 1fr); }
   .factory-detail-value.is-wide { grid-column: auto; }
+}
+
+/* S07 管理员网页：严格复刻已批准的发货单列表与详情原型。 */
+.shipment-list-page,
+.shipment-detail-page {
+  display: grid;
+  gap: 14px;
+}
+
+.shipment-filter-row .order-list-search-field {
+  flex: 2.4 1 320px;
+  min-width: 220px;
+}
+
+.shipment-filter-row .shipment-factory-field {
+  flex: 1 1 150px;
+}
+
+.shipment-filter-row .shipment-factory-field select {
+  width: 100%;
+}
+
+.shipment-list-table {
+  width: 100%;
+  min-width: 1080px;
+  table-layout: fixed;
+}
+
+.shipment-list-table th,
+.shipment-list-table td {
+  padding-right: 14px;
+  padding-left: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.shipment-list-table th {
+  height: 40px;
+  font-weight: 800;
+}
+
+.shipment-list-table td {
+  height: 48px;
+}
+
+.shipment-list-table th:nth-child(1) { width: 52px; }
+.shipment-list-table th:nth-child(2) { width: 168px; }
+.shipment-list-table th:nth-child(3) { width: 150px; }
+.shipment-list-table th:nth-child(4) { width: 100px; }
+.shipment-list-table th:nth-child(5) { width: 260px; }
+.shipment-list-table th:nth-child(6) { width: 112px; }
+.shipment-list-table th:nth-child(7) { width: 120px; }
+.shipment-list-table th:nth-child(8) { width: 92px; }
+
+.shipment-list-table col.shipment-sequence-col {
+  width: 52px;
+}
+
+.shipment-list-table col.shipment-number-col { width: 16.225%; }
+.shipment-list-table col.shipment-order-col { width: 14.487%; }
+.shipment-list-table col.shipment-factory-col { width: 9.657%; }
+.shipment-list-table col.shipment-product-col { width: 25.11%; }
+.shipment-list-table col.shipment-quantity-col { width: 10.818%; }
+.shipment-list-table col.shipment-date-col { width: 11.591%; }
+.shipment-list-table col.shipment-action-col { width: 8.884%; }
+
+.shipment-list-table .shipment-sequence-column,
+.shipment-list-table .shipment-sequence-cell {
+  width: 52px;
+  min-width: 52px;
+  max-width: 52px;
+  padding-right: 8px;
+  padding-left: 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.shipment-list-table .shipment-sequence-cell {
+  color: var(--subtle);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.shipment-order-cell {
+  color: var(--ink-strong);
+}
+
+.shipment-product-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shipment-number-cell,
+.detail-number,
+.packing-total-cell {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.shipment-detail-page .detail-page-header {
+  min-height: 54px;
+  padding: 9px 18px;
+}
+
+.shipment-detail-page .detail-back-button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.shipment-detail-page .detail-back-button svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.shipment-detail-actions {
+  gap: 12px;
+}
+
+.shipment-detail-page .status-badge {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  height: 24px;
+  padding: 2px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 999px;
+}
+
+.shipment-detail-page .detail-overview-content {
+  padding: 16px 18px 18px;
+}
+
+.shipment-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  overflow: hidden;
+  border-top: 1px solid #d8dde5;
+  border-left: 1px solid #d8dde5;
+}
+
+.shipment-summary-grid > div {
+  display: grid;
+  grid-template-columns: minmax(96px, .85fr) minmax(0, 1.15fr);
+  min-width: 0;
+  min-height: 58px;
+  border-right: 1px solid #d8dde5;
+  border-bottom: 1px solid #d8dde5;
+}
+
+.shipment-summary-grid dt,
+.shipment-summary-grid dd {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 14px;
+  color: #20242a;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.shipment-summary-grid dt {
+  white-space: nowrap;
+  background: #eef1f4;
+  border-right: 1px solid #d8dde5;
+}
+
+.shipment-summary-grid dd {
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+
+.shipment-summary-grid .detail-summary-number {
+  font-size: 14px !important;
+}
+
+.shipment-detail-page .detail-section-header {
+  min-height: 58px;
+  padding: 11px 16px;
+}
+
+.shipment-detail-page .detail-table-scroll {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.shipment-detail-page .detail-data-table {
+  width: 100%;
+  color: var(--ink);
+  font-size: 14px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.shipment-detail-page .detail-data-table th,
+.shipment-detail-page .detail-data-table td {
+  box-sizing: border-box;
+  height: 48px;
+  padding: 8px 13px;
+  font-size: 14px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.shipment-detail-page .detail-data-table th {
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+  color: #37404b;
+  font-weight: 800;
+  white-space: nowrap;
+  background: #f1f3f6;
+}
+
+.shipment-product-table {
+  min-width: 980px;
+}
+
+.shipment-product-table th:nth-child(1) { width: 52px; }
+.shipment-product-table th:nth-child(2) { width: 108px; }
+.shipment-product-table th:nth-child(3) { width: 74px; }
+.shipment-product-table th:nth-child(4) { width: 116px; }
+.shipment-product-table th:nth-child(5) { width: 190px; }
+.shipment-product-table th:nth-child(6) { width: 145px; }
+.shipment-product-table th:nth-child(7) { width: 105px; }
+
+.shipment-product-table col.detail-sequence-col {
+  width: 52px;
+}
+
+.shipment-product-table col.detail-order-col { width: 13.857%; }
+.shipment-product-table col.detail-image-col { width: 9.49%; }
+.shipment-product-table col.detail-sku-col { width: 14.88%; }
+.shipment-product-table col.detail-product-col { width: 24.38%; }
+.shipment-product-table col.detail-properties-col { width: 18.61%; }
+.shipment-product-table col.detail-quantity-col { width: 13.47%; }
+
+.shipment-product-table .detail-sequence-column,
+.shipment-product-table .detail-sequence-cell {
+  width: 52px;
+  min-width: 52px;
+  max-width: 52px;
+  padding-right: 8px;
+  padding-left: 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.shipment-product-table .detail-sequence-cell {
+  color: var(--subtle);
+  font-weight: 600;
+}
+
+.shipment-product-table .product-thumb {
+  display: grid;
+  width: 30px;
+  height: 32px;
+  color: #8c98a6;
+  background: #f0f2f5;
+  border: 1px solid #dfe3e8;
+  border-radius: 4px;
+  place-items: center;
+}
+
+.shipment-product-table .product-thumb svg {
+  width: 18px;
+  height: 22px;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.packing-detail-table {
+  min-width: 950px;
+}
+
+.packing-detail-table th:nth-child(1) { width: 76px; }
+.packing-detail-table th:nth-child(2) { width: 112px; }
+.packing-detail-table th:nth-child(3) { width: 130px; }
+.packing-detail-table th:nth-child(4) { width: 210px; }
+.packing-detail-table th:nth-child(5) { width: 160px; }
+.packing-detail-table th:nth-child(6) { width: 110px; }
+.packing-detail-table th:nth-child(7) { width: 100px; }
+
+.packing-box-group tr:first-child td {
+  border-top: 1px solid #dde1e7;
+}
+
+.packing-box-group tr:last-child td {
+  border-bottom: 1px solid #dde1e7;
+}
+
+.shipment-detail-page .packing-box-number {
+  color: var(--erp-blue-dark);
+  font-size: 17px !important;
+  font-weight: 800;
+  text-align: center !important;
+  vertical-align: middle !important;
+  background: #f7fbfe;
+}
+
+.packing-total-cell {
+  color: var(--ink-strong);
+  font-weight: 800;
+}
+
+.shipment-support-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, .8fr);
+  gap: 14px;
+}
+
+.shipment-support-content {
+  display: grid;
+  gap: 18px;
+  padding: 16px;
+}
+
+.shipment-support-content h3 {
+  margin: 0 0 10px;
+  color: var(--ink-strong);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.shipment-proof-empty {
+  padding: 18px;
+  color: var(--subtle);
+  text-align: center;
+  background: #f8f9fb;
+  border: 1px dashed #d9dee4;
+}
+
+.shipment-factory-remark {
+  min-height: 52px;
+  margin: 0;
+  padding: 12px 14px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.7;
+  background: #f8f9fb;
+  border: 1px solid #e1e5ea;
+}
+
+.shipment-log-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 10px 18px 14px;
+  list-style: none;
+}
+
+.shipment-log-item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.shipment-log-dot {
+  width: 11px;
+  height: 11px;
+  margin-top: 4px;
+  background: var(--erp-blue);
+  border: 2px solid #dff1ff;
+  border-radius: 50%;
+}
+
+.shipment-log-item div {
+  display: grid;
+  gap: 4px;
+}
+
+.shipment-log-item strong {
+  color: var(--ink-strong);
+  font-size: 13px;
+}
+
+.shipment-log-item div span {
+  color: var(--subtle);
+  font-size: 11px;
+}
+
+@media (max-width: 900px) {
+  .shipment-filter-row {
+    flex-wrap: wrap;
+  }
+
+  .shipment-support-grid {
+    grid-template-columns: 1fr;
+  }
 }
 @media (max-width: 860px) {
   .app-shell { display: block; }

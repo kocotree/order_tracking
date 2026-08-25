@@ -32,8 +32,8 @@ from app.api.identity import create_identity_router
 from app.api.order_import import create_order_import_router
 from app.api.orders import create_order_router
 from app.api.products import create_product_router
-from app.api.shipments import create_shipment_router
 from app.api.router import api_router
+from app.api.shipments import create_shipment_router
 from app.db.session import create_database_engine, create_session_factory
 from app.local_demo import (
     LOCAL_DEMO_FEISHU_SCOPE,
@@ -76,10 +76,12 @@ from app.modules.orders import (
 )
 from app.modules.product_sync import ProductCatalogService
 from app.modules.shipments import (
+    ShipmentConflict,
     ShipmentError,
     ShipmentNotFound,
     ShipmentPermissionDenied,
     ShipmentService,
+    ShipmentValidationError,
 )
 from app.product_demo import seed_local_demo_products
 from app.settings.config import Settings
@@ -115,9 +117,7 @@ def create_app(
     local_demo_enabled = settings.app_env == "local_demo"
     if identity_service is None:
         feishu_identity: FeishuIdentity
-        feishu_identity_app_id = (
-            settings.feishu_identity_app_id or settings.feishu_order_app_id
-        )
+        feishu_identity_app_id = settings.feishu_identity_app_id or settings.feishu_order_app_id
         feishu_identity_app_secret = (
             settings.feishu_identity_app_secret or settings.feishu_order_app_secret
         )
@@ -138,9 +138,7 @@ def create_app(
                 )
             )
         else:
-            feishu_identity = DisabledFeishuIdentity(
-                scope=settings.feishu_identity_scope
-            )
+            feishu_identity = DisabledFeishuIdentity(scope=settings.feishu_identity_scope)
         wechat_identity = (
             LocalDemoWechatIdentity()
             if local_demo_enabled
@@ -183,8 +181,10 @@ def create_app(
         factory_service = FactoryAccessService(session_factory)
     if product_service is None:
         product_service = ProductCatalogService(session_factory)
+    if shipment_service is None:
+        shipment_service = ShipmentService(session_factory)
     if order_service is None:
-        order_service = OrderService(session_factory)
+        order_service = OrderService(session_factory, execution_guard=shipment_service)
     if order_import_service is None:
         order_import_service = OrderImportService(session_factory)
     if contract_service is None:
@@ -206,33 +206,25 @@ def create_app(
                 secure=settings.private_file_secure,
             )
         else:
-            private_file_store = DisabledPrivateFileStore(
-                bucket=settings.private_file_bucket
-            )
+            private_file_store = DisabledPrivateFileStore(bucket=settings.private_file_bucket)
         contract_service = ContractService(
             session_factory,
             workbook_renderer=ContractWorkbookRenderer(
                 template_path=(
-                    Path(__file__).resolve().parent
-                    / "templates/processing_contract_v1.xlsx"
+                    Path(__file__).resolve().parent / "templates/processing_contract_v1.xlsx"
                 ),
-                image_loader=lambda object_key: private_file_store.get(
-                    object_key=object_key
-                ),
+                image_loader=lambda object_key: private_file_store.get(object_key=object_key),
             ),
             file_store=private_file_store,
+            execution_guard=shipment_service,
         )
-    if shipment_service is None:
-        shipment_service = ShipmentService(session_factory)
     if local_demo_enabled:
         seed_local_demo_products(session_factory)
     app.include_router(
         create_identity_router(
             identity_service,
             factory_service=factory_service,
-            secure_web_cookies=(
-                settings.web_cookie_secure if not local_demo_enabled else False
-            ),
+            secure_web_cookies=(settings.web_cookie_secure if not local_demo_enabled else False),
         )
     )
     app.include_router(create_factory_router(factory_service, identity_service))
@@ -348,9 +340,7 @@ def create_app(
         )
 
     @app.exception_handler(ContractError)
-    async def handle_contract_error(
-        request: Request, error: ContractError
-    ) -> JSONResponse:
+    async def handle_contract_error(request: Request, error: ContractError) -> JSONResponse:
         if isinstance(error, ContractPermissionDenied):
             status_code, code, message = 403, "permission_denied", "没有权限执行该操作"
         elif isinstance(error, ContractNotFound):
@@ -369,13 +359,15 @@ def create_app(
         )
 
     @app.exception_handler(ShipmentError)
-    async def handle_shipment_error(
-        request: Request, error: ShipmentError
-    ) -> JSONResponse:
+    async def handle_shipment_error(request: Request, error: ShipmentError) -> JSONResponse:
         if isinstance(error, ShipmentPermissionDenied):
             status_code, code, message = 403, "permission_denied", "没有权限执行该操作"
         elif isinstance(error, ShipmentNotFound):
             status_code, code, message = 404, "not_found", "发货单或订单不存在"
+        elif isinstance(error, ShipmentConflict):
+            status_code, code, message = 409, "conflict", str(error)
+        elif isinstance(error, ShipmentValidationError):
+            status_code, code, message = 422, "validation_failed", str(error)
         else:
             status_code, code, message = 400, "shipment_error", "发货单操作失败"
         return JSONResponse(

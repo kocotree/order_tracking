@@ -48,6 +48,7 @@ Page({
     previewMode: false,
     navigationItems: [
       { key: "primary", label: "任务", path: "/pages/factory-tasks/factory-tasks", icon: "/assets/icons/admin-orders.svg", activeIcon: "/assets/icons/admin-orders-active.svg" },
+      { key: "shipments", label: "发货记录", path: "/pages/factory-shipments/factory-shipments", icon: "/assets/icons/factory-shipments.svg", activeIcon: "/assets/icons/factory-shipments-active.svg" },
       { key: "profile", label: "我的", path: "/pages/profile/profile", icon: "/assets/icons/admin-profile.svg", activeIcon: "/assets/icons/admin-profile-active.svg" },
     ],
   },
@@ -129,5 +130,8 @@ Page({
   openDetail(event: WechatMiniprogram.TouchEvent) {
     const preview = this.data.previewMode ? "&preview=1" : "";
     wx.navigateTo({ url: `/pages/factory-task-detail/factory-task-detail?orderId=${encodeURIComponent(event.currentTarget.dataset.id)}${preview}` });
+  },
+  createShipment() {
+    wx.navigateTo({ url: `/pages/factory-create-shipment/factory-create-shipment${this.data.previewMode ? "?preview=1" : ""}` });
   },
 });

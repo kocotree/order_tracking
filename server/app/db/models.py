@@ -737,6 +737,48 @@ class ContractExport(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
 
 
+class Shipment(Base):
+    __tablename__ = "shipments"
+    __table_args__ = (
+        UniqueConstraint("shipment_no", name="uq_shipments_no"),
+        UniqueConstraint("active_draft_owner_id", name="uq_shipments_active_draft_owner"),
+        CheckConstraint("status IN ('DRAFT', 'SHIPPED')", name="ck_shipments_status"),
+        Index("ix_shipments_factory_status", "factory_id", "status", "created_at"),
+    )
+
+    shipment_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    shipment_no: Mapped[str | None] = mapped_column(String(32))
+    factory_id: Mapped[str] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    business_date: Mapped[date | None] = mapped_column(Date)
+    preferred_order_id: Mapped[str | None] = mapped_column(
+        ForeignKey("orders.order_id", ondelete="RESTRICT")
+    )
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    active_draft_owner_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    submitted_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    deleted_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        server_onupdate=text("CURRENT_TIMESTAMP(6)"),
+    )
+
+
 class MiniLoginAttempt(Base):
     __tablename__ = "mini_login_attempts"
     __table_args__ = (UniqueConstraint("token_digest", name="uq_mini_login_attempt_token"),)

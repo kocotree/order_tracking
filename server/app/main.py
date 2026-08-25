@@ -32,6 +32,7 @@ from app.api.identity import create_identity_router
 from app.api.order_import import create_order_import_router
 from app.api.orders import create_order_router
 from app.api.products import create_product_router
+from app.api.shipments import create_shipment_router
 from app.api.router import api_router
 from app.db.session import create_database_engine, create_session_factory
 from app.local_demo import (
@@ -74,6 +75,12 @@ from app.modules.orders import (
     OrderValidationError,
 )
 from app.modules.product_sync import ProductCatalogService
+from app.modules.shipments import (
+    ShipmentError,
+    ShipmentNotFound,
+    ShipmentPermissionDenied,
+    ShipmentService,
+)
 from app.product_demo import seed_local_demo_products
 from app.settings.config import Settings
 
@@ -88,6 +95,7 @@ def create_app(
     order_service: OrderService | None = None,
     order_import_service: OrderImportService | None = None,
     contract_service: ContractService | None = None,
+    shipment_service: ShipmentService | None = None,
     extra_routers: Sequence[APIRouter] = (),
 ) -> FastAPI:
     settings = Settings(database_url=database_url) if database_url is not None else Settings()
@@ -214,6 +222,8 @@ def create_app(
             ),
             file_store=private_file_store,
         )
+    if shipment_service is None:
+        shipment_service = ShipmentService(session_factory)
     if local_demo_enabled:
         seed_local_demo_products(session_factory)
     app.include_router(
@@ -234,6 +244,7 @@ def create_app(
     )
     app.include_router(create_order_import_router(order_import_service, identity_service))
     app.include_router(create_contract_router(contract_service, identity_service))
+    app.include_router(create_shipment_router(shipment_service, identity_service))
     if local_demo_enabled:
         app.include_router(create_local_demo_router())
 
@@ -352,6 +363,21 @@ def create_app(
             status_code, code, message = 500, "contract_generation_failed", "合同文件生成失败"
         else:
             status_code, code, message = 400, "contract_error", "合同操作失败"
+        return JSONResponse(
+            status_code=status_code,
+            content={"code": code, "message": message, "requestId": request.state.request_id},
+        )
+
+    @app.exception_handler(ShipmentError)
+    async def handle_shipment_error(
+        request: Request, error: ShipmentError
+    ) -> JSONResponse:
+        if isinstance(error, ShipmentPermissionDenied):
+            status_code, code, message = 403, "permission_denied", "没有权限执行该操作"
+        elif isinstance(error, ShipmentNotFound):
+            status_code, code, message = 404, "not_found", "发货单或订单不存在"
+        else:
+            status_code, code, message = 400, "shipment_error", "发货单操作失败"
         return JSONResponse(
             status_code=status_code,
             content={"code": code, "message": message, "requestId": request.state.request_id},

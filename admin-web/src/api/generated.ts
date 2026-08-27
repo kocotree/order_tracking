@@ -620,6 +620,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/repairs/{repair_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Admin Repair */
+        post: operations["archive_admin_repair_api_v1_admin_repairs__repair_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/shipment-void-requests/{request_id}/approve": {
         parameters: {
             query?: never;
@@ -920,6 +937,23 @@ export interface paths {
         get: operations["get_factory_repair_api_v1_factory_repairs__repair_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/repairs/{repair_id}/return-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Factory Repair Return */
+        post: operations["submit_factory_repair_return_api_v1_factory_repairs__repair_id__return_batches_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2002,6 +2036,18 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** RepairArchiveResponse */
+        RepairArchiveResponse: {
+            /**
+             * Archivedat
+             * Format: date-time
+             */
+            archivedAt: string;
+            /** Archivedby */
+            archivedBy: string;
+            /** Repairid */
+            repairId: string;
+        };
         /** RepairLineResponse */
         RepairLineResponse: {
             /** Boxnumber */
@@ -2124,6 +2170,8 @@ export interface components {
             repairNo: string;
             /** Repairedquantity */
             repairedQuantity: number;
+            /** Returnbatches */
+            returnBatches: components["schemas"]["RepairReturnBatchResponse"][];
             /**
              * Returndate
              * Format: date
@@ -2133,8 +2181,87 @@ export interface components {
             returnedQuantity: number;
             /** Scrappedquantity */
             scrappedQuantity: number;
+            /** Specs */
+            specs: components["schemas"]["RepairSpecResponse"][];
             /** Status */
             status: string;
+            /** Warehousereturnquantity */
+            warehouseReturnQuantity: number;
+        };
+        /** RepairReturnBatchResponse */
+        RepairReturnBatchResponse: {
+            /** Batchid */
+            batchId: string;
+            /** Lines */
+            lines: components["schemas"]["RepairReturnLineResponse"][];
+            /**
+             * Returndate
+             * Format: date
+             */
+            returnDate: string;
+            /**
+             * Submittedat
+             * Format: date-time
+             */
+            submittedAt: string;
+            /** Submittedby */
+            submittedBy: string;
+        };
+        /** RepairReturnLineRequest */
+        RepairReturnLineRequest: {
+            /** Repairedquantity */
+            repairedQuantity: number;
+            /** Scrappedquantity */
+            scrappedQuantity: number;
+            /** Variantid */
+            variantId: string;
+        };
+        /** RepairReturnLineResponse */
+        RepairReturnLineResponse: {
+            /** Productname */
+            productName: string;
+            /** Propertiesvalue */
+            propertiesValue: string;
+            /** Repairedquantity */
+            repairedQuantity: number;
+            /** Returnedquantity */
+            returnedQuantity: number;
+            /** Scrappedquantity */
+            scrappedQuantity: number;
+            /** Sourceproductid */
+            sourceProductId: string;
+            /** Sourceskuid */
+            sourceSkuId: string;
+            /** Variantid */
+            variantId: string;
+            /** Warehousereturnquantity */
+            warehouseReturnQuantity: number;
+        };
+        /** RepairReturnRequest */
+        RepairReturnRequest: {
+            /** Lines */
+            lines: components["schemas"]["RepairReturnLineRequest"][];
+        };
+        /** RepairSpecResponse */
+        RepairSpecResponse: {
+            /** Pendingquantity */
+            pendingQuantity: number;
+            /** Productname */
+            productName: string;
+            /** Propertiesvalue */
+            propertiesValue: string;
+            /** Repairedquantity */
+            repairedQuantity: number;
+            /** Returnedquantity */
+            returnedQuantity: number;
+            /** Scrappedquantity */
+            scrappedQuantity: number;
+            /** Sourceproductid */
+            sourceProductId: string;
+            /** Sourceskuid */
+            sourceSkuId: string;
+            /** Variantid */
+            variantId: string;
             /** Warehousereturnquantity */
             warehouseReturnQuantity: number;
         };
@@ -3918,6 +4045,42 @@ export interface operations {
             };
         };
     };
+    archive_admin_repair_api_v1_admin_repairs__repair_id__archive_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                repair_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairArchiveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     approve_void_request_api_v1_admin_shipment_void_requests__request_id__approve_post: {
         parameters: {
             query?: never;
@@ -4523,6 +4686,44 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_factory_repair_return_api_v1_factory_repairs__repair_id__return_batches_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                authorization?: string | null;
+            };
+            path: {
+                repair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepairReturnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

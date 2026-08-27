@@ -2147,6 +2147,30 @@
         "title": "ReopenWrite",
         "type": "object"
       },
+      "RepairArchiveResponse": {
+        "properties": {
+          "archivedAt": {
+            "format": "date-time",
+            "title": "Archivedat",
+            "type": "string"
+          },
+          "archivedBy": {
+            "title": "Archivedby",
+            "type": "string"
+          },
+          "repairId": {
+            "title": "Repairid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repairId",
+          "archivedAt",
+          "archivedBy"
+        ],
+        "title": "RepairArchiveResponse",
+        "type": "object"
+      },
       "RepairLineResponse": {
         "properties": {
           "boxNumber": {
@@ -2480,6 +2504,13 @@
             "title": "Repairedquantity",
             "type": "integer"
           },
+          "returnBatches": {
+            "items": {
+              "$ref": "#/components/schemas/RepairReturnBatchResponse"
+            },
+            "title": "Returnbatches",
+            "type": "array"
+          },
           "returnDate": {
             "format": "date",
             "title": "Returndate",
@@ -2492,6 +2523,13 @@
           "scrappedQuantity": {
             "title": "Scrappedquantity",
             "type": "integer"
+          },
+          "specs": {
+            "items": {
+              "$ref": "#/components/schemas/RepairSpecResponse"
+            },
+            "title": "Specs",
+            "type": "array"
           },
           "status": {
             "title": "Status",
@@ -2517,9 +2555,199 @@
           "originalFilename",
           "originalSizeBytes",
           "createdAt",
-          "lines"
+          "lines",
+          "specs",
+          "returnBatches"
         ],
         "title": "RepairResponse",
+        "type": "object"
+      },
+      "RepairReturnBatchResponse": {
+        "properties": {
+          "batchId": {
+            "title": "Batchid",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/RepairReturnLineResponse"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "returnDate": {
+            "format": "date",
+            "title": "Returndate",
+            "type": "string"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "title": "Submittedat",
+            "type": "string"
+          },
+          "submittedBy": {
+            "title": "Submittedby",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batchId",
+          "submittedAt",
+          "returnDate",
+          "submittedBy",
+          "lines"
+        ],
+        "title": "RepairReturnBatchResponse",
+        "type": "object"
+      },
+      "RepairReturnLineRequest": {
+        "properties": {
+          "repairedQuantity": {
+            "title": "Repairedquantity",
+            "type": "integer"
+          },
+          "scrappedQuantity": {
+            "title": "Scrappedquantity",
+            "type": "integer"
+          },
+          "variantId": {
+            "title": "Variantid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "variantId",
+          "repairedQuantity",
+          "scrappedQuantity"
+        ],
+        "title": "RepairReturnLineRequest",
+        "type": "object"
+      },
+      "RepairReturnLineResponse": {
+        "properties": {
+          "productName": {
+            "title": "Productname",
+            "type": "string"
+          },
+          "propertiesValue": {
+            "title": "Propertiesvalue",
+            "type": "string"
+          },
+          "repairedQuantity": {
+            "title": "Repairedquantity",
+            "type": "integer"
+          },
+          "returnedQuantity": {
+            "title": "Returnedquantity",
+            "type": "integer"
+          },
+          "scrappedQuantity": {
+            "title": "Scrappedquantity",
+            "type": "integer"
+          },
+          "sourceProductId": {
+            "title": "Sourceproductid",
+            "type": "string"
+          },
+          "sourceSkuId": {
+            "title": "Sourceskuid",
+            "type": "string"
+          },
+          "variantId": {
+            "title": "Variantid",
+            "type": "string"
+          },
+          "warehouseReturnQuantity": {
+            "title": "Warehousereturnquantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "variantId",
+          "sourceSkuId",
+          "sourceProductId",
+          "productName",
+          "propertiesValue",
+          "warehouseReturnQuantity",
+          "repairedQuantity",
+          "scrappedQuantity",
+          "returnedQuantity"
+        ],
+        "title": "RepairReturnLineResponse",
+        "type": "object"
+      },
+      "RepairReturnRequest": {
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/RepairReturnLineRequest"
+            },
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "lines"
+        ],
+        "title": "RepairReturnRequest",
+        "type": "object"
+      },
+      "RepairSpecResponse": {
+        "properties": {
+          "pendingQuantity": {
+            "title": "Pendingquantity",
+            "type": "integer"
+          },
+          "productName": {
+            "title": "Productname",
+            "type": "string"
+          },
+          "propertiesValue": {
+            "title": "Propertiesvalue",
+            "type": "string"
+          },
+          "repairedQuantity": {
+            "title": "Repairedquantity",
+            "type": "integer"
+          },
+          "returnedQuantity": {
+            "title": "Returnedquantity",
+            "type": "integer"
+          },
+          "scrappedQuantity": {
+            "title": "Scrappedquantity",
+            "type": "integer"
+          },
+          "sourceProductId": {
+            "title": "Sourceproductid",
+            "type": "string"
+          },
+          "sourceSkuId": {
+            "title": "Sourceskuid",
+            "type": "string"
+          },
+          "variantId": {
+            "title": "Variantid",
+            "type": "string"
+          },
+          "warehouseReturnQuantity": {
+            "title": "Warehousereturnquantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "variantId",
+          "sourceSkuId",
+          "sourceProductId",
+          "productName",
+          "propertiesValue",
+          "warehouseReturnQuantity",
+          "repairedQuantity",
+          "scrappedQuantity",
+          "returnedQuantity",
+          "pendingQuantity"
+        ],
+        "title": "RepairSpecResponse",
         "type": "object"
       },
       "ReviewRequest": {
@@ -6571,6 +6799,89 @@
         ]
       }
     },
+    "/api/v1/admin/repairs/{repair_id}/archive": {
+      "post": {
+        "operationId": "archive_admin_repair_api_v1_admin_repairs__repair_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repair_id",
+            "required": true,
+            "schema": {
+              "title": "Repair Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairArchiveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Admin Repair",
+        "tags": [
+          "repair-admin-web"
+        ]
+      }
+    },
     "/api/v1/admin/shipment-void-requests/{request_id}/approve": {
       "post": {
         "operationId": "approve_void_request_api_v1_admin_shipment_void_requests__request_id__approve_post",
@@ -7803,6 +8114,83 @@
           }
         },
         "summary": "Get Factory Repair",
+        "tags": [
+          "repair-factory"
+        ]
+      }
+    },
+    "/api/v1/factory/repairs/{repair_id}/return-batches": {
+      "post": {
+        "operationId": "submit_factory_repair_return_api_v1_factory_repairs__repair_id__return_batches_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repair_id",
+            "required": true,
+            "schema": {
+              "title": "Repair Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepairReturnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Factory Repair Return",
         "tags": [
           "repair-factory"
         ]

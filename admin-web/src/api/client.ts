@@ -77,8 +77,12 @@ export interface ShipmentList { items: Shipment[]; total: number }
 export interface RepairPreviewLine { lineId:number; sourceRow:number; sourceOrder:number; sourceSkuId:string; sourceProductId:string; productName:string; propertiesValue:string; quantity:number; boxNumber:string; reason:string|null; matchedProductId:string|null; matchedVariantId:string|null }
 export interface RepairPreview { previewId:string; status:"READY"|"INVALID"; expiresAt:string; originalFileId:number; originalFilename:string; factoryId:string|null; factoryName:string; lineCount:number; boxCount:number; totalQuantity:number; validationErrors:Array<Record<string,string|number>>; lines:RepairPreviewLine[] }
 export interface RepairLine { inspectionLineId:number; sourceRow:number; sourceOrder:number; boxNumber:string; productId:string; variantId:string; sourceSkuId:string; sourceProductId:string; productName:string; propertiesValue:string; warehouseReturnQuantity:number; reason:string|null }
-export interface Repair { repairId:string; repairNo:string; status:"INCOMPLETE"|"COMPLETED"; returnDate:string; factoryId:string; factoryName:string; warehouseReturnQuantity:number; repairedQuantity:number; scrappedQuantity:number; returnedQuantity:number; originalFileId:number; originalFilename:string; originalSizeBytes:number; createdAt:string; lines:RepairLine[] }
+export interface RepairSpec { variantId:string; sourceSkuId:string; sourceProductId:string; productName:string; propertiesValue:string; warehouseReturnQuantity:number; repairedQuantity:number; scrappedQuantity:number; returnedQuantity:number; pendingQuantity:number }
+export interface RepairReturnLine { variantId:string; sourceSkuId:string; sourceProductId:string; productName:string; propertiesValue:string; warehouseReturnQuantity:number; repairedQuantity:number; scrappedQuantity:number; returnedQuantity:number }
+export interface RepairReturnBatch { batchId:string; submittedAt:string; returnDate:string; submittedBy:string; lines:RepairReturnLine[] }
+export interface Repair { repairId:string; repairNo:string; status:"INCOMPLETE"|"COMPLETED"; returnDate:string; factoryId:string; factoryName:string; warehouseReturnQuantity:number; repairedQuantity:number; scrappedQuantity:number; returnedQuantity:number; originalFileId:number; originalFilename:string; originalSizeBytes:number; createdAt:string; lines:RepairLine[]; specs:RepairSpec[]; returnBatches:RepairReturnBatch[] }
 export interface RepairList { items:Repair[]; total:number; page:number; pageSize:number }
+export interface RepairArchiveResult { repairId:string; archivedAt:string; archivedBy:string }
 
 export class ApiError extends Error {
   constructor(
@@ -439,6 +443,7 @@ export const repairApi = {
     return request<RepairList>(`/v1/admin/repairs?${query}`);
   },
   get: (repairId:string) => request<Repair>(`/v1/admin/repairs/${encodeURIComponent(repairId)}`),
+  archive: (repairId:string) => request<RepairArchiveResult>(`/v1/admin/repairs/${encodeURIComponent(repairId)}/archive`, { method:"POST", headers:idempotencyHeaders() }),
   upload: (file:File, replacesPreviewId?:string) => {
     const form = new FormData(); form.append("file", file); if (replacesPreviewId) form.append("replacesPreviewId", replacesPreviewId);
     return request<RepairPreview>("/v1/admin/repair-previews", { method:"POST", body:form });

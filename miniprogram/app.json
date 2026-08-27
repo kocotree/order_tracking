@@ -12,6 +12,7 @@
     "pages/admin-shipment-detail/admin-shipment-detail",
     "pages/admin-repair-detail/admin-repair-detail",
     "pages/factory-repair-detail/factory-repair-detail",
+    "pages/factory-repair-return/factory-repair-return",
     "pages/status/status",
     "pages/factory-apply/factory-apply",
     "pages/factory-status/factory-status",

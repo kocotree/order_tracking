@@ -20,6 +20,8 @@ from app.db.models import (
     RepairOrder,
     RepairPreview,
     RepairPreviewLine,
+    RepairReturnBatch,
+    RepairReturnLine,
     StoredFile,
 )
 
@@ -51,6 +53,42 @@ class RepairFormalLineView:
 
 
 @dataclass(frozen=True)
+class RepairSpecView:
+    variant_id: str
+    source_sku_id: str
+    source_product_id: str
+    product_name: str
+    properties_value: str
+    warehouse_return_quantity: int
+    repaired_quantity: int
+    scrapped_quantity: int
+    returned_quantity: int
+    pending_quantity: int
+
+
+@dataclass(frozen=True)
+class RepairReturnLineView:
+    variant_id: str
+    source_sku_id: str
+    source_product_id: str
+    product_name: str
+    properties_value: str
+    warehouse_return_quantity: int
+    repaired_quantity: int
+    scrapped_quantity: int
+    returned_quantity: int
+
+
+@dataclass(frozen=True)
+class RepairReturnBatchView:
+    batch_id: str
+    submitted_at: datetime
+    return_date: date
+    submitted_by: str
+    lines: tuple[RepairReturnLineView, ...]
+
+
+@dataclass(frozen=True)
 class RepairOrderView:
     repair_id: str
     repair_no: str
@@ -67,6 +105,8 @@ class RepairOrderView:
     factory_name: str
     created_at: datetime
     lines: tuple[RepairFormalLineView, ...]
+    specs: tuple[RepairSpecView, ...]
+    return_batches: tuple[RepairReturnBatchView, ...]
 
 
 class RepairConfirmationService:
@@ -104,7 +144,7 @@ class RepairConfirmationService:
             if preview is None:
                 raise RepairConfirmationNotFound(preview_id)
             if preview.status == "CONFIRMED" and preview.confirmed_repair_id is not None:
-                return self.get(preview.confirmed_repair_id)
+                return self.get(preview.confirmed_repair_id, include_archived=True)
             if preview.expires_at <= current:
                 raise RepairConfirmationConflict("预览已失效，请重新上传质检 Excel")
             if preview.status != "READY" or preview.validation_errors:
@@ -250,10 +290,10 @@ class RepairConfirmationService:
 
         return self.get(repair_id)
 
-    def get(self, repair_id: str) -> RepairOrderView:
+    def get(self, repair_id: str, *, include_archived: bool = False) -> RepairOrderView:
         with self._session_factory() as session:
             repair = session.get(RepairOrder, repair_id)
-            if repair is None:
+            if repair is None or (repair.archived_at is not None and not include_archived):
                 raise RepairConfirmationNotFound(repair_id)
             factory = session.get(Factory, repair.factory_id)
             original_file = session.get(StoredFile, repair.original_file_id)
@@ -264,6 +304,105 @@ class RepairConfirmationService:
                 .where(RepairInspectionLine.repair_id == repair_id)
                 .order_by(RepairInspectionLine.source_order)
             ).all()
+            batches = session.scalars(
+                select(RepairReturnBatch)
+                .where(RepairReturnBatch.repair_id == repair_id)
+                .order_by(RepairReturnBatch.submitted_at.desc(), RepairReturnBatch.batch_id.desc())
+            ).all()
+            batch_ids = [batch.batch_id for batch in batches]
+            return_lines = (
+                session.scalars(
+                    select(RepairReturnLine)
+                    .where(RepairReturnLine.batch_id.in_(batch_ids))
+                    .order_by(RepairReturnLine.batch_id, RepairReturnLine.line_order)
+                ).all()
+                if batch_ids
+                else []
+            )
+            spec_data: dict[str, dict[str, str | int]] = {}
+            for inspection_line in lines:
+                spec_values = spec_data.setdefault(
+                    inspection_line.variant_id,
+                    {
+                        "source_order": inspection_line.source_order,
+                        "source_sku_id": inspection_line.source_sku_id,
+                        "source_product_id": inspection_line.source_product_id,
+                        "product_name": inspection_line.product_name,
+                        "properties_value": inspection_line.properties_value,
+                        "warehouse_return_quantity": 0,
+                        "repaired_quantity": 0,
+                        "scrapped_quantity": 0,
+                    },
+                )
+                spec_values["source_order"] = min(
+                    int(spec_values["source_order"]), inspection_line.source_order
+                )
+                spec_values["warehouse_return_quantity"] = (
+                    int(spec_values["warehouse_return_quantity"])
+                    + inspection_line.warehouse_return_quantity
+                )
+            return_lines_by_batch: dict[str, list[RepairReturnLine]] = {}
+            for return_line in return_lines:
+                return_lines_by_batch.setdefault(return_line.batch_id, []).append(return_line)
+                matched_values = spec_data.get(return_line.variant_id)
+                if matched_values is not None:
+                    matched_values["repaired_quantity"] = (
+                        int(matched_values["repaired_quantity"]) + return_line.repaired_quantity
+                    )
+                    matched_values["scrapped_quantity"] = (
+                        int(matched_values["scrapped_quantity"]) + return_line.scrapped_quantity
+                    )
+            specs = tuple(
+                RepairSpecView(
+                    variant_id=variant_id,
+                    source_sku_id=str(values["source_sku_id"]),
+                    source_product_id=str(values["source_product_id"]),
+                    product_name=str(values["product_name"]),
+                    properties_value=str(values["properties_value"]),
+                    warehouse_return_quantity=int(values["warehouse_return_quantity"]),
+                    repaired_quantity=int(values["repaired_quantity"]),
+                    scrapped_quantity=int(values["scrapped_quantity"]),
+                    returned_quantity=(
+                        int(values["repaired_quantity"]) + int(values["scrapped_quantity"])
+                    ),
+                    pending_quantity=(
+                        int(values["warehouse_return_quantity"])
+                        - int(values["repaired_quantity"])
+                        - int(values["scrapped_quantity"])
+                    ),
+                )
+                for variant_id, values in sorted(
+                    spec_data.items(), key=lambda item: int(item[1]["source_order"])
+                )
+            )
+            specs_by_variant = {spec.variant_id: spec for spec in specs}
+            return_batches = tuple(
+                RepairReturnBatchView(
+                    batch_id=batch.batch_id,
+                    submitted_at=batch.submitted_at,
+                    return_date=(
+                        batch.submitted_at.replace(tzinfo=UTC).astimezone(BUSINESS_TIME_ZONE).date()
+                    ),
+                    submitted_by=batch.submitted_by,
+                    lines=tuple(
+                        RepairReturnLineView(
+                            variant_id=line.variant_id,
+                            source_sku_id=specs_by_variant[line.variant_id].source_sku_id,
+                            source_product_id=specs_by_variant[line.variant_id].source_product_id,
+                            product_name=specs_by_variant[line.variant_id].product_name,
+                            properties_value=specs_by_variant[line.variant_id].properties_value,
+                            warehouse_return_quantity=(
+                                specs_by_variant[line.variant_id].warehouse_return_quantity
+                            ),
+                            repaired_quantity=line.repaired_quantity,
+                            scrapped_quantity=line.scrapped_quantity,
+                            returned_quantity=(line.repaired_quantity + line.scrapped_quantity),
+                        )
+                        for line in return_lines_by_batch.get(batch.batch_id, [])
+                    ),
+                )
+                for batch in batches
+            )
             return RepairOrderView(
                 repair_id=repair.repair_id,
                 repair_no=repair.repair_no,
@@ -296,6 +435,8 @@ class RepairConfirmationService:
                     )
                     for line in lines
                 ),
+                specs=specs,
+                return_batches=return_batches,
             )
 
     def list_all(self, *, factory_id: str | None = None) -> tuple[RepairOrderView, ...]:

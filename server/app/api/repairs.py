@@ -13,7 +13,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -32,6 +32,14 @@ from app.modules.repairs.preview import (
     RepairPreviewNotFound,
     RepairPreviewService,
     RepairPreviewView,
+)
+from app.modules.repairs.returns import (
+    RepairArchiveView,
+    RepairReturnConflict,
+    RepairReturnLineInput,
+    RepairReturnNotFound,
+    RepairReturnService,
+    RepairReturnValidationError,
 )
 from app.modules.repairs.workflow import RepairWorkflowService, RepairWorkflowValidationError
 
@@ -90,6 +98,39 @@ class RepairLineResponse(ApiModel):
     reason: str | None
 
 
+class RepairSpecResponse(ApiModel):
+    variant_id: str
+    source_sku_id: str
+    source_product_id: str
+    product_name: str
+    properties_value: str
+    warehouse_return_quantity: int
+    repaired_quantity: int
+    scrapped_quantity: int
+    returned_quantity: int
+    pending_quantity: int
+
+
+class RepairReturnLineResponse(ApiModel):
+    variant_id: str
+    source_sku_id: str
+    source_product_id: str
+    product_name: str
+    properties_value: str
+    warehouse_return_quantity: int
+    repaired_quantity: int
+    scrapped_quantity: int
+    returned_quantity: int
+
+
+class RepairReturnBatchResponse(ApiModel):
+    batch_id: str
+    submitted_at: datetime
+    return_date: date
+    submitted_by: str
+    lines: list[RepairReturnLineResponse]
+
+
 class RepairResponse(ApiModel):
     repair_id: str
     repair_no: str
@@ -106,6 +147,8 @@ class RepairResponse(ApiModel):
     original_size_bytes: int
     created_at: datetime
     lines: list[RepairLineResponse]
+    specs: list[RepairSpecResponse]
+    return_batches: list[RepairReturnBatchResponse]
 
 
 class RepairListResponse(ApiModel):
@@ -115,12 +158,32 @@ class RepairListResponse(ApiModel):
     page_size: int
 
 
+class RepairReturnLineRequest(ApiModel):
+    variant_id: str
+    repaired_quantity: StrictInt
+    scrapped_quantity: StrictInt
+
+
+class RepairReturnRequest(ApiModel):
+    lines: list[RepairReturnLineRequest]
+
+
+class RepairArchiveResponse(ApiModel):
+    repair_id: str
+    archived_at: datetime
+    archived_by: str
+
+
 def _preview_response(preview: RepairPreviewView) -> RepairPreviewResponse:
     return RepairPreviewResponse.model_validate(preview, from_attributes=True)
 
 
 def _repair_response(repair: RepairOrderView) -> RepairResponse:
     return RepairResponse.model_validate(repair, from_attributes=True)
+
+
+def _archive_response(archive: RepairArchiveView) -> RepairArchiveResponse:
+    return RepairArchiveResponse.model_validate(archive, from_attributes=True)
 
 
 def _admin_can_download_repair_file(*, terminal: str, formal_repair: bool) -> bool:
@@ -132,6 +195,7 @@ def create_repair_router(
     workflow: RepairWorkflowService,
     previews: RepairPreviewService,
     confirmations: RepairConfirmationService,
+    returns: RepairReturnService,
     identity: IdentityAccessService,
     file_store: PrivateFileStore,
     session_factory: sessionmaker[Session],
@@ -165,6 +229,12 @@ def create_repair_router(
             raise PermissionDenied("administrator role required")
 
     def translate(error: Exception) -> HTTPException:
+        if isinstance(error, RepairReturnNotFound):
+            return HTTPException(status_code=404, detail=str(error))
+        if isinstance(error, RepairReturnConflict):
+            return HTTPException(status_code=409, detail=str(error))
+        if isinstance(error, RepairReturnValidationError):
+            return HTTPException(status_code=422, detail=str(error))
         if isinstance(error, (RepairPreviewNotFound, RepairConfirmationNotFound)):
             return HTTPException(status_code=404, detail=str(error))
         if isinstance(error, RepairPreviewExpired):
@@ -263,7 +333,7 @@ def create_repair_router(
         return_from: date | None,
         return_to: date | None,
     ) -> list[RepairOrderView]:
-        values = list(confirmations.list_all(factory_id=factory_id))
+        values = list(returns.list_all(factory_id=factory_id))
         normalized = keyword.strip().lower()
         return [
             item
@@ -319,7 +389,7 @@ def create_repair_router(
         user, _terminal = actor(web_token, authorization)
         admin(user)
         try:
-            return _repair_response(confirmations.get(repair_id))
+            return _repair_response(returns.get(repair_id))
         except Exception as error:
             raise translate(error) from error
 
@@ -366,12 +436,77 @@ def create_repair_router(
         if terminal != "mini" or user.role != "factory" or user.factory_id is None:
             raise PermissionDenied("factory role required")
         try:
-            repair = confirmations.get(repair_id)
+            repair = returns.get(repair_id)
         except Exception as error:
             raise translate(error) from error
         if repair.factory_id != user.factory_id:
             raise HTTPException(status_code=404, detail="返修单不存在")
         return _repair_response(repair)
+
+    @router.post(
+        "/factory/repairs/{repair_id}/return-batches",
+        response_model=RepairResponse,
+        status_code=201,
+        tags=["repair-factory"],
+    )
+    def submit_factory_repair_return(
+        repair_id: str,
+        payload: RepairReturnRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        authorization: str | None = Header(default=None),
+    ) -> RepairResponse:
+        user, terminal = actor(None, authorization)
+        if terminal != "mini" or user.role != "factory" or user.factory_id is None:
+            raise PermissionDenied("factory role required")
+        try:
+            return _repair_response(
+                returns.submit(
+                    repair_id=repair_id,
+                    factory_id=user.factory_id,
+                    submitted_by=user.user_id,
+                    idempotency_key=idempotency_key,
+                    lines=tuple(
+                        RepairReturnLineInput(
+                            variant_id=line.variant_id,
+                            repaired_quantity=line.repaired_quantity,
+                            scrapped_quantity=line.scrapped_quantity,
+                        )
+                        for line in payload.lines
+                    ),
+                )
+            )
+        except Exception as error:
+            raise translate(error) from error
+
+    @router.post(
+        "/admin/repairs/{repair_id}/archive",
+        response_model=RepairArchiveResponse,
+        tags=["repair-admin-web"],
+    )
+    def archive_admin_repair(
+        repair_id: str,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        web_token: str | None = Cookie(default=None, alias="ot_web_session"),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    ) -> RepairArchiveResponse:
+        user, _terminal = actor(
+            web_token,
+            None,
+            csrf_token,
+            require_web=True,
+            require_csrf=True,
+        )
+        admin(user)
+        try:
+            return _archive_response(
+                returns.archive(
+                    repair_id=repair_id,
+                    archived_by=user.user_id,
+                    idempotency_key=idempotency_key,
+                )
+            )
+        except Exception as error:
+            raise translate(error) from error
 
     @router.get("/files/{file_id}/download", tags=["repair-files"])
     def download_file(
@@ -380,13 +515,9 @@ def create_repair_router(
         authorization: str | None = Header(default=None),
     ) -> Response:
         user, terminal = actor(web_token, authorization)
-        orders = confirmations.list_all()
+        orders = returns.list_all()
         matched = next(
-            (
-                order
-                for order in orders
-                if order.original_file_id == file_id
-            ),
+            (order for order in orders if order.original_file_id == file_id),
             None,
         )
         preview_file = False

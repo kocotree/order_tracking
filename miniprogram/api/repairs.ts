@@ -15,17 +15,27 @@ export interface RepairLine {
 }
 
 export interface RepairReturnLine {
+  variantId: string;
+  sourceSkuId: string;
+  sourceProductId: string;
   productName: string;
   propertiesValue: string;
   warehouseReturnQuantity: number;
   repairedQuantity: number;
   scrappedQuantity: number;
+  returnedQuantity: number;
 }
 
 export interface RepairReturnBatch {
   batchId: string;
+  submittedAt: string;
   returnDate: string;
+  submittedBy: string;
   lines: RepairReturnLine[];
+}
+
+export interface RepairSpec extends RepairReturnLine {
+  pendingQuantity: number;
 }
 
 export interface Repair {
@@ -44,7 +54,8 @@ export interface Repair {
   originalSizeBytes: number;
   createdAt: string;
   lines: RepairLine[];
-  returnBatches?: RepairReturnBatch[];
+  specs: RepairSpec[];
+  returnBatches: RepairReturnBatch[];
 }
 
 export interface RepairList { items: Repair[]; total: number; page: number; pageSize: number }
@@ -68,5 +79,11 @@ export const repairApi = {
   adminGet: (repairId: string) => authorizedRequest<Repair>({ url: `/admin/repairs/${encodeURIComponent(repairId)}`, method: "GET" }),
   factoryList: () => authorizedRequest<RepairList>({ url: "/factory/repairs?pageSize=100", method: "GET" }),
   factoryGet: (repairId: string) => authorizedRequest<Repair>({ url: `/factory/repairs/${encodeURIComponent(repairId)}`, method: "GET" }),
+  factorySubmitReturn: (repairId: string, lines: Array<{ variantId: string; repairedQuantity: number; scrappedQuantity: number }>, idempotencyKey: string) => authorizedRequest<Repair>({
+    url: `/factory/repairs/${encodeURIComponent(repairId)}/return-batches`,
+    method: "POST",
+    header: { "Idempotency-Key": idempotencyKey },
+    data: { lines },
+  }),
   download,
 };

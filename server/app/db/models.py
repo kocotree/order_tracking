@@ -1087,6 +1087,14 @@ class RepairOrder(Base):
             "repaired_quantity >= 0 AND scrapped_quantity >= 0 AND returned_quantity >= 0",
             name="ck_repair_orders_return_counts_nonnegative",
         ),
+        CheckConstraint(
+            "returned_quantity = repaired_quantity + scrapped_quantity",
+            name="ck_repair_orders_return_sum",
+        ),
+        CheckConstraint(
+            "returned_quantity <= warehouse_return_quantity",
+            name="ck_repair_orders_return_not_exceeded",
+        ),
         UniqueConstraint("repair_no", name="uq_repair_orders_no"),
         UniqueConstraint("source_sha256", name="uq_repair_orders_source_sha256"),
         Index("ix_repair_orders_list", "status", "return_date", "repair_id"),
@@ -1159,6 +1167,68 @@ class RepairInspectionLine(Base):
     properties_value: Mapped[str] = mapped_column(String(255), nullable=False)
     warehouse_return_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class RepairReturnBatch(Base):
+    __tablename__ = "repair_return_batches"
+    __table_args__ = (
+        UniqueConstraint(
+            "submitted_by",
+            "idempotency_key",
+            name="uq_repair_return_batches_submitter_key",
+        ),
+        Index(
+            "ix_repair_return_batches_repair",
+            "repair_id",
+            "submitted_at",
+            "batch_id",
+        ),
+    )
+
+    batch_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    repair_id: Mapped[str] = mapped_column(
+        ForeignKey("repair_orders.repair_id", ondelete="RESTRICT"), nullable=False
+    )
+    submitted_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    submitted_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(191), nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class RepairReturnLine(Base):
+    __tablename__ = "repair_return_lines"
+    __table_args__ = (
+        CheckConstraint(
+            "repaired_quantity >= 0 AND scrapped_quantity >= 0",
+            name="ck_repair_return_lines_nonnegative",
+        ),
+        CheckConstraint(
+            "repaired_quantity + scrapped_quantity > 0",
+            name="ck_repair_return_lines_positive_total",
+        ),
+        UniqueConstraint("batch_id", "line_order", name="uq_repair_return_lines_order"),
+        UniqueConstraint("batch_id", "variant_id", name="uq_repair_return_lines_variant"),
+        Index("ix_repair_return_lines_batch", "batch_id", "line_order"),
+    )
+
+    return_line_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("repair_return_batches.batch_id", ondelete="RESTRICT"), nullable=False
+    )
+    line_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    variant_id: Mapped[str] = mapped_column(
+        ForeignKey("product_variants.variant_id", ondelete="RESTRICT"), nullable=False
+    )
+    repaired_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    scrapped_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
     )

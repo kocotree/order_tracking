@@ -36,8 +36,8 @@
         <header class="detail-section-header"><h2>工厂发回记录</h2></header>
         <div class="detail-table-scroll">
           <table class="detail-data-table repair-return-table data-grid-table">
-            <thead><tr><th v-for="column in returnColumns" :key="column.field" scope="col"><TableSortButton :label="column.label" :field="column.field" sort-by="" sort-order="asc" @sort="noop" /></th></tr></thead>
-            <tbody><tr><td colspan="8"><div class="repair-inline-empty">工厂尚未提交返修发回记录</div></td></tr></tbody>
+            <thead><tr><th v-for="column in returnColumns" :key="column.field" scope="col"><TableSortButton :label="column.label" :field="column.field" :sort-by="returnSortBy" :sort-order="returnSortOrder" @sort="sortReturn" /></th></tr></thead>
+            <tbody><tr v-for="row in returnRows" :key="`${row.batchId}-${row.variantId}`"><td>{{ row.shippedDate }}</td><td class="detail-code">{{ row.sourceSkuId }}</td><td>{{ row.productName }}</td><td>{{ row.propertiesValue }}</td><td class="repair-number-cell">{{ n(row.repairedQuantity) }}</td><td class="repair-number-cell">{{ n(row.scrappedQuantity) }}</td><td class="repair-number-cell">{{ n(row.returnedQuantity) }}</td><td class="repair-number-cell">{{ n(row.warehouseReturnQuantity) }}</td></tr><tr v-if="!returnRows.length"><td colspan="8"><div class="repair-inline-empty">工厂尚未提交返修发回记录</div></td></tr></tbody>
           </table>
         </div>
       </section>
@@ -54,16 +54,19 @@ import AdminShell from "@/components/AdminShell.vue";
 import TableSortButton from "@/components/TableSortButton.vue";
 
 type QualityField="sourceSkuId"|"productName"|"propertiesValue"|"warehouseReturnQuantity"|"boxNumber"|"reason";
+type ReturnField="shippedDate"|"sourceSkuId"|"productName"|"propertiesValue"|"repairedQuantity"|"scrappedQuantity"|"returnedQuantity"|"warehouseReturnQuantity";
 const qualityColumns:Array<{label:string;field:QualityField}>=[{label:"产品编码",field:"sourceSkuId"},{label:"产品名称",field:"productName"},{label:"颜色/规格",field:"propertiesValue"},{label:"仓库退回数量",field:"warehouseReturnQuantity"},{label:"箱号",field:"boxNumber"},{label:"次品原因",field:"reason"}];
-const returnColumns=[{label:"发货日期",field:"shippedDate"},{label:"产品编码",field:"code"},{label:"产品名称",field:"name"},{label:"颜色/规格",field:"colorSpec"},{label:"返修数量",field:"repairedQuantity"},{label:"报废数量",field:"scrappedQuantity"},{label:"返回数量",field:"returnedQuantity"},{label:"仓库退回数量",field:"warehouseReturnQuantity"}];
+const returnColumns:Array<{label:string;field:ReturnField}>=[{label:"发货日期",field:"shippedDate"},{label:"产品编码",field:"sourceSkuId"},{label:"产品名称",field:"productName"},{label:"颜色/规格",field:"propertiesValue"},{label:"返修数量",field:"repairedQuantity"},{label:"报废数量",field:"scrappedQuantity"},{label:"返回数量",field:"returnedQuantity"},{label:"仓库退回数量",field:"warehouseReturnQuantity"}];
 const route=useRoute(),router=useRouter(),repair=ref<Repair|null>(null),error=ref(""),downloadError=ref("");
 const qualitySortBy=ref<QualityField>("sourceOrder" as QualityField),qualitySortOrder=ref<"asc"|"desc">("asc");
+const returnSortBy=ref<ReturnField>("shippedDate"),returnSortOrder=ref<"asc"|"desc">("desc");
 const n=(v:number)=>v.toLocaleString("zh-CN");
 const boxes=computed(()=>new Set(repair.value?.lines.map(v=>v.boxNumber)).size);
 const sortedQualityLines=computed(()=>{const lines=[...(repair.value?.lines??[])];if(qualitySortBy.value===("sourceOrder" as QualityField))return lines.sort((a,b)=>a.sourceOrder-b.sourceOrder);return lines.sort((a,b)=>{const av=a[qualitySortBy.value]??"",bv=b[qualitySortBy.value]??"";const result=typeof av==="number"&&typeof bv==="number"?av-bv:String(av).localeCompare(String(bv),"zh-CN",{numeric:true});return qualitySortOrder.value==="asc"?result:-result;});});
 const qualityRows=computed(()=>sortedQualityLines.value.map((line,index,lines)=>{const showBox=index===0||lines[index-1].boxNumber!==line.boxNumber;let boxRowspan=1;if(showBox)while(lines[index+boxRowspan]?.boxNumber===line.boxNumber)boxRowspan++;const reason=line.reason||"";const showReason=index===0||(lines[index-1].reason||"")!==reason;let reasonRowspan=1;if(showReason)while(lines[index+reasonRowspan]&&(lines[index+reasonRowspan].reason||"")===reason)reasonRowspan++;return{line,showBox,boxRowspan,showReason,reasonRowspan};}));
+const returnRows=computed(()=>{const rows=(repair.value?.returnBatches??[]).flatMap(batch=>batch.lines.map(line=>({...line,batchId:batch.batchId,shippedDate:batch.returnDate})));return rows.sort((a,b)=>{const av=a[returnSortBy.value],bv=b[returnSortBy.value];const result=typeof av==="number"&&typeof bv==="number"?av-bv:String(av).localeCompare(String(bv),"zh-CN",{numeric:true});return returnSortOrder.value==="asc"?result:-result;});});
 function sortQuality(field:string){const next=field as QualityField;if(qualitySortBy.value===next)qualitySortOrder.value=qualitySortOrder.value==="asc"?"desc":"asc";else{qualitySortBy.value=next;qualitySortOrder.value="asc"}}
-function noop(){/* S09 尚无发回记录，保留原型表头交互位置。 */}
+function sortReturn(field:string){const next=field as ReturnField;if(returnSortBy.value===next)returnSortOrder.value=returnSortOrder.value==="asc"?"desc":"asc";else{returnSortBy.value=next;returnSortOrder.value="asc"}}
 async function downloadOriginal(){if(!repair.value)return;downloadError.value="";try{await repairApi.download(repair.value.originalFileId,repair.value.originalFilename)}catch(e){downloadError.value=e instanceof ApiError?e.message:"原始质检单下载失败"}}
 onMounted(async()=>{try{repair.value=await repairApi.get(String(route.params.repairId))}catch(e){error.value=e instanceof ApiError?e.message:"返修单加载失败"}});
 </script>

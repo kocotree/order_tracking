@@ -78,6 +78,7 @@ from app.modules.orders import (
 from app.modules.product_sync import ProductCatalogService
 from app.modules.repairs.confirmation import RepairConfirmationService
 from app.modules.repairs.preview import RepairPreviewService
+from app.modules.repairs.returns import RepairReturnService
 from app.modules.repairs.workflow import RepairWorkflowService
 from app.modules.shipments import (
     ShipmentConflict,
@@ -249,6 +250,7 @@ def create_app(
     app.include_router(create_shipment_router(shipment_service, identity_service))
     repair_previews = RepairPreviewService(session_factory)
     repair_confirmations = RepairConfirmationService(session_factory)
+    repair_returns = RepairReturnService(session_factory)
     repair_workflow = RepairWorkflowService(
         session_factory,
         file_store=private_file_store,
@@ -259,6 +261,7 @@ def create_app(
             workflow=repair_workflow,
             previews=repair_previews,
             confirmations=repair_confirmations,
+            returns=repair_returns,
             identity=identity_service,
             file_store=private_file_store,
             session_factory=session_factory,

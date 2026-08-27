@@ -163,6 +163,12 @@ export const PREVIEW_REPAIRS: Repair[] = [
       { inspectionLineId: 900002, sourceRow: 3, sourceOrder: 2, boxNumber: "1", sourceSkuId: "PREVIEW-002", productName: "云朵软壳冲锋衣", propertiesValue: "米白/110", warehouseReturnQuantity: 120, reason: "轻微污渍" },
       { inspectionLineId: 900003, sourceRow: 4, sourceOrder: 3, boxNumber: "2", sourceSkuId: "PREVIEW-003", productName: "小热皮绒绒裤", propertiesValue: "棕色/100", warehouseReturnQuantity: 120, reason: "尺寸偏差" },
     ],
+    specs: [
+      { variantId:"preview-variant-1",sourceSkuId:"PREVIEW-001",sourceProductId:"PREVIEW-P1",productName:"云朵软壳冲锋衣",propertiesValue:"松石绿/110",warehouseReturnQuantity:160,repairedQuantity:0,scrappedQuantity:0,returnedQuantity:0,pendingQuantity:160 },
+      { variantId:"preview-variant-2",sourceSkuId:"PREVIEW-002",sourceProductId:"PREVIEW-P1",productName:"云朵软壳冲锋衣",propertiesValue:"米白/110",warehouseReturnQuantity:120,repairedQuantity:0,scrappedQuantity:0,returnedQuantity:0,pendingQuantity:120 },
+      { variantId:"preview-variant-3",sourceSkuId:"PREVIEW-003",sourceProductId:"PREVIEW-P2",productName:"小热皮绒绒裤",propertiesValue:"棕色/100",warehouseReturnQuantity:120,repairedQuantity:0,scrappedQuantity:0,returnedQuantity:0,pendingQuantity:120 },
+    ],
+    returnBatches: [],
   },
   {
     repairId: "preview-repair-2",
@@ -183,6 +189,17 @@ export const PREVIEW_REPAIRS: Repair[] = [
       { inspectionLineId: 900004, sourceRow: 2, sourceOrder: 1, boxNumber: "1", sourceSkuId: "PREVIEW-004", productName: "乐园游会吊带包屁衣", propertiesValue: "蓝色/90", warehouseReturnQuantity: 450, reason: "面料破损" },
       { inspectionLineId: 900005, sourceRow: 3, sourceOrder: 2, boxNumber: "2", sourceSkuId: "PREVIEW-005", productName: "乐园游会吊带包屁衣", propertiesValue: "蓝色/100", warehouseReturnQuantity: 450, reason: "印花偏位" },
     ],
+    specs: [
+      { variantId:"preview-variant-4",sourceSkuId:"PREVIEW-004",sourceProductId:"PREVIEW-P3",productName:"乐园游会吊带包屁衣",propertiesValue:"蓝色/90",warehouseReturnQuantity:450,repairedQuantity:180,scrappedQuantity:40,returnedQuantity:220,pendingQuantity:230 },
+      { variantId:"preview-variant-5",sourceSkuId:"PREVIEW-005",sourceProductId:"PREVIEW-P3",productName:"乐园游会吊带包屁衣",propertiesValue:"蓝色/100",warehouseReturnQuantity:450,repairedQuantity:150,scrappedQuantity:50,returnedQuantity:200,pendingQuantity:250 },
+    ],
+    returnBatches: [{
+      batchId:"preview-batch-1",submittedAt:"2026-08-20T10:00:00+08:00",returnDate:"2026-08-20",submittedBy:"preview-factory-user",
+      lines:[
+        { variantId:"preview-variant-4",sourceSkuId:"PREVIEW-004",sourceProductId:"PREVIEW-P3",productName:"乐园游会吊带包屁衣",propertiesValue:"蓝色/90",warehouseReturnQuantity:450,repairedQuantity:180,scrappedQuantity:40 },
+        { variantId:"preview-variant-5",sourceSkuId:"PREVIEW-005",sourceProductId:"PREVIEW-P3",productName:"乐园游会吊带包屁衣",propertiesValue:"蓝色/100",warehouseReturnQuantity:450,repairedQuantity:150,scrappedQuantity:50 },
+      ].map(line=>({...line,returnedQuantity:line.repairedQuantity+line.scrappedQuantity})),
+    }],
   },
 ];
 
@@ -197,10 +214,10 @@ export const PREVIEW_ADMIN_REPAIRS: Repair[] = [
       { ...PREVIEW_REPAIRS[0].lines[1], inspectionLineId: 910002, productName: "探索家渔夫帽", propertiesValue: "藏青/54", warehouseReturnQuantity: 16 },
     ],
     returnBatches: [{
-      batchId: "preview-admin-batch-1", returnDate: "2026年08月16日",
+      batchId: "preview-admin-batch-1", submittedAt:"2026-08-16T10:00:00+08:00", returnDate: "2026-08-16", submittedBy:"preview-factory-user",
       lines: [
-        { productName: "探索家渔夫帽", propertiesValue: "米白/52", warehouseReturnQuantity: 20, repairedQuantity: 12, scrappedQuantity: 1 },
-        { productName: "探索家渔夫帽", propertiesValue: "藏青/54", warehouseReturnQuantity: 16, repairedQuantity: 6, scrappedQuantity: 1 },
+        { variantId:"preview-admin-variant-1",sourceSkuId:"PREVIEW-001",sourceProductId:"PREVIEW-AP1",productName: "探索家渔夫帽", propertiesValue: "米白/52", warehouseReturnQuantity: 20, repairedQuantity: 12, scrappedQuantity: 1, returnedQuantity:13 },
+        { variantId:"preview-admin-variant-2",sourceSkuId:"PREVIEW-002",sourceProductId:"PREVIEW-AP1",productName: "探索家渔夫帽", propertiesValue: "藏青/54", warehouseReturnQuantity: 16, repairedQuantity: 6, scrappedQuantity: 1, returnedQuantity:7 },
       ],
     }],
   },

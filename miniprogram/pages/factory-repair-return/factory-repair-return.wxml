@@ -1,0 +1,19 @@
+<view class="repair-return-page">
+  <mini-titlebar title="发回返修品" showBack="{{true}}" backLeft="{{true}}" bind:back="goBack"/>
+  <view class="repair-return-steps"><view class="repair-return-step is-active"><text>{{step === 'preview' ? '✓' : '1'}}</text><b>填写数量</b></view><i class="{{step === 'preview' ? 'is-active' : ''}}"/><view class="repair-return-step {{step === 'preview' ? 'is-active' : ''}}"><text>2</text><b>预览提交</b></view></view>
+  <view wx:if="{{loading}}" class="mini-empty">正在加载返修任务…</view>
+  <view wx:elif="{{repair}}" class="repair-return-content">
+    <view class="repair-return-summary"><view class="repair-return-summary-head"><text>返修单号</text><b>{{repair.repairNo}}</b></view><view class="repair-return-progress"><view><text>当前返回进度</text><b>{{repair.returnedQuantity}} / {{repair.warehouseReturnQuantity}}</b><em>{{progress}}%</em></view><view class="repair-return-track"><view style="width:{{progress}}%"/></view></view><view class="repair-return-pending"><text>待返回总数量</text><b>{{pending}}</b><small>件</small></view></view>
+    <block wx:if="{{step === 'edit'}}">
+      <view class="repair-return-hint">勾选本次发回的规格，并分别填写返修数量和报废数量。</view>
+      <view wx:for="{{groups}}" wx:key="productName" class="repair-return-product"><view class="repair-return-product-head"><view><b>{{item.productName}}</b><text>{{item.entries.length}} 个待返回规格</text></view><strong>待返回 {{item.pendingQuantity}}</strong></view><view wx:for="{{item.entries}}" wx:for-item="entry" wx:for-index="entryIndex" wx:key="variantId" class="repair-return-spec {{entry.selected ? 'is-selected' : ''}}"><view class="repair-return-select" data-group="{{index}}" data-entry="{{entryIndex}}" bindtap="toggleEntry"><checkbox checked="{{entry.selected}}" color="#1677ff"/><view><b>{{entry.propertiesValue}}</b><text>选择本次发回</text></view></view><view class="repair-return-facts"><view><text>仓库退回</text><b>{{entry.warehouseReturnQuantity}}</b></view><view><text>已返回</text><b>{{entry.returnedQuantity}}</b></view><view><text>待返回</text><b>{{entry.pendingQuantity}}</b></view></view><view class="repair-return-inputs"><label><text>返修数量</text><input type="number" placeholder="0" disabled="{{!entry.selected}}" value="{{entry.repaired}}" data-group="{{index}}" data-entry="{{entryIndex}}" data-field="repaired" bindinput="changeQuantity"/></label><label><text>报废数量</text><input type="number" placeholder="0" disabled="{{!entry.selected}}" value="{{entry.scrapped}}" data-group="{{index}}" data-entry="{{entryIndex}}" data-field="scrapped" bindinput="changeQuantity"/></label></view></view></view>
+      <view class="repair-return-totals"><view><text>本次返修</text><b>{{repairedTotal}}</b></view><view><text>本次报废</text><b>{{scrappedTotal}}</b></view><view class="repair-return-total-all"><text>本次返回总数量</text><b>{{returnTotal}}</b></view></view>
+      <button class="repair-return-primary" bindtap="openPreview">下一步：预览</button>
+    </block>
+    <block wx:else>
+      <view class="repair-return-preview-totals"><view><text>返修数量</text><b>{{repairedTotal}}</b></view><view><text>报废数量</text><b>{{scrappedTotal}}</b></view><view><text>返回总数量</text><b>{{returnTotal}}</b></view></view>
+      <view class="repair-return-preview-list"><view class="repair-return-preview-head"><b>本次发回明细</b><text>{{previewLines.length}} 个规格</text></view><view wx:for="{{previewLines}}" wx:key="variantId" class="repair-return-preview-line"><text class="repair-return-index">{{index + 1}}</text><view><b>{{item.productName}}</b><text>{{item.propertiesValue}}</text></view><view class="repair-return-preview-values"><view><text>返修</text><b>{{item.repaired}}</b></view><view><text>报废</text><b>{{item.scrapped}}</b></view><view><text>返回</text><b>{{item.returnQuantity}}</b></view></view></view></view>
+      <view class="repair-return-actions"><button bindtap="edit">返回修改</button><button class="is-primary" disabled="{{submitting}}" bindtap="submit">{{submitting ? '提交中…' : '确认提交'}}</button></view>
+    </block>
+  </view>
+</view>

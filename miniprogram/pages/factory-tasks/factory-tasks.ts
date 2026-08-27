@@ -29,8 +29,7 @@ const repairStatusOptions: FilterOption[] = [
 ];
 
 function formatRepairDate(value: string): string {
-  const [, month = "", day = ""] = value.split("-");
-  return `${month}月${day}日`;
+  return value.slice(0, 10);
 }
 
 function optionIndex(options: FilterOption[], value: string): number {
@@ -79,7 +78,13 @@ Page({
     this.setData({ previewMode });
     void this.loadOrders();
   },
-  onPullDownRefresh() { void this.loadOrders().finally(() => wx.stopPullDownRefresh()); },
+  onShow() {
+    if (!this.data.loading && this.data.activeTab === "repairs") void this.loadRepairs();
+  },
+  onPullDownRefresh() {
+    const request = this.data.activeTab === "repairs" ? this.loadRepairs() : this.loadOrders();
+    void request.finally(() => wx.stopPullDownRefresh());
+  },
   selectTab(event: WechatMiniprogram.TouchEvent) { const activeTab = String(event.currentTarget.dataset.tab); this.setData({ activeTab, keyword: "", filterOpen: false }); if (activeTab === "repairs") void this.loadRepairs(); },
   keywordChanged(event: WechatMiniprogram.Input) { this.setData({ keyword: event.detail.value }); if (this.data.activeTab === "repairs") this.applyRepairFilters(); },
   search() { if (this.data.activeTab === "repairs") this.applyRepairFilters(); else void this.loadOrders(); },

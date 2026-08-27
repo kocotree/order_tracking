@@ -1,12 +1,13 @@
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.avatar import FakeAvatarStore
 from app.adapters.identity import FakeFeishuIdentity
-from app.adapters.wechat import FakeWechatIdentity, WechatProfile
+from app.adapters.wechat import FakeWechatIdentity, WechatIdentityConfig, WechatProfile
 from app.main import create_app
 from app.modules.identity_access import FeishuProfile, IdentityAccessService
 
@@ -249,3 +250,43 @@ def test_mini_identity_api_binds_refreshes_uploads_avatar_and_logs_out(
         assert repeated.status_code == 200
         assert repeated.json()["status"] == "authenticated"
         assert repeated.json()["user"]["userId"] == applicant.user_id
+
+
+def test_normal_development_uses_configured_wechat_identity_over_public_http(
+    monkeypatch: pytest.MonkeyPatch,
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    captured: dict[str, str] = {}
+
+    def configured_wechat(config: WechatIdentityConfig) -> FakeWechatIdentity:
+        captured["app_id"] = config.app_id
+        captured["app_secret"] = config.app_secret
+        return FakeWechatIdentity(
+            scope="wechat-app/configured-test",
+            login_profiles={"real-wx-login-code": WechatProfile(subject="real-openid")},
+            phone_codes={},
+        )
+
+    monkeypatch.setenv("ORDER_TRACKING_APP_ENV", "development")
+    monkeypatch.setenv("ORDER_TRACKING_WECHAT_IDENTITY_APP_ID", "wx-company-app")
+    monkeypatch.setenv("ORDER_TRACKING_WECHAT_IDENTITY_APP_SECRET", "local-only-secret")
+    monkeypatch.setenv("ORDER_TRACKING_IDENTITY_TOKEN_SECRET", "test-token-secret")
+    monkeypatch.setenv("ORDER_TRACKING_PHONE_ENCRYPTION_SECRET", "test-phone-secret")
+    monkeypatch.setenv("ORDER_TRACKING_PHONE_DIGEST_SECRET", "test-digest-secret")
+    monkeypatch.setattr("app.main.AppCredentialWechatIdentity", configured_wechat)
+
+    app = create_app(database_url=test_database_url)
+
+    with TestClient(app, base_url="https://testserver") as client:
+        login = client.post(
+            "/api/v1/mini/auth/wechat",
+            json={"code": "real-wx-login-code"},
+        )
+
+    assert login.status_code == 200
+    assert login.json()["status"] == "phone_required"
+    assert captured == {
+        "app_id": "wx-company-app",
+        "app_secret": "local-only-secret",
+    }

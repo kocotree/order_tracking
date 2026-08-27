@@ -32,7 +32,7 @@ describe("order presentation", () => {
       ],
     } as Order;
     expect(orderFactorySummary(order)).toBe("昱斌、宇倩");
-    expect(formatContractShipDate("2026-08-24", new Date(2026, 7, 24))).toBe("今天");
-    expect(formatContractShipDate("2026-08-30", new Date(2026, 7, 24))).toBe("08月30日");
+    expect(formatContractShipDate("2026-08-24")).toBe("2026-08-24");
+    expect(formatContractShipDate("2026-08-30")).toBe("2026-08-30");
   });
 });

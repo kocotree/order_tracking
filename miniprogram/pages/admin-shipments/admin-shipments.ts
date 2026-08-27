@@ -1,6 +1,7 @@
 import { shipmentApi, type Shipment } from "../../api/shipments";
 import { repairApi, type Repair } from "../../api/repairs";
 import { isDevPreview, PREVIEW_ADMIN_REPAIRS, PREVIEW_FACTORY_SHIPMENTS } from "../../modules/dev-preview";
+import { adminNavigationItems } from "../../modules/navigation";
 
 type ShipmentCard = Shipment & { productSummary: string; orderSummary: string };
 type FilterOption = { label: string; value: string };
@@ -21,6 +22,12 @@ function optionIndex(options: FilterOption[], value: string): number {
   return index < 0 ? 0 : index;
 }
 
+function repairProductSummary(repair: Repair): string {
+  const productNames = Array.from(new Set(repair.lines.map((line) => line.productName)));
+  if (!productNames.length) return "—";
+  return productNames.length === 1 ? productNames[0] : `${productNames[0]}等`;
+}
+
 Page({
   data: {
     activeTab: "shipments", repairItems: [] as RepairCard[], allRepairItems: [] as RepairCard[], repairStatus: "all", repairFactoryCount: 0,
@@ -30,11 +37,7 @@ Page({
     factoryOptions: [{ label: "全部工厂", value: "" }] as FilterOption[],
     repairStatusOptions: ["全部状态", "未完成", "已完成"],
     draftFactoryIndex: 0, draftShipDateFrom: "", draftShipDateTo: "", draftRepairStatus: "all",
-    navigationItems: [
-      { key: "orders", label: "订单", path: "/pages/admin-orders/admin-orders", icon: "/assets/icons/admin-orders.svg", activeIcon: "/assets/icons/admin-orders-active.svg" },
-      { key: "shipments", label: "发货", path: "/pages/admin-shipments/admin-shipments", icon: "/assets/icons/factory-shipments.svg", activeIcon: "/assets/icons/factory-shipments-active.svg" },
-      { key: "profile", label: "我的", path: "/pages/profile/profile", icon: "/assets/icons/admin-profile.svg", activeIcon: "/assets/icons/admin-profile-active.svg" },
-    ],
+    navigationItems: adminNavigationItems(),
   },
   onLoad(options: Record<string, string | undefined>) {
     const previewMode = isDevPreview(options);
@@ -54,7 +57,7 @@ Page({
     } catch { wx.showToast({ title: "返修进度加载失败", icon: "none" }); }
   },
   setRepairs(repairs: Repair[]) {
-    const allRepairItems = repairs.map((item) => ({ ...item, productSummary: Array.from(new Set(item.lines.map((line) => line.productName))).join("、") || "—", progress: item.warehouseReturnQuantity ? Math.round(item.returnedQuantity / item.warehouseReturnQuantity * 100) : 0, pending: Math.max(0, item.warehouseReturnQuantity - item.returnedQuantity) }));
+    const allRepairItems = repairs.map((item) => ({ ...item, productSummary: repairProductSummary(item), progress: item.warehouseReturnQuantity ? Math.round(item.returnedQuantity / item.warehouseReturnQuantity * 100) : 0, pending: Math.max(0, item.warehouseReturnQuantity - item.returnedQuantity) }));
     this.setData({ allRepairItems }, () => { if (this.data.activeTab === "repairs") this.refreshFactoryOptions(); this.applyVisibleItems(); });
   },
   setItems(shipments: Shipment[]) {

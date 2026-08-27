@@ -8,8 +8,8 @@
 
   <block wx:if="{{activeTab === 'orders'}}">
     <view class="mini-search-bar factory-search-bar">
-      <view class="mini-search-field"><image class="mini-search-icon" src="/assets/icons/search-gray.svg" mode="aspectFit" /><input value="{{keyword}}" placeholder="搜索订单编号或产品名称" bindinput="keywordChanged" confirm-type="search" bindconfirm="search" /></view>
-      <button class="factory-filter-button" bindtap="toggleFilter"><view class="mini-filter-icon" /><text>筛选</text><text wx:if="{{activeFilterCount}}" class="mini-filter-count">{{activeFilterCount}}</text></button>
+      <view class="mini-search-field"><image class="mini-search-icon" src="/assets/icons/search-gray.svg" mode="aspectFit" /><input value="{{keyword}}" placeholder="订单编号或产品名称" bindinput="keywordChanged" confirm-type="search" bindconfirm="search" /></view>
+      <button class="factory-filter-button {{activeFilterCount ? 'is-active' : ''}}" bindtap="toggleFilter"><image class="factory-filter-icon" src="/assets/icons/filter-blue.svg" mode="aspectFit"/><text>筛选</text><text wx:if="{{activeFilterCount}}" class="mini-filter-count">{{activeFilterCount}}</text></button>
     </view>
 
     <view class="mini-order-content factory-order-content">
@@ -24,7 +24,7 @@
             <text class="mini-status mini-status--{{item.statusTone}}">{{item.displayStatus}}</text>
           </view>
           <view class="mini-card-due {{item.statusTone === 'overdue' ? 'is-overdue' : ''}}">
-            <view class="mini-fact-icon mini-fact-icon--calendar" /><text>合同出货时间</text><text class="mini-due-value">{{item.contractShipDateText}}</text>
+            <image class="mini-fact-icon" src="/assets/icons/calendar-blue.svg" mode="aspectFit" /><text>合同出货时间</text><text class="mini-due-value">{{item.contractShipDateText}}</text>
           </view>
           <view class="mini-card-quantities">
             <view class="mini-quantity-item is-first"><text class="mini-quantity-label">下单</text><text class="mini-quantity-value">{{item.totalText}}</text></view>
@@ -38,9 +38,9 @@
   </block>
 
   <block wx:else>
-    <view class="mini-search-bar factory-search-bar repair-search-bar">
-      <view class="mini-search-field repair-search-field"><image class="mini-search-icon" src="/assets/icons/search-gray.svg" mode="aspectFit"/><input value="{{keyword}}" placeholder="返修单号或产品名称" bindinput="keywordChanged" confirm-type="search" bindconfirm="search"/></view>
-      <button class="factory-filter-button repair-filter-button" bindtap="toggleFilter"><image src="/assets/icons/filter-blue.svg" mode="aspectFit"/><text>筛选</text><text wx:if="{{repairActiveFilterCount}}" class="mini-filter-count">{{repairActiveFilterCount}}</text></button>
+    <view class="mini-search-bar factory-search-bar">
+      <view class="mini-search-field"><image class="mini-search-icon" src="/assets/icons/search-gray.svg" mode="aspectFit"/><input value="{{keyword}}" placeholder="返修单号或产品名称" bindinput="keywordChanged" confirm-type="search" bindconfirm="search"/></view>
+      <button class="factory-filter-button {{repairActiveFilterCount ? 'is-active' : ''}}" bindtap="toggleFilter"><image class="factory-filter-icon" src="/assets/icons/filter-blue.svg" mode="aspectFit"/><text>筛选</text><text wx:if="{{repairActiveFilterCount}}" class="mini-filter-count">{{repairActiveFilterCount}}</text></button>
     </view>
     <view class="repair-task-content">
       <view wx:if="{{loading}}" class="mini-empty">正在加载返修任务…</view>
@@ -52,7 +52,7 @@
           <view class="repair-task-card-head"><view><b>{{item.repairNo}}</b><text>{{item.productSummary}}</text></view><text class="repair-task-status {{item.status === 'COMPLETED' ? 'is-completed' : ''}}">{{item.status === 'COMPLETED' ? '已完成' : '未完成'}}</text></view>
           <view class="repair-task-date"><image src="/assets/icons/calendar-blue.svg" mode="aspectFit"/><text>退回日期</text><b>{{item.returnDateText}}</b></view>
           <view class="repair-task-stats"><view><text>仓库退回</text><b>{{item.warehouseReturnQuantity}}</b></view><view><text>已返回</text><b>{{item.returnedQuantity}}</b></view><view><text>待返回</text><b class="{{item.pending > 0 ? 'is-pending' : ''}}">{{item.pending}}</b></view></view>
-          <view class="repair-task-progress"><text>返回进度</text><view><view style="width:{{item.progress}}%"/></view><b>{{item.progress}}%</b></view>
+          <view class="repair-task-progress"><view><view style="width:{{item.progress}}%"/></view><b>{{item.progress}}%</b></view>
         </view>
       </block>
     </view>

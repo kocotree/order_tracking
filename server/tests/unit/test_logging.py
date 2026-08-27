@@ -34,6 +34,8 @@ def test_structured_logger_redacts_identity_phone_codes_and_credentials() -> Non
             "phone": "13812345122",
             "verificationCode": "123456",
             "authorizationCode": "oauth-sensitive-code",
+            "wechatLoginCode": "wechat-sensitive-login-code",
+            "sessionKey": "wechat-sensitive-session-key",
             "accessToken": "access-sensitive-token",
             "refreshToken": "refresh-sensitive-token",
             "safe": "visible",
@@ -44,6 +46,8 @@ def test_structured_logger_redacts_identity_phone_codes_and_credentials() -> Non
     assert "13812345122" not in rendered
     assert "123456" not in rendered
     assert "oauth-sensitive-code" not in rendered
+    assert "wechat-sensitive-login-code" not in rendered
+    assert "wechat-sensitive-session-key" not in rendered
     assert "access-sensitive-token" not in rendered
     assert "refresh-sensitive-token" not in rendered
     assert json.loads(rendered)["safe"] == "visible"

@@ -231,8 +231,7 @@
 
 .mini-card-number {
   color: #1c2430;
-  font-family: "DIN Alternate", "Avenir Next", sans-serif;
-  font-size: 50rpx;
+  font-size: 46rpx;
   font-weight: 800;
   letter-spacing: 1rpx;
   line-height: 1;

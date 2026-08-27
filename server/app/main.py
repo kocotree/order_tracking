@@ -25,7 +25,12 @@ from app.adapters.private_files import (
     MinioPrivateFileStore,
     PrivateFileStore,
 )
-from app.adapters.wechat import DisabledWechatIdentity
+from app.adapters.wechat import (
+    AppCredentialWechatIdentity,
+    DisabledWechatIdentity,
+    WechatIdentity,
+    WechatIdentityConfig,
+)
 from app.api.contracts import create_contract_router
 from app.api.factory_access import create_factory_router
 from app.api.identity import create_identity_router
@@ -164,11 +169,18 @@ def create_app(
             )
         else:
             feishu_identity = DisabledFeishuIdentity(scope=settings.feishu_identity_scope)
-        wechat_identity = (
-            LocalDemoWechatIdentity()
-            if local_demo_enabled
-            else DisabledWechatIdentity(scope=settings.wechat_identity_scope)
-        )
+        wechat_identity: WechatIdentity
+        if local_demo_enabled:
+            wechat_identity = LocalDemoWechatIdentity()
+        elif settings.wechat_identity_app_id and settings.wechat_identity_app_secret:
+            wechat_identity = AppCredentialWechatIdentity(
+                WechatIdentityConfig(
+                    app_id=settings.wechat_identity_app_id,
+                    app_secret=settings.wechat_identity_app_secret,
+                )
+            )
+        else:
+            wechat_identity = DisabledWechatIdentity(scope=settings.wechat_identity_scope)
         avatar_store = (
             FakeAvatarStore(bucket="local-demo-private-avatar")
             if local_demo_enabled

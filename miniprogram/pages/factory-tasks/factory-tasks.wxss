@@ -56,27 +56,52 @@
   box-shadow: 0 4rpx 16rpx rgba(35, 52, 73, .09);
 }
 
-.factory-search-bar { padding-top: 20rpx; }
+.factory-search-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18rpx;
+  padding: 20rpx 28rpx 28rpx;
+  background: #fff;
+}
+
+.factory-search-bar .mini-search-field {
+  height: 88rpx;
+  gap: 16rpx;
+  padding: 0 24rpx;
+  background: #f7f9fb;
+  border: 1rpx solid #dce2e9;
+  border-radius: 24rpx;
+}
 
 .mini-search-icon {
-  width: 30rpx;
-  height: 30rpx;
-  flex: 0 0 30rpx;
+  width: 36rpx;
+  height: 36rpx;
+  flex: 0 0 36rpx;
 }
 
-.factory-filter-button {
+.factory-search-bar > .factory-filter-button {
   position: relative;
   display: flex;
+  box-sizing: border-box;
+  width: 152rpx;
+  height: 88rpx;
+  padding: 0 20rpx;
   align-items: center;
   justify-content: center;
-  gap: 8rpx;
+  gap: 10rpx;
+  color: #1677ff;
+  font-size: 27rpx;
+  font-weight: 750;
+  line-height: 88rpx;
+  background: #fff;
+  border: 1rpx solid #cfe0f8;
+  border-radius: 24rpx;
 }
 
-.mini-filter-icon {
-  width: 27rpx;
-  height: 25rpx;
-  background: currentColor;
-  clip-path: polygon(0 0, 100% 0, 65% 43%, 65% 100%, 38% 84%, 38% 43%);
+.factory-filter-icon {
+  width: 36rpx;
+  height: 36rpx;
+  flex: 0 0 36rpx;
 }
 
 .mini-filter-count {
@@ -120,8 +145,7 @@
 
 .mini-card-number {
   color: #1c2430;
-  font-family: "DIN Alternate", "Avenir Next", sans-serif;
-  font-size: 50rpx;
+  font-size: 34rpx;
   font-weight: 800;
   letter-spacing: 1rpx;
   line-height: 1;
@@ -166,25 +190,9 @@
 .mini-card-due.is-overdue .mini-fact-icon { color: #e65355; }
 
 .mini-fact-icon {
-  position: relative;
   width: 34rpx;
-  height: 32rpx;
+  height: 34rpx;
   flex: 0 0 34rpx;
-  color: #1677ff;
-}
-
-.mini-fact-icon--calendar {
-  border: 3rpx solid currentColor;
-  border-radius: 5rpx;
-}
-
-.mini-fact-icon--calendar::before {
-  position: absolute;
-  top: 7rpx;
-  right: -3rpx;
-  left: -3rpx;
-  content: "";
-  border-top: 3rpx solid currentColor;
 }
 
 .mini-card-quantities {
@@ -311,32 +319,6 @@
 
 .mini-filter-apply { color: #fff; background: #1677ff; border-color: #1677ff; box-shadow: 0 16rpx 36rpx rgba(22, 119, 255, .24); }
 
-.repair-search-bar {
-  gap: 20rpx;
-  padding: 20rpx 28rpx 26rpx;
-  border-bottom: 1rpx solid #e2e7ed;
-}
-
-.repair-search-field {
-  height: 88rpx;
-  padding: 0 26rpx;
-  background: #f7f9fb;
-  border: 1rpx solid #dce2e9;
-  border-radius: 24rpx;
-}
-
-.repair-filter-button {
-  width: 152rpx !important;
-  height: 88rpx !important;
-  color: #1677ff !important;
-  line-height: 88rpx !important;
-  background: #fff !important;
-  border: 1rpx solid #cfe0f8;
-  border-radius: 24rpx !important;
-}
-
-.repair-filter-button image { width: 38rpx; height: 38rpx; }
-
 .repair-task-content {
   min-height: calc(100vh - 460rpx);
   padding: 22rpx 28rpx calc(156rpx + env(safe-area-inset-bottom));
@@ -352,7 +334,7 @@
 .repair-task-card {
   display: block;
   margin-bottom: 24rpx;
-  padding: 30rpx;
+  padding: 36rpx 32rpx 32rpx;
   background: #fff;
   border: 1rpx solid #e2e7ed;
   border-radius: 32rpx;
@@ -366,19 +348,19 @@
   gap: 24rpx;
 }
 
-.repair-task-card-head > view { display: grid; min-width: 0; flex: 1; gap: 14rpx; }
-.repair-task-card-head b { font-size: 34rpx; line-height: 1.1; }
-.repair-task-card-head view text { overflow: hidden; font-size: 30rpx; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.repair-task-card-head > view { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.repair-task-card-head b { font-size: 34rpx; font-weight: 800; letter-spacing: 1rpx; line-height: 1; }
+.repair-task-card-head view text { margin-top: 16rpx; overflow: hidden; font-size: 34rpx; font-weight: 750; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
 
 .repair-task-status {
   min-height: 44rpx;
-  padding: 0 14rpx;
+  padding: 0 16rpx;
   color: #1267c9;
   font-size: 22rpx;
   font-weight: 750;
   line-height: 44rpx;
   background: #eaf3ff;
-  border-radius: 12rpx;
+  border-radius: 14rpx;
 }
 
 .repair-task-status.is-completed { color: #35805d; background: #eaf7ef; }
@@ -387,12 +369,11 @@
   display: flex;
   align-items: center;
   gap: 12rpx;
-  margin-top: 24rpx;
-  padding: 22rpx 0;
+  margin-top: 26rpx;
+  padding-top: 24rpx;
   color: #6d7785;
-  font-size: 24rpx;
+  font-size: 26rpx;
   border-top: 1rpx solid #e4e8ed;
-  border-bottom: 1rpx solid #e4e8ed;
 }
 
 .repair-task-date image { width: 34rpx; height: 34rpx; }
@@ -401,25 +382,26 @@
 .repair-task-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 22rpx 0;
+  margin-top: 22rpx;
+  padding: 20rpx 0;
+  border-top: 1rpx solid #e4e8ed;
   border-bottom: 1rpx solid #e4e8ed;
 }
 
 .repair-task-stats view { display: grid; gap: 6rpx; padding: 0 20rpx; border-left: 1rpx solid #edf0f3; }
 .repair-task-stats view:first-child { padding-left: 0; border-left: 0; }
 .repair-task-stats text { color: #7a8491; font-size: 22rpx; }
-.repair-task-stats b { font-size: 34rpx; line-height: 1.15; }
+.repair-task-stats b { font-size: 36rpx; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.15; }
 .repair-task-stats b.is-pending { color: #e65355; }
 
 .repair-task-progress {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 64rpx;
+  grid-template-columns: minmax(0, 1fr) 72rpx;
   align-items: center;
   gap: 18rpx;
   margin-top: 20rpx;
 }
 
-.repair-task-progress > text { color: #6d7785; font-size: 22rpx; font-weight: 650; }
 .repair-task-progress > view { height: 12rpx; overflow: hidden; background: #e9edf2; border-radius: 999rpx; }
-.repair-task-progress > view view { height: 100%; background: #1677ff; border-radius: inherit; }
-.repair-task-progress > b { color: #1677ff; font-size: 24rpx; text-align: right; }
+.repair-task-progress > view view { height: 100%; background: linear-gradient(90deg, #278bff, #0876ed); border-radius: inherit; }
+.repair-task-progress > b { color: #1677ff; font-size: 26rpx; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }

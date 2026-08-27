@@ -1,6 +1,9 @@
 @import "../factory-repair-detail/factory-repair-detail.wxss";
 
+.admin-repair-summary { font-weight: 700; }
 .admin-repair-summary .repair-mini-stats { margin-top: 0; }
+.admin-repair-summary .repair-mini-progress { padding-bottom: 0; }
+.admin-repair-summary .repair-mini-track { margin-bottom: 0; }
 .admin-repair-meta { display: grid; grid-template-columns: repeat(2, 1fr); margin-top: 28rpx; border-top: 1rpx solid #e2e7ed; border-bottom: 1rpx solid #e2e7ed; }
 .admin-repair-meta view { display: grid; gap: 8rpx; padding: 22rpx 0; }
 .admin-repair-meta view + view { padding-left: 28rpx; border-left: 1rpx solid #e2e7ed; }

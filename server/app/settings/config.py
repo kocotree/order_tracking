@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     feishu_identity_redirect_uri: str = ""
     web_cookie_secure: bool = True
     wechat_identity_scope: str = "unconfigured-wechat"
+    wechat_identity_app_id: str = ""
+    wechat_identity_app_secret: str = ""
     avatar_bucket: str = "unconfigured-avatar"
     feishu_order_app_id: str = ""
     feishu_order_app_secret: str = ""
@@ -45,4 +47,6 @@ class Settings(BaseSettings):
             raise ValueError("identity security secrets are required outside local development")
         if self.app_env == "production" and not self.web_cookie_secure:
             raise ValueError("secure web cookies are required in production")
+        if bool(self.wechat_identity_app_id) != bool(self.wechat_identity_app_secret):
+            raise ValueError("wechat identity app id and secret must be configured together")
         return self

@@ -8,9 +8,11 @@ from typing import Any, TextIO
 SENSITIVE_KEY_PARTS = {
     "authorization",
     "cookie",
+    "logincode",
     "password",
     "phone",
     "secret",
+    "sessionkey",
     "token",
     "verificationcode",
 }

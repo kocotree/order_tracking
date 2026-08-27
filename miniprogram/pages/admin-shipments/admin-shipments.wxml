@@ -9,7 +9,7 @@
     <view class="repair-result"><text>共 {{repairFactoryCount}} 家工厂</text><text>按退回日期倒序</text></view>
     <view wx:if="{{!repairItems.length}}" class="mini-empty"><text>没有符合条件的返修记录</text><text>可以调整工厂名称或筛选条件后再试</text></view>
     <view wx:for="{{repairItems}}" wx:key="repairId" class="repair-mini-card" data-id="{{item.repairId}}" bindtap="openRepair">
-      <view class="repair-mini-card-head"><view><text>工厂</text><b>{{item.factoryName}}</b><em>{{item.productSummary}}</em></view><view class="repair-mini-card-pending"><text class="mini-status {{item.status === 'COMPLETED' ? 'mini-status--completed' : ''}}">{{item.status === 'COMPLETED' ? '已完成' : '未完成'}}</text><small>待返回</small><b>{{item.pending}}件</b></view></view>
+      <view class="repair-mini-card-head"><view><b>{{item.factoryName}}</b><em>{{item.productSummary}}</em></view><view class="repair-mini-card-pending"><b>{{item.pending}}件</b></view></view>
       <view class="repair-mini-card-progress"><view><text>返回进度</text><b>{{item.returnedQuantity}} / {{item.warehouseReturnQuantity}}</b><em>{{item.progress}}%</em></view><view><view style="width:{{item.progress}}%"/></view></view>
       <view class="repair-mini-card-stats"><view><text>返修数量</text><b>{{item.repairedQuantity}}</b></view><view><text>报废数量</text><b>{{item.scrappedQuantity}}</b></view></view>
       <view class="repair-mini-card-date"><image src="/assets/icons/calendar-blue.svg" mode="aspectFit"/><text>退回日期</text><b>{{item.returnDate}}</b></view>

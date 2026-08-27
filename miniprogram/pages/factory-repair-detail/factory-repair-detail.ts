@@ -33,8 +33,7 @@ Page({
       const repair = previewMode ? previewRepair(repairId) : await repairApi.factoryGet(repairId);
       if (!repair) throw new Error("返修演示数据不存在");
       const progress = repair.warehouseReturnQuantity ? Math.round(repair.returnedQuantity / repair.warehouseReturnQuantity * 100) : 0;
-      const [, month = "", day = ""] = repair.returnDate.split("-");
-      this.setData({ repair, progress, pending: Math.max(0, repair.warehouseReturnQuantity - repair.returnedQuantity), returnDateText: `${month}月${day}日`, productGroups: productGroups(repair), returnBatches: returnBatchViews(repair) });
+      this.setData({ repair, progress, pending: Math.max(0, repair.warehouseReturnQuantity - repair.returnedQuantity), returnDateText: repair.returnDate, productGroups: productGroups(repair), returnBatches: returnBatchViews(repair) });
     } catch { wx.showToast({ title: "返修任务加载失败", icon: "none" }); }
     finally { this.setData({ loading: false }); }
   },

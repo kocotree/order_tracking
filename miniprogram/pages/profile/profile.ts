@@ -6,6 +6,7 @@ import {
   updateStoredUser,
   type User,
 } from "../../modules/identity/session";
+import { adminNavigationItems, type NavigationItem } from "../../modules/navigation";
 
 Page({
   data: {
@@ -15,7 +16,7 @@ Page({
     avatarSheetOpen: false,
     uploading: false,
     previewMode: false,
-    navigationItems: [] as Array<{ key: string; label: string; path: string; icon: string; activeIcon: string }>,
+    navigationItems: [] as NavigationItem[],
   },
 
   onLoad(options: Record<string, string | undefined>) {
@@ -46,16 +47,15 @@ Page({
   },
 
   navigationFor(user: User) {
+    if (user.role === "admin") return adminNavigationItems();
     const primary = {
       key: "primary",
-      label: user.role === "admin" ? "订单" : "任务",
-      path: user.role === "admin" ? "/pages/admin-orders/admin-orders" : "/pages/factory-tasks/factory-tasks",
+      label: "任务",
+      path: "/pages/factory-tasks/factory-tasks",
       icon: "/assets/icons/admin-orders.svg",
       activeIcon: "/assets/icons/admin-orders-active.svg",
     };
-    const shipments = user.role === "admin"
-      ? { key: "shipments", label: "发货", path: "/pages/admin-shipments/admin-shipments", icon: "/assets/icons/factory-shipments.svg", activeIcon: "/assets/icons/factory-shipments-active.svg" }
-      : { key: "shipments", label: "发货记录", path: "/pages/factory-shipments/factory-shipments", icon: "/assets/icons/factory-shipments.svg", activeIcon: "/assets/icons/factory-shipments-active.svg" };
+    const shipments = { key: "shipments", label: "发货记录", path: "/pages/factory-shipments/factory-shipments", icon: "/assets/icons/factory-shipments.svg", activeIcon: "/assets/icons/factory-shipments-active.svg" };
     return [
       primary,
       shipments,

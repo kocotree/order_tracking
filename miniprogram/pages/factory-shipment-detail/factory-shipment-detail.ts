@@ -4,6 +4,18 @@ import { isDevPreview, PREVIEW_SHIPMENT } from "../../modules/dev-preview";
 type LineGroup = { orderNo: string; total: number; items: ShipmentLine[]; expanded: boolean };
 type BoxGroup = ShipmentBox & { total: number; expanded: boolean };
 
+function formatShanghaiDateTime(value: string | null): string {
+  if (!value) return "—";
+  const normalized = value
+    .replace(/(\.\d{3})\d+/, "$1")
+    .replace(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)(?!Z|[+-]\d{2}:\d{2})$/, "$1Z");
+  const timestamp = Date.parse(normalized);
+  if (Number.isNaN(timestamp)) return value.replace("T", " ").slice(0, 16);
+  const shanghai = new Date(timestamp + 8 * 60 * 60 * 1000);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${shanghai.getUTCFullYear()}-${pad(shanghai.getUTCMonth() + 1)}-${pad(shanghai.getUTCDate())} ${pad(shanghai.getUTCHours())}:${pad(shanghai.getUTCMinutes())}`;
+}
+
 function buildLineGroups(lines: ShipmentLine[]): LineGroup[] {
   const groups = new Map<string, ShipmentLine[]>();
   lines.forEach((line) => groups.set(line.orderNo, [...(groups.get(line.orderNo) || []), line]));
@@ -11,13 +23,13 @@ function buildLineGroups(lines: ShipmentLine[]): LineGroup[] {
 }
 
 Page({
-  data: { shipment: null as Shipment | null, lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], loading: true, withdrawStep: "" as ""|"form"|"confirm", withdrawReason: "", withdrawError: "", submitting: false },
+  data: { shipment: null as Shipment | null, submittedAtText: "", lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], loading: true, withdrawStep: "" as ""|"form"|"confirm", withdrawReason: "", withdrawError: "", submitting: false },
   onLoad(options: Record<string, string | undefined>) {
     if (isDevPreview(options)) { this.showShipment(PREVIEW_SHIPMENT); return; }
     if (options.shipmentId) void this.load(options.shipmentId);
   },
   showShipment(shipment: Shipment) {
-    this.setData({ shipment, lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), loading: false });
+    this.setData({ shipment, submittedAtText: formatShanghaiDateTime(shipment.submittedAt), lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), loading: false });
   },
   async load(id: string) {
     try { this.showShipment(await shipmentApi.factoryGet(id)); }

@@ -1,6 +1,7 @@
 /* Shared detail cards live in app.wxss; S08 withdrawal states follow the approved sheet. */
 .ship-detail-page.has-withdraw-bar { padding-bottom: calc(136rpx + env(safe-area-inset-bottom)); }
 .ship-detail-title { display: flex; gap: 20rpx; align-items: center; justify-content: space-between; }
+.ship-card-head text:only-child { color: #1c2430; font-size: 30rpx; font-weight: 800; }
 .withdraw-status { padding: 8rpx 14rpx; color: #a45d00; font-size: 22rpx; font-weight: 750; background: #fff3dc; border-radius: 12rpx; }
 .withdraw-status.is-voided { color: #c62828; background: #fff0f0; }
 .shipment-operation { display: flex; gap: 22rpx; padding: 26rpx 30rpx; border-top: 1rpx solid #edf0f3; }

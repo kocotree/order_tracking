@@ -3,10 +3,10 @@
   <view wx:if="{{loading}}" class="mini-empty">正在加载返修详情…</view>
   <view wx:elif="{{repair}}" class="repair-mini-content">
     <view class="repair-mini-summary admin-repair-summary">
-      <view class="repair-mini-heading"><view><text>工厂</text><b>{{repair.factoryName}}</b></view><text class="repair-detail-status {{repair.status === 'COMPLETED' ? 'is-completed' : ''}}">{{repair.status === 'COMPLETED' ? '已完成' : '未完成'}}</text></view>
+      <view class="repair-mini-heading"><view><b>{{repair.factoryName}}</b></view></view>
       <view class="admin-repair-meta"><view><text>返修单号</text><b>{{repair.repairNo}}</b></view><view><text>退回日期</text><b>{{repair.returnDate}}</b></view></view>
       <view class="repair-mini-stats"><view><text>返修数量</text><b>{{repair.repairedQuantity}}</b></view><view><text>报废数量</text><b>{{repair.scrappedQuantity}}</b></view></view>
-      <view class="repair-mini-progress"><view><text>返回进度</text><b>{{repair.returnedQuantity}} / {{repair.warehouseReturnQuantity}}</b><em>{{progress}}%</em></view><view class="repair-mini-track"><view style="width:{{progress}}%"/></view><text>待返回 <b>{{pending}}</b> 件</text></view>
+      <view class="repair-mini-progress"><view><text>返回进度</text><b>{{repair.returnedQuantity}} / {{repair.warehouseReturnQuantity}}</b><em>{{progress}}%</em></view><view class="repair-mini-track"><view style="width:{{progress}}%"/></view></view>
     </view>
     <view class="repair-mini-section">
       <view class="repair-mini-section-head"><b>质检附件</b><text>原始质检文件</text></view>

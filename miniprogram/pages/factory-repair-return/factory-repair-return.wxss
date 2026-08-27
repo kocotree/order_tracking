@@ -26,6 +26,7 @@
 .repair-return-product-head,.repair-return-preview-head { display: flex; min-height: 108rpx; align-items: center; justify-content: space-between; gap: 24rpx; padding: 18rpx 28rpx; border-bottom: 1rpx solid #e2e7ed; }
 .repair-return-product-head > view { display: grid; gap: 6rpx; min-width: 0; }
 .repair-return-product-head b,.repair-return-preview-head b { font-size: 28rpx; }
+.repair-return-preview-head b { font-weight: 850; }
 .repair-return-product-head text,.repair-return-preview-head text { color: #73808d; font-size: 20rpx; }
 .repair-return-product-head strong { color: #1267c9; font-size: 22rpx; white-space: nowrap; }
 .repair-return-spec { display: grid; gap: 22rpx; padding: 26rpx; background: #fff; border-top: 1rpx solid #e2e7ed; }

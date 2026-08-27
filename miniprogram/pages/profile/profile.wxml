@@ -9,19 +9,17 @@
       <view wx:else class="profile-avatar profile-avatar--static"><text>{{avatarFallback}}</text></view>
       <view class="profile-identity">
         <text>{{user.displayName}}</text>
-        <text>{{user.role === 'admin' ? (user.isSuperAdmin ? '最高管理员' : '普通管理员') : user.factoryName + ' · ' + (user.factoryPosition === 'owner' ? '老板' : '工厂员工')}}</text>
+        <text>{{user.role === 'admin' ? (user.isSuperAdmin ? '最高管理员' : '普通管理员') : (user.factoryPosition === 'owner' ? '老板' : '工厂员工')}}</text>
       </view>
     </view>
 
     <view wx:if="{{user.role === 'admin'}}" class="profile-card">
-      <view class="profile-card__header">账号信息</view>
       <view class="profile-account-row"><text>姓名</text><text>{{user.displayName}}</text></view>
       <view class="profile-account-row"><text>管理员类型</text><text>{{user.isSuperAdmin ? '最高管理员' : '普通管理员'}}</text></view>
-      <view class="profile-account-row"><text>账号状态</text><text class="is-normal">{{user.isEnabled ? '正常' : '已停用'}}</text></view>
+      <view class="profile-account-row"><text>联系电话</text><text>{{user.phoneMasked}}</text></view>
     </view>
 
     <view wx:else class="profile-card factory-profile-card">
-      <view class="profile-card__header">账号信息</view>
       <view class="profile-account-row"><text>姓名</text><text>{{user.displayName}}</text></view>
       <view class="profile-account-row"><text>联系电话</text><text>{{user.phoneMasked}}</text></view>
       <view class="profile-account-row"><text>职位</text><text>{{user.factoryPosition === 'owner' ? '老板' : '工厂员工'}}</text></view>

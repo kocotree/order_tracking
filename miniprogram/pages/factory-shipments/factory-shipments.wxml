@@ -11,7 +11,7 @@
     <view wx:elif="{{!items.length}}" class="mini-empty"><text>没有符合条件的记录</text><text>可以调整搜索词或日期后再试</text><button class="ship-clear-filter" bindtap="clearFilters">清除筛选</button></view>
     <view wx:for="{{items}}" wx:key="shipmentId" role="button" class="ship-record-card" data-id="{{item.shipmentId}}" bindtap="open">
       <view class="ship-record-title"><text>{{item.productSummary}}　{{item.orderSummary}}</text><text>›</text></view>
-      <view class="ship-record-date"><text><view class="record-calendar"><view /></view>发货日期</text><b>{{item.businessDate}}</b></view>
+      <view class="ship-record-date"><view class="ship-record-date-label"><image src="/assets/icons/calendar-blue.svg" mode="aspectFit"/><text>发货日期</text></view><b>{{item.businessDate}}</b></view>
       <view class="ship-record-stats"><view><text>发货数量</text><b>{{item.totalQuantity}}</b></view><view><text>总箱数</text><b>{{item.totalBoxes}}</b></view></view>
       <view class="ship-record-number"><text>发货单号</text><b>{{item.shipmentNo}}</b></view>
     </view>

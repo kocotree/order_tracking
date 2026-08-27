@@ -2,6 +2,7 @@ import { orderApi, type Order } from "../../api/orders";
 import { factoryApi } from "../../api/factory";
 import { isDevPreview, PREVIEW_FACTORIES, previewOrder } from "../../modules/dev-preview";
 import { clearSession, storedUser } from "../../modules/identity/session";
+import { adminNavigationItems } from "../../modules/navigation";
 import {
   formatContractShipDate,
   formatQuantity,
@@ -88,10 +89,7 @@ Page({
     loading: true,
     error: "",
     previewMode: false,
-    navigationItems: [
-      { key: "primary", label: "订单", path: "/pages/admin-orders/admin-orders", icon: "/assets/icons/admin-orders.svg", activeIcon: "/assets/icons/admin-orders-active.svg" },
-      { key: "profile", label: "我的", path: "/pages/profile/profile", icon: "/assets/icons/admin-profile.svg", activeIcon: "/assets/icons/admin-profile-active.svg" },
-    ],
+    navigationItems: adminNavigationItems(),
   },
   onLoad(options: Record<string, string | undefined>) {
     const previewMode = isDevPreview(options);

@@ -13,16 +13,14 @@
 .ship-record-title text:first-child { min-width: 0; overflow: hidden; font-size: 30rpx; font-weight: 800; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .ship-record-title text:last-child { color: #7b8694; font-size: 38rpx; }
 .ship-record-date { display: flex; min-height: 92rpx; align-items: center; justify-content: space-between; padding: 0 32rpx; border-top: 1rpx solid #e3e7ec; border-bottom: 1rpx solid #e3e7ec; }
-.ship-record-date > text { display: flex; align-items: center; gap: 12rpx; color: #6f7a87; font-size: 25rpx; font-weight: 700; }
-.ship-record-date b { font-size: 34rpx; font-weight: 850; }
-.record-calendar { position: relative; width: 30rpx; height: 30rpx; border: 3rpx solid #1677ff; border-radius: 4rpx; }
-.record-calendar::before { position: absolute; top: 6rpx; right: -3rpx; left: -3rpx; content: ""; border-top: 3rpx solid #1677ff; }
-.record-calendar view { display: none; }
+.ship-record-date-label { display: flex; align-items: center; gap: 12rpx; color: #6f7a87; font-size: 25rpx; font-weight: 700; }
+.ship-record-date-label image { width: 34rpx; height: 34rpx; flex: 0 0 34rpx; }
+.ship-record-date b { color: #1c2430; font-size: 26rpx; font-weight: 700; }
 .ship-record-stats { display: grid; grid-template-columns: repeat(2,1fr); margin: 0; padding: 26rpx 32rpx; background: #fff; border-radius: 0; }
 .ship-record-stats view { display: grid; justify-items: start; gap: 8rpx; padding-left: 26rpx; border-left: 1rpx solid #e1e5ea; border-right: 0; }
 .ship-record-stats view:first-child { padding-left: 0; border-left: 0; }
 .ship-record-stats text { color: #788493; font-size: 20rpx; }
-.ship-record-stats b { font-size: 32rpx; }
+.ship-record-stats b { font-size: 32rpx; font-weight: 800; }
 .ship-record-number { display: flex; min-height: 76rpx; align-items: center; justify-content: flex-start; gap: 14rpx; margin: 0; padding: 0 32rpx; color: #7a8592; font-size: 21rpx; background: #fbfcfd; border-top: 1rpx solid #e6e9ed; }
 .ship-record-number b { font-size: 23rpx; letter-spacing: .02em; }
 .ship-clear-filter { margin-top: 18rpx; padding: 0 28rpx; height: 64rpx; color: #1677ff; font-size: 23rpx; line-height: 64rpx; background: #eaf3ff; border-radius: 16rpx; }

@@ -3,6 +3,7 @@
 .ship-card { border-radius: 28rpx; }
 .ship-card-head { min-height: 92rpx; padding: 0 28rpx; }
 .ship-card-head text:first-child { font-size: 30rpx; }
+.ship-card-head text:only-child { color: #1c2430; }
 .ship-card-body { padding: 26rpx 28rpx; }
 .ship-box-form { padding-bottom: 26rpx; border-bottom: 1rpx solid #e3e7ec; }
 .ship-box-summary image { width: 48rpx; height: 48rpx; flex: 0 0 48rpx; }

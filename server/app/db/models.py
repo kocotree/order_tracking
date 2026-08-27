@@ -991,6 +991,190 @@ class StoredFile(Base):
     )
 
 
+class RepairPreview(Base):
+    __tablename__ = "repair_previews"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('READY', 'INVALID', 'CONFIRMED')",
+            name="ck_repair_previews_status",
+        ),
+        Index("ix_repair_previews_expiry", "status", "expires_at"),
+        Index("ix_repair_previews_source_sha256", "source_sha256"),
+    )
+
+    preview_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    original_file_id: Mapped[int] = mapped_column(
+        ForeignKey("stored_files.file_id", ondelete="RESTRICT"), nullable=False
+    )
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    uploaded_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    factory_id: Mapped[str | None] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT")
+    )
+    line_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    box_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    total_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    validation_errors: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    validation_warnings: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    confirmed_repair_id: Mapped[str | None] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        server_onupdate=text("CURRENT_TIMESTAMP(6)"),
+    )
+
+
+class RepairPreviewLine(Base):
+    __tablename__ = "repair_preview_lines"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_repair_preview_lines_quantity_positive"),
+        UniqueConstraint("preview_id", "source_order", name="uq_repair_preview_lines_order"),
+        UniqueConstraint(
+            "preview_id",
+            "source_sheet",
+            "source_row",
+            name="uq_repair_preview_lines_source_row",
+        ),
+        Index("ix_repair_preview_lines_preview", "preview_id", "source_order"),
+    )
+
+    line_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    preview_id: Mapped[str] = mapped_column(
+        ForeignKey("repair_previews.preview_id", ondelete="CASCADE"), nullable=False
+    )
+    source_sheet: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_row: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    box_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    supplier_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    factory_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_sku_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_product_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    properties_value: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    matched_product_id: Mapped[str | None] = mapped_column(
+        ForeignKey("products.product_id", ondelete="RESTRICT")
+    )
+    matched_variant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("product_variants.variant_id", ondelete="RESTRICT")
+    )
+    validation_errors: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    validation_warnings: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class RepairOrder(Base):
+    __tablename__ = "repair_orders"
+    __table_args__ = (
+        CheckConstraint("status IN ('INCOMPLETE', 'COMPLETED')", name="ck_repair_orders_status"),
+        CheckConstraint(
+            "warehouse_return_quantity > 0", name="ck_repair_orders_warehouse_positive"
+        ),
+        CheckConstraint(
+            "repaired_quantity >= 0 AND scrapped_quantity >= 0 AND returned_quantity >= 0",
+            name="ck_repair_orders_return_counts_nonnegative",
+        ),
+        UniqueConstraint("repair_no", name="uq_repair_orders_no"),
+        UniqueConstraint("source_sha256", name="uq_repair_orders_source_sha256"),
+        Index("ix_repair_orders_list", "status", "return_date", "repair_id"),
+        Index("ix_repair_orders_factory", "factory_id", "status", "return_date"),
+    )
+
+    repair_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    repair_no: Mapped[str] = mapped_column(String(32), nullable=False)
+    factory_id: Mapped[str] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    warehouse_return_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    repaired_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    scrapped_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    returned_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    return_date: Mapped[date] = mapped_column(Date, nullable=False)
+    original_file_id: Mapped[int] = mapped_column(
+        ForeignKey("stored_files.file_id", ondelete="RESTRICT"), nullable=False
+    )
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    archived_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class RepairInspectionLine(Base):
+    __tablename__ = "repair_inspection_lines"
+    __table_args__ = (
+        CheckConstraint(
+            "warehouse_return_quantity > 0",
+            name="ck_repair_inspection_lines_quantity_positive",
+        ),
+        UniqueConstraint("repair_id", "source_order", name="uq_repair_inspection_lines_order"),
+        UniqueConstraint(
+            "repair_id", "source_sheet", "source_row", name="uq_repair_inspection_lines_source_row"
+        ),
+        Index("ix_repair_inspection_lines_repair", "repair_id", "source_order"),
+    )
+
+    inspection_line_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True
+    )
+    repair_id: Mapped[str] = mapped_column(
+        ForeignKey("repair_orders.repair_id", ondelete="RESTRICT"), nullable=False
+    )
+    source_sheet: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_row: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    box_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    product_id: Mapped[str] = mapped_column(
+        ForeignKey("products.product_id", ondelete="RESTRICT"), nullable=False
+    )
+    variant_id: Mapped[str] = mapped_column(
+        ForeignKey("product_variants.variant_id", ondelete="RESTRICT"), nullable=False
+    )
+    source_sku_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_product_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    properties_value: Mapped[str] = mapped_column(String(255), nullable=False)
+    warehouse_return_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class RepairNumberCounter(Base):
+    __tablename__ = "repair_number_counters"
+    __table_args__ = (
+        CheckConstraint("next_sequence > 0", name="ck_repair_number_counters_positive"),
+    )
+
+    business_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    next_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
 class IdempotencyRecord(Base):
     __tablename__ = "idempotency_records"
     __table_args__ = (

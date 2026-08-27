@@ -24,6 +24,7 @@
 }
 
 .repair-list-table {
+  width: 100%;
   min-width: 1164px;
   table-layout: fixed;
 }
@@ -43,11 +44,20 @@
   font-variant-numeric: tabular-nums;
 }
 
-.main-column:has(.repair-create-page) .topbar-title,
+.repair-list-table .row-link {
+  padding: 0;
+  background: transparent;
+}
+
+.repair-list-table .status-badge::before {
+  display: none;
+  content: none;
+}
+
 .main-column:has(.repair-detail-page) .topbar-title {
-  color: var(--ink-strong);
-  font-size: 17px;
-  font-weight: 800;
+  color: #697283;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .repair-create-title,
@@ -220,12 +230,12 @@
 
 .repair-preview-table,
 .repair-quality-table {
-  min-width: 1120px;
+  min-width: 1008px;
   table-layout: fixed;
 }
 
 .repair-preview-table th:nth-child(1),
-.repair-quality-table th:nth-child(1) { width: 54px; }
+.repair-quality-table th:nth-child(1) { width: 52px; }
 .repair-preview-table th:nth-child(2),
 .repair-quality-table th:nth-child(2) { width: 120px; }
 .repair-preview-table th:nth-child(3),
@@ -235,42 +245,20 @@
 .repair-preview-table th:nth-child(5),
 .repair-quality-table th:nth-child(5) { width: 112px; }
 .repair-preview-table th:nth-child(6),
-.repair-quality-table th:nth-child(6) { width: 74px; }
+.repair-quality-table th:nth-child(6) { width: 94px; }
 .repair-preview-table th:nth-child(7),
-.repair-quality-table th:nth-child(7) { width: 230px; }
-.repair-preview-table th:nth-child(8),
-.repair-quality-table th:nth-child(8) { width: 112px; }
+.repair-quality-table th:nth-child(7) { width: 280px; }
 
 .repair-reason-cell {
   overflow: hidden;
   text-overflow: ellipsis;
+  vertical-align: middle;
   white-space: nowrap;
 }
 
-.repair-photo-button {
-  display: inline-flex;
-  gap: 5px;
-  align-items: center;
-  padding: 0;
-  color: var(--erp-blue-dark);
-  font-family: var(--font-body);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-}
-
-.repair-photo-button svg {
-  width: 18px;
-  height: 18px;
-}
-
-.repair-photo-button.is-empty {
-  color: var(--muted);
-}
-
-.repair-photo-button:hover span {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+.repair-quality-table tbody tr,
+.repair-quality-table tbody td {
+  height: 40px;
 }
 
 .repair-create-actions {
@@ -375,6 +363,13 @@
 .repair-return-table {
   min-width: 1200px;
   table-layout: fixed;
+}
+
+.repair-return-table th,
+.repair-return-table td {
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .repair-return-table th:nth-child(1) { width: 130px; }

@@ -74,6 +74,12 @@ export interface Shipment {
 
 export interface ShipmentList { items: Shipment[]; total: number }
 
+export interface RepairPreviewLine { lineId:number; sourceRow:number; sourceOrder:number; sourceSkuId:string; sourceProductId:string; productName:string; propertiesValue:string; quantity:number; boxNumber:string; reason:string|null; matchedProductId:string|null; matchedVariantId:string|null }
+export interface RepairPreview { previewId:string; status:"READY"|"INVALID"; expiresAt:string; originalFileId:number; originalFilename:string; factoryId:string|null; factoryName:string; lineCount:number; boxCount:number; totalQuantity:number; validationErrors:Array<Record<string,string|number>>; lines:RepairPreviewLine[] }
+export interface RepairLine { inspectionLineId:number; sourceRow:number; sourceOrder:number; boxNumber:string; productId:string; variantId:string; sourceSkuId:string; sourceProductId:string; productName:string; propertiesValue:string; warehouseReturnQuantity:number; reason:string|null }
+export interface Repair { repairId:string; repairNo:string; status:"INCOMPLETE"|"COMPLETED"; returnDate:string; factoryId:string; factoryName:string; warehouseReturnQuantity:number; repairedQuantity:number; scrappedQuantity:number; returnedQuantity:number; originalFileId:number; originalFilename:string; originalSizeBytes:number; createdAt:string; lines:RepairLine[] }
+export interface RepairList { items:Repair[]; total:number; page:number; pageSize:number }
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -423,4 +429,21 @@ export const orderImportApi = {
       headers: idempotencyHeaders(),
       body: JSON.stringify({ candidateIds }),
     }),
+};
+
+export const repairApi = {
+  list: (params: { keyword?:string; status?:string; returnFrom?:string; returnTo?:string; page?:number; pageSize?:number } = {}) => {
+    const query = new URLSearchParams({ keyword:params.keyword ?? "", status:params.status ?? "all", page:String(params.page ?? 1), pageSize:String(params.pageSize ?? 10) });
+    if (params.returnFrom) query.set("returnFrom", params.returnFrom);
+    if (params.returnTo) query.set("returnTo", params.returnTo);
+    return request<RepairList>(`/v1/admin/repairs?${query}`);
+  },
+  get: (repairId:string) => request<Repair>(`/v1/admin/repairs/${encodeURIComponent(repairId)}`),
+  upload: (file:File, replacesPreviewId?:string) => {
+    const form = new FormData(); form.append("file", file); if (replacesPreviewId) form.append("replacesPreviewId", replacesPreviewId);
+    return request<RepairPreview>("/v1/admin/repair-previews", { method:"POST", body:form });
+  },
+  getPreview: (previewId:string) => request<RepairPreview>(`/v1/admin/repair-previews/${encodeURIComponent(previewId)}`),
+  confirm: (previewId:string) => request<Repair>(`/v1/admin/repair-previews/${encodeURIComponent(previewId)}/confirm`, { method:"POST", headers:idempotencyHeaders() }),
+  download: (fileId:number, filename:string) => download(`/v1/files/${fileId}/download`, filename),
 };

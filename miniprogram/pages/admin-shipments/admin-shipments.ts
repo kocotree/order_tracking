@@ -1,8 +1,10 @@
 import { shipmentApi, type Shipment } from "../../api/shipments";
+import { repairApi, type Repair } from "../../api/repairs";
 import { isDevPreview, PREVIEW_SHIPMENT } from "../../modules/dev-preview";
 
 type ShipmentCard = Shipment & { productSummary: string; orderSummary: string };
 type FilterOption = { label: string; value: string };
+type RepairCard = Repair & { productSummary: string; progress: number; pending: number };
 
 function toCard(shipment: Shipment): ShipmentCard {
   const productNames = Array.from(new Set(shipment.lines.map((line) => line.productName)));
@@ -21,6 +23,7 @@ function optionIndex(options: FilterOption[], value: string): number {
 
 Page({
   data: {
+    activeTab: "shipments", repairItems: [] as RepairCard[], allRepairItems: [] as RepairCard[], repairStatus: "all",
     allItems: [] as ShipmentCard[], items: [] as ShipmentCard[], keyword: "", loading: true, previewMode: false,
     factoryId: "", shipDateFrom: "", shipDateTo: "", activeFilterCount: 0, filterOpen: false,
     factoryOptions: [{ label: "全部工厂", value: "" }] as FilterOption[],
@@ -35,7 +38,14 @@ Page({
     const previewMode = isDevPreview(options);
     this.setData({ previewMode });
     if (previewMode) this.setItems([PREVIEW_SHIPMENT]);
-    else void this.load();
+    else { void this.load(); void this.loadRepairs(); }
+  },
+  selectTab(event: WechatMiniprogram.TouchEvent) { this.setData({ activeTab: String(event.currentTarget.dataset.tab), keyword: "", filterOpen: false }, () => this.applyVisibleItems()); },
+  async loadRepairs() {
+    try {
+      const allRepairItems = (await repairApi.adminList()).items.map((item) => ({ ...item, productSummary: Array.from(new Set(item.lines.map((line) => line.productName))).join("、") || "—", progress: item.warehouseReturnQuantity ? Math.round(item.returnedQuantity / item.warehouseReturnQuantity * 100) : 0, pending: Math.max(0, item.warehouseReturnQuantity - item.returnedQuantity) }));
+      this.setData({ allRepairItems }, () => this.applyVisibleItems());
+    } catch { wx.showToast({ title: "返修进度加载失败", icon: "none" }); }
   },
   setItems(shipments: Shipment[]) {
     const allItems = shipments.map(toCard);
@@ -55,6 +65,10 @@ Page({
   },
   applyVisibleItems() {
     const keyword = this.data.keyword.trim().toLowerCase();
+    if (this.data.activeTab === "repairs") {
+      this.setData({ repairItems: this.data.allRepairItems.filter((item) => (!keyword || `${item.factoryName} ${item.repairNo}`.toLowerCase().includes(keyword)) && (this.data.repairStatus === "all" || item.status === this.data.repairStatus)) });
+      return;
+    }
     this.setData({
       items: this.data.allItems.filter((item) =>
         (!keyword || item.productSummary.toLowerCase().includes(keyword) || item.orderSummary.toLowerCase().includes(keyword))
@@ -63,6 +77,7 @@ Page({
         && (!this.data.shipDateTo || Boolean(item.businessDate && item.businessDate <= this.data.shipDateTo))),
     });
   },
+  setRepairStatus(event: WechatMiniprogram.TouchEvent) { this.setData({ repairStatus: String(event.currentTarget.dataset.status) }, () => this.applyVisibleItems()); },
   toggleFilter() {
     if (this.data.filterOpen) { this.closeFilter(); return; }
     this.setData({
@@ -94,4 +109,5 @@ Page({
   open(event: WechatMiniprogram.TouchEvent) {
     wx.navigateTo({ url: `/pages/admin-shipment-detail/admin-shipment-detail?shipmentId=${encodeURIComponent(event.currentTarget.dataset.id)}${this.data.previewMode ? "&preview=1" : ""}` });
   },
+  openRepair(event: WechatMiniprogram.TouchEvent) { wx.navigateTo({ url: `/pages/admin-repair-detail/admin-repair-detail?repairId=${encodeURIComponent(event.currentTarget.dataset.id)}` }); },
 });

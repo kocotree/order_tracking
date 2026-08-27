@@ -22,6 +22,9 @@ import OrdersPage from "@/pages/OrdersPage.vue";
 import OrderImportPage from "@/pages/OrderImportPage.vue";
 import OrderImportDetailPage from "@/pages/OrderImportDetailPage.vue";
 import ProductsPage from "@/pages/ProductsPage.vue";
+import RepairCreatePage from "@/pages/RepairCreatePage.vue";
+import RepairDetailPage from "@/pages/RepairDetailPage.vue";
+import RepairsPage from "@/pages/RepairsPage.vue";
 import ShipmentDetailPage from "@/pages/ShipmentDetailPage.vue";
 import ShipmentsPage from "@/pages/ShipmentsPage.vue";
 import { useIdentityStore } from "@/stores";
@@ -40,6 +43,9 @@ export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
       { path: "/orders/:orderId", name: "order-detail", component: OrderDetailPage },
       { path: "/shipments", name: "shipments", component: ShipmentsPage },
       { path: "/shipments/:shipmentId", name: "shipment-detail", component: ShipmentDetailPage },
+      { path: "/repairs", name: "repairs", component: RepairsPage },
+      { path: "/repairs/new", name: "repair-new", component: RepairCreatePage },
+      { path: "/repairs/:repairId", name: "repair-detail", component: RepairDetailPage },
       { path: "/factories", name: "factories", component: FactoriesPage },
       { path: "/products", name: "products", component: ProductsPage },
       { path: "/admin-apply", name: "admin-apply", component: AdminApplyPage },

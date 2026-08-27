@@ -4,7 +4,6 @@ import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } f
 
 const backIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const fileIcon = `<svg viewBox="0 0 40 44" fill="none" aria-hidden="true"><path d="M8 3h16l8 8v30H8V3Z" stroke="currentColor" stroke-width="1.8"/><path d="M24 3v9h8M13 21h14M13 27h14M13 33h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
-const photoIcon = `<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="4" y="6" width="24" height="20" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="13" r="2.5" stroke="currentColor" stroke-width="1.6"/><path d="m7 23 7-7 4 4 3-3 4 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 function formatNumber(value) {
   return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
@@ -21,6 +20,12 @@ function renderQualityLines(lines) {
     if (isFirstInBox) {
       while (lines[index + boxRowspan]?.boxNo === line.boxNo) boxRowspan += 1;
     }
+    const reason = line.reason || "";
+    const isFirstReason = index === 0 || (lines[index - 1].reason || "") !== reason;
+    let reasonRowspan = 1;
+    if (isFirstReason) {
+      while (lines[index + reasonRowspan] && (lines[index + reasonRowspan].reason || "") === reason) reasonRowspan += 1;
+    }
     return `
     <tr>
       <td class="order-sequence-cell">${index + 1}</td>
@@ -29,8 +34,7 @@ function renderQualityLines(lines) {
       <td>${escapeHTML(line.colorSpec)}</td>
       <td class="repair-number-cell">${escapeHTML(formatNumber(line.quantity))}</td>
       ${isFirstInBox ? `<td class="repair-box-cell" rowspan="${boxRowspan}">${escapeHTML(line.boxNo)}</td>` : ""}
-      <td class="repair-reason-cell" title="${escapeHTML(line.reason || "—")}">${escapeHTML(line.reason || "—")}</td>
-      <td>${line.photoCount ? `<button class="repair-photo-button" type="button" data-quality-photo="${index}">${photoIcon}<span>${line.photoCount} 张</span></button>` : "—"}</td>
+      ${isFirstReason ? `<td class="repair-reason-cell" rowspan="${reasonRowspan}" title="${escapeHTML(line.reason || "—")}">${escapeHTML(line.reason || "—")}</td>` : ""}
     </tr>
   `;
   }).join("");
@@ -82,13 +86,12 @@ function renderReturnRows(rows) {
 export function renderRepairDetailPage(repairNo) {
   const repair = getRepair(repairNo);
   const returnedTotal = Number(repair.repairedQuantity) + Number(repair.scrappedQuantity);
-  const isCompleted = repair.statusKey === "completed";
   return `
     <article class="order-detail-page repair-detail-page" data-repair-detail-page data-repair-no="${escapeHTML(repair.repairNo)}">
       <section class="section-card detail-overview-card">
         <header class="detail-page-header">
           <button class="detail-back-button" type="button" data-repair-detail-back>${backIcon}<span>返回</span></button>
-          <div class="detail-title-row repair-detail-title"><strong>${escapeHTML(repair.factory)}</strong><span class="status-badge is-${isCompleted ? "success" : "info"}">${isCompleted ? "已完成" : "未完成"}</span></div>
+          <div class="detail-title-row repair-detail-title"><strong>${escapeHTML(repair.factory)}</strong></div>
         </header>
         <div class="detail-overview-content">
           <dl class="repair-summary-matrix">
@@ -109,7 +112,7 @@ export function renderRepairDetailPage(repairNo) {
         </div>
         <div class="detail-table-scroll">
           <table class="detail-data-table repair-quality-table data-grid-table" data-sort-table="repair-quality">
-            <thead><tr><th scope="col">序号</th>${renderSortableHeader("产品编码", "code")}${renderSortableHeader("产品名称", "name")}${renderSortableHeader("颜色/规格", "colorSpec")}${renderSortableHeader("仓库退回数量", "quantity")}${renderSortableHeader("箱号", "boxNo")}${renderSortableHeader("次品原因", "reason")}<th scope="col">次品照片</th></tr></thead>
+            <thead><tr><th scope="col">序号</th>${renderSortableHeader("产品编码", "code")}${renderSortableHeader("产品名称", "name")}${renderSortableHeader("颜色/规格", "colorSpec")}${renderSortableHeader("仓库退回数量", "quantity")}${renderSortableHeader("箱号", "boxNo")}${renderSortableHeader("次品原因", "reason")}</tr></thead>
             <tbody data-repair-quality-body>${renderQualityLines(repair.lines)}</tbody>
           </table>
         </div>
@@ -154,9 +157,5 @@ export function bindRepairDetailPage(repairNo) {
       return;
     }
 
-    if (event.target.closest("[data-quality-photo]")) {
-      showToast("查看次品照片", "原型阶段使用图片占位，正式开发时打开质检单内的原始照片。");
-      return;
-    }
   });
 }

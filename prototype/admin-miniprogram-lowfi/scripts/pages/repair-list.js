@@ -139,7 +139,7 @@
     });
 
     document.querySelectorAll("[data-repair-no]").forEach((button) => {
-      button.addEventListener("click", () => navigate("repair-detail", { selectedRepairNo: button.dataset.repairNo }));
+      button.addEventListener("click", () => navigate("repair-detail", { selectedRepairNo: button.dataset.repairNo, repairBackPage: "repairs" }));
     });
 
     document.querySelector("[data-page-target='orders']")?.addEventListener("click", () => navigate("orders"));

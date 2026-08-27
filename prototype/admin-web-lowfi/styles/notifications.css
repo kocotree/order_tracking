@@ -1,0 +1,231 @@
+.notification-record-page {
+  animation: page-in 260ms ease-out both;
+}
+
+.notification-record-card {
+  overflow: hidden;
+}
+
+.notification-record-header {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  min-height: 62px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.notification-record-header h1 {
+  margin: 0;
+  color: var(--ink-strong);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.notification-record-tabs {
+  align-self: stretch;
+  display: flex;
+  gap: 22px;
+  align-items: stretch;
+}
+
+.notification-record-tab {
+  position: relative;
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.notification-record-tab::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: transparent;
+}
+
+.notification-record-tab:hover,
+.notification-record-tab.is-active {
+  color: var(--erp-blue-dark);
+}
+
+.notification-record-tab.is-active::after {
+  background: var(--erp-blue);
+}
+
+.notification-record-list {
+  min-height: 604px;
+}
+
+.notification-record-item {
+  display: grid;
+  grid-template-columns: 8px 94px minmax(0, 1fr) 138px;
+  gap: 14px;
+  align-items: center;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 18px;
+  text-align: left;
+  background: var(--surface);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.notification-record-item:hover {
+  background: var(--erp-blue-pale);
+}
+
+.notification-record-state {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+  border-radius: 50%;
+}
+
+.notification-record-item.is-unread .notification-record-state {
+  background: #ed6264;
+}
+
+.notification-record-category {
+  justify-self: start;
+  min-width: 82px;
+  padding: 3px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  background: var(--surface-quiet);
+  border-radius: 4px;
+}
+
+.notification-record-category.is-warning {
+  color: #8a631b;
+  background: var(--warning-bg);
+}
+
+.notification-record-category.is-success {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.notification-record-category.is-info {
+  color: var(--erp-blue-dark);
+  background: var(--erp-blue-soft);
+}
+
+.notification-record-copy {
+  min-width: 0;
+}
+
+.notification-record-copy strong,
+.notification-record-copy span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-record-copy strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.notification-record-item.is-unread .notification-record-copy strong {
+  font-weight: 800;
+}
+
+.notification-record-copy span {
+  margin-top: 2px;
+  color: var(--subtle);
+  font-size: 11px;
+}
+
+.notification-record-item time {
+  color: var(--subtle);
+  font-family: var(--font-number);
+  font-size: 11px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.notification-record-empty {
+  display: grid;
+  min-height: 604px;
+  padding: 32px;
+  place-content: center;
+  justify-items: center;
+  color: var(--muted);
+  text-align: center;
+}
+
+.notification-record-empty-mark {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 10px;
+  place-items: center;
+  color: var(--erp-blue);
+  font-family: var(--font-number);
+  font-size: 17px;
+  font-weight: 750;
+  background: var(--erp-blue-soft);
+  border: 1px solid #c9e7fa;
+  border-radius: var(--radius-md);
+}
+
+.notification-record-empty strong {
+  color: var(--ink);
+}
+
+.notification-record-empty p {
+  margin: 4px 0 0;
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.notification-record-footer {
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 760px) {
+  .notification-record-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
+    padding-top: 14px;
+  }
+
+  .notification-record-tabs {
+    min-height: 44px;
+  }
+
+  .notification-record-item {
+    grid-template-columns: 8px minmax(0, 1fr);
+    gap: 6px 10px;
+  }
+
+  .notification-record-category,
+  .notification-record-copy,
+  .notification-record-item time {
+    grid-column: 2;
+  }
+
+  .notification-record-item time {
+    text-align: left;
+  }
+
+  .notification-record-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+}

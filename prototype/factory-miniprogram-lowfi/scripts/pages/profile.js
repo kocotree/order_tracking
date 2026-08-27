@@ -4,38 +4,15 @@
     avatarSheetOpen: false,
     avatarPreviewOpen: false,
     logoutOpen: false,
-    notifications: {
-      newOrder: true,
-      due: true,
-      repair: true,
-      result: false,
-    },
-    permissionDenied: ["result"],
+    wechatNotificationAuthorized: false,
   };
-
-  var notifications = [
-    { key: "newOrder", title: "新订单任务", description: "本厂收到新的订单任务时提醒" },
-    { key: "due", title: "临期与逾期提醒", description: "合同出货时间临近或逾期时提醒" },
-    { key: "repair", title: "新返修任务", description: "本厂收到新的质检返修任务时提醒" },
-    { key: "result", title: "业务处理结果", description: "撤回审核或退回补发结果提醒" },
-  ];
-
-  function renderNotification(item) {
-    var enabled = profileState.notifications[item.key];
-    var denied = profileState.permissionDenied.includes(item.key);
-    return '<div class="factory-notification-row' + (denied ? ' has-warning' : '') + '">' +
-      '<span><strong>' + item.title + '</strong><small>' + item.description + '</small>' +
-      (denied ? '<em>微信通知未开启</em>' : '') + '</span>' +
-      '<div class="factory-notification-action">' +
-        (denied ? '<button type="button" class="permission-link" data-enable-permission="' + item.key + '">去开启</button>' : '') +
-        '<button type="button" class="factory-switch' + (enabled ? ' is-on' : '') + '" role="switch" aria-checked="' + enabled + '" aria-label="' + item.title + '" data-notification="' + item.key + '"><i></i></button>' +
-      '</div></div>';
-  }
 
   function mount(app) {
     var icons = window.FactoryIcons;
+    var data = window.FactoryPrototypeData;
 
     function render() {
+      var unreadCount = data.notifications.filter(function (item) { return !item.read; }).length;
       app.innerHTML = '<div class="page-shell factory-profile-page">' +
         '<header class="page-header profile-header"><div class="mini-titlebar"><span class="titlebar-spacer" aria-hidden="true"></span><h1>我的</h1><div class="wechat-capsule" aria-hidden="true"><b>•••</b><i></i><span></span></div></div></header>' +
         '<main class="factory-profile-content">' +
@@ -44,15 +21,17 @@
               (profileState.avatarUrl ? '<img src="' + profileState.avatarUrl + '" alt="张师傅的头像" />' : '<span>张</span>') +
             '</button>' +
             '<input id="avatar-input" class="avatar-input" type="file" accept="image/*" aria-hidden="true" tabindex="-1" />' +
-            '<div class="factory-profile-identity"><h2>张师傅</h2><p>昱斌 · 工厂员工</p></div>' +
+            '<div class="factory-profile-identity"><h2>张师傅</h2><p>工厂员工</p></div>' +
           '</section>' +
-          '<section class="factory-profile-card"><header><h2>账号信息</h2></header><dl class="factory-account-list">' +
+          '<section class="factory-profile-card" aria-label="账号与通知"><dl class="factory-account-list">' +
             '<div><dt>姓名</dt><dd>张师傅</dd></div>' +
             '<div><dt>联系电话</dt><dd>138****5628</dd></div>' +
             '<div><dt>职位</dt><dd>工厂员工</dd></div>' +
             '<div><dt>所属工厂</dt><dd>昱斌</dd></div>' +
-          '</dl></section>' +
-          '<section class="factory-profile-card"><header><h2>通知设置</h2></header><div class="factory-notification-list">' + notifications.map(renderNotification).join("") + '</div></section>' +
+          '</dl>' +
+            '<button type="button" class="factory-profile-action-row factory-wechat-authorization" id="authorize-wechat-notifications"><strong>微信提醒授权</strong><span class="factory-wechat-authorization__state">' + (profileState.wechatNotificationAuthorized ? '本次已授权' : '去授权') + '</span><span class="factory-profile-action-row__chevron">' + icons.chevron + '</span></button>' +
+            '<button type="button" class="factory-profile-action-row factory-notification-center" id="open-notifications"><strong>通知中心</strong>' + (unreadCount > 0 ? '<b aria-label="' + unreadCount + '条未读">' + unreadCount + '</b>' : '') + '<span class="factory-profile-action-row__chevron">' + icons.chevron + '</span></button>' +
+          '</section>' +
           '<button type="button" class="logout-button" id="logout-button">退出登录</button>' +
         '</main>' +
         '<nav class="tabbar" aria-label="工厂小程序一级导航"><button type="button" class="tabbar__item" id="profile-to-tasks">' + icons.tasks + '<span>任务</span></button><button type="button" class="tabbar__item" id="profile-to-records">' + icons.truck + '<span>发货记录</span></button><button type="button" class="tabbar__item is-active">' + icons.profile + '<span>我的</span></button></nav>' +
@@ -130,26 +109,11 @@
         reader.addEventListener("load", function () { profileState.avatarUrl = reader.result; render(); showToast("头像已更换"); });
         reader.readAsDataURL(file);
       });
-      document.querySelectorAll("[data-notification]").forEach(function (button) {
-        button.addEventListener("click", function () {
-          var key = button.dataset.notification;
-          if (!profileState.notifications[key] && profileState.permissionDenied.includes(key)) {
-            showToast("请先开启微信通知");
-            return;
-          }
-          profileState.notifications[key] = !profileState.notifications[key];
-          render();
-        });
+      document.querySelector("#authorize-wechat-notifications")?.addEventListener("click", function () {
+        profileState.wechatNotificationAuthorized = true;
+        render();
       });
-      document.querySelectorAll("[data-enable-permission]").forEach(function (button) {
-        button.addEventListener("click", function () {
-          var key = button.dataset.enablePermission;
-          profileState.permissionDenied = profileState.permissionDenied.filter(function (item) { return item !== key; });
-          profileState.notifications[key] = true;
-          render();
-          showToast("微信通知已开启");
-        });
-      });
+      document.querySelector("#open-notifications")?.addEventListener("click", function () { window.FactoryPages.notifications.mount(app, true); });
       document.querySelector("#logout-button")?.addEventListener("click", function () { profileState.logoutOpen = true; render(); });
       document.querySelector("#cancel-logout")?.addEventListener("click", function () { profileState.logoutOpen = false; render(); });
       document.querySelector("#logout-layer")?.addEventListener("click", function (event) {

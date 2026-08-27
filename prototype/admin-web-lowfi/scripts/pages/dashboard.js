@@ -1,6 +1,7 @@
-import { dashboardData } from "../mock-data.js";
+import { dashboardData, notificationData } from "../mock-data.js?v=20260827-s11-notifications";
 import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
+import { buildRouteWithReturn } from "../router.js";
 
 const searchIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 
@@ -23,7 +24,7 @@ function renderNotifications() {
   return dashboardData.notifications
     .map(
       (item) => `
-        <button class="notification-item" type="button" data-destination="${escapeHTML(item.destination)}">
+        <button class="notification-item" type="button" data-notification-id="${escapeHTML(item.id)}" data-route="${escapeHTML(buildRouteWithReturn(item.route, "/dashboard"))}">
           <span class="notification-marker is-${escapeHTML(item.tone)}" aria-hidden="true"></span>
           <span class="notification-copy">
             <span class="notification-mainline">
@@ -128,7 +129,7 @@ export function renderDashboardPage() {
             <div>
               <h2 class="section-title" id="notifications-title">最近通知</h2>
             </div>
-            <button class="text-button" type="button" data-pending-action="全部通知">全部通知</button>
+            <button class="text-button" type="button" data-route="/notifications">全部通知</button>
           </header>
           <div class="notification-list">
             ${renderNotifications()}
@@ -230,6 +231,13 @@ export function bindDashboardPage() {
   });
 
   page?.addEventListener("click", (event) => {
+    const notificationId = event.target.closest("[data-notification-id]")?.dataset.notificationId;
+    if (notificationId) {
+      const notification = notificationData.find((item) => item.id === notificationId);
+      if (notification) notification.read = true;
+      return;
+    }
+
     const nextSortState = getNextSortState(event, sortState);
     if (nextSortState) {
       sortState = nextSortState;

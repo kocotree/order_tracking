@@ -12,6 +12,7 @@
     page: "auth",
     authStatus: new URLSearchParams(window.location.search).get("auth") || "bind",
     selectedOrderId: null,
+    orderBackPage: "orders",
     selectedShipmentNo: null,
     shipmentBackPage: "order-detail",
     keyword: "",
@@ -34,19 +35,18 @@
     repairDateEnd: "",
     repairFilterOpen: false,
     selectedRepairNo: null,
+    repairBackPage: "repairs",
     repairDetailTab: "quality",
     expandedRepairProducts: [],
     expandedRepairBatches: [],
     repairDetailInitializedFor: null,
-    notifyNewOrder: true,
-    notifyDue: true,
-    notifyShipment: true,
-    notifyRepair: false,
-    notificationPermissionDenied: ["notifyRepair"],
     profileAvatar: "",
     avatarSheetOpen: false,
     avatarPreviewOpen: false,
     logoutConfirmOpen: false,
+    notificationStatus: "all",
+    notificationVisibleCount: 10,
+    wechatNotificationAuthorized: false,
   };
 
   function formatNumber(value) {
@@ -67,6 +67,10 @@
     window.setTimeout(() => toast.classList.remove("is-visible"), 1800);
   }
 
+  function getUnreadCount(targetGroup = null) {
+    return data.notifications.filter((item) => !item.read && (!targetGroup || item.targetGroup === targetGroup)).length;
+  }
+
   function navigate(page, values = {}) {
     Object.assign(state, values, { page });
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -78,7 +82,7 @@
     data,
     icons,
     state,
-    helpers: { formatNumber, selectOptions, showToast },
+    helpers: { formatNumber, selectOptions, showToast, getUnreadCount },
     navigate,
     render,
   };

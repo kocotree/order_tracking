@@ -262,5 +262,20 @@
     },
   ];
 
-  window.FactoryPrototypeData = { tasks, statusOptions, repairTasks, repairStatusOptions, shipmentRecords };
+  const notifications = [
+    { id: "factory-notice-001", category: "新订单任务", tone: "order", title: "订单 E106# 已发布", description: "云朵软壳冲锋衣已分配至昱斌，请及时查看任务。", time: "2026-08-18 16:30", read: false, targetPage: "task-detail", targetId: "order-106" },
+    { id: "factory-notice-002", category: "新返修任务", tone: "repair", title: "收到返修任务 FX20260812-001", description: "仓库退回 400 件，请查看返修产品和原始质检附件。", time: "2026-08-18 15:12", read: false, targetPage: "repair-detail", targetId: "repair-20260812-001" },
+    { id: "factory-notice-003", category: "业务处理结果", tone: "result", title: "发货单撤回申请已通过", description: "发货单 FH20260810-001 已作废，请查看处理结果。", time: "2026-08-18 13:45", read: false, targetPage: "shipment-detail", targetId: "shipment-20260810-001" },
+    { id: "factory-notice-004", category: "业务处理结果", tone: "result", title: "订单 E81# 退回数量已更新", description: "仓库已确认退回，订单未发数量相应增加，请按普通流程补发。", time: "2026-08-18 11:20", read: false, targetPage: "task-detail", targetId: "order-081" },
+    { id: "factory-notice-005", category: "新订单任务", tone: "order", title: "订单 E92# 已发布", description: "小热皮绒绒裤已分配至昱斌，请查看合同出货时间。", time: "2026-08-17 17:18", read: true, targetPage: "task-detail", targetId: "order-092" },
+    { id: "factory-notice-006", category: "新返修任务", tone: "repair", title: "收到返修任务 FX20260810-002", description: "仓库退回 900 件，请查看待返回产品。", time: "2026-08-17 14:06", read: true, targetPage: "repair-detail", targetId: "repair-20260810-002" },
+    { id: "factory-notice-007", category: "业务处理结果", tone: "result", title: "发货单撤回申请已拒绝", description: "发货单 FH20260816-002 保持有效，请查看审核结果。", time: "2026-08-17 10:40", read: true, targetPage: "shipment-detail", targetId: "shipment-20260816-002" },
+    { id: "factory-notice-008", category: "新订单任务", tone: "order", title: "订单 E35# 已发布", description: "轻量防风马甲等产品已分配至昱斌。", time: "2026-08-16 16:25", read: true, targetPage: "task-detail", targetId: "order-035" },
+    { id: "factory-notice-009", category: "业务处理结果", tone: "result", title: "订单 E78# 已完成", description: "该订单已由管理员确认完成。", time: "2026-08-16 11:08", read: true, targetPage: "task-detail", targetId: "order-078" },
+    { id: "factory-notice-010", category: "新返修任务", tone: "repair", title: "返修任务 FX20260806-003 已完成", description: "返回总数量已达到仓库退回总数量。", time: "2026-08-15 18:02", read: true, targetPage: "repair-detail", targetId: "repair-20260806-003" },
+    { id: "factory-notice-011", category: "业务处理结果", tone: "result", title: "发货单 FH20260818-003 已提交", description: "发货记录已生效并计入订单累计发货数量。", time: "2026-08-15 12:36", read: true, targetPage: "shipment-detail", targetId: "shipment-20260818-003" },
+    { id: "factory-notice-012", category: "新订单任务", tone: "order", title: "订单 E81# 已发布", description: "乐园游会吊带包屁衣已分配至昱斌。", time: "2026-08-14 09:20", read: true, targetPage: "task-detail", targetId: "order-081" },
+  ];
+
+  window.FactoryPrototypeData = { tasks, statusOptions, repairTasks, repairStatusOptions, shipmentRecords, notifications };
 })();

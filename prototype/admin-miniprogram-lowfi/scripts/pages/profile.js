@@ -1,29 +1,4 @@
 (function registerProfilePage() {
-  const notifications = [
-    { key: "notifyNewOrder", title: "新订单通知", description: "新订单导入并分配后提醒" },
-    { key: "notifyDue", title: "临期与逾期提醒", description: "合同出货时间临近或逾期时提醒" },
-    { key: "notifyShipment", title: "正常发货通知", description: "工厂提交正式发货单后提醒" },
-    { key: "notifyRepair", title: "质检单返修通知", description: "工厂提交返修发回记录后提醒" },
-  ];
-
-  function renderNotificationRow(item, state) {
-    const enabled = state[item.key];
-    const permissionDenied = state.notificationPermissionDenied.includes(item.key);
-    return `
-      <div class="profile-notification-row ${permissionDenied ? "has-permission-warning" : ""}">
-        <span>
-          <strong>${item.title}</strong>
-          <small>${item.description}</small>
-          ${permissionDenied ? `<em>微信通知未开启</em>` : ""}
-        </span>
-        <div class="profile-notification-action">
-          ${permissionDenied ? `<button type="button" class="profile-permission-button" data-enable-notification="${item.key}">去开启</button>` : ""}
-          <button type="button" class="profile-switch ${enabled ? "is-on" : ""}" role="switch" aria-checked="${enabled}" data-notification-key="${item.key}" aria-label="${item.title}"><i></i></button>
-        </div>
-      </div>
-    `;
-  }
-
   function bindEvents(context) {
     const { state, render, navigate } = context;
     const avatarInput = document.querySelector("#profile-avatar-input");
@@ -66,24 +41,13 @@
       render();
     });
 
-    document.querySelectorAll("[data-notification-key]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const key = button.dataset.notificationKey;
-        state[key] = !state[key];
-        if (state[key]) state.notificationPermissionDenied = state.notificationPermissionDenied.filter((item) => item !== key);
-        render();
-      });
-    });
-    document.querySelectorAll("[data-enable-notification]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const key = button.dataset.enableNotification;
-        state.notificationPermissionDenied = state.notificationPermissionDenied.filter((item) => item !== key);
-        state[key] = true;
-        render();
-      });
-    });
     document.querySelector("[data-page-target='orders']")?.addEventListener("click", () => navigate("orders"));
     document.querySelector("[data-page-target='shipments']")?.addEventListener("click", () => navigate("shipments"));
+    document.querySelector("[data-authorize-wechat-notifications]")?.addEventListener("click", () => {
+      state.wechatNotificationAuthorized = true;
+      render();
+    });
+    document.querySelector("[data-open-notifications]")?.addEventListener("click", () => navigate("notifications", { notificationStatus: "all", notificationVisibleCount: 10 }));
     document.querySelector("[data-open-logout]")?.addEventListener("click", () => {
       state.logoutConfirmOpen = true;
       render();
@@ -102,7 +66,8 @@
   }
 
   function mount(context) {
-    const { app, icons, state } = context;
+    const { app, icons, state, helpers } = context;
+    const unreadCount = helpers.getUnreadCount();
     app.innerHTML = `
       <div class="page-shell profile-page">
         <header class="page-header profile-page__header">
@@ -125,20 +90,22 @@
             </div>
           </section>
 
-          <section class="profile-card">
-            <header><h2>账号信息</h2></header>
+          <section class="profile-card" aria-label="账号与通知">
             <dl class="profile-account-list">
               <div><dt>姓名</dt><dd>煎饼</dd></div>
               <div><dt>管理员类型</dt><dd>最高管理员</dd></div>
-              <div><dt>账号状态</dt><dd class="is-normal">正常</dd></div>
+              <div><dt>联系电话</dt><dd>138****1234</dd></div>
             </dl>
-          </section>
-
-          <section class="profile-card">
-            <header><h2>通知设置</h2></header>
-            <div class="profile-notification-list">
-              ${notifications.map((item) => renderNotificationRow(item, state)).join("")}
-            </div>
+            <button type="button" class="profile-action-row profile-wechat-authorization" data-authorize-wechat-notifications>
+              <strong>微信提醒授权</strong>
+              <span class="profile-wechat-authorization__state">${state.wechatNotificationAuthorized ? "本次已授权" : "去授权"}</span>
+              <span class="profile-action-row__chevron">${icons.chevron}</span>
+            </button>
+            <button type="button" class="profile-action-row profile-notification-center" data-open-notifications>
+              <strong>通知中心</strong>
+              ${unreadCount > 0 ? `<b aria-label="${unreadCount}条未读">${unreadCount}</b>` : ""}
+              <span class="profile-action-row__chevron">${icons.chevron}</span>
+            </button>
           </section>
 
           <button type="button" class="profile-logout-button" data-open-logout>退出登录</button>

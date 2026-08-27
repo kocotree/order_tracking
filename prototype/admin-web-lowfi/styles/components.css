@@ -229,32 +229,28 @@
 
 .notification-popover {
   position: absolute;
-  top: 50px;
+  top: calc(100% + 8px);
   right: 108px;
   z-index: 50;
-  width: min(360px, calc(100vw - 32px));
-  visibility: hidden;
+  display: none;
+  width: min(380px, calc(100vw - 32px));
   overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
+  border-radius: 8px;
   box-shadow: var(--shadow-float);
-  opacity: 0;
-  transform: translateY(-6px);
-  transition: 160ms ease;
 }
 
 .notification-popover.is-open {
-  visibility: visible;
-  opacity: 1;
-  transform: translateY(0);
+  display: block;
 }
 
 .popover-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  min-height: 46px;
+  padding: 0 14px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -265,33 +261,32 @@
 
 .notification-popover-list {
   display: grid;
-  max-height: 360px;
-  overflow-y: auto;
 }
 
 .popover-notification {
-  display: grid;
+  width: 100%;
+}
+
+.popover-all-link {
+  display: inline-flex;
   gap: 3px;
-  padding: 12px 16px;
-  text-align: left;
-  background: var(--surface);
+  align-items: center;
+  padding: 5px 0;
+  color: var(--erp-blue-dark);
+  font-size: 12px;
+  font-weight: 700;
+  background: transparent;
   border: 0;
-  border-bottom: 1px solid var(--line);
   cursor: pointer;
 }
 
-.popover-notification:hover {
-  background: var(--erp-blue-pale);
+.popover-all-link:hover {
+  color: var(--erp-blue);
 }
 
-.popover-notification strong {
-  color: var(--ink);
-  font-size: 12px;
-}
-
-.popover-notification span {
-  color: var(--subtle);
-  font-size: 11px;
+.popover-all-link svg {
+  width: 14px;
+  height: 14px;
 }
 
 .toast {
@@ -349,14 +344,6 @@
   font-size: 11px;
 }
 
-@media (max-width: 860px) {
-  .notification-popover {
-    position: fixed;
-    top: 58px;
-    right: 16px;
-  }
-}
-
 @media (max-width: 520px) {
   .section-header {
     padding-inline: 14px;
@@ -365,5 +352,11 @@
   .toast {
     right: 16px;
     bottom: 16px;
+  }
+
+  .notification-popover {
+    position: fixed;
+    top: 58px;
+    right: 16px;
   }
 }

@@ -28,7 +28,7 @@
       }).join("") + '</div>';
   }
 
-  function mount(app, recordId) {
+  function mount(app, recordId, backPage) {
     var data = window.FactoryPrototypeData;
     var icons = window.FactoryIcons;
     var record = data.shipmentRecords.find(function (item) { return item.id === recordId; }) || data.shipmentRecords[0];
@@ -84,7 +84,13 @@
     }
 
     function bindEvents() {
-      document.querySelector("#shipment-detail-back")?.addEventListener("click", function () { window.FactoryPages["shipment-records"].mount(app); });
+      document.querySelector("#shipment-detail-back")?.addEventListener("click", function () {
+        if (backPage === "notifications") {
+          window.FactoryPages.notifications.mount(app, false);
+          return;
+        }
+        window.FactoryPages["shipment-records"].mount(app);
+      });
       document.querySelectorAll("[data-proof]").forEach(function (button) { button.addEventListener("click", function () { showToast(button.dataset.proof + " 大图预览"); }); });
       document.querySelector("#withdraw-shipment")?.addEventListener("click", function () { modalStep = "form"; renderPage(); });
       document.querySelector("#withdraw-reason")?.addEventListener("input", function (event) { reason = event.target.value; document.querySelector("#withdraw-count").textContent = reason.length; document.querySelector("#withdraw-error").textContent = ""; });

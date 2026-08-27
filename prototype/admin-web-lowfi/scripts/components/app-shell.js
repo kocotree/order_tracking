@@ -1,3 +1,5 @@
+import { buildRouteWithReturn, getCurrentLocation } from "../router.js";
+
 const icons = {
   menu: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke-width="1.8" stroke-linecap="round"/></svg>`,
   dashboard: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4h6v7H4zM14 4h6v4h-6zM14 12h6v8h-6zM4 15h6v5H4z" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
@@ -31,17 +33,19 @@ export function escapeHTML(value) {
     .replaceAll("'", "&#039;");
 }
 
-function renderPopoverNotifications(notifications) {
-  return notifications
-    .map(
-      (item) => `
-        <button class="popover-notification" type="button" data-destination="${escapeHTML(item.destination)}">
+function renderTopbarNotifications(notifications) {
+  return notifications.slice(0, 3).map((item) => `
+    <button class="notification-item popover-notification" type="button" data-popover-notification="${escapeHTML(item.id)}">
+      <span class="notification-marker is-${escapeHTML(item.tone)}" aria-hidden="true"></span>
+      <span class="notification-copy">
+        <span class="notification-mainline">
           <strong>${escapeHTML(item.title)}</strong>
-          <span>${escapeHTML(item.time)} · ${escapeHTML(item.description)}</span>
-        </button>
-      `,
-    )
-    .join("");
+          <span>${escapeHTML(item.description)}</span>
+        </span>
+        <time>${escapeHTML(item.time)}</time>
+      </span>
+    </button>
+  `).join("");
 }
 
 function renderRailModules(activeModule, savedSidebarState) {
@@ -91,6 +95,7 @@ export function renderAppShell({
   sideNavItems = [{ label: "看板首页", icon: "dashboard", route: "/dashboard", isActive: true }],
 }) {
   const savedSidebarState = window.localStorage.getItem("order-tracking-sidebar-collapsed") === "true";
+  const unreadNotificationCount = notifications.filter((item) => !item.read).length;
 
   return `
     <div class="app-shell${savedSidebarState ? " is-sidebar-collapsed" : ""}" data-app-shell>
@@ -127,9 +132,9 @@ export function renderAppShell({
           </div>
 
           <div class="topbar-right">
-            <button class="icon-button" type="button" aria-label="查看通知" aria-expanded="false" data-notification-toggle>
+            <button class="icon-button" type="button" aria-label="查看最近通知" aria-expanded="false" data-notification-toggle>
               <span class="topbar-icon">${icons.bell}</span>
-              <span class="notification-dot">${notifications.length}</span>
+              ${unreadNotificationCount > 0 ? `<span class="notification-dot">${unreadNotificationCount}</span>` : ""}
             </button>
             <button class="user-chip" type="button" aria-label="查看当前账号信息" aria-expanded="false" data-account-toggle>
               <span class="user-avatar">煎</span>
@@ -140,13 +145,16 @@ export function renderAppShell({
               <span class="user-menu-chevron">${icons.chevron}</span>
             </button>
 
-            <section class="notification-popover" aria-label="通知记录" data-notification-popover>
+            <section class="notification-popover" aria-label="最近通知" data-notification-popover>
               <div class="popover-header">
                 <strong>最近通知</strong>
-                <span class="section-count">${notifications.length}</span>
+                <button class="popover-all-link" type="button" data-notification-all>
+                  <span>全部通知</span>
+                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m-3.5-3.5L12 8l-3.5 3.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
               </div>
               <div class="notification-popover-list">
-                ${renderPopoverNotifications(notifications)}
+                ${renderTopbarNotifications(notifications)}
               </div>
             </section>
 
@@ -196,7 +204,7 @@ export function showToast(title, message) {
   toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 3200);
 }
 
-export function bindAppShell() {
+export function bindAppShell(notifications = []) {
   const shell = document.querySelector("[data-app-shell]");
   const currentModuleToggle = document.querySelector("[data-toggle-current-module]");
   const notificationToggle = document.querySelector("[data-notification-toggle]");
@@ -274,10 +282,20 @@ export function bindAppShell() {
   });
 
   notificationPopover?.addEventListener("click", (event) => {
-    const target = event.target.closest("[data-destination]");
-    if (!target) return;
-    showToast("目标页面待设计", `${target.dataset.destination}将在对应页面完成后开放。`);
-    closeNotificationPopover();
+    const notificationId = event.target.closest("[data-popover-notification]")?.dataset.popoverNotification;
+    if (notificationId) {
+      const notification = notifications.find((item) => item.id === notificationId);
+      if (!notification) return;
+      notification.read = true;
+      closeNotificationPopover();
+      window.location.hash = buildRouteWithReturn(notification.route, getCurrentLocation());
+      return;
+    }
+
+    if (event.target.closest("[data-notification-all]")) {
+      closeNotificationPopover();
+      window.location.hash = "/notifications";
+    }
   });
 
   document.addEventListener("click", (event) => {

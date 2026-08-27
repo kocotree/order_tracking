@@ -13,5 +13,6 @@
     box: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 8 8-4 8 4-8 4z"></path><path d="M4 8v9l8 4 8-4V8M12 12v9"></path></svg>',
     camera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/><path d="M3 7h4l2-3h6l2 3h4v13H3V7Z"/></svg>',
     file: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l4 4v16H6z"></path><path d="M14 2v5h5M9 12h6M9 16h6"></path></svg>',
+    bell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 10a5.5 5.5 0 0 1 11 0v4l2 2H4.5l2-2v-4Z"></path><path d="M10 19h4"></path></svg>',
   };
 })();

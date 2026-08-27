@@ -86,7 +86,7 @@
     }).join("");
   }
 
-  function mount(app, repairId) {
+  function mount(app, repairId, backPage) {
     var data = window.FactoryPrototypeData;
     var icons = window.FactoryIcons;
     var task = data.repairTasks.find(function (item) { return item.id === repairId && !item.archived; });
@@ -139,6 +139,10 @@
       '<div class="prototype-toast" role="status"></div>';
 
     document.querySelector("#repair-back")?.addEventListener("click", function () {
+      if (backPage === "notifications") {
+        window.FactoryPages.notifications.mount(app, false);
+        return;
+      }
       var page = window.FactoryPages["task-list"];
       if (page && page.mount) page.mount(app, "repair");
     });

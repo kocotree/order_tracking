@@ -99,7 +99,7 @@
 
   function bindEvents(context) {
     const { state, render, navigate } = context;
-    document.querySelector("#back-from-repair")?.addEventListener("click", () => navigate("repairs"));
+    document.querySelector("#back-from-repair")?.addEventListener("click", () => navigate(state.repairBackPage || "repairs"));
 
     document.querySelectorAll("[data-repair-detail-tab]").forEach((button) => {
       button.addEventListener("click", () => {

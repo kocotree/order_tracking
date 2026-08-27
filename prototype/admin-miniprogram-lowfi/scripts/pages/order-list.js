@@ -190,7 +190,7 @@
     });
 
     document.querySelectorAll("[data-order-id]").forEach((card) => {
-      const openOrder = () => navigate("order-detail", { selectedOrderId: card.dataset.orderId });
+      const openOrder = () => navigate("order-detail", { selectedOrderId: card.dataset.orderId, orderBackPage: "orders" });
       card.addEventListener("click", openOrder);
       card.addEventListener("keydown", (event) => {
         if (!["Enter", " "].includes(event.key)) return;

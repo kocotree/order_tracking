@@ -5,7 +5,7 @@
     return { label: "未完成", tone: "incomplete" };
   }
 
-  function mount(app, taskId) {
+  function mount(app, taskId, backPage) {
     var data = window.FactoryPrototypeData;
     var icons = window.FactoryIcons;
     var task = data.tasks.find(function (t) { return t.id === taskId; }) || data.tasks[0];
@@ -70,12 +70,15 @@
         '</div>' +
       '</div>';
 
-    bindEvents();
+    bindEvents(app, backPage);
   }
 
-  function bindEvents() {
+  function bindEvents(app, backPage) {
     document.querySelector("#back-to-tasks")?.addEventListener("click", function () {
-      var app = document.getElementById("app");
+      if (backPage === "notifications") {
+        window.FactoryPages.notifications.mount(app, false);
+        return;
+      }
       var page = window.FactoryPages["task-list"];
       if (page && page.mount) page.mount(app);
     });

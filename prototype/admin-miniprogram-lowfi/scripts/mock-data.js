@@ -337,5 +337,20 @@
     },
   };
 
-  window.AdminPrototypeData = { orders, statusOptions, sortOptions, detailOverrides, shipmentDetails, repairRecords, repairDetails };
+  const notifications = [
+    { id: "notice-1", category: "合同出货提醒", tone: "due", title: "订单 369# 今日到期", description: "宇情工厂仍有 560 件待发，请及时跟进", time: "2026-08-18 09:00", targetGroup: "orders", targetPage: "order-detail", targetId: "order-369", read: false },
+    { id: "notice-2", category: "正常发货通知", tone: "shipment", title: "宇情工厂已提交发货", description: "发货单 FH20260812-004，涉及订单 078#", time: "2026-08-18 08:40", targetGroup: "shipments", targetPage: "shipment-detail", targetId: "FH20260812-004", read: false },
+    { id: "notice-3", category: "质检单返修通知", tone: "repair", title: "旭之梦工厂已提交返修结果", description: "返修单 FX20260817-001，本次返修 18 件、报废 2 件", time: "2026-08-17 14:10", targetGroup: "shipments", targetPage: "repair-detail", targetId: "FX20260817-001", read: false },
+    { id: "notice-4", category: "合同出货提醒", tone: "due", title: "订单 088# 距合同出货还有 3 天", description: "昱斌工厂仍有 1,600 件待发，请及时跟进", time: "2026-08-18 09:00", targetGroup: "orders", targetPage: "order-detail", targetId: "order-088", read: false },
+    { id: "notice-5", category: "质检单返修通知", tone: "repair", title: "龙腾工厂已接收返修任务", description: "返修单 FX20260816-002，待处理 48 件", time: "2026-08-16 15:02", targetGroup: "shipments", targetPage: "repair-detail", targetId: "FX20260816-002", read: true },
+    { id: "notice-6", category: "正常发货通知", tone: "shipment", title: "昱斌工厂已提交发货", description: "发货单 FH20260810-002，涉及订单 078#", time: "2026-08-10 16:28", targetGroup: "shipments", targetPage: "shipment-detail", targetId: "FH20260810-002", read: true },
+    { id: "notice-7", category: "合同出货提醒", tone: "due", title: "订单 078# 今日到期", description: "昱斌、宇情工厂仍有 1,620 件待发，请及时跟进", time: "2026-08-10 09:00", targetGroup: "orders", targetPage: "order-detail", targetId: "order-078", read: true },
+    { id: "notice-8", category: "质检单返修通知", tone: "repair", title: "红燕工厂返修单已完成", description: "返修单 FX20260814-003，返修 24 件、报废 4 件", time: "2026-08-16 09:20", targetGroup: "shipments", targetPage: "repair-detail", targetId: "FX20260814-003", read: true },
+    { id: "notice-9", category: "合同出货提醒", tone: "due", title: "订单 088# 距合同出货还有 10 天", description: "昱斌工厂仍有 1,600 件待发，请及时跟进", time: "2026-08-11 09:00", targetGroup: "orders", targetPage: "order-detail", targetId: "order-088", read: true },
+    { id: "notice-10", category: "质检单返修通知", tone: "repair", title: "众乐鑫工厂已提交返修结果", description: "返修单 FX20260813-004，本次返修 20 件、报废 3 件", time: "2026-08-17 16:40", targetGroup: "shipments", targetPage: "repair-detail", targetId: "FX20260813-004", read: true },
+    { id: "notice-11", category: "合同出货提醒", tone: "due", title: "订单 246# 距合同出货还有 5 天", description: "盛泰工厂订单尚未确认完成，请及时核对", time: "2026-08-07 09:00", targetGroup: "orders", targetPage: "order-detail", targetId: "order-246", read: true },
+    { id: "notice-12", category: "正常发货通知", tone: "shipment", title: "宇情工厂已提交发货", description: "发货单 FH20260812-004 已形成正式发货记录", time: "2026-08-12 15:30", targetGroup: "shipments", targetPage: "shipment-detail", targetId: "FH20260812-004", read: true },
+  ].sort((left, right) => right.time.localeCompare(left.time));
+
+  window.AdminPrototypeData = { orders, statusOptions, sortOptions, detailOverrides, shipmentDetails, repairRecords, repairDetails, notifications };
 })();

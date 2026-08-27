@@ -100,7 +100,7 @@
   function bindEvents(context) {
     const { navigate } = context;
     document.querySelector("#back-to-orders")?.addEventListener("click", () => {
-      navigate("orders");
+      navigate(context.state.orderBackPage || "orders");
     });
 
     document.querySelectorAll("[data-shipment-no]").forEach((button) => {

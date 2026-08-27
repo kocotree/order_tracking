@@ -1,16 +1,17 @@
-import { dashboardData } from "./mock-data.js?v=20260827-s09";
-import { ensureInitialRoute, startRouter } from "./router.js?v=20260827-s09";
-import { bindAppShell, renderAppShell, showToast } from "./components/app-shell.js?v=20260827-s09";
-import { bindDashboardPage, renderDashboardPage } from "./pages/dashboard.js?v=20260827-s09";
+import { dashboardData, notificationData } from "./mock-data.js?v=20260827-s11-notifications";
+import { ensureInitialRoute, startRouter } from "./router.js?v=20260827-s11-return-context";
+import { bindAppShell, renderAppShell, showToast } from "./components/app-shell.js?v=20260827-s11-return-context";
+import { bindDashboardPage, renderDashboardPage } from "./pages/dashboard.js?v=20260827-s11-return-context";
+import { bindNotificationListPage, renderNotificationListPage } from "./pages/notification-list.js?v=20260827-s11-return-context";
 import { bindOrderListPage, renderOrderListPage } from "./pages/order-list.js?v=20260827-s09";
-import { bindOrderDetailPage, renderOrderDetailPage } from "./pages/order-detail.js?v=20260827-s09";
+import { bindOrderDetailPage, renderOrderDetailPage } from "./pages/order-detail.js?v=20260827-s11-return-context";
 import { bindPendingImportListPage, renderPendingImportListPage } from "./pages/pending-import-list.js?v=20260827-s09";
 import { bindPendingImportDetailPage, renderPendingImportDetailPage } from "./pages/pending-import-detail.js?v=20260827-s09";
 import { bindShipmentListPage, renderShipmentListPage } from "./pages/shipment-list.js?v=20260827-s09";
-import { bindShipmentDetailPage, renderShipmentDetailPage } from "./pages/shipment-detail.js?v=20260827-s09";
+import { bindShipmentDetailPage, renderShipmentDetailPage } from "./pages/shipment-detail.js?v=20260827-s11-return-context";
 import { bindRepairListPage, renderRepairListPage } from "./pages/repair-list.js?v=20260827-s09";
 import { bindRepairCreatePage, renderRepairCreatePage } from "./pages/repair-create.js?v=20260827-s09";
-import { bindRepairDetailPage, renderRepairDetailPage } from "./pages/repair-detail.js?v=20260827-s09";
+import { bindRepairDetailPage, renderRepairDetailPage } from "./pages/repair-detail.js?v=20260827-s11-return-context";
 import { bindProductListPage, renderProductListPage } from "./pages/product-list.js?v=20260827-s09";
 import { bindFactoryListPage, renderFactoryListPage } from "./pages/factory-list.js?v=20260827-s09";
 import { bindPeopleManagementPage, renderPeopleManagementPage } from "./pages/people-management.js?v=20260827-s09";
@@ -70,6 +71,15 @@ function renderRoute(route) {
       content: renderDashboardPage,
       bind: bindDashboardPage,
       title: "订单看板｜跟单管理系统低保真原型",
+    },
+    "/notifications": {
+      activeModule: "dashboard",
+      topbarTitle: "通知记录",
+      sidebarSectionLabel: "订单看板",
+      sideNavItems: [{ label: "看板首页", icon: "dashboard", route: "/dashboard" }],
+      content: renderNotificationListPage,
+      bind: bindNotificationListPage,
+      title: "通知记录｜跟单管理系统低保真原型",
     },
     "/orders": {
       activeModule: "orders",
@@ -241,14 +251,14 @@ function renderRoute(route) {
 
   appRoot.innerHTML = renderAppShell({
     content: page.content(),
-    notifications: dashboardData.notifications,
+    notifications: notificationData,
     activeModule: page.activeModule,
     topbarTitle: page.topbarTitle,
     sidebarSectionLabel: page.sidebarSectionLabel,
     sideNavItems: page.sideNavItems,
   });
 
-  bindAppShell();
+  bindAppShell(notificationData);
   page.bind();
   document.title = page.title;
 

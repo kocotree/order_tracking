@@ -3,6 +3,20 @@ export function getCurrentRoute() {
   return hash.split("?")[0];
 }
 
+export function getCurrentLocation() {
+  return window.location.hash.replace(/^#/, "") || "/dashboard";
+}
+
+export function buildRouteWithReturn(route, returnRoute) {
+  return `${route}?return=${encodeURIComponent(returnRoute)}`;
+}
+
+export function getReturnRoute(defaultRoute) {
+  const query = getCurrentLocation().split("?")[1] ?? "";
+  const returnRoute = new URLSearchParams(query).get("return");
+  return returnRoute?.startsWith("/") ? returnRoute : defaultRoute;
+}
+
 export function ensureInitialRoute() {
   if (!window.location.hash) {
     window.location.replace("#/dashboard");

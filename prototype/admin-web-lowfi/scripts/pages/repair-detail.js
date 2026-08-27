@@ -1,6 +1,7 @@
 import { repairListData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
+import { getReturnRoute } from "../router.js";
 
 const backIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const fileIcon = `<svg viewBox="0 0 40 44" fill="none" aria-hidden="true"><path d="M8 3h16l8 8v30H8V3Z" stroke="currentColor" stroke-width="1.8"/><path d="M24 3v9h8M13 21h14M13 27h14M13 33h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
@@ -138,7 +139,7 @@ export function bindRepairDetailPage(repairNo) {
     "repair-quality": { key: null, direction: "asc" },
     "repair-returns": { key: null, direction: "asc" },
   };
-  page?.querySelector("[data-repair-detail-back]")?.addEventListener("click", () => { window.location.hash = "/repairs"; });
+  page?.querySelector("[data-repair-detail-back]")?.addEventListener("click", () => { window.location.hash = getReturnRoute("/repairs"); });
   page?.querySelector("[data-repair-file-download]")?.addEventListener("click", () => showToast("质检单附件", `${repair.sourceFile} 将在正式开发时提供在线查看或下载。`));
   page?.addEventListener("click", (event) => {
     const sortTable = event.target.closest("[data-sort-key]")?.closest("[data-sort-table]");

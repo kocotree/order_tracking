@@ -1,4 +1,5 @@
 import { identityApi, wxLoginCode } from "../../api/identity";
+import { requestNotificationSubscriptions } from "../../api/notifications";
 import { isDevPreview } from "../../modules/dev-preview";
 import {
   canRequestPhone,
@@ -32,7 +33,7 @@ Page({
         this.setData({ mode: "bind", bindingToken: result.bindingToken, busy: false });
         return;
       }
-      this.continueWith(result);
+      void this.continueWith(result);
     } catch {
       this.setData({ mode: "bind", busy: false });
       wx.showToast({ title: "身份识别失败，请稍后重试", icon: "none" });
@@ -59,7 +60,7 @@ Page({
     this.setData({ busy: true });
     try {
       const result = await identityApi.bindPhone(this.data.bindingToken, event.detail.code);
-      this.continueWith(result);
+      void this.continueWith(result);
     } catch {
       wx.showToast({ title: "手机号绑定失败，请稍后重试", icon: "none" });
       this.setData({ busy: false });
@@ -71,10 +72,13 @@ Page({
     wx.redirectTo({ url: `/pages/status/status?${query}` });
   },
 
-  continueWith(result: MiniLogin) {
+  async continueWith(result: MiniLogin) {
     if (result.session && result.user) saveSession(result.session, result.user);
     else if (result.user) updateStoredUser(result.user);
     const destination = loginDestination(result);
+    if (result.status === "authenticated" && result.user?.isEnabled && (result.user.role === "admin" || result.user.role === "factory")) {
+      try { await requestNotificationSubscriptions(result.user.role); } catch { /* Rejection, close, and provider failure never block login. */ }
+    }
     if (destination === "admin-orders") {
       wx.reLaunch({ url: "/pages/admin-orders/admin-orders" });
       return;

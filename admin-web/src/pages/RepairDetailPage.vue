@@ -3,7 +3,7 @@
     <article v-if="repair" class="order-detail-page repair-detail-page">
       <section class="section-card detail-overview-card">
         <header class="detail-page-header">
-          <button class="detail-back-button" type="button" @click="router.push('/repairs')"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg><span>返回</span></button>
+          <button class="detail-back-button" type="button" @click="goBack"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg><span>返回</span></button>
           <div class="detail-title-row repair-detail-title"><strong>{{ repair.factoryName }}</strong></div>
         </header>
         <div class="detail-overview-content">
@@ -42,7 +42,7 @@
         </div>
       </section>
     </article>
-    <p v-else class="page-state">{{ error||'正在加载返修单…' }}</p>
+    <section v-else class="section-card notification-target-error"><button class="detail-back-button" type="button" @click="goBack">‹ 返回</button><p :class="error?'page-error':'page-state'">{{ error||'正在加载返修单…' }}</p></section>
   </AdminShell>
 </template>
 
@@ -68,7 +68,8 @@ const returnRows=computed(()=>{const rows=(repair.value?.returnBatches??[]).flat
 function sortQuality(field:string){const next=field as QualityField;if(qualitySortBy.value===next)qualitySortOrder.value=qualitySortOrder.value==="asc"?"desc":"asc";else{qualitySortBy.value=next;qualitySortOrder.value="asc"}}
 function sortReturn(field:string){const next=field as ReturnField;if(returnSortBy.value===next)returnSortOrder.value=returnSortOrder.value==="asc"?"desc":"asc";else{returnSortBy.value=next;returnSortOrder.value="asc"}}
 async function downloadOriginal(){if(!repair.value)return;downloadError.value="";try{await repairApi.download(repair.value.originalFileId,repair.value.originalFilename)}catch(e){downloadError.value=e instanceof ApiError?e.message:"原始质检单下载失败"}}
-onMounted(async()=>{try{repair.value=await repairApi.get(String(route.params.repairId))}catch(e){error.value=e instanceof ApiError?e.message:"返修单加载失败"}});
+function goBack(){return router.push(typeof route.query.notificationReturnTo==="string"?route.query.notificationReturnTo:"/repairs")}
+onMounted(async()=>{try{repair.value=await repairApi.get(String(route.params.repairId))}catch(e){error.value=e instanceof ApiError&&e.status===404&&route.query.notificationReturnTo?"内容已不可查看":e instanceof ApiError?e.message:"返修单加载失败"}});
 </script>
 
 <style scoped>

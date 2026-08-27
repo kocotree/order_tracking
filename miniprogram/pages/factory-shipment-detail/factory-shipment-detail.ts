@@ -1,5 +1,7 @@
 import { shipmentApi, type Shipment, type ShipmentBox, type ShipmentLine } from "../../api/shipments";
 import { isDevPreview, PREVIEW_SHIPMENT } from "../../modules/dev-preview";
+import { notificationApi } from "../../api/notifications";
+import { notificationIdFrom } from "../../modules/notifications";
 
 type LineGroup = { orderNo: string; total: number; items: ShipmentLine[]; expanded: boolean };
 type BoxGroup = ShipmentBox & { total: number; expanded: boolean };
@@ -23,17 +25,17 @@ function buildLineGroups(lines: ShipmentLine[]): LineGroup[] {
 }
 
 Page({
-  data: { shipment: null as Shipment | null, submittedAtText: "", lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], loading: true, withdrawStep: "" as ""|"form"|"confirm", withdrawReason: "", withdrawError: "", submitting: false },
+  data: { shipment: null as Shipment | null, submittedAtText: "", lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], loading: true, withdrawStep: "" as ""|"form"|"confirm", withdrawReason: "", withdrawError: "", submitting: false, notificationId:null as number|null },
   onLoad(options: Record<string, string | undefined>) {
     if (isDevPreview(options)) { this.showShipment(PREVIEW_SHIPMENT); return; }
-    if (options.shipmentId) void this.load(options.shipmentId);
+    this.setData({notificationId:notificationIdFrom(options)}); if (options.shipmentId) void this.load(options.shipmentId);
   },
   showShipment(shipment: Shipment) {
     this.setData({ shipment, submittedAtText: formatShanghaiDateTime(shipment.submittedAt), lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), loading: false });
   },
   async load(id: string) {
-    try { this.showShipment(await shipmentApi.factoryGet(id)); }
-    catch { wx.showToast({ title: "发货单加载失败", icon: "none" }); this.setData({ loading: false }); }
+    try { this.showShipment(await shipmentApi.factoryGet(id)); if(this.data.notificationId)await notificationApi.markRead(this.data.notificationId); }
+    catch { wx.showToast({ title:this.data.notificationId?"内容已不可查看":"发货单加载失败", icon: "none" }); this.setData({ loading: false }); }
   },
   toggleLineGroup(event: WechatMiniprogram.TouchEvent) {
     const orderNo = String(event.currentTarget.dataset.orderNo);

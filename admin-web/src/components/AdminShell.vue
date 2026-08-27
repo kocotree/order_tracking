@@ -63,6 +63,17 @@
           <span class="topbar-title">{{ title ?? activeModule.label }}</span>
         </div>
         <div class="topbar-right">
+          <button class="notification-bell" type="button" aria-label="查看通知" :aria-expanded="notificationOpen" @click.stop="notificationOpen = !notificationOpen">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0v5l2 3H4l2-3V9ZM10 20h4" /></svg>
+            <span v-if="unreadCount" class="notification-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+          </button>
+          <section v-if="notificationOpen" class="notification-popover" aria-label="最近通知">
+            <header><strong>最近通知</strong><RouterLink to="/notifications">全部通知</RouterLink></header>
+            <button v-for="item in recentNotifications" :key="item.notificationId" type="button" class="notification-popover-item" @click="openNotification(item)">
+              <i v-if="!item.readAt" aria-hidden="true"></i><span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small></span>
+            </button>
+            <p v-if="!recentNotifications.length">暂无通知</p>
+          </section>
           <button class="user-chip" type="button" aria-label="查看当前账号信息" :aria-expanded="accountOpen" @click.stop="accountOpen = !accountOpen">
             <span class="user-avatar">{{ userInitial }}</span>
             <span class="user-copy">
@@ -94,10 +105,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import BrandLogo from "@/components/BrandLogo.vue";
+import { notificationApi, type NotificationItem } from "@/api/client";
 import { useIdentityStore } from "@/stores";
 
 defineProps<{ title?: string }>();
@@ -122,6 +134,9 @@ const route = useRoute();
 const router = useRouter();
 const mobileMenuOpen = ref(false);
 const accountOpen = ref(false);
+const notificationOpen = ref(false);
+const unreadCount = ref(0);
+const recentNotifications = ref<NotificationItem[]>([]);
 const sidebarCollapsed = ref(window.localStorage?.getItem("order-tracking-sidebar-collapsed") === "true");
 
 const activeModule = computed(() => {
@@ -150,8 +165,25 @@ async function logout() {
   await router.replace("/login");
 }
 
+async function loadNotifications() {
+  try {
+    const [recent, unread] = await Promise.all([notificationApi.list("all", 1, 3), notificationApi.unreadCount()]);
+    recentNotifications.value = recent.items;
+    unreadCount.value = unread.count;
+  } catch { /* Header notifications must not block the current page. */ }
+}
+
+async function openNotification(item:NotificationItem) {
+  notificationOpen.value = false;
+  if (!item.readAt) { await notificationApi.markRead(item.notificationId); unreadCount.value = Math.max(0, unreadCount.value - 1); }
+  await router.push({ path:item.targetPath, query:{ notificationReturnTo:route.fullPath } });
+}
+
+onMounted(loadNotifications);
+
 watch(() => route.fullPath, () => {
   mobileMenuOpen.value = false;
   accountOpen.value = false;
+  notificationOpen.value = false;
 });
 </script>

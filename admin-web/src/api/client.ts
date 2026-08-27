@@ -83,6 +83,9 @@ export interface RepairReturnBatch { batchId:string; submittedAt:string; returnD
 export interface Repair { repairId:string; repairNo:string; status:"INCOMPLETE"|"COMPLETED"; returnDate:string; factoryId:string; factoryName:string; warehouseReturnQuantity:number; repairedQuantity:number; scrappedQuantity:number; returnedQuantity:number; originalFileId:number; originalFilename:string; originalSizeBytes:number; createdAt:string; lines:RepairLine[]; specs:RepairSpec[]; returnBatches:RepairReturnBatch[] }
 export interface RepairList { items:Repair[]; total:number; page:number; pageSize:number }
 export interface RepairArchiveResult { repairId:string; archivedAt:string; archivedBy:string }
+export type NotificationItem = components["schemas"]["NotificationResponse"];
+export type NotificationList = components["schemas"]["NotificationListResponse"];
+type UnreadCount = components["schemas"]["UnreadCountResponse"];
 
 export class ApiError extends Error {
   constructor(
@@ -451,4 +454,11 @@ export const repairApi = {
   getPreview: (previewId:string) => request<RepairPreview>(`/v1/admin/repair-previews/${encodeURIComponent(previewId)}`),
   confirm: (previewId:string) => request<Repair>(`/v1/admin/repair-previews/${encodeURIComponent(previewId)}/confirm`, { method:"POST", headers:idempotencyHeaders() }),
   download: (fileId:number, filename:string) => download(`/v1/files/${fileId}/download`, filename),
+};
+
+export const notificationApi = {
+  list: (status: "all" | "unread" = "all", page = 1, pageSize = 10) =>
+    request<NotificationList>(`/v1/admin/notifications?status=${status}&page=${page}&pageSize=${pageSize}`),
+  unreadCount: () => request<UnreadCount>("/v1/admin/notifications/unread-count"),
+  markRead: (notificationId:number) => request<void>(`/v1/admin/notifications/${notificationId}/read`, { method:"POST" }),
 };

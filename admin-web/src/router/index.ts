@@ -15,6 +15,7 @@ import FactoryApplicationsPage from "@/pages/FactoryApplicationsPage.vue";
 import FactoryUsersPage from "@/pages/FactoryUsersPage.vue";
 import HomePage from "@/pages/HomePage.vue";
 import LoginPage from "@/pages/LoginPage.vue";
+import NotificationsPage from "@/pages/NotificationsPage.vue";
 import NotFoundPage from "@/pages/NotFoundPage.vue";
 import OrderDetailPage from "@/pages/OrderDetailPage.vue";
 import OrderFormPage from "@/pages/OrderFormPage.vue";
@@ -35,6 +36,7 @@ export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
     routes: [
       { path: "/login", name: "login", component: LoginPage, meta: { public: true } },
       { path: "/", name: "home", component: HomePage, meta: { activeAdmin: true } },
+      { path: "/notifications", name: "notifications", component: NotificationsPage },
       { path: "/orders", name: "orders", component: OrdersPage },
       { path: "/orders/import", name: "order-import", component: OrderImportPage },
       { path: "/orders/import/:candidateId", name: "order-import-detail", component: OrderImportDetailPage },

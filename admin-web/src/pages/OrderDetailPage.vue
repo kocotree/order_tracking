@@ -2,11 +2,11 @@
   <AdminShell :title="pageTitle">
     <article class="order-workspace order-detail-page">
       <section v-if="loading" class="section-card page-state">正在加载订单详情…</section>
-      <section v-else-if="!order" class="section-card page-error">{{ errorMessage || '订单不存在' }}</section>
+      <section v-else-if="!order" class="section-card notification-target-error"><button class="detail-back-button" type="button" @click="goBack">‹ 返回</button><p class="page-error">{{ errorMessage || '订单不存在' }}</p></section>
       <template v-else>
         <section class="section-card detail-overview-card">
           <header class="detail-page-header">
-            <button class="detail-back-button" type="button" @click="$router.push('/orders')"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>返回</button>
+            <button class="detail-back-button" type="button" @click="goBack"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>返回</button>
             <div class="detail-title-row order-detail-actions">
               <span class="status-badge" :class="statusTone(order)"><i aria-hidden="true"></i>{{ order.displayStatus }}</span>
               <button v-if="order.lifecycle === 'DRAFT'" class="detail-primary-button" type="button" @click="openAction('publish')">发布订单</button>
@@ -118,7 +118,8 @@ function openAction(action: Action) { pendingAction.value = action; reopenReason
 function localDate() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`; }
 function contractReadyLabel(factory: ContractFactoryStatus) { const labels: Record<string, string> = { factoryCode: "工厂代码", legalName: "单位全称", address: "单位地址", legalRepresentative: "法定代表人" }; return factory.contractReady ? "完整" : `缺少：${factory.missingContractFields.map((field) => labels[field] || field).join("、")}`; }
 async function loadContracts() { if (order.value?.lifecycle !== "PUBLISHED") { contractFactories.value = []; return; } loadingContracts.value = true; try { contractFactories.value = (await contractApi.list(orderId)).items; } catch (error) { contractError.value = error instanceof ApiError ? error.message : "合同状态加载失败"; } finally { loadingContracts.value = false; } }
-async function load() { loading.value = true; try { order.value = await orderApi.get(orderId); auditLogs.value = (await orderApi.auditLogs(orderId)).items; await loadContracts(); } catch (error) { errorMessage.value = error instanceof ApiError ? error.message : "订单详情加载失败"; } finally { loading.value = false; } }
+async function load() { loading.value = true; try { order.value = await orderApi.get(orderId); auditLogs.value = (await orderApi.auditLogs(orderId)).items; await loadContracts(); } catch (error) { errorMessage.value = error instanceof ApiError && error.status === 404 && route.query.notificationReturnTo ? "内容已不可查看" : error instanceof ApiError ? error.message : "订单详情加载失败"; } finally { loading.value = false; } }
+function goBack() { return router.push(typeof route.query.notificationReturnTo === "string" ? route.query.notificationReturnTo : "/orders"); }
 function selectContractFactory(factory: ContractFactoryStatus) { selectedContractFactory.value = factory; contractSigningDate.value = factory.signingDate || localDate(); contractError.value = ""; }
 function openContractExport() { if (!order.value || order.value.shippedQuantity > 0) return; contractError.value = ""; contractDialogOpen.value = true; if (contractFactories.value.length === 1) selectContractFactory(contractFactories.value[0]); else selectedContractFactory.value = null; }
 function closeContractExport() { contractDialogOpen.value = false; selectedContractFactory.value = null; contractError.value = ""; }

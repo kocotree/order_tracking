@@ -17,6 +17,8 @@
       <view class="profile-account-row"><text>姓名</text><text>{{user.displayName}}</text></view>
       <view class="profile-account-row"><text>管理员类型</text><text>{{user.isSuperAdmin ? '最高管理员' : '普通管理员'}}</text></view>
       <view class="profile-account-row"><text>联系电话</text><text>{{user.phoneMasked}}</text></view>
+      <button class="profile-action-row" loading="{{subscriptionBusy}}" bindtap="requestSubscriptions"><text>微信提醒授权</text><text>{{subscriptionStatus}} ›</text></button>
+      <button class="profile-action-row" bindtap="openNotifications"><text>通知中心</text><view><text wx:if="{{unreadCount}}" class="profile-notification-badge">{{unreadCount > 99 ? '99+' : unreadCount}}</text><text>›</text></view></button>
     </view>
 
     <view wx:else class="profile-card factory-profile-card">
@@ -24,6 +26,8 @@
       <view class="profile-account-row"><text>联系电话</text><text>{{user.phoneMasked}}</text></view>
       <view class="profile-account-row"><text>职位</text><text>{{user.factoryPosition === 'owner' ? '老板' : '工厂员工'}}</text></view>
       <view class="profile-account-row"><text>所属工厂</text><text>{{user.factoryName}}</text></view>
+      <button class="profile-action-row" loading="{{subscriptionBusy}}" bindtap="requestSubscriptions"><text>微信提醒授权</text><text>{{subscriptionStatus}} ›</text></button>
+      <button class="profile-action-row" bindtap="openNotifications"><text>通知中心</text><view><text wx:if="{{unreadCount}}" class="profile-notification-badge">{{unreadCount > 99 ? '99+' : unreadCount}}</text><text>›</text></view></button>
     </view>
 
     <button class="profile-logout-button" bindtap="logout">退出登录</button>

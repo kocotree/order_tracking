@@ -27,9 +27,14 @@
         <section class="section-card dashboard-notification-card" aria-labelledby="dashboard-notifications-title">
           <header class="dashboard-section-header">
             <h2 id="dashboard-notifications-title">最近通知</h2>
-            <button class="dashboard-text-button" type="button" disabled>全部通知</button>
+            <RouterLink class="dashboard-text-button" to="/notifications">全部通知</RouterLink>
           </header>
-          <div class="dashboard-notification-empty"><strong>暂无通知</strong><span>S11 接入后显示真实消息</span></div>
+          <div v-if="notifications.length" class="dashboard-notification-list">
+            <button v-for="item in notifications" :key="item.notificationId" type="button" @click="openNotification(item)">
+              <i v-if="!item.readAt" aria-hidden="true"></i><span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small></span><time>{{ notificationTime(item.createdAt) }}</time>
+            </button>
+          </div>
+          <div v-else class="dashboard-notification-empty"><strong>暂无通知</strong></div>
         </section>
       </div>
 
@@ -87,8 +92,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
-import { ApiError, orderApi, type DashboardOrders, type Order } from "@/api/client";
+import { ApiError, notificationApi, orderApi, type DashboardOrders, type NotificationItem, type Order } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 
 type SortKey = "orderNo" | "productName" | "category" | "tracker" | "factory" | "contractShipDate" | "progressPercent" | "quantity" | "status";
@@ -106,6 +112,8 @@ const sortableColumns: { key: SortKey; label: string }[] = [
 ];
 
 const dashboard = ref<DashboardOrders | null>(null);
+const notifications = ref<NotificationItem[]>([]);
+const route = useRoute(); const router = useRouter();
 const loading = ref(true);
 const errorMessage = ref("");
 const keyword = ref("");
@@ -175,9 +183,17 @@ function toggleSort(key: SortKey) {
   sortDirection.value = "asc";
 }
 
+const notificationTime = (value:string) => new Date(value).toLocaleString("zh-CN", { timeZone:"Asia/Shanghai", hour12:false });
+async function openNotification(item:NotificationItem) {
+  if (!item.readAt) await notificationApi.markRead(item.notificationId);
+  await router.push({ path:item.targetPath, query:{ notificationReturnTo:route.fullPath } });
+}
+
 onMounted(async () => {
   try {
-    dashboard.value = await orderApi.dashboard();
+    const [dashboardResult, notificationResult] = await Promise.all([orderApi.dashboard(), notificationApi.list("all", 1, 3)]);
+    dashboard.value = dashboardResult;
+    notifications.value = notificationResult.items;
   } catch (error) {
     errorMessage.value = error instanceof ApiError ? error.message : "订单看板加载失败";
   } finally {

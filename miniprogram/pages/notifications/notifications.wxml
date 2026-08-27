@@ -1,0 +1,13 @@
+<view class="notifications-page">
+  <mini-titlebar title="通知中心" show-back="{{true}}" />
+  <view class="notification-tabs"><button class="{{status === 'all' ? 'is-active' : ''}}" data-status="all" bindtap="changeStatus">全部</button><button class="{{status === 'unread' ? 'is-active' : ''}}" data-status="unread" bindtap="changeStatus">未读</button></view>
+  <view wx:if="{{items.length}}" class="notification-list">
+    <button wx:for="{{items}}" wx:key="notificationId" class="notification-item" data-index="{{index}}" bindtap="openNotification">
+      <view class="notification-head"><view><text wx:if="{{!item.readAt}}" class="notification-dot"></text><text class="notification-category">{{item.categoryLabel}}</text></view><text class="notification-time">{{item.createdAtText}}</text></view>
+      <view class="notification-title-row"><text class="notification-title">{{item.title}}</text><text class="notification-arrow">›</text></view><text class="notification-summary">{{item.summary}}</text>
+    </button>
+  </view>
+  <view wx:elif="{{!loading}}" class="notification-empty">{{status === 'unread' ? '没有未读通知' : '暂无通知'}}</view>
+  <view wx:if="{{loading}}" class="notification-loading">正在加载…</view>
+  <button wx:if="{{hasMore && !loading}}" class="notification-more" bindtap="loadMore">加载更多</button>
+</view>

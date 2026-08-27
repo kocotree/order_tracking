@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     private_file_secret_key: str = ""
     private_file_bucket: str = "unconfigured-contract-files"
     private_file_secure: bool = True
+    notification_due_scan_hour: int = 9
 
     model_config = SettingsConfigDict(
         env_prefix="ORDER_TRACKING_",
@@ -49,4 +50,6 @@ class Settings(BaseSettings):
             raise ValueError("secure web cookies are required in production")
         if bool(self.wechat_identity_app_id) != bool(self.wechat_identity_app_secret):
             raise ValueError("wechat identity app id and secret must be configured together")
+        if not 0 <= self.notification_due_scan_hour <= 23:
+            raise ValueError("notification due scan hour must be between 0 and 23")
         return self

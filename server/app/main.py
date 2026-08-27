@@ -34,6 +34,7 @@ from app.adapters.wechat import (
 from app.api.contracts import create_contract_router
 from app.api.factory_access import create_factory_router
 from app.api.identity import create_identity_router
+from app.api.notifications_audit import create_notifications_audit_router
 from app.api.order_import import create_order_import_router
 from app.api.orders import create_order_router
 from app.api.products import create_product_router
@@ -71,6 +72,7 @@ from app.modules.identity_access import (
     VerificationInvalid,
 )
 from app.modules.identity_access.service import IdentityAccessService
+from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.order_import import OrderImportService
 from app.modules.orders import (
     OrderConflict,
@@ -109,6 +111,7 @@ def create_app(
     order_import_service: OrderImportService | None = None,
     contract_service: ContractService | None = None,
     shipment_service: ShipmentService | None = None,
+    notifications_audit_service: NotificationsAuditService | None = None,
     extra_routers: Sequence[APIRouter] = (),
 ) -> FastAPI:
     settings = Settings(database_url=database_url) if database_url is not None else Settings()
@@ -243,6 +246,8 @@ def create_app(
         )
     if local_demo_enabled:
         seed_local_demo_products(session_factory)
+    if notifications_audit_service is None:
+        notifications_audit_service = NotificationsAuditService(session_factory)
     app.include_router(
         create_identity_router(
             identity_service,
@@ -260,6 +265,9 @@ def create_app(
     app.include_router(create_order_import_router(order_import_service, identity_service))
     app.include_router(create_contract_router(contract_service, identity_service))
     app.include_router(create_shipment_router(shipment_service, identity_service))
+    app.include_router(
+        create_notifications_audit_router(notifications_audit_service, identity_service)
+    )
     repair_previews = RepairPreviewService(session_factory)
     repair_confirmations = RepairConfirmationService(session_factory)
     repair_returns = RepairReturnService(session_factory)

@@ -123,6 +123,10 @@ def _repair_response(repair: RepairOrderView) -> RepairResponse:
     return RepairResponse.model_validate(repair, from_attributes=True)
 
 
+def _admin_can_download_repair_file(*, terminal: str, formal_repair: bool) -> bool:
+    return terminal == "web" or (terminal == "mini" and formal_repair)
+
+
 def create_repair_router(
     *,
     workflow: RepairWorkflowService,
@@ -405,8 +409,11 @@ def create_repair_router(
             if matched.original_file_id != file_id:
                 raise HTTPException(status_code=404, detail="文件不存在")
         elif user.role == "admin":
-            if terminal != "web":
-                raise PermissionDenied("administrator web terminal required")
+            if not _admin_can_download_repair_file(
+                terminal=terminal,
+                formal_repair=matched is not None,
+            ):
+                raise PermissionDenied("administrator terminal required")
         else:
             raise PermissionDenied("file permission denied")
         with session_factory() as session:

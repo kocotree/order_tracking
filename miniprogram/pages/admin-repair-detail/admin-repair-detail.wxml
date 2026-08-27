@@ -1,5 +1,29 @@
-<view class="repair-mini-detail"><mini-titlebar title="返修详情" showBack="{{true}}" backLeft="{{true}}" bind:back="goBack"/><view wx:if="{{loading}}" class="mini-empty">正在加载返修详情…</view><view wx:elif="{{repair}}" class="repair-mini-content">
-  <view class="repair-mini-summary"><view class="repair-mini-heading"><view><text>工厂</text><b>{{repair.factoryName}}</b></view><text class="mini-status {{repair.status === 'COMPLETED' ? 'mini-status--completed' : ''}}">{{repair.status === 'COMPLETED' ? '已完成' : '未完成'}}</text></view><view class="repair-mini-meta"><view><text>返修单号</text><b>{{repair.repairNo}}</b></view><view><text>退回日期</text><b>{{repair.returnDate}}</b></view></view><view class="repair-mini-stats"><view><text>返修数量</text><b>{{repair.repairedQuantity}}</b></view><view><text>报废数量</text><b>{{repair.scrappedQuantity}}</b></view></view><view class="repair-mini-progress"><view><text>返回进度</text><b>{{repair.returnedQuantity}} / {{repair.warehouseReturnQuantity}}</b><em>{{progress}}%</em></view><view class="repair-mini-track"><view style="width:{{progress}}%"/></view></view></view>
-  <view class="repair-mini-section"><view class="repair-mini-section-head"><b>质检明细</b><text>{{repair.lines.length}} 个规格</text></view><view wx:for="{{repair.lines}}" wx:key="inspectionLineId" class="repair-mini-line"><view><b>{{item.productName}}</b><text>{{item.propertiesValue}} · 箱号 {{item.boxNumber}}</text></view><view><text>仓库退回</text><b>{{item.warehouseReturnQuantity}}</b></view></view></view>
-  <view class="repair-mini-section"><view class="repair-mini-section-head"><b>工厂发回记录</b><text>0 次</text></view><view class="repair-mini-empty"><b>尚未发回</b><text>工厂提交发回记录后将在这里显示</text></view></view>
-</view></view>
+<view class="repair-mini-detail">
+  <mini-titlebar title="返修详情" showBack="{{true}}" backLeft="{{true}}" bind:back="goBack"/>
+  <view wx:if="{{loading}}" class="mini-empty">正在加载返修详情…</view>
+  <view wx:elif="{{repair}}" class="repair-mini-content">
+    <view class="repair-mini-summary admin-repair-summary">
+      <view class="repair-mini-heading"><view><text>工厂</text><b>{{repair.factoryName}}</b></view><text class="repair-detail-status {{repair.status === 'COMPLETED' ? 'is-completed' : ''}}">{{repair.status === 'COMPLETED' ? '已完成' : '未完成'}}</text></view>
+      <view class="admin-repair-meta"><view><text>返修单号</text><b>{{repair.repairNo}}</b></view><view><text>退回日期</text><b>{{repair.returnDate}}</b></view></view>
+      <view class="repair-mini-stats"><view><text>返修数量</text><b>{{repair.repairedQuantity}}</b></view><view><text>报废数量</text><b>{{repair.scrappedQuantity}}</b></view></view>
+      <view class="repair-mini-progress"><view><text>返回进度</text><b>{{repair.returnedQuantity}} / {{repair.warehouseReturnQuantity}}</b><em>{{progress}}%</em></view><view class="repair-mini-track"><view style="width:{{progress}}%"/></view><text>待返回 <b>{{pending}}</b> 件</text></view>
+    </view>
+    <view class="repair-mini-section">
+      <view class="repair-mini-section-head"><b>质检附件</b><text>原始质检文件</text></view>
+      <view class="repair-mini-attachment"><view class="repair-file-icon"><image src="/assets/icons/file-blue.svg" mode="aspectFit"/></view><view><b>{{repair.originalFilename}}</b><text>Excel · {{fileSizeText}}</text></view><button bindtap="openAttachment">查看</button><button bindtap="openAttachment">下载</button></view>
+    </view>
+    <view class="repair-mini-section">
+      <view class="repair-mini-section-head"><b>工厂发回记录</b><text>{{returnBatches.length}} 次</text></view>
+      <view wx:if="{{!returnBatches.length}}" class="repair-mini-empty"><image class="repair-empty-truck" src="/assets/icons/truck-muted.svg" mode="aspectFit"/><b>尚未发回</b><text>工厂提交发回记录后将在这里显示。</text></view>
+      <view wx:else class="admin-return-list">
+        <view wx:for="{{returnBatches}}" wx:key="batchId" class="admin-return-batch">
+          <view class="admin-return-summary" data-index="{{index}}" bindtap="toggleBatch"><view><b>{{item.returnDate}}</b><text>{{item.lines.length}} 个规格</text></view><text>发回 {{item.returnedQuantity}}</text><i class="{{item.expanded ? 'is-open' : ''}}">›</i></view>
+          <view wx:if="{{item.expanded}}" class="admin-return-table">
+            <view class="admin-return-head"><text>产品名称</text><text>颜色/规格</text><text>返修数量</text><text>报废数量</text><text>本次发回</text></view>
+            <view wx:for="{{item.lines}}" wx:for-item="line" wx:key="propertiesValue" class="admin-return-row"><b>{{line.productName}}</b><text>{{line.propertiesValue}}</text><text>{{line.repairedQuantity}}</text><text>{{line.scrappedQuantity}}</text><b>{{line.returnedQuantity}}</b></view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -14,6 +14,20 @@ export interface RepairLine {
   reason: string | null;
 }
 
+export interface RepairReturnLine {
+  productName: string;
+  propertiesValue: string;
+  warehouseReturnQuantity: number;
+  repairedQuantity: number;
+  scrappedQuantity: number;
+}
+
+export interface RepairReturnBatch {
+  batchId: string;
+  returnDate: string;
+  lines: RepairReturnLine[];
+}
+
 export interface Repair {
   repairId: string;
   repairNo: string;
@@ -30,6 +44,7 @@ export interface Repair {
   originalSizeBytes: number;
   createdAt: string;
   lines: RepairLine[];
+  returnBatches?: RepairReturnBatch[];
 }
 
 export interface RepairList { items: Repair[]; total: number; page: number; pageSize: number }

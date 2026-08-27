@@ -1,3 +1,6 @@
+.repair-segment { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8rpx; margin: 24rpx 28rpx 0; padding: 8rpx; background: #eef2f6; border: 0; border-radius: 24rpx; }
+.repair-segment button { height: 72rpx; padding: 0; color: #697584; font-size: 26rpx; font-weight: 700; line-height: 72rpx; background: transparent; border: 0; border-radius: 18rpx; }
+.repair-segment button.is-active { color: #1677ff; background: #fff; border: 0; box-shadow: 0 4rpx 16rpx rgba(38, 54, 73, .1); }
 .admin-ship-search-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18rpx; padding: 20rpx 28rpx 28rpx; background: #fff; }
 .admin-ship-search { display: flex; min-width: 0; height: 88rpx; align-items: center; gap: 18rpx; padding: 0 26rpx; background: #f7f9fb; border: 1rpx solid #dce2e9; border-radius: 24rpx; }
 .admin-ship-search image { width: 38rpx; height: 38rpx; flex: 0 0 38rpx; }
@@ -26,6 +29,36 @@
 .admin-ship-stats b { font-size: 30rpx; }
 .admin-ship-number { display: flex; min-height: 74rpx; align-items: center; gap: 14rpx; padding: 0 32rpx; background: #fbfcfd; border-top: 1rpx solid #e6e9ed; }
 .admin-ship-number b { color: #7a8592; font-size: 23rpx; letter-spacing: .02em; }
+
+.repair-mini-list { display: block; padding: 24rpx 28rpx 150rpx; }
+.repair-result { display: flex; align-items: center; justify-content: space-between; padding: 0 8rpx 18rpx; color: #74808d; font-size: 23rpx; }
+.repair-result text:last-child { color: #929ba6; }
+.repair-mini-card { margin-bottom: 24rpx; overflow: hidden; background: #fff; border: 1rpx solid #e2e7ed; border-radius: 32rpx; box-shadow: 0 10rpx 28rpx rgba(34,50,70,.06); }
+.repair-mini-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 28rpx; padding: 28rpx 32rpx 24rpx; }
+.repair-mini-card-head > view:first-child { display: grid; min-width: 0; gap: 7rpx; }
+.repair-mini-card-head > view:first-child > text { color: #73808d; font-size: 21rpx; }
+.repair-mini-card-head > view:first-child > b { font-size: 38rpx; line-height: 1.3; }
+.repair-mini-card-head em { overflow: hidden; color: #596675; font-size: 23rpx; font-style: normal; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.repair-mini-card-pending { display: grid; flex: 0 0 auto; justify-items: end; gap: 7rpx; }
+.repair-mini-card-pending small { color: #73808d; font-size: 20rpx; }
+.repair-mini-card-pending > b { color: #ef5b62; font-size: 32rpx; }
+.repair-mini-card-progress { padding: 24rpx 32rpx 26rpx; border-top: 1rpx solid #e2e7ed; }
+.repair-mini-card-progress > view:first-child { display: flex; align-items: baseline; gap: 16rpx; color: #73808d; font-size: 21rpx; }
+.repair-mini-card-progress > view:first-child b { margin-left: auto; color: #27313d; font-size: 25rpx; }
+.repair-mini-card-progress em { min-width: 72rpx; color: #1677ff; font-size: 28rpx; font-style: normal; font-weight: 800; text-align: right; }
+.repair-mini-card-progress > view:last-child { height: 14rpx; margin-top: 16rpx; overflow: hidden; background: #e9edf2; border-radius: 99rpx; }
+.repair-mini-card-progress > view:last-child view { height: 100%; background: #1677ff; border-radius: inherit; }
+.repair-mini-card-stats { display: grid; grid-template-columns: repeat(2, 1fr); padding: 0; background: #fff; border-top: 1rpx solid #e2e7ed; }
+.repair-mini-card-stats view { display: grid; justify-items: start; gap: 8rpx; padding: 22rpx 32rpx; border-right: 0; }
+.repair-mini-card-stats view + view { border-left: 1rpx solid #e2e7ed; }
+.repair-mini-card-stats text { color: #73808d; font-size: 20rpx; }
+.repair-mini-card-stats b { font-size: 30rpx; }
+.repair-mini-card-date { display: flex; align-items: center; gap: 12rpx; padding: 20rpx 32rpx; border-top: 1rpx solid #e2e7ed; }
+.repair-mini-card-date image { width: 34rpx; height: 34rpx; }
+.repair-mini-card-date text,.repair-mini-card-foot text { color: #73808d; font-size: 21rpx; }
+.repair-mini-card-date b { margin-left: auto; font-size: 24rpx; }
+.repair-mini-card-foot { display: flex; min-height: 72rpx; align-items: center; gap: 14rpx; padding: 0 32rpx; color: #73808d; font-size: 21rpx; background: #fbfcfd; border-top: 1rpx solid #e2e7ed; }
+.repair-mini-card-foot b { color: #7a8592; font-size: 22rpx; }
 
 .admin-ship-sheet-layer { position: fixed; z-index: 80; inset: 0; display: flex; align-items: flex-end; justify-content: center; background: rgba(12,20,30,.46); }
 .admin-ship-filter-sheet { position: relative; width: 100%; max-height: 88vh; padding: 16rpx 36rpx calc(36rpx + env(safe-area-inset-bottom)); overflow-y: auto; background: #fff; border-radius: 48rpx 48rpx 0 0; }

@@ -1,6 +1,6 @@
 import { orderApi, type Order } from "../../api/orders";
 import { repairApi, type Repair } from "../../api/repairs";
-import { isDevPreview, previewOrder } from "../../modules/dev-preview";
+import { isDevPreview, PREVIEW_REPAIRS, previewOrder } from "../../modules/dev-preview";
 import { clearSession, storedUser } from "../../modules/identity/session";
 import { formatContractShipDate, formatQuantity, orderProductSummary, statusTone } from "../../modules/orders/format";
 
@@ -13,7 +13,7 @@ type ViewOrder = Order & {
   pendingText: string;
   statusTone: string;
 };
-type RepairCard = Repair & { productSummary: string; progress: number; pending: number };
+type RepairCard = Repair & { productSummary: string; progress: number; pending: number; returnDateText: string };
 
 const statusOptions: FilterOption[] = [
   { label: "全部状态", value: "all" },
@@ -21,6 +21,17 @@ const statusOptions: FilterOption[] = [
   { label: "已逾期", value: "已逾期" },
   { label: "已完成", value: "已完成" },
 ];
+
+const repairStatusOptions: FilterOption[] = [
+  { label: "全部状态", value: "all" },
+  { label: "未完成", value: "INCOMPLETE" },
+  { label: "已完成", value: "COMPLETED" },
+];
+
+function formatRepairDate(value: string): string {
+  const [, month = "", day = ""] = value.split("-");
+  return `${month}月${day}日`;
+}
 
 function optionIndex(options: FilterOption[], value: string): number {
   const index = options.findIndex((option) => option.value === value);
@@ -36,6 +47,9 @@ Page({
     activeTab: "orders",
     items: [] as ViewOrder[],
     repairItems: [] as RepairCard[], allRepairItems: [] as RepairCard[], repairStatus: "all",
+    repairStatusOptions,
+    draftRepairStatusIndex: 0,
+    repairActiveFilterCount: 0,
     keyword: "",
     status: "all",
     shipDateFrom: "",
@@ -71,15 +85,19 @@ Page({
   search() { if (this.data.activeTab === "repairs") this.applyRepairFilters(); else void this.loadOrders(); },
   async loadRepairs() {
     this.setData({ loading: true, error: "" });
-    try { const allRepairItems = (await repairApi.factoryList()).items.map((item) => ({ ...item, productSummary: Array.from(new Set(item.lines.map((line) => line.productName))).join("、") || "—", progress: item.warehouseReturnQuantity ? Math.round(item.returnedQuantity / item.warehouseReturnQuantity * 100) : 0, pending: Math.max(0, item.warehouseReturnQuantity - item.returnedQuantity) })); this.setData({ allRepairItems }); this.applyRepairFilters(); }
+    try { const repairs = this.data.previewMode ? PREVIEW_REPAIRS : (await repairApi.factoryList()).items; const allRepairItems = repairs.map((item) => ({ ...item, productSummary: Array.from(new Set(item.lines.map((line) => line.productName))).join("、") || "—", progress: item.warehouseReturnQuantity ? Math.round(item.returnedQuantity / item.warehouseReturnQuantity * 100) : 0, pending: Math.max(0, item.warehouseReturnQuantity - item.returnedQuantity), returnDateText: formatRepairDate(item.returnDate) })); this.setData({ allRepairItems }); this.applyRepairFilters(); }
     catch { this.setData({ error: "返修任务加载失败，请下拉重试" }); }
     finally { this.setData({ loading: false }); }
   },
   applyRepairFilters() { const keyword = this.data.keyword.trim().toLowerCase(); this.setData({ repairItems: this.data.allRepairItems.filter((item) => (!keyword || `${item.repairNo} ${item.productSummary}`.toLowerCase().includes(keyword)) && (this.data.repairStatus === "all" || item.status === this.data.repairStatus)) }); },
   setRepairStatus(event: WechatMiniprogram.TouchEvent) { this.setData({ repairStatus: String(event.currentTarget.dataset.status) }, () => this.applyRepairFilters()); },
-  openRepair(event: WechatMiniprogram.TouchEvent) { wx.navigateTo({ url: `/pages/factory-repair-detail/factory-repair-detail?repairId=${encodeURIComponent(event.currentTarget.dataset.id)}` }); },
+  openRepair(event: WechatMiniprogram.TouchEvent) { wx.navigateTo({ url: `/pages/factory-repair-detail/factory-repair-detail?repairId=${encodeURIComponent(event.currentTarget.dataset.id)}${this.data.previewMode ? "&preview=1" : ""}` }); },
   toggleFilter() {
     if (this.data.filterOpen) { this.closeFilter(); return; }
+    if (this.data.activeTab === "repairs") {
+      this.setData({ filterOpen: true, draftRepairStatusIndex: optionIndex(this.data.repairStatusOptions, this.data.repairStatus) });
+      return;
+    }
     this.setData({
       filterOpen: true,
       draftStatusIndex: optionIndex(this.data.statusOptions, this.data.status),
@@ -92,8 +110,17 @@ Page({
   statusChanged(event: WechatMiniprogram.PickerChange) { this.setData({ draftStatusIndex: Number(event.detail.value) }); },
   shipDateFromChanged(event: WechatMiniprogram.PickerChange) { this.setData({ draftShipDateFrom: String(event.detail.value) }); },
   shipDateToChanged(event: WechatMiniprogram.PickerChange) { this.setData({ draftShipDateTo: String(event.detail.value) }); },
-  resetFilter() { this.setData({ draftStatusIndex: 0, draftShipDateFrom: "", draftShipDateTo: "" }); },
+  repairStatusChanged(event: WechatMiniprogram.PickerChange) { this.setData({ draftRepairStatusIndex: Number(event.detail.value) }); },
+  resetFilter() {
+    if (this.data.activeTab === "repairs") { this.setData({ draftRepairStatusIndex: 0 }); return; }
+    this.setData({ draftStatusIndex: 0, draftShipDateFrom: "", draftShipDateTo: "" });
+  },
   applyFilter() {
+    if (this.data.activeTab === "repairs") {
+      const repairStatus = this.data.repairStatusOptions[this.data.draftRepairStatusIndex]?.value ?? "all";
+      this.setData({ repairStatus, repairActiveFilterCount: repairStatus === "all" ? 0 : 1, filterOpen: false }, () => this.applyRepairFilters());
+      return;
+    }
     if (this.data.draftShipDateFrom && this.data.draftShipDateTo && this.data.draftShipDateFrom > this.data.draftShipDateTo) {
       wx.showToast({ title: "开始日期不能晚于结束日期", icon: "none" });
       return;

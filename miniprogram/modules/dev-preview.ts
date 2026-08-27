@@ -2,6 +2,7 @@ import type { FactoryApplication, FactoryOption } from "../api/factory";
 import type { Order } from "../api/orders";
 import type { User } from "./identity/session";
 import type { CatalogItem, Shipment } from "../api/shipments";
+import type { Repair } from "../api/repairs";
 
 export type PreviewOptions = Record<string, string | undefined>;
 
@@ -140,3 +141,92 @@ export const PREVIEW_FACTORY_SHIPMENTS: Shipment[] = [
     ],
   },
 ];
+
+export const PREVIEW_REPAIRS: Repair[] = [
+  {
+    repairId: "preview-repair-1",
+    repairNo: "FX20260812-001",
+    status: "INCOMPLETE",
+    returnDate: "2026-08-12",
+    factoryId: "preview-factory-1",
+    factoryName: "禹帆",
+    warehouseReturnQuantity: 400,
+    repairedQuantity: 0,
+    scrappedQuantity: 0,
+    returnedQuantity: 0,
+    originalFileId: 900001,
+    originalFilename: "质检单_20260812.xlsx",
+    originalSizeBytes: 292864,
+    createdAt: "2026-08-12T09:30:00+08:00",
+    lines: [
+      { inspectionLineId: 900001, sourceRow: 2, sourceOrder: 1, boxNumber: "1", sourceSkuId: "PREVIEW-001", productName: "云朵软壳冲锋衣", propertiesValue: "松石绿/110", warehouseReturnQuantity: 160, reason: "车线不齐" },
+      { inspectionLineId: 900002, sourceRow: 3, sourceOrder: 2, boxNumber: "1", sourceSkuId: "PREVIEW-002", productName: "云朵软壳冲锋衣", propertiesValue: "米白/110", warehouseReturnQuantity: 120, reason: "轻微污渍" },
+      { inspectionLineId: 900003, sourceRow: 4, sourceOrder: 3, boxNumber: "2", sourceSkuId: "PREVIEW-003", productName: "小热皮绒绒裤", propertiesValue: "棕色/100", warehouseReturnQuantity: 120, reason: "尺寸偏差" },
+    ],
+  },
+  {
+    repairId: "preview-repair-2",
+    repairNo: "FX20260810-002",
+    status: "INCOMPLETE",
+    returnDate: "2026-08-10",
+    factoryId: "preview-factory-1",
+    factoryName: "禹帆",
+    warehouseReturnQuantity: 900,
+    repairedQuantity: 330,
+    scrappedQuantity: 90,
+    returnedQuantity: 420,
+    originalFileId: 900002,
+    originalFilename: "质检单_20260810.xlsx",
+    originalSizeBytes: 321536,
+    createdAt: "2026-08-10T10:18:00+08:00",
+    lines: [
+      { inspectionLineId: 900004, sourceRow: 2, sourceOrder: 1, boxNumber: "1", sourceSkuId: "PREVIEW-004", productName: "乐园游会吊带包屁衣", propertiesValue: "蓝色/90", warehouseReturnQuantity: 450, reason: "面料破损" },
+      { inspectionLineId: 900005, sourceRow: 3, sourceOrder: 2, boxNumber: "2", sourceSkuId: "PREVIEW-005", productName: "乐园游会吊带包屁衣", propertiesValue: "蓝色/100", warehouseReturnQuantity: 450, reason: "印花偏位" },
+    ],
+  },
+];
+
+export const PREVIEW_ADMIN_REPAIRS: Repair[] = [
+  {
+    ...PREVIEW_REPAIRS[0], repairId: "preview-admin-repair-1", repairNo: "FX20260817-001",
+    returnDate: "2026-08-17", factoryId: "preview-admin-factory-1", factoryName: "旭之梦", warehouseReturnQuantity: 36,
+    repairedQuantity: 18, scrappedQuantity: 2, returnedQuantity: 20,
+    originalFilename: "质检单_20260817.xlsx", originalSizeBytes: 286720,
+    lines: [
+      { ...PREVIEW_REPAIRS[0].lines[0], inspectionLineId: 910001, productName: "探索家渔夫帽", propertiesValue: "米白/52", warehouseReturnQuantity: 20 },
+      { ...PREVIEW_REPAIRS[0].lines[1], inspectionLineId: 910002, productName: "探索家渔夫帽", propertiesValue: "藏青/54", warehouseReturnQuantity: 16 },
+    ],
+    returnBatches: [{
+      batchId: "preview-admin-batch-1", returnDate: "2026年08月16日",
+      lines: [
+        { productName: "探索家渔夫帽", propertiesValue: "米白/52", warehouseReturnQuantity: 20, repairedQuantity: 12, scrappedQuantity: 1 },
+        { productName: "探索家渔夫帽", propertiesValue: "藏青/54", warehouseReturnQuantity: 16, repairedQuantity: 6, scrappedQuantity: 1 },
+      ],
+    }],
+  },
+  {
+    ...PREVIEW_REPAIRS[0], repairId: "preview-admin-repair-2", repairNo: "FX20260816-002",
+    returnDate: "2026-08-16", factoryId: "preview-admin-factory-2", factoryName: "龙腾", warehouseReturnQuantity: 48,
+    repairedQuantity: 0, scrappedQuantity: 0, returnedQuantity: 0,
+    originalFilename: "质检单_20260816.xlsx",
+    lines: [{ ...PREVIEW_REPAIRS[0].lines[2], inspectionLineId: 920001, productName: "轻量防风马甲", propertiesValue: "军绿/110", warehouseReturnQuantity: 48 }],
+  },
+  {
+    ...PREVIEW_REPAIRS[1], repairId: "preview-admin-repair-3", repairNo: "FX20260815-003",
+    returnDate: "2026-08-15", factoryId: "preview-admin-factory-3", factoryName: "禹帆", warehouseReturnQuantity: 120,
+    repairedQuantity: 78, scrappedQuantity: 12, returnedQuantity: 90,
+  },
+  {
+    ...PREVIEW_REPAIRS[0], repairId: "preview-admin-repair-4", repairNo: "FX20260814-004",
+    returnDate: "2026-08-14", factoryId: "preview-admin-factory-4", factoryName: "华盛", warehouseReturnQuantity: 60,
+    repairedQuantity: 56, scrappedQuantity: 4, returnedQuantity: 60, status: "COMPLETED",
+  },
+];
+
+export function previewRepair(repairId: string): Repair | undefined {
+  return PREVIEW_REPAIRS.find((repair) => repair.repairId === repairId);
+}
+
+export function previewAdminRepair(repairId: string): Repair | undefined {
+  return PREVIEW_ADMIN_REPAIRS.find((repair) => repair.repairId === repairId);
+}

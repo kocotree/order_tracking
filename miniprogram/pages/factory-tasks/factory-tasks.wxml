@@ -37,7 +37,26 @@
     </view>
   </block>
 
-  <block wx:else><view class="mini-search-bar factory-search-bar"><view class="mini-search-field"><image class="mini-search-icon" src="/assets/icons/search-gray.svg" mode="aspectFit"/><input value="{{keyword}}" placeholder="搜索返修单号或产品名称" bindinput="keywordChanged" confirm-type="search" bindconfirm="search"/></view></view><view class="repair-status-row"><button class="{{repairStatus === 'all' ? 'is-active' : ''}}" data-status="all" bindtap="setRepairStatus">全部</button><button class="{{repairStatus === 'INCOMPLETE' ? 'is-active' : ''}}" data-status="INCOMPLETE" bindtap="setRepairStatus">未完成</button><button class="{{repairStatus === 'COMPLETED' ? 'is-active' : ''}}" data-status="COMPLETED" bindtap="setRepairStatus">已完成</button></view><view class="repair-mini-list"><view wx:if="{{loading}}" class="mini-empty">正在加载返修任务…</view><view wx:elif="{{error}}" class="mini-empty mini-error">{{error}}</view><view wx:elif="{{!repairItems.length}}" class="mini-empty"><text>暂无返修任务</text><text>管理员创建返修单后会显示在这里</text></view><view wx:for="{{repairItems}}" wx:key="repairId" class="repair-mini-card" data-id="{{item.repairId}}" bindtap="openRepair"><view class="repair-mini-card-head"><view><b>{{item.repairNo}}</b><text>{{item.productSummary}}</text></view><text class="mini-status {{item.status === 'COMPLETED' ? 'mini-status--completed' : ''}}">{{item.status === 'COMPLETED' ? '已完成' : '未完成'}}</text></view><view class="repair-mini-card-progress"><view><text>返回进度</text><b>{{item.returnedQuantity}} / {{item.warehouseReturnQuantity}}</b><em>{{item.progress}}%</em></view><view><view style="width:{{item.progress}}%"/></view></view><view class="repair-mini-card-stats"><view><text>待返回</text><b>{{item.pending}}</b></view><view><text>退回日期</text><b>{{item.returnDate}}</b></view></view></view></view></block>
+  <block wx:else>
+    <view class="mini-search-bar factory-search-bar repair-search-bar">
+      <view class="mini-search-field repair-search-field"><image class="mini-search-icon" src="/assets/icons/search-gray.svg" mode="aspectFit"/><input value="{{keyword}}" placeholder="返修单号或产品名称" bindinput="keywordChanged" confirm-type="search" bindconfirm="search"/></view>
+      <button class="factory-filter-button repair-filter-button" bindtap="toggleFilter"><image src="/assets/icons/filter-blue.svg" mode="aspectFit"/><text>筛选</text><text wx:if="{{repairActiveFilterCount}}" class="mini-filter-count">{{repairActiveFilterCount}}</text></button>
+    </view>
+    <view class="repair-task-content">
+      <view wx:if="{{loading}}" class="mini-empty">正在加载返修任务…</view>
+      <view wx:elif="{{error}}" class="mini-empty mini-error">{{error}}</view>
+      <view wx:elif="{{!repairItems.length}}" class="mini-empty"><text>暂无返修任务</text><text>管理员创建返修单后会显示在这里</text></view>
+      <block wx:else>
+        <text class="repair-result-summary">共 {{repairItems.length}} 个返修任务</text>
+        <view wx:for="{{repairItems}}" wx:key="repairId" class="repair-task-card" data-id="{{item.repairId}}" bindtap="openRepair">
+          <view class="repair-task-card-head"><view><b>{{item.repairNo}}</b><text>{{item.productSummary}}</text></view><text class="repair-task-status {{item.status === 'COMPLETED' ? 'is-completed' : ''}}">{{item.status === 'COMPLETED' ? '已完成' : '未完成'}}</text></view>
+          <view class="repair-task-date"><image src="/assets/icons/calendar-blue.svg" mode="aspectFit"/><text>退回日期</text><b>{{item.returnDateText}}</b></view>
+          <view class="repair-task-stats"><view><text>仓库退回</text><b>{{item.warehouseReturnQuantity}}</b></view><view><text>已返回</text><b>{{item.returnedQuantity}}</b></view><view><text>待返回</text><b class="{{item.pending > 0 ? 'is-pending' : ''}}">{{item.pending}}</b></view></view>
+          <view class="repair-task-progress"><text>返回进度</text><view><view style="width:{{item.progress}}%"/></view><b>{{item.progress}}%</b></view>
+        </view>
+      </block>
+    </view>
+  </block>
 
   <view wx:if="{{activeTab === 'orders'}}" class="factory-create-shipment-bar">
     <button class="factory-create-shipment-button" bindtap="createShipment">创建发货单</button>
@@ -46,10 +65,10 @@
   <view wx:if="{{filterOpen}}" class="mini-sheet-layer" bindtap="closeFilter">
     <view class="mini-filter-sheet" catchtap="stopPropagation">
       <view class="mini-sheet-handle" />
-      <view class="mini-sheet-header"><text class="mini-sheet-heading">筛选订单任务</text><view role="button" aria-label="关闭筛选" class="mini-sheet-close" bindtap="closeFilter"><view class="mini-sheet-close-line" /><view class="mini-sheet-close-line is-reversed" /></view></view>
+      <view class="mini-sheet-header"><text class="mini-sheet-heading">筛选{{activeTab === 'repairs' ? '返修' : '订单'}}任务</text><view role="button" aria-label="关闭筛选" class="mini-sheet-close" bindtap="closeFilter"><view class="mini-sheet-close-line" /><view class="mini-sheet-close-line is-reversed" /></view></view>
       <view class="mini-filter-body">
-        <view class="mini-filter-field"><text class="mini-filter-label">订单状态</text><picker range="{{statusOptions}}" range-key="label" value="{{draftStatusIndex}}" bindchange="statusChanged"><view class="mini-picker-value"><text>{{statusOptions[draftStatusIndex].label}}</text><view class="mini-picker-arrow" /></view></picker></view>
-        <view class="mini-filter-field"><text class="mini-filter-label">合同出货时间范围</text><view class="mini-date-range"><picker mode="date" value="{{draftShipDateFrom}}" bindchange="shipDateFromChanged"><view class="mini-date-value"><text class="mini-date-copy {{draftShipDateFrom ? '' : 'is-placeholder'}}">{{draftShipDateFrom || 'yyyy/mm/日'}}</text><view class="mini-date-icon" /></view></picker><text class="mini-date-separator">至</text><picker mode="date" value="{{draftShipDateTo}}" bindchange="shipDateToChanged"><view class="mini-date-value"><text class="mini-date-copy {{draftShipDateTo ? '' : 'is-placeholder'}}">{{draftShipDateTo || 'yyyy/mm/日'}}</text><view class="mini-date-icon" /></view></picker></view></view>
+        <block wx:if="{{activeTab === 'repairs'}}"><view class="mini-filter-field"><text class="mini-filter-label">返修状态</text><picker range="{{repairStatusOptions}}" range-key="label" value="{{draftRepairStatusIndex}}" bindchange="repairStatusChanged"><view class="mini-picker-value"><text>{{repairStatusOptions[draftRepairStatusIndex].label}}</text><view class="mini-picker-arrow" /></view></picker></view></block>
+        <block wx:else><view class="mini-filter-field"><text class="mini-filter-label">订单状态</text><picker range="{{statusOptions}}" range-key="label" value="{{draftStatusIndex}}" bindchange="statusChanged"><view class="mini-picker-value"><text>{{statusOptions[draftStatusIndex].label}}</text><view class="mini-picker-arrow" /></view></picker></view><view class="mini-filter-field"><text class="mini-filter-label">合同出货时间范围</text><view class="mini-date-range"><picker mode="date" value="{{draftShipDateFrom}}" bindchange="shipDateFromChanged"><view class="mini-date-value"><text class="mini-date-copy {{draftShipDateFrom ? '' : 'is-placeholder'}}">{{draftShipDateFrom || 'yyyy/mm/日'}}</text><view class="mini-date-icon" /></view></picker><text class="mini-date-separator">至</text><picker mode="date" value="{{draftShipDateTo}}" bindchange="shipDateToChanged"><view class="mini-date-value"><text class="mini-date-copy {{draftShipDateTo ? '' : 'is-placeholder'}}">{{draftShipDateTo || 'yyyy/mm/日'}}</text><view class="mini-date-icon" /></view></picker></view></view></block>
       </view>
       <view class="mini-filter-actions"><button class="mini-filter-reset" bindtap="resetFilter">重置</button><button class="mini-filter-apply" bindtap="applyFilter">查看结果</button></view>
     </view>

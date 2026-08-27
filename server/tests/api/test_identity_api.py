@@ -33,7 +33,9 @@ def clean_identity_tables(engine: Engine) -> None:
 def test_web_identity_api_uses_secure_cookie_csrf_and_super_admin_authorization(
     test_database_engine: Engine,
     test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("ORDER_TRACKING_WEB_COOKIE_SECURE", "true")
     clean_identity_tables(test_database_engine)
     feishu = FakeFeishuIdentity(
         profiles={

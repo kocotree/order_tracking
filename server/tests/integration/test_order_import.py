@@ -598,7 +598,8 @@ def test_worker_retries_before_releasing_failed_import_run(
     _clean_import_data(test_database_engine)
     _seed_import_dependencies(test_database_engine)
     sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
-    service = OrderImportService(sessions)
+    started_at = datetime(2026, 8, 22, 9, 0)
+    service = OrderImportService(sessions, clock=lambda: started_at)
     run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="retry-run")
     order_handlers = OrderImportWorkerHandlers(
         service=service,
@@ -612,8 +613,6 @@ def test_worker_retries_before_releasing_failed_import_run(
         retry_limits={"order_import": 3},
         retry_delay_seconds=30,
     )
-    started_at = datetime(2026, 8, 22, 9, 0)
-
     assert worker.run_once(now=started_at)
     assert service.get_run(actor_id="admin-order-import", run_id=run.run_id).status == "PENDING"
     assert worker.run_once(now=started_at + timedelta(seconds=31))

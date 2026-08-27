@@ -10,7 +10,7 @@
 .shipment-operation b { font-size: 26rpx; }
 .shipment-operation text { color: #6f7b88; font-size: 22rpx; line-height: 1.5; }
 .shipment-withdraw-bar { position: fixed; z-index: 25; right: 0; bottom: 0; left: 0; box-sizing: border-box; width: 100%; max-width: 860rpx; margin: 0 auto; padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom)); background: rgba(255,255,255,.96); border-top: 1rpx solid #e2e7ed; }
-.shipment-withdraw-bar button { height: 96rpx; color: #d43838; font-size: 30rpx; font-weight: 800; line-height: 96rpx; background: #fff7f7; border: 1rpx solid #ffb5b5; border-radius: 26rpx; }
+.shipment-withdraw-bar button { width: 100%; height: 96rpx; color: #d43838; font-size: 30rpx; font-weight: 800; line-height: 96rpx; background: #fff7f7; border: 1rpx solid #ffb5b5; border-radius: 26rpx; }
 .shipment-withdraw-layer { position: fixed; z-index: 80; inset: 0; display: flex; align-items: flex-end; justify-content: center; background: rgba(20,28,38,.48); }
 .shipment-withdraw-sheet { box-sizing: border-box; width: 100%; max-width: 860rpx; padding: 16rpx 36rpx calc(32rpx + env(safe-area-inset-bottom)); background: #fff; border-radius: 44rpx 44rpx 0 0; box-shadow: 0 -32rpx 84rpx rgba(20,36,58,.18); }
 .sheet-handle { width: 72rpx; height: 8rpx; margin: 0 auto 14rpx; background: #d7dce2; border-radius: 8rpx; }

@@ -4,7 +4,6 @@ import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } f
 
 const backIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const uploadIcon = `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M24 33V12m0 0-8 8m8-8 8 8M10 34v4h28v-4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const photoIcon = `<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="4" y="6" width="24" height="20" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="13" r="2.5" stroke="currentColor" stroke-width="1.6"/><path d="m7 23 7-7 4 4 3-3 4 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 function formatNumber(value) {
   return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
@@ -20,11 +19,6 @@ function renderPreviewRows(lines) {
       <td class="repair-number-cell">${escapeHTML(formatNumber(line.quantity))}</td>
       <td>${escapeHTML(line.boxNo)}</td>
       <td class="repair-reason-cell" title="${escapeHTML(line.reason || "—")}">${escapeHTML(line.reason || "—")}</td>
-      <td>
-        ${line.photoCount
-          ? `<button class="repair-photo-button" type="button" data-preview-photo="${index}">${photoIcon}<span>${line.photoCount} 张</span></button>`
-          : `<button class="repair-photo-button is-empty" type="button" data-preview-photo-upload="${index}">${photoIcon}<span>补传</span></button>`}
-      </td>
     </tr>
   `).join("");
 }
@@ -42,7 +36,7 @@ export function renderRepairCreatePage() {
           <button class="repair-upload-zone" type="button" data-repair-upload>
             ${uploadIcon}
             <strong>上传质检 Excel</strong>
-            <span>支持 .xlsx、.xls 文件，上传后自动读取工厂、箱号、产品规格、数量、原因和照片。</span>
+            <span>仅支持 .xlsx，上传后自动读取工厂、箱号、产品规格、数量和次品原因；原始 Excel 将完整保留并作为附件提供下载。</span>
           </button>
           <div class="repair-uploaded-file" hidden data-repair-uploaded-file>
             <div><span class="repair-file-mark">XLS</span><span><strong data-repair-file-name></strong><small>质检单已读取，可以重新上传替换</small></span></div>
@@ -67,7 +61,7 @@ export function renderRepairCreatePage() {
         </div>
         <div class="detail-table-scroll">
           <table class="detail-data-table repair-preview-table data-grid-table" data-sort-table="repair-preview">
-            <thead><tr><th scope="col">序号</th>${renderSortableHeader("产品编码", "code")}${renderSortableHeader("产品名称", "name")}${renderSortableHeader("颜色/规格", "colorSpec")}${renderSortableHeader("退回数量", "quantity")}${renderSortableHeader("箱号", "boxNo")}${renderSortableHeader("次品原因", "reason")}<th scope="col">次品照片</th></tr></thead>
+            <thead><tr><th scope="col">序号</th>${renderSortableHeader("产品编码", "code")}${renderSortableHeader("产品名称", "name")}${renderSortableHeader("颜色/规格", "colorSpec")}${renderSortableHeader("仓库退回数量", "quantity")}${renderSortableHeader("箱号", "boxNo")}${renderSortableHeader("次品原因", "reason")}</tr></thead>
             <tbody data-repair-preview-body>${renderPreviewRows(repairImportPreview.lines)}</tbody>
           </table>
         </div>
@@ -140,8 +134,6 @@ export function bindRepairCreatePage() {
       if (previewBody) previewBody.innerHTML = renderPreviewRows(previewLines);
       return;
     }
-    if (event.target.closest("[data-preview-photo]")) showToast("查看次品照片", "原型阶段使用图片占位，正式开发时打开质检单内的原始照片。");
-    if (event.target.closest("[data-preview-photo-upload]")) showToast("补传次品照片", "正式开发时可为该条明细补传照片，照片允许为空。若已识别失败也可在这里补传。");
   });
 
   page?.querySelector("[data-repair-create-submit]")?.addEventListener("click", () => {

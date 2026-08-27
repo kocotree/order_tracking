@@ -1,4 +1,5 @@
 import { orderApi, type Order } from "../../api/orders";
+import { repairApi, type Repair } from "../../api/repairs";
 import { isDevPreview, previewOrder } from "../../modules/dev-preview";
 import { clearSession, storedUser } from "../../modules/identity/session";
 import { formatContractShipDate, formatQuantity, orderProductSummary, statusTone } from "../../modules/orders/format";
@@ -12,6 +13,7 @@ type ViewOrder = Order & {
   pendingText: string;
   statusTone: string;
 };
+type RepairCard = Repair & { productSummary: string; progress: number; pending: number };
 
 const statusOptions: FilterOption[] = [
   { label: "全部状态", value: "all" },
@@ -33,6 +35,7 @@ Page({
   data: {
     activeTab: "orders",
     items: [] as ViewOrder[],
+    repairItems: [] as RepairCard[], allRepairItems: [] as RepairCard[], repairStatus: "all",
     keyword: "",
     status: "all",
     shipDateFrom: "",
@@ -63,9 +66,18 @@ Page({
     void this.loadOrders();
   },
   onPullDownRefresh() { void this.loadOrders().finally(() => wx.stopPullDownRefresh()); },
-  selectTab(event: WechatMiniprogram.TouchEvent) { this.setData({ activeTab: event.currentTarget.dataset.tab, filterOpen: false }); },
-  keywordChanged(event: WechatMiniprogram.Input) { this.setData({ keyword: event.detail.value }); },
-  search() { void this.loadOrders(); },
+  selectTab(event: WechatMiniprogram.TouchEvent) { const activeTab = String(event.currentTarget.dataset.tab); this.setData({ activeTab, keyword: "", filterOpen: false }); if (activeTab === "repairs") void this.loadRepairs(); },
+  keywordChanged(event: WechatMiniprogram.Input) { this.setData({ keyword: event.detail.value }); if (this.data.activeTab === "repairs") this.applyRepairFilters(); },
+  search() { if (this.data.activeTab === "repairs") this.applyRepairFilters(); else void this.loadOrders(); },
+  async loadRepairs() {
+    this.setData({ loading: true, error: "" });
+    try { const allRepairItems = (await repairApi.factoryList()).items.map((item) => ({ ...item, productSummary: Array.from(new Set(item.lines.map((line) => line.productName))).join("、") || "—", progress: item.warehouseReturnQuantity ? Math.round(item.returnedQuantity / item.warehouseReturnQuantity * 100) : 0, pending: Math.max(0, item.warehouseReturnQuantity - item.returnedQuantity) })); this.setData({ allRepairItems }); this.applyRepairFilters(); }
+    catch { this.setData({ error: "返修任务加载失败，请下拉重试" }); }
+    finally { this.setData({ loading: false }); }
+  },
+  applyRepairFilters() { const keyword = this.data.keyword.trim().toLowerCase(); this.setData({ repairItems: this.data.allRepairItems.filter((item) => (!keyword || `${item.repairNo} ${item.productSummary}`.toLowerCase().includes(keyword)) && (this.data.repairStatus === "all" || item.status === this.data.repairStatus)) }); },
+  setRepairStatus(event: WechatMiniprogram.TouchEvent) { this.setData({ repairStatus: String(event.currentTarget.dataset.status) }, () => this.applyRepairFilters()); },
+  openRepair(event: WechatMiniprogram.TouchEvent) { wx.navigateTo({ url: `/pages/factory-repair-detail/factory-repair-detail?repairId=${encodeURIComponent(event.currentTarget.dataset.id)}` }); },
   toggleFilter() {
     if (this.data.filterOpen) { this.closeFilter(); return; }
     this.setData({

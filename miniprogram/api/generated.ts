@@ -535,6 +535,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/repair-previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Preview */
+        post: operations["create_preview_api_v1_admin_repair_previews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/repair-previews/{preview_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Preview */
+        get: operations["get_preview_api_v1_admin_repair_previews__preview_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/repair-previews/{preview_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Preview */
+        post: operations["confirm_preview_api_v1_admin_repair_previews__preview_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/repairs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admin Repairs */
+        get: operations["list_admin_repairs_api_v1_admin_repairs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/repairs/{repair_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Repair */
+        get: operations["get_admin_repair_api_v1_admin_repairs__repair_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/shipment-void-requests/{request_id}/approve": {
         parameters: {
             query?: never;
@@ -807,6 +892,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/factory/repairs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Factory Repairs */
+        get: operations["list_factory_repairs_api_v1_factory_repairs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/repairs/{repair_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Factory Repair */
+        get: operations["get_factory_repair_api_v1_factory_repairs__repair_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/factory/shipment-catalog": {
         parameters: {
             query?: never;
@@ -937,6 +1056,23 @@ export interface paths {
         put?: never;
         /** Request Void */
         post: operations["request_void_api_v1_factory_shipments__shipment_id__void_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{file_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download File */
+        get: operations["download_file_api_v1_files__file_id__download_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1255,6 +1391,13 @@ export interface components {
         BatchConfirmWrite: {
             /** Candidateids */
             candidateIds: string[];
+        };
+        /** Body_create_preview_api_v1_admin_repair_previews_post */
+        Body_create_preview_api_v1_admin_repair_previews_post: {
+            /** File */
+            file: string;
+            /** Replacespreviewid */
+            replacesPreviewId?: string | null;
         };
         /** Body_replace_mini_avatar_api_v1_mini_me_avatar_post */
         Body_replace_mini_avatar_api_v1_mini_me_avatar_post: {
@@ -1858,6 +2001,142 @@ export interface components {
         ReopenWrite: {
             /** Reason */
             reason: string;
+        };
+        /** RepairLineResponse */
+        RepairLineResponse: {
+            /** Boxnumber */
+            boxNumber: string;
+            /** Inspectionlineid */
+            inspectionLineId: number;
+            /** Productid */
+            productId: string;
+            /** Productname */
+            productName: string;
+            /** Propertiesvalue */
+            propertiesValue: string;
+            /** Reason */
+            reason: string | null;
+            /** Sourceorder */
+            sourceOrder: number;
+            /** Sourceproductid */
+            sourceProductId: string;
+            /** Sourcerow */
+            sourceRow: number;
+            /** Sourceskuid */
+            sourceSkuId: string;
+            /** Variantid */
+            variantId: string;
+            /** Warehousereturnquantity */
+            warehouseReturnQuantity: number;
+        };
+        /** RepairListResponse */
+        RepairListResponse: {
+            /** Items */
+            items: components["schemas"]["RepairResponse"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            /** Total */
+            total: number;
+        };
+        /** RepairPreviewLineResponse */
+        RepairPreviewLineResponse: {
+            /** Boxnumber */
+            boxNumber: string;
+            /** Lineid */
+            lineId: number;
+            /** Matchedproductid */
+            matchedProductId: string | null;
+            /** Matchedvariantid */
+            matchedVariantId: string | null;
+            /** Productname */
+            productName: string;
+            /** Propertiesvalue */
+            propertiesValue: string;
+            /** Quantity */
+            quantity: number;
+            /** Reason */
+            reason: string | null;
+            /** Sourceorder */
+            sourceOrder: number;
+            /** Sourceproductid */
+            sourceProductId: string;
+            /** Sourcerow */
+            sourceRow: number;
+            /** Sourceskuid */
+            sourceSkuId: string;
+        };
+        /** RepairPreviewResponse */
+        RepairPreviewResponse: {
+            /** Boxcount */
+            boxCount: number;
+            /**
+             * Expiresat
+             * Format: date-time
+             */
+            expiresAt: string;
+            /** Factoryid */
+            factoryId: string | null;
+            /** Factoryname */
+            factoryName: string;
+            /** Linecount */
+            lineCount: number;
+            /** Lines */
+            lines: components["schemas"]["RepairPreviewLineResponse"][];
+            /** Originalfileid */
+            originalFileId: number;
+            /** Originalfilename */
+            originalFilename: string;
+            /** Previewid */
+            previewId: string;
+            /** Status */
+            status: string;
+            /** Totalquantity */
+            totalQuantity: number;
+            /** Validationerrors */
+            validationErrors: {
+                [key: string]: string | number;
+            }[];
+        };
+        /** RepairResponse */
+        RepairResponse: {
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Factoryid */
+            factoryId: string;
+            /** Factoryname */
+            factoryName: string;
+            /** Lines */
+            lines: components["schemas"]["RepairLineResponse"][];
+            /** Originalfileid */
+            originalFileId: number;
+            /** Originalfilename */
+            originalFilename: string;
+            /** Originalsizebytes */
+            originalSizeBytes: number;
+            /** Repairid */
+            repairId: string;
+            /** Repairno */
+            repairNo: string;
+            /** Repairedquantity */
+            repairedQuantity: number;
+            /**
+             * Returndate
+             * Format: date
+             */
+            returnDate: string;
+            /** Returnedquantity */
+            returnedQuantity: number;
+            /** Scrappedquantity */
+            scrappedQuantity: number;
+            /** Status */
+            status: string;
+            /** Warehousereturnquantity */
+            warehouseReturnQuantity: number;
         };
         /** ReviewRequest */
         ReviewRequest: {
@@ -3458,6 +3737,187 @@ export interface operations {
             };
         };
     };
+    create_preview_api_v1_admin_repair_previews_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_create_preview_api_v1_admin_repair_previews_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preview_api_v1_admin_repair_previews__preview_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                preview_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_preview_api_v1_admin_repair_previews__preview_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                preview_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admin_repairs_api_v1_admin_repairs_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                status?: string;
+                returnFrom?: string | null;
+                returnTo?: string | null;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_repair_api_v1_admin_repairs__repair_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                repair_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     approve_void_request_api_v1_admin_shipment_void_requests__request_id__approve_post: {
         parameters: {
             query?: never;
@@ -4012,6 +4472,75 @@ export interface operations {
             };
         };
     };
+    list_factory_repairs_api_v1_factory_repairs_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                status?: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_factory_repair_api_v1_factory_repairs__repair_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                repair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     shipment_catalog_api_v1_factory_shipment_catalog_get: {
         parameters: {
             query?: never;
@@ -4269,6 +4798,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShipmentVoidRequestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_file_api_v1_files__file_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                file_id: number;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

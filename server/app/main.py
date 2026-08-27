@@ -32,6 +32,7 @@ from app.api.identity import create_identity_router
 from app.api.order_import import create_order_import_router
 from app.api.orders import create_order_router
 from app.api.products import create_product_router
+from app.api.repairs import create_repair_router
 from app.api.router import api_router
 from app.api.shipments import create_shipment_router
 from app.db.session import create_database_engine, create_session_factory
@@ -75,6 +76,9 @@ from app.modules.orders import (
     OrderValidationError,
 )
 from app.modules.product_sync import ProductCatalogService
+from app.modules.repairs.confirmation import RepairConfirmationService
+from app.modules.repairs.preview import RepairPreviewService
+from app.modules.repairs.workflow import RepairWorkflowService
 from app.modules.shipments import (
     ShipmentConflict,
     ShipmentError,
@@ -107,6 +111,26 @@ def create_app(
     session_factory = create_session_factory(engine)
     logger = event_logger or StructuredLogger()
     configure_uvicorn_access_log_redaction()
+    local_demo_enabled = settings.app_env == "local_demo"
+    private_file_store: PrivateFileStore
+    if local_demo_enabled:
+        private_file_store = FakePrivateFileStore(bucket="local-demo-contract-files")
+    elif all(
+        (
+            settings.private_file_endpoint,
+            settings.private_file_access_key,
+            settings.private_file_secret_key,
+        )
+    ):
+        private_file_store = MinioPrivateFileStore(
+            endpoint=settings.private_file_endpoint,
+            access_key=settings.private_file_access_key,
+            secret_key=settings.private_file_secret_key,
+            bucket=settings.private_file_bucket,
+            secure=settings.private_file_secure,
+        )
+    else:
+        private_file_store = DisabledPrivateFileStore(bucket=settings.private_file_bucket)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
@@ -115,7 +139,6 @@ def create_app(
 
     app = FastAPI(title="Order Tracking API", version="0.1.0", lifespan=lifespan)
     app.include_router(api_router)
-    local_demo_enabled = settings.app_env == "local_demo"
     if identity_service is None:
         feishu_identity: FeishuIdentity
         feishu_identity_app_id = settings.feishu_identity_app_id or settings.feishu_order_app_id
@@ -194,25 +217,6 @@ def create_app(
     if order_import_service is None:
         order_import_service = OrderImportService(session_factory)
     if contract_service is None:
-        private_file_store: PrivateFileStore
-        if local_demo_enabled:
-            private_file_store = FakePrivateFileStore(bucket="local-demo-contract-files")
-        elif all(
-            (
-                settings.private_file_endpoint,
-                settings.private_file_access_key,
-                settings.private_file_secret_key,
-            )
-        ):
-            private_file_store = MinioPrivateFileStore(
-                endpoint=settings.private_file_endpoint,
-                access_key=settings.private_file_access_key,
-                secret_key=settings.private_file_secret_key,
-                bucket=settings.private_file_bucket,
-                secure=settings.private_file_secure,
-            )
-        else:
-            private_file_store = DisabledPrivateFileStore(bucket=settings.private_file_bucket)
         contract_service = ContractService(
             session_factory,
             workbook_renderer=ContractWorkbookRenderer(
@@ -243,6 +247,23 @@ def create_app(
     app.include_router(create_order_import_router(order_import_service, identity_service))
     app.include_router(create_contract_router(contract_service, identity_service))
     app.include_router(create_shipment_router(shipment_service, identity_service))
+    repair_previews = RepairPreviewService(session_factory)
+    repair_confirmations = RepairConfirmationService(session_factory)
+    repair_workflow = RepairWorkflowService(
+        session_factory,
+        file_store=private_file_store,
+        preview_service=repair_previews,
+    )
+    app.include_router(
+        create_repair_router(
+            workflow=repair_workflow,
+            previews=repair_previews,
+            confirmations=repair_confirmations,
+            identity=identity_service,
+            file_store=private_file_store,
+            session_factory=session_factory,
+        )
+    )
     if local_demo_enabled:
         app.include_router(create_local_demo_router())
 

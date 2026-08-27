@@ -1,10 +1,12 @@
 <view class="ship-record-page">
   <mini-titlebar title="发货"/>
+  <view class="repair-segment"><button class="{{activeTab === 'shipments' ? 'is-active' : ''}}" data-tab="shipments" bindtap="selectTab">发货记录</button><button class="{{activeTab === 'repairs' ? 'is-active' : ''}}" data-tab="repairs" bindtap="selectTab">返修进度</button></view>
   <view class="admin-ship-search-row">
-    <view class="admin-ship-search"><image src="/assets/icons/search-gray.svg" mode="aspectFit"/><input value="{{keyword}}" placeholder="订单编号或产品名称" bindinput="keywordChanged"/></view>
-    <view role="button" aria-label="筛选" class="admin-ship-filter" bindtap="toggleFilter"><image src="/assets/icons/filter-blue.svg" mode="aspectFit"/><text>筛选</text><text wx:if="{{activeFilterCount}}" class="admin-ship-filter-count">{{activeFilterCount}}</text></view>
+    <view class="admin-ship-search"><image src="/assets/icons/search-gray.svg" mode="aspectFit"/><input value="{{keyword}}" placeholder="{{activeTab === 'repairs' ? '工厂名称或返修单号' : '订单编号或产品名称'}}" bindinput="keywordChanged"/></view>
+    <view wx:if="{{activeTab === 'shipments'}}" role="button" aria-label="筛选" class="admin-ship-filter" bindtap="toggleFilter"><image src="/assets/icons/filter-blue.svg" mode="aspectFit"/><text>筛选</text><text wx:if="{{activeFilterCount}}" class="admin-ship-filter-count">{{activeFilterCount}}</text></view>
   </view>
-  <view class="ship-record-content">
+  <view wx:if="{{activeTab === 'repairs'}}" class="repair-mini-list"><view class="repair-status-row"><button class="{{repairStatus === 'all' ? 'is-active' : ''}}" data-status="all" bindtap="setRepairStatus">全部</button><button class="{{repairStatus === 'INCOMPLETE' ? 'is-active' : ''}}" data-status="INCOMPLETE" bindtap="setRepairStatus">未完成</button><button class="{{repairStatus === 'COMPLETED' ? 'is-active' : ''}}" data-status="COMPLETED" bindtap="setRepairStatus">已完成</button></view><view class="repair-result">共 {{repairItems.length}} 张返修单</view><view wx:if="{{!repairItems.length}}" class="mini-empty">没有符合条件的返修记录</view><view wx:for="{{repairItems}}" wx:key="repairId" class="repair-mini-card" data-id="{{item.repairId}}" bindtap="openRepair"><view class="repair-mini-card-head"><view><b>{{item.factoryName}}</b><text>{{item.productSummary}}</text></view><text class="mini-status {{item.status === 'COMPLETED' ? 'mini-status--completed' : ''}}">{{item.status === 'COMPLETED' ? '已完成' : '未完成'}}</text></view><view class="repair-mini-card-progress"><view><text>返回进度</text><b>{{item.returnedQuantity}} / {{item.warehouseReturnQuantity}}</b><em>{{item.progress}}%</em></view><view><view style="width:{{item.progress}}%"/></view></view><view class="repair-mini-card-stats"><view><text>待返回</text><b>{{item.pending}}</b></view><view><text>返修数量</text><b>{{item.repairedQuantity}}</b></view><view><text>报废数量</text><b>{{item.scrappedQuantity}}</b></view></view><view class="repair-mini-card-foot"><text>{{item.returnDate}}</text><b>{{item.repairNo}}</b></view></view></view>
+  <view wx:else class="ship-record-content">
     <view wx:if="{{!loading}}" class="admin-ship-result"><text>共 {{items.length}} 张发货单</text><text>按发货日期倒序</text></view>
     <view wx:if="{{loading}}" class="mini-empty">正在加载发货单…</view>
     <view wx:elif="{{!items.length}}" class="mini-empty"><text>没有符合条件的发货记录</text><text>可以调整搜索词后再试</text></view>
@@ -15,7 +17,7 @@
       <view class="admin-ship-number"><text>发货单号</text><b>{{item.shipmentNo}}</b></view>
     </view>
   </view>
-  <view wx:if="{{filterOpen}}" class="admin-ship-sheet-layer" bindtap="closeFilter">
+  <view wx:if="{{filterOpen && activeTab === 'shipments'}}" class="admin-ship-sheet-layer" bindtap="closeFilter">
     <view class="admin-ship-filter-sheet" catchtap="stopPropagation">
       <view class="admin-ship-sheet-handle" />
       <view class="admin-ship-sheet-header">

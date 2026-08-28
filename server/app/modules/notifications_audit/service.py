@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -175,17 +175,22 @@ class NotificationsAuditService:
         wechat_notifier: WechatNotifier,
         feishu_notifier: FeishuBusinessNotifier | None = None,
         ops_alert_notifier: OpsAlertNotifier | None = None,
+        enabled_channels: set[str] | None = None,
         now: datetime | None = None,
     ) -> bool:
         current = now or utc_now()
         with self._session_factory() as session, session.begin():
+            query = select(OutboxMessage).where(
+                OutboxMessage.message_kind == "delivery",
+                OutboxMessage.status == "pending",
+                OutboxMessage.available_at <= current,
+            )
+            if enabled_channels is not None:
+                if not enabled_channels:
+                    return False
+                query = query.where(OutboxMessage.channel.in_(enabled_channels))
             message = session.scalar(
-                select(OutboxMessage)
-                .where(
-                    OutboxMessage.message_kind == "delivery",
-                    OutboxMessage.status == "pending",
-                    OutboxMessage.available_at <= current,
-                )
+                query
                 .order_by(OutboxMessage.id)
                 .with_for_update(skip_locked=True)
                 .limit(1)
@@ -353,7 +358,12 @@ class NotificationsAuditService:
                         .where(
                             User.role == "admin",
                             User.is_enabled.is_(True),
-                            User.feishu_display_name == order.tracker,
+                            or_(
+                                User.feishu_display_name == order.tracker,
+                                User.feishu_display_name.endswith(
+                                    f"&{order.tracker}"
+                                ),
+                            ),
                         )
                         .order_by(User.user_id)
                     ).all()
@@ -365,7 +375,11 @@ class NotificationsAuditService:
                             .where(
                                 User.role == "admin",
                                 User.is_enabled.is_(True),
-                                User.feishu_display_name.in_(["煎饼", "核桃"]),
+                                or_(
+                                    User.feishu_display_name.in_(["煎饼", "核桃"]),
+                                    User.feishu_display_name.endswith("&煎饼"),
+                                    User.feishu_display_name.endswith("&核桃"),
+                                ),
                             )
                             .order_by(User.user_id)
                         ).all()

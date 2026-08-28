@@ -1,16 +1,21 @@
 import signal
 import socket
 from datetime import datetime, timedelta
+from pathlib import Path
 from threading import Event
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.notifications import (
+    AppCredentialFeishuBusinessNotifier,
+    AppCredentialOpsAlertNotifier,
     AppCredentialWechatNotifier,
     DisabledFeishuBusinessNotifier,
-    DisabledOpsAlertNotifier,
     DisabledWechatNotifier,
+    FeishuBusinessNotifier,
+    FeishuNotificationConfig,
+    OpsAlertNotifier,
     WechatNotifier,
     WechatSubscriptionConfig,
 )
@@ -19,7 +24,14 @@ from app.adapters.order_source import (
     DisabledFeishuOrderSource,
     FeishuOrderSourceConfig,
 )
-from app.adapters.product import DisabledJstProductSource, DisabledProductImageStore
+from app.adapters.private_files import MinioPrivateFileStore
+from app.adapters.product import (
+    AppCredentialJstProductSource,
+    DisabledJstProductSource,
+    DisabledProductImageStore,
+    JstProductSourceConfig,
+    PrivateProductImageStore,
+)
 from app.db.session import create_database_engine
 from app.modules.infrastructure import InfrastructureStore, utc_now
 from app.modules.notifications_audit import NotificationsAuditService
@@ -39,9 +51,50 @@ def main() -> None:
     signal.signal(signal.SIGINT, lambda _signum, _frame: stop_event.set())
     sessions = sessionmaker(engine, class_=Session, expire_on_commit=False)
     store = InfrastructureStore(sessions)
+    product_source = (
+        AppCredentialJstProductSource(
+            JstProductSourceConfig(
+                app_key=settings.jst_product_app_key,
+                app_secret=settings.jst_product_app_secret,
+                initial_sync_begin=datetime.fromisoformat(
+                    settings.jst_product_initial_sync_begin
+                ),
+                endpoint=settings.jst_product_endpoint,
+                token_cache_path=Path(settings.jst_product_token_cache_path),
+                page_size=settings.jst_product_page_size,
+            )
+        )
+        if all(
+            (
+                settings.jst_product_app_key,
+                settings.jst_product_app_secret,
+                settings.jst_product_initial_sync_begin,
+            )
+        )
+        else DisabledJstProductSource()
+    )
+    product_image_store = (
+        PrivateProductImageStore(
+            MinioPrivateFileStore(
+                endpoint=settings.private_file_endpoint,
+                access_key=settings.private_file_access_key,
+                secret_key=settings.private_file_secret_key,
+                bucket=settings.product_image_bucket,
+                secure=settings.private_file_secure,
+            )
+        )
+        if all(
+            (
+                settings.private_file_endpoint,
+                settings.private_file_access_key,
+                settings.private_file_secret_key,
+            )
+        )
+        else DisabledProductImageStore()
+    )
     product_handlers = ProductWorkerHandlers(
-        sync_service=ProductSyncService(sessions, source=DisabledJstProductSource()),
-        image_service=ProductImageService(sessions, image_store=DisabledProductImageStore()),
+        sync_service=ProductSyncService(sessions, source=product_source),
+        image_service=ProductImageService(sessions, image_store=product_image_store),
         worker_id=socket.gethostname(),
     )
     order_source = (
@@ -82,6 +135,31 @@ def main() -> None:
         if settings.wechat_notifications_enabled
         else DisabledWechatNotifier()
     )
+    feishu_app_id = settings.feishu_identity_app_id or settings.feishu_order_app_id
+    feishu_app_secret = (
+        settings.feishu_identity_app_secret or settings.feishu_order_app_secret
+    )
+    feishu_notification_config = FeishuNotificationConfig(
+        app_id=feishu_app_id,
+        app_secret=feishu_app_secret,
+        admin_web_base_url=settings.admin_web_base_url,
+        ops_alert_recipient_user_id=settings.ops_alert_recipient_user_id,
+    )
+    feishu_notifier: FeishuBusinessNotifier = (
+        AppCredentialFeishuBusinessNotifier(feishu_notification_config, sessions)
+        if settings.feishu_notifications_enabled
+        else DisabledFeishuBusinessNotifier()
+    )
+    ops_alert_notifier: OpsAlertNotifier | None = (
+        AppCredentialOpsAlertNotifier(feishu_notification_config, sessions)
+        if settings.ops_alerts_enabled
+        else None
+    )
+    enabled_delivery_channels: set[str] = set()
+    if settings.wechat_notifications_enabled:
+        enabled_delivery_channels.add("wechat")
+    if settings.feishu_notifications_enabled:
+        enabled_delivery_channels.add("feishu")
     notification_handlers = NotificationWorkerHandlers(
         service=notification_service,
         store=store,
@@ -117,8 +195,9 @@ def main() -> None:
             lambda: notification_service.deliver_next(
                 worker_id=worker_id,
                 wechat_notifier=wechat_notifier,
-                feishu_notifier=DisabledFeishuBusinessNotifier(),
-                ops_alert_notifier=DisabledOpsAlertNotifier(),
+                feishu_notifier=feishu_notifier,
+                ops_alert_notifier=ops_alert_notifier,
+                enabled_channels=enabled_delivery_channels,
             ),
         ],
     ).run(stop_event=stop_event)

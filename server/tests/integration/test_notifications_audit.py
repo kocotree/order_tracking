@@ -48,7 +48,7 @@ def _publish_order(test_database_engine: Engine, *, factory_user_ids: list[str])
                 user_id="admin-notice",
                 role="admin",
                 is_enabled=True,
-                feishu_display_name="松子",
+                feishu_display_name="浦钢毅&松子",
             )
         )
         session.add_all(
@@ -496,6 +496,36 @@ def test_accepted_wechat_authorization_creates_and_sends_one_user_delivery(
         assert delivery.status == "completed"
 
 
+def test_disabled_delivery_channel_remains_pending(
+    test_database_engine: Engine,
+) -> None:
+    sessions, _order_service, _draft = _publish_order(
+        test_database_engine, factory_user_ids=["factory-notice-user"]
+    )
+    service = NotificationsAuditService(sessions)
+    service.record_authorizations(
+        user_id="factory-notice-user",
+        results={"factory_status": "accepted"},
+        authorized_at=datetime(2026, 8, 27, 1, 0),
+    )
+    assert service.consume_next_business_event(worker_id="s11-event-worker") is True
+    with sessions() as session:
+        delivery = session.query(OutboxMessage).filter_by(message_kind="delivery").one()
+        delivery_time = delivery.available_at
+
+    assert service.deliver_next(
+        worker_id="s12-delivery-worker",
+        wechat_notifier=FakeWechatNotifier(),
+        enabled_channels={"feishu"},
+        now=delivery_time,
+    ) is False
+
+    with sessions() as session:
+        delivery = session.query(OutboxMessage).filter_by(message_kind="delivery").one()
+        assert delivery.status == "pending"
+        assert delivery.attempts == 0
+
+
 class RetryOnceWechatNotifier:
     def __init__(self) -> None:
         self.attempts = 0
@@ -738,13 +768,13 @@ def test_d3_scan_notifies_tracker_factory_users_and_two_special_admins_once(
                     user_id="admin-pancake",
                     role="admin",
                     is_enabled=True,
-                    feishu_display_name="煎饼",
+                    feishu_display_name="王心玲&煎饼",
                 ),
                 User(
                     user_id="admin-walnut",
                     role="admin",
                     is_enabled=True,
-                    feishu_display_name="核桃",
+                    feishu_display_name="杨嘉彬&核桃",
                 ),
                 User(
                     user_id="factory-disabled",

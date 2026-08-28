@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.adapters.avatar import DisabledAvatarStore, FakeAvatarStore
+from app.adapters.avatar import AvatarStore, DisabledAvatarStore, FakeAvatarStore
 from app.adapters.errors import ExternalAdapterUnavailable
 from app.adapters.identity import (
     AppCredentialFeishuIdentity,
@@ -154,6 +154,7 @@ def create_app(
         feishu_identity_app_secret = (
             settings.feishu_identity_app_secret or settings.feishu_order_app_secret
         )
+        avatar_store: AvatarStore
         if local_demo_enabled:
             feishu_identity = LocalDemoFeishuIdentity()
         elif all(
@@ -184,11 +185,24 @@ def create_app(
             )
         else:
             wechat_identity = DisabledWechatIdentity(scope=settings.wechat_identity_scope)
-        avatar_store = (
-            FakeAvatarStore(bucket="local-demo-private-avatar")
-            if local_demo_enabled
-            else DisabledAvatarStore(bucket=settings.avatar_bucket)
-        )
+        if local_demo_enabled:
+            avatar_store = FakeAvatarStore(bucket="local-demo-private-avatar")
+        elif all(
+            (
+                settings.private_file_endpoint,
+                settings.private_file_access_key,
+                settings.private_file_secret_key,
+            )
+        ):
+            avatar_store = MinioPrivateFileStore(
+                endpoint=settings.private_file_endpoint,
+                access_key=settings.private_file_access_key,
+                secret_key=settings.private_file_secret_key,
+                bucket=settings.avatar_bucket,
+                secure=settings.private_file_secure,
+            )
+        else:
+            avatar_store = DisabledAvatarStore(bucket=settings.avatar_bucket)
         identity_service = IdentityAccessService(
             session_factory,
             feishu_identity=feishu_identity,

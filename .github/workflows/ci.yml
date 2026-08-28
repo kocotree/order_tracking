@@ -25,6 +25,16 @@ jobs:
             BASE_SHA=$(git rev-list --max-parents=0 HEAD)
           fi
           git diff --check "${BASE_SHA}...HEAD"
+      - name: Check deployment scripts
+        run: bash -n deploy/scripts/*.sh
+      - name: Check shared-test Compose
+        run: >-
+          docker compose --env-file deploy/shared-test.env.example
+          -f deploy/compose.shared-test.yaml config --no-interpolate --quiet
+      - name: Check production Compose
+        run: >-
+          docker compose --env-file deploy/production.env.example
+          -f deploy/compose.production.yaml config --no-interpolate --quiet
 
   server:
     runs-on: ubuntu-latest

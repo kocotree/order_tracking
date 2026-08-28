@@ -22,6 +22,6 @@ pnpm build
 2. 将其中的 `appid` 改为你当前使用的测试号或正式小程序 AppID；
 3. 在微信开发者工具选择仓库中的 `miniprogram/` 目录，不要再创建第二个项目；
 4. 开发工具会按 `useCompilerPlugins: ["typescript"]` 编译根目录下的 TypeScript 源码；
-5. 本地开发接口默认为 `http://127.0.0.1:8000/api/v1`，体验版和正式版当前使用不可访问的 `example.invalid` 占位域名，接入真实 HTTPS 域名前不得发布。
+5. 本地开发接口默认为 `http://127.0.0.1:8000/api/v1`；体验版使用 `https://order-tracking-test.kktree.cn/api/v1`，正式版使用 `https://order-tracking.kktree.cn/api/v1`。域名完成 Traefik/HTTPS 验收并登记为微信合法请求域名前不得上传或发布。
 
 真实 AppID、AppSecret、域名凭证和生产接口地址不得提交到 Git。

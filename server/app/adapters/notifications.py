@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from hashlib import sha256
 from threading import Lock
@@ -71,6 +72,179 @@ class WechatSubscriptionConfig:
             return self.identity_scope
         app_digest = sha256(self.app_id.encode()).hexdigest()[:32]
         return f"wechat-app/{app_digest}"
+
+
+@dataclass(frozen=True)
+class FeishuNotificationConfig:
+    app_id: str
+    app_secret: str
+    admin_web_base_url: str
+    ops_alert_recipient_user_id: str
+    identity_scope: str = ""
+    base_url: str = "https://open.feishu.cn"
+
+    @property
+    def resolved_identity_scope(self) -> str:
+        if self.identity_scope:
+            return self.identity_scope
+        app_digest = sha256(self.app_id.encode()).hexdigest()[:32]
+        return f"feishu-app/{app_digest}"
+
+
+class _AppCredentialFeishuSender:
+    def __init__(
+        self,
+        config: FeishuNotificationConfig,
+        session_factory: sessionmaker[Session],
+        *,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
+        self._config = config
+        self._session_factory = session_factory
+        self._transport = transport
+        self._access_token: str | None = None
+        self._access_token_expires_at = 0.0
+        self._access_token_lock = Lock()
+
+    def send_text(self, *, recipient_id: str, text: str) -> None:
+        open_id = self._recipient_openid(recipient_id)
+        if open_id is None:
+            raise NotificationDeliveryError(
+                "feishu_recipient_unbound",
+                retryable=False,
+                safe_summary="接收人未绑定飞书身份",
+            )
+        try:
+            with httpx.Client(
+                base_url=self._config.base_url,
+                timeout=30,
+                transport=self._transport,
+            ) as client:
+                token = self._tenant_access_token(client)
+                response = client.post(
+                    "/open-apis/im/v1/messages",
+                    params={"receive_id_type": "open_id"},
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={
+                        "receive_id": open_id,
+                        "msg_type": "text",
+                        "content": json.dumps({"text": text}, ensure_ascii=False),
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict) or payload.get("code") != 0:
+                    raise NotificationDeliveryError(
+                        "feishu_delivery_rejected",
+                        retryable=False,
+                        safe_summary="飞书通知被平台拒绝",
+                    )
+        except NotificationDeliveryError:
+            raise
+        except httpx.HTTPStatusError as error:
+            status_code = error.response.status_code
+            raise NotificationDeliveryError(
+                "feishu_delivery_unavailable",
+                retryable=status_code == 429 or status_code >= 500,
+                safe_summary="飞书通知接口暂时不可用",
+            ) from error
+        except (httpx.HTTPError, TypeError, ValueError) as error:
+            raise NotificationDeliveryError(
+                "feishu_delivery_unavailable",
+                retryable=True,
+                safe_summary="飞书通知接口暂时不可用",
+            ) from error
+
+    def _recipient_openid(self, recipient_id: str) -> str | None:
+        with self._session_factory() as session:
+            subject = session.scalar(
+                select(ExternalIdentity.platform_subject).where(
+                    ExternalIdentity.platform == "feishu",
+                    ExternalIdentity.scope == self._config.resolved_identity_scope,
+                    ExternalIdentity.user_id == recipient_id,
+                )
+            )
+        if not isinstance(subject, str):
+            return None
+        _tenant, separator, open_id = subject.partition(":")
+        return open_id if separator and open_id else subject
+
+    def _tenant_access_token(self, client: httpx.Client) -> str:
+        with self._access_token_lock:
+            now = monotonic()
+            if self._access_token is not None and now < self._access_token_expires_at:
+                return self._access_token
+            response = client.post(
+                "/open-apis/auth/v3/tenant_access_token/internal",
+                json={
+                    "app_id": self._config.app_id,
+                    "app_secret": self._config.app_secret,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict) or payload.get("code") != 0:
+                raise ValueError("feishu tenant token exchange failed")
+            access_token = payload.get("tenant_access_token")
+            expires_in = payload.get("expire")
+            if (
+                not isinstance(access_token, str)
+                or not access_token
+                or isinstance(expires_in, bool)
+                or not isinstance(expires_in, (int, float))
+                or expires_in <= 0
+            ):
+                raise ValueError("feishu tenant token response is invalid")
+            self._access_token = access_token
+            self._access_token_expires_at = now + max(0, float(expires_in) - 300)
+            return access_token
+
+
+class AppCredentialFeishuBusinessNotifier:
+    def __init__(
+        self,
+        config: FeishuNotificationConfig,
+        session_factory: sessionmaker[Session],
+        *,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
+        self._config = config
+        self._sender = _AppCredentialFeishuSender(
+            config, session_factory, transport=transport
+        )
+
+    def send(self, request: DeliveryRequest) -> None:
+        target_url = f"{self._config.admin_web_base_url.rstrip('/')}{request.target_path}"
+        self._sender.send_text(
+            recipient_id=request.recipient_id,
+            text=f"{request.title}\n{request.summary}\n{target_url}",
+        )
+
+
+class AppCredentialOpsAlertNotifier:
+    def __init__(
+        self,
+        config: FeishuNotificationConfig,
+        session_factory: sessionmaker[Session],
+        *,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
+        self._config = config
+        self._sender = _AppCredentialFeishuSender(
+            config, session_factory, transport=transport
+        )
+
+    def send(self, alert: OpsAlert) -> None:
+        self._sender.send_text(
+            recipient_id=self._config.ops_alert_recipient_user_id,
+            text=(
+                "跟单管理系统运维告警\n"
+                f"delivery_id={alert.delivery_id}\n"
+                f"channel={alert.channel}\n"
+                f"error_code={alert.error_code}\n"
+                f"{alert.error_summary}"
+            ),
+        )
 
 
 class AppCredentialWechatNotifier:

@@ -17,7 +17,7 @@
 .profile-account-row text.is-normal { color: #388a62; }
 .factory-profile-card { margin-top: 0; }
 .profile-actions-card { display: grid; }
-.profile-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 36rpx; gap: 20rpx; width: 100% !important; min-height: 116rpx; box-sizing: border-box; align-items: center; padding: 0 34rpx; margin: 0; color: #1c2430; text-align: left; background: #fff; border: 0; border-bottom: 1rpx solid #e4e8ed; border-radius: 0; }
+.profile-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 36rpx; gap: 20rpx; width: 100% !important; min-height: 94rpx; box-sizing: border-box; align-items: center; padding: 0 34rpx; margin: 0; color: #1c2430; text-align: left; background: #fff; border: 0; border-bottom: 1rpx solid #e4e8ed; border-radius: 0; }
 .profile-action-row:last-child { border-bottom: 0; }
 .profile-action-label { min-width: 0; justify-self: start; font-size: 30rpx; font-weight: 700; }
 .profile-authorization-state { color: #1267c9; font-size: 24rpx; font-weight: 700; white-space: nowrap; }

@@ -28,13 +28,16 @@
 }
 
 .titlebar-back {
+  justify-self: start;
+  margin: 0;
   color: #15191e;
   font-size: 62rpx;
   font-weight: 300;
   line-height: 70rpx;
   background: transparent;
+  transform: translateX(-28rpx);
 }
 
 .titlebar-back.is-left {
-  transform: translateX(-76rpx);
+  transform: translateX(-28rpx);
 }

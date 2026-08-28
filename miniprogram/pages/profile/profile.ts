@@ -1,4 +1,5 @@
 import { identityApi } from "../../api/identity";
+import { notificationApi, requestNotificationSubscriptions } from "../../api/notifications";
 import { isDevPreview, previewUser } from "../../modules/dev-preview";
 import {
   clearSession,
@@ -17,7 +18,12 @@ Page({
     uploading: false,
     previewMode: false,
     navigationItems: [] as NavigationItem[],
+    unreadCount: 0,
+    subscriptionBusy: false,
+    subscriptionStatus: "去授权",
   },
+
+  onShow() { if (!this.data.previewMode && this.data.user) void this.loadUnreadCount(); },
 
   onLoad(options: Record<string, string | undefined>) {
     if (isDevPreview(options)) {
@@ -34,6 +40,7 @@ Page({
       const user = await identityApi.getMe();
       updateStoredUser(user);
       this.setData({ user, avatarFallback: user.displayName.slice(0, 1), navigationItems: this.navigationFor(user) });
+      void this.loadUnreadCount();
       if (user.role === "factory") return;
       if (user.miniAvatarFileId) {
         this.setData({ avatarPath: await identityApi.downloadAvatar() });
@@ -44,6 +51,24 @@ Page({
       clearSession();
       wx.reLaunch({ url: "/pages/auth/auth" });
     }
+  },
+
+  async loadUnreadCount() {
+    try { const result = await notificationApi.unreadCount(); this.setData({ unreadCount: result.count }); } catch { this.setData({ unreadCount: 0 }); }
+  },
+
+  openNotifications() { wx.navigateTo({ url: "/pages/notifications/notifications" }); },
+
+  async requestSubscriptions() {
+    const role = this.data.user?.role;
+    if (role !== "admin" && role !== "factory") return;
+    this.setData({ subscriptionBusy: true });
+    try {
+      const result = await requestNotificationSubscriptions(role);
+      if (result === "accepted") this.setData({ subscriptionStatus:"本次已授权" });
+      wx.showToast({ title: result === "accepted" ? "本次授权已记录" : result === "declined" ? "未取得本次订阅授权" : "订阅模板尚未配置", icon:"none" });
+    } catch { wx.showToast({ title:"未完成订阅授权", icon:"none" }); }
+    finally { this.setData({ subscriptionBusy:false }); }
   },
 
   navigationFor(user: User) {

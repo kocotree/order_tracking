@@ -1,5 +1,7 @@
 import { repairApi, type Repair, type RepairReturnBatch, type RepairReturnLine, type RepairSpec } from "../../api/repairs";
 import { isDevPreview, previewRepair } from "../../modules/dev-preview";
+import { notificationApi } from "../../api/notifications";
+import { notificationIdFrom } from "../../modules/notifications";
 
 type RepairSpecView = RepairSpec & { expanded?: boolean };
 type RepairProductGroup = { productName: string; specCount: number; pendingQuantity: number; expanded: boolean; lines: RepairSpecView[] };
@@ -24,8 +26,8 @@ function returnBatchViews(repair: Repair): ReturnBatchView[] {
 }
 
 Page({
-  data: { repairId: "", repair: null as Repair | null, loading: true, progress: 0, pending: 0, returnDateText: "", previewMode: false, productGroups: [] as RepairProductGroup[], returnBatches: [] as ReturnBatchView[] },
-  onLoad(options: Record<string, string | undefined>) { const previewMode = isDevPreview(options); const repairId = options.repairId ?? ""; this.setData({ previewMode, repairId }); if (repairId) void this.load(repairId, previewMode); },
+  data: { repairId: "", repair: null as Repair | null, loading: true, progress: 0, pending: 0, returnDateText: "", previewMode: false, productGroups: [] as RepairProductGroup[], returnBatches: [] as ReturnBatchView[], notificationId:null as number|null },
+  onLoad(options: Record<string, string | undefined>) { const previewMode = isDevPreview(options); const repairId = options.repairId ?? ""; this.setData({ previewMode, repairId,notificationId:notificationIdFrom(options) }); if (repairId) void this.load(repairId, previewMode); },
   onShow() { if (this.data.repairId && !this.data.loading) void this.load(this.data.repairId, this.data.previewMode); },
   async load(repairId: string, previewMode = false) {
     this.setData({ loading: true });
@@ -34,7 +36,8 @@ Page({
       if (!repair) throw new Error("返修演示数据不存在");
       const progress = repair.warehouseReturnQuantity ? Math.round(repair.returnedQuantity / repair.warehouseReturnQuantity * 100) : 0;
       this.setData({ repair, progress, pending: Math.max(0, repair.warehouseReturnQuantity - repair.returnedQuantity), returnDateText: repair.returnDate, productGroups: productGroups(repair), returnBatches: returnBatchViews(repair) });
-    } catch { wx.showToast({ title: "返修任务加载失败", icon: "none" }); }
+      if(this.data.notificationId)await notificationApi.markRead(this.data.notificationId);
+    } catch { wx.showToast({ title:this.data.notificationId?"内容已不可查看":"返修任务加载失败", icon: "none" }); }
     finally { this.setData({ loading: false }); }
   },
   async download() { if (!this.data.repair) return; if (this.data.previewMode) { wx.showToast({ title: "演示模式不下载附件", icon: "none" }); return; } try { const path = await repairApi.download(this.data.repair.originalFileId); wx.openDocument({ filePath: path, showMenu: true }); } catch { wx.showToast({ title: "质检附件下载失败", icon: "none" }); } },

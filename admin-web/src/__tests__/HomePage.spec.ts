@@ -1,7 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { orderApi, type Order } from "@/api/client";
+import { notificationApi, orderApi, type Order } from "@/api/client";
 import HomePage from "@/pages/HomePage.vue";
 
 function order(overrides: Partial<Order> = {}): Order {
@@ -69,6 +69,7 @@ describe("order dashboard prototype alignment", () => {
       recentOrders: [order(), mixedOrder],
       requestId: "request-dashboard",
     });
+    vi.spyOn(notificationApi, "list").mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 3, requestId: "request-notifications" });
 
     const wrapper = mount(HomePage, {
       global: {

@@ -1,5 +1,7 @@
 import { repairApi, type Repair, type RepairReturnBatch, type RepairReturnLine } from "../../api/repairs";
 import { isDevPreview, previewAdminRepair } from "../../modules/dev-preview";
+import { notificationApi } from "../../api/notifications";
+import { notificationIdFrom } from "../../modules/notifications";
 
 type ReturnLineView = RepairReturnLine & { returnedQuantity: number };
 type ReturnBatchView = Omit<RepairReturnBatch, "lines"> & { expanded: boolean; returnedQuantity: number; lines: ReturnLineView[] };
@@ -25,11 +27,12 @@ Page({
     previewMode: false,
     fileSizeText: "",
     returnBatches: [] as ReturnBatchView[],
+    notificationId:null as number|null,
   },
   onLoad(options: Record<string, string | undefined>) {
     const previewMode = isDevPreview(options);
     this.setData({ previewMode });
-    if (options.repairId) void this.load(options.repairId, previewMode);
+    this.setData({notificationId:notificationIdFrom(options)}); if (options.repairId) void this.load(options.repairId, previewMode);
   },
   async load(repairId: string, previewMode = false) {
     try {
@@ -43,7 +46,8 @@ Page({
         fileSizeText: fileSize(repair.originalSizeBytes),
         returnBatches: batchViews(repair),
       });
-    } catch { wx.showToast({ title: "返修详情加载失败", icon: "none" }); }
+      if(this.data.notificationId)await notificationApi.markRead(this.data.notificationId);
+    } catch { wx.showToast({ title:this.data.notificationId?"内容已不可查看":"返修详情加载失败", icon: "none" }); }
     finally { this.setData({ loading: false }); }
   },
   async openAttachment() {

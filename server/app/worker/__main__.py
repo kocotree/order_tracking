@@ -1,9 +1,16 @@
 import signal
 import socket
+from datetime import datetime, timedelta
 from threading import Event
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.adapters.notifications import (
+    DisabledFeishuBusinessNotifier,
+    DisabledOpsAlertNotifier,
+    DisabledWechatNotifier,
+)
 from app.adapters.order_source import (
     AppCredentialFeishuOrderSource,
     DisabledFeishuOrderSource,
@@ -11,7 +18,9 @@ from app.adapters.order_source import (
 )
 from app.adapters.product import DisabledJstProductSource, DisabledProductImageStore
 from app.db.session import create_database_engine
-from app.modules.infrastructure import InfrastructureStore
+from app.modules.infrastructure import InfrastructureStore, utc_now
+from app.modules.notifications_audit import NotificationsAuditService
+from app.modules.notifications_audit.worker import NotificationWorkerHandlers
 from app.modules.order_import import OrderImportService
 from app.modules.order_import.worker import OrderImportWorkerHandlers
 from app.modules.product_sync import ProductImageService, ProductSyncService, ProductWorkerHandlers
@@ -56,12 +65,46 @@ def main() -> None:
     order_handlers = OrderImportWorkerHandlers(
         service=OrderImportService(sessions), source=order_source
     )
+    notification_service = NotificationsAuditService(sessions)
+    notification_handlers = NotificationWorkerHandlers(
+        service=notification_service,
+        store=store,
+    )
+    notification_service.recover_stale_outbox(before=utc_now() - timedelta(minutes=5))
+    last_enqueued_date = None
+
+    def ensure_daily_notification_scan() -> None:
+        nonlocal last_enqueued_date
+        shanghai_now = datetime.now(ZoneInfo("Asia/Shanghai"))
+        if shanghai_now.hour < settings.notification_due_scan_hour:
+            return
+        business_date = shanghai_now.date()
+        if business_date == last_enqueued_date:
+            return
+        notification_handlers.ensure_due_scan_job(business_date=business_date)
+        last_enqueued_date = business_date
+
+    worker_id = socket.gethostname()
     Worker(
         store=store,
-        worker_id=socket.gethostname(),
-        handlers={**product_handlers.handlers(), **order_handlers.handlers()},
+        worker_id=worker_id,
+        handlers={
+            **product_handlers.handlers(),
+            **order_handlers.handlers(),
+            **notification_handlers.handlers(),
+        },
         terminal_failure_handlers=order_handlers.terminal_failure_handlers(),
         retry_limits={"product-image-cache": 3, "order_import": 3},
+        maintenance=ensure_daily_notification_scan,
+        work_sources=[
+            lambda: notification_service.consume_next_business_event(worker_id=worker_id),
+            lambda: notification_service.deliver_next(
+                worker_id=worker_id,
+                wechat_notifier=DisabledWechatNotifier(),
+                feishu_notifier=DisabledFeishuBusinessNotifier(),
+                ops_alert_notifier=DisabledOpsAlertNotifier(),
+            ),
+        ],
     ).run(stop_event=stop_event)
     engine.dispose()
 

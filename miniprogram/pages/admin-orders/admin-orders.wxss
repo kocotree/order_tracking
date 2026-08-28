@@ -1,42 +1,12 @@
 .order-mini-page { min-height: 100vh; padding-bottom: calc(126rpx + env(safe-area-inset-bottom)); }
 
-.mini-search-icon {
-  width: 30rpx;
-  height: 30rpx;
-  flex: 0 0 30rpx;
-}
-
-.mini-filter-button {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-}
-
-.mini-filter-icon {
-  position: relative;
-  width: 27rpx;
-  height: 25rpx;
-  background: currentColor;
-  clip-path: polygon(0 0, 100% 0, 65% 43%, 65% 100%, 38% 84%, 38% 43%);
-}
-
-.mini-filter-count {
-  position: absolute;
-  top: -9rpx;
-  right: -9rpx;
-  display: grid;
-  width: 34rpx;
-  height: 34rpx;
-  place-items: center;
-  color: #fff;
-  font-size: 18rpx;
-  line-height: 1;
-  background: #e65355;
-  border: 4rpx solid #fff;
-  border-radius: 50%;
-}
+.admin-order-search-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18rpx; padding: 20rpx 28rpx 28rpx; background: #fff; }
+.admin-order-search { display: flex; min-width: 0; height: 88rpx; align-items: center; gap: 18rpx; padding: 0 26rpx; background: #f7f9fb; border: 1rpx solid #dce2e9; border-radius: 24rpx; }
+.admin-order-search image { width: 38rpx; height: 38rpx; flex: 0 0 38rpx; }
+.admin-order-search input { min-width: 0; flex: 1; font-size: 27rpx; }
+.admin-order-filter { position: relative; display: flex; width: 152rpx; min-width: 152rpx; max-width: 152rpx; height: 88rpx; box-sizing: border-box; align-items: center; justify-content: center; gap: 10rpx; color: #1677ff; font-size: 27rpx; font-weight: 750; background: #fff; border: 1rpx solid #cfe0f8; border-radius: 24rpx; }
+.admin-order-filter image { width: 36rpx; height: 36rpx; }
+.admin-order-filter-count { position: absolute; top: -10rpx; right: -10rpx; display: grid; width: 34rpx; height: 34rpx; place-items: center; color: #fff; font-size: 18rpx; line-height: 1; background: #e65355; border: 4rpx solid #fff; border-radius: 50%; }
 
 .mini-sheet-layer {
   position: fixed;
@@ -231,7 +201,7 @@
 
 .mini-card-number {
   color: #1c2430;
-  font-size: 46rpx;
+  font-size: 34rpx;
   font-weight: 800;
   letter-spacing: 1rpx;
   line-height: 1;

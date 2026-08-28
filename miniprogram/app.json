@@ -17,6 +17,7 @@
     "pages/factory-apply/factory-apply",
     "pages/factory-status/factory-status",
     "pages/profile/profile",
+    "pages/notifications/notifications",
     "pages/dev-preview/dev-preview"
   ],
   "window": {

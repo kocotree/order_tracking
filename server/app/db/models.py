@@ -1295,7 +1295,10 @@ class OutboxMessage(Base):
     __tablename__ = "outbox_messages"
     __table_args__ = (
         UniqueConstraint("dedupe_key", name="uq_outbox_dedupe_key"),
-        Index("ix_outbox_messages_publish", "status", "available_at", "id"),
+        Index(
+            "ix_outbox_messages_claim", "message_kind", "status", "available_at", "id"
+        ),
+        Index("ix_outbox_messages_recipient", "recipient_id", "channel", "status", "id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -1304,9 +1307,28 @@ class OutboxMessage(Base):
     aggregate_id: Mapped[str] = mapped_column(String(100), nullable=False)
     dedupe_key: Mapped[str] = mapped_column(String(191), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    message_kind: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="business_event"
+    )
+    channel: Mapped[str | None] = mapped_column(String(32))
+    recipient_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    source_event_id: Mapped[int | None] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending")
     available_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    locked_by: Mapped[str | None] = mapped_column(String(100))
+    locked_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    last_error_code: Mapped[str | None] = mapped_column(String(100))
+    last_error_summary: Mapped[str | None] = mapped_column(String(500))
+    failed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    completed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    manual_review_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0"
+    )
+    alert_status: Mapped[str | None] = mapped_column(String(32))
+    alert_error_code: Mapped[str | None] = mapped_column(String(100))
     sent_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6),
@@ -1315,9 +1337,87 @@ class OutboxMessage(Base):
     )
 
 
+class NotificationAuthorization(Base):
+    __tablename__ = "notification_authorizations"
+    __table_args__ = (
+        CheckConstraint(
+            "result IN ('accepted', 'rejected', 'closed')",
+            name="ck_notification_authorizations_result",
+        ),
+        Index(
+            "ix_notification_authorizations_available",
+            "user_id",
+            "template_key",
+            "result",
+            "consumed_at",
+            "authorization_id",
+        ),
+    )
+
+    authorization_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    template_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    result: Mapped[str] = mapped_column(String(32), nullable=False)
+    authorized_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        UniqueConstraint(
+            "recipient_id", "dedupe_key", name="uq_notifications_recipient_dedupe"
+        ),
+        Index(
+            "ix_notifications_recipient_created",
+            "recipient_id",
+            "created_at",
+            "notification_id",
+        ),
+        Index(
+            "ix_notifications_recipient_unread",
+            "recipient_id",
+            "read_at",
+            "created_at",
+            "notification_id",
+        ),
+    )
+
+    notification_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True
+    )
+    recipient_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String(32), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[str] = mapped_column(String(191), nullable=False)
+    summary: Mapped[str] = mapped_column(String(500), nullable=False)
+    target_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(191), nullable=False)
+    read_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
-    __table_args__ = (Index("ix_audit_logs_request_id", "request_id"),)
+    __table_args__ = (
+        Index("ix_audit_logs_request_id", "request_id"),
+        Index("ix_audit_logs_target_created", "target_type", "target_id", "created_at", "id"),
+        Index("ix_audit_logs_actor_created", "actor_id", "created_at", "id"),
+        Index("ix_audit_logs_terminal_created", "source_terminal", "created_at", "id"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     request_id: Mapped[str] = mapped_column(String(64), nullable=False)

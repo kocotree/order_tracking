@@ -38,7 +38,6 @@
 
 .admin-order-number {
   color: #17202b;
-  font-family: "DIN Alternate", "Avenir Next", sans-serif;
   font-size: 46rpx;
   font-weight: 850;
   letter-spacing: 1rpx;

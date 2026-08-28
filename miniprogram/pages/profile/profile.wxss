@@ -16,6 +16,14 @@
 .profile-account-row text:last-child { color: #1c2430; font-size: 26rpx; font-weight: 750; text-align: right; }
 .profile-account-row text.is-normal { color: #388a62; }
 .factory-profile-card { margin-top: 0; }
+.profile-actions-card { display: grid; }
+.profile-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 36rpx; gap: 20rpx; width: 100% !important; min-height: 94rpx; box-sizing: border-box; align-items: center; padding: 0 34rpx; margin: 0; color: #1c2430; text-align: left; background: #fff; border: 0; border-bottom: 1rpx solid #e4e8ed; border-radius: 0; }
+.profile-action-row:last-child { border-bottom: 0; }
+.profile-action-label { min-width: 0; justify-self: start; font-size: 30rpx; font-weight: 700; }
+.profile-authorization-state { color: #1267c9; font-size: 24rpx; font-weight: 700; white-space: nowrap; transform: translateY(4rpx); }
+.profile-action-chevron { grid-column: 3; justify-self: end; color: #9aa4b1; font-size: 36rpx; line-height: 1; }
+.profile-notification-badge { display: grid; min-width: 44rpx; height: 44rpx; box-sizing: border-box; place-items: center; padding: 0 10rpx; color: #fff; font-size: 20rpx; line-height: 1; text-align: center; background: #ef4e55; border-radius: 22rpx; }
+.profile-action-row::after { border: 0; }
 .profile-logout-button { width: 100% !important; min-height: 96rpx; justify-self: stretch; margin: 0; color: #d84f51; font-size: 28rpx; font-weight: 750; line-height: 96rpx; background: #fff; border: 1rpx solid #f0d3d5; border-radius: 28rpx; box-shadow: 0 12rpx 34rpx rgba(32,48,68,.07); }
 .action-layer { position: fixed; z-index: 90; inset: 0; display: flex; align-items: flex-end; padding: 0 24rpx max(24rpx, env(safe-area-inset-bottom)); background: rgba(17,24,32,.45); }
 .action-sheet { width: 100%; }

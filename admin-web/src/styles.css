@@ -284,6 +284,14 @@ h1, h2, p { margin-top: 0; }
 .dashboard-notification-empty { display: grid; min-height: 110px; padding: 20px 16px; color: var(--subtle); text-align: center; place-content: center; }
 .dashboard-notification-empty strong { color: var(--muted); }
 .dashboard-notification-empty span { margin-top: 5px; font-size: 11px; }
+.dashboard-notification-list { display: grid; }
+.dashboard-notification-list button { display: grid; grid-template-columns: 8px minmax(0,1fr) auto; gap: 8px; align-items: center; min-height: 52px; padding: 8px 16px; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--line); }
+.dashboard-notification-list button:hover { background: var(--surface-soft); }
+.dashboard-notification-list i, .notification-unread-dot { width: 7px; height: 7px; background: var(--erp-blue); border-radius: 50%; }
+.dashboard-notification-list span { display: grid; gap: 3px; min-width: 0; }
+.dashboard-notification-list strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-notification-list small, .dashboard-notification-list time { color: var(--subtle); font-size: 10px; }
+.dashboard-notification-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-orders-card { min-width: 0; overflow: hidden; }
 .dashboard-order-table { width: 100%; min-width: 1120px; color: var(--ink); border-collapse: collapse; }
 .dashboard-order-table th, .dashboard-order-table td { height: 40px; padding: 0 14px; text-align: left; vertical-align: middle; }
@@ -421,6 +429,20 @@ h1, h2, p { margin-top: 0; }
 .topbar-left, .topbar-right, .user-chip { display: flex; align-items: center; }
 .topbar-left { gap: 12px; min-width: 0; }
 .topbar-right { position: relative; gap: 12px; }
+.notification-bell { position: relative; display: grid; width: 36px; height: 36px; padding: 0; color: #626c7d; background: transparent; border: 0; border-radius: 50%; place-items: center; }
+.notification-bell:hover, .notification-bell[aria-expanded="true"] { background: #eef1f5; }
+.notification-bell svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.notification-badge { position: absolute; top: 1px; right: -3px; min-width: 17px; height: 17px; padding: 0 4px; color: #fff; font-size: 9px; font-weight: 800; line-height: 17px; background: var(--danger); border: 2px solid #f7f8fa; border-radius: 9px; }
+.notification-popover { position: absolute; top: calc(100% + 8px); right: 160px; z-index: 35; width: 340px; overflow: hidden; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: var(--shadow-float); }
+.notification-popover header { display: flex; align-items: center; justify-content: space-between; height: 46px; padding: 0 14px; border-bottom: 1px solid var(--line); }
+.notification-popover header a { color: var(--erp-blue); font-size: 11px; text-decoration: none; }
+.notification-popover-item { display: grid; grid-template-columns: 8px minmax(0,1fr); gap: 8px; width: 100%; min-height: 58px; padding: 9px 14px; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--line); }
+.notification-popover-item:hover { background: var(--surface-soft); }
+.notification-popover-item > i { width: 7px; height: 7px; margin-top: 5px; background: var(--erp-blue); border-radius: 50%; }
+.notification-popover-item span { display: grid; gap: 4px; min-width: 0; }
+.notification-popover-item strong, .notification-popover-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notification-popover-item strong { font-size: 12px; }.notification-popover-item small, .notification-popover > p { color: var(--subtle); font-size: 10px; }.notification-popover > p { padding: 28px; margin: 0; text-align: center; }
+.notifications-page { display: grid; }.notifications-card { overflow: hidden; }.notifications-header { display: flex; align-items: end; justify-content: space-between; min-height: 72px; padding: 16px 20px 0; border-bottom: 1px solid var(--line); }.notifications-back-button { display: inline-flex; gap: 7px; align-items: center; padding: 4px 0; margin-bottom: 16px; }.notifications-back-button svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }.notification-tabs { display: flex; align-self: stretch; }.notification-tabs button { position: relative; min-width: 72px; padding: 0 16px; color: var(--muted); font-size: 12px; font-weight: 700; background: transparent; border: 0; }.notification-tabs button.is-active { color: var(--erp-blue); }.notification-tabs button.is-active::after { position: absolute; right: 12px; bottom: 0; left: 12px; height: 2px; content: ""; background: var(--erp-blue); }.notification-list { display: grid; }.notification-list-item { display: grid; grid-template-columns: 8px 86px minmax(0,1fr) 150px; gap: 12px; align-items: center; min-height: 72px; padding: 12px 20px; color: var(--ink); text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--line); }.notification-list-item:hover { background: #f6f9fc; }.notification-category { color: var(--erp-blue-dark); font-size: 11px; font-weight: 700; }.notification-copy { display: grid; gap: 5px; min-width: 0; }.notification-copy strong, .notification-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.notification-copy strong { font-size: 13px; }.notification-copy span, .notification-list-item time { color: var(--subtle); font-size: 11px; }.notification-list-item time { text-align: right; }.notification-empty { display: grid; min-height: 240px; color: var(--subtle); place-items: center; }.notification-pagination { display: flex; gap: 14px; align-items: center; justify-content: flex-end; min-height: 58px; padding: 0 20px; }.notification-pagination button { height: 30px; padding: 0 12px; background: #fff; border: 1px solid var(--line-strong); border-radius: 4px; }
 .topbar-title { overflow: hidden; color: #697283; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .icon-button { display: grid; width: 36px; height: 36px; padding: 0; color: #626c7d; background: transparent; border: 0; border-radius: 50%; place-items: center; }
 .icon-button svg { width: 20px; height: 20px; }
@@ -446,6 +468,8 @@ h1, h2, p { margin-top: 0; }
 .account-logout-button { width: 100%; min-height: 40px; padding: 0 16px; color: var(--danger); font-size: 12px; font-weight: 700; text-align: left; background: var(--surface); border: 0; border-top: 1px solid var(--line); }
 .account-logout-button:hover { background: var(--danger-bg); }
 .page-stage { width: min(100%, var(--content-max)); margin: 0 auto; padding: 16px; }
+.notification-target-error { display: grid; gap: 18px; justify-items: start; padding: 20px; }
+.notification-target-error p { margin: 0; }
 .mobile-menu-button, .mobile-overlay { display: none; }
 
 /* 原型公共列表、筛选、排序与分页组件 */

@@ -1,5 +1,5 @@
 <view class="notifications-page">
-  <mini-titlebar title="通知中心" show-back="{{true}}" />
+  <mini-titlebar title="通知中心" show-back="{{true}}" bind:back="goBack" />
   <view class="notification-tabs"><button class="{{status === 'all' ? 'is-active' : ''}}" data-status="all" bindtap="changeStatus">全部</button><button class="{{status === 'unread' ? 'is-active' : ''}}" data-status="unread" bindtap="changeStatus">未读</button></view>
   <view wx:if="{{items.length}}" class="notification-list">
     <button wx:for="{{items}}" wx:key="notificationId" class="notification-item" data-index="{{index}}" bindtap="openNotification">

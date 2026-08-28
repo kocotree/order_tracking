@@ -12,6 +12,7 @@ Page({
   onReachBottom() { if (this.data.hasMore && !this.data.loading) this.loadMore(); },
   async load(reset=false) { const page = reset ? 1 : this.data.page; this.setData({ loading:true }); try { const result = await notificationApi.list(this.data.status,page,10); const items = reset ? result.items.map(view) : [...this.data.items,...result.items.map(view)]; this.setData({ items,total:result.total,page,hasMore:items.length<result.total }); } catch { wx.showToast({ title:"通知加载失败",icon:"none" }); } finally { this.setData({ loading:false }); } },
   changeStatus(event:WechatMiniprogram.TouchEvent) { const status = event.currentTarget.dataset.status === "unread" ? "unread" : "all"; if (status === this.data.status) return; this.setData({ status,page:1,items:[] }); void this.load(true); },
+  goBack() { if (getCurrentPages().length > 1) wx.navigateBack(); else wx.reLaunch({ url:"/pages/profile/profile" }); },
   loadMore() { this.setData({ page:this.data.page+1 }); void this.load(false); },
   openNotification(event:WechatMiniprogram.TouchEvent) { const item=this.data.items[Number(event.currentTarget.dataset.index)]; if(!item)return; const url=notificationTarget(item.targetPath,item.targetType,item.targetId,item.notificationId,this.data.status); if(!url){wx.showToast({title:"内容已不可查看",icon:"none"});return;} wx.navigateTo({url,fail:()=>wx.showToast({title:"内容已不可查看",icon:"none"})}); },
 });

@@ -3,7 +3,13 @@
     <article class="notifications-page">
       <section class="section-card notifications-card">
         <header class="notifications-header">
-          <h1>通知记录</h1>
+          <div class="notifications-title-row">
+            <button class="notifications-back-button" type="button" @click="goBack" aria-label="返回上一页">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+              <span>返回</span>
+            </button>
+            <h1>通知记录</h1>
+          </div>
           <nav class="notification-tabs" aria-label="通知筛选">
             <button type="button" :class="{ 'is-active': status === 'all' }" @click="setStatus('all')">全部</button>
             <button type="button" :class="{ 'is-active': status === 'unread' }" @click="setStatus('unread')">未读</button>
@@ -46,6 +52,11 @@ const total = ref(0);
 const loading = ref(true);
 const errorMessage = ref("");
 const totalPages = computed(() => Math.max(Math.ceil(total.value / 10), 1));
+
+function goBack() {
+  if (window.history.length > 1) return router.back();
+  return router.push("/");
+}
 
 const categoryLabel = (value:string) => ({ NEW_ORDER:"新订单", DUE_REMINDER:"合同出货", SHIPMENT:"发货", REPAIR:"返修", BUSINESS_RESULT:"处理结果" }[value] ?? "业务通知");
 const dateTime = (value:string) => new Date(value).toLocaleString("zh-CN", { timeZone:"Asia/Shanghai", hour12:false });

@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -17,6 +19,15 @@ class Settings(BaseSettings):
     wechat_identity_scope: str = "unconfigured-wechat"
     wechat_identity_app_id: str = ""
     wechat_identity_app_secret: str = ""
+    wechat_notifications_enabled: bool = False
+    wechat_notification_admin_shipment_template_id: str = ""
+    wechat_notification_admin_repair_template_id: str = ""
+    wechat_notification_factory_status_template_id: str = ""
+    wechat_notification_factory_due_template_id: str = ""
+    wechat_notification_factory_repair_template_id: str = ""
+    wechat_notification_miniprogram_state: Literal["developer", "trial", "formal"] = (
+        "formal"
+    )
     avatar_bucket: str = "unconfigured-avatar"
     feishu_order_app_id: str = ""
     feishu_order_app_secret: str = ""
@@ -50,6 +61,31 @@ class Settings(BaseSettings):
             raise ValueError("secure web cookies are required in production")
         if bool(self.wechat_identity_app_id) != bool(self.wechat_identity_app_secret):
             raise ValueError("wechat identity app id and secret must be configured together")
+        template_ids = self.wechat_notification_template_ids
+        if any(template_ids.values()) and not all(template_ids.values()):
+            raise ValueError("wechat notification templates must be configured together")
+        if all(template_ids.values()) and not self.wechat_identity_app_id:
+            raise ValueError(
+                "wechat identity credentials are required for notifications"
+            )
+        if self.wechat_notifications_enabled and not all(template_ids.values()):
+            raise ValueError(
+                "wechat notifications require complete template configuration"
+            )
         if not 0 <= self.notification_due_scan_hour <= 23:
             raise ValueError("notification due scan hour must be between 0 and 23")
         return self
+
+    @property
+    def wechat_notification_template_ids(self) -> dict[str, str]:
+        return {
+            "admin_shipment": self.wechat_notification_admin_shipment_template_id,
+            "admin_repair": self.wechat_notification_admin_repair_template_id,
+            "factory_status": self.wechat_notification_factory_status_template_id,
+            "factory_due": self.wechat_notification_factory_due_template_id,
+            "factory_repair": self.wechat_notification_factory_repair_template_id,
+        }
+
+    @property
+    def wechat_notifications_configured(self) -> bool:
+        return all(self.wechat_notification_template_ids.values())

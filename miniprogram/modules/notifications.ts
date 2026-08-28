@@ -4,7 +4,7 @@ export type TemplateMapping = Partial<Record<string, string>>;
 
 const ROLE_KEYS: Record<MiniRole, readonly string[]> = {
   admin: ["admin_shipment", "admin_repair"],
-  factory: ["factory_order", "factory_repair"],
+  factory: ["factory_status", "factory_due", "factory_repair"],
 };
 
 const APPROVED_TARGETS = [

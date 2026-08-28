@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.notifications import (
     DeliveryRequest,
+    FakeFeishuBusinessNotifier,
     FakeOpsAlertNotifier,
     FakeWechatNotifier,
     NotificationDeliveryError,
@@ -17,6 +18,12 @@ from app.db.models import (
     Product,
     ProductVariant,
     QuantityLedger,
+    RepairOrder,
+    RepairReturnBatch,
+    RepairReturnLine,
+    Shipment,
+    ShipmentLine,
+    StoredFile,
     User,
 )
 from app.modules.notifications_audit import NotificationsAuditService
@@ -167,7 +174,7 @@ def test_rejected_wechat_authorization_keeps_in_app_notification_without_deliver
     service = NotificationsAuditService(sessions)
     service.record_authorizations(
         user_id="factory-notice-user",
-        results={"factory_order": "rejected"},
+        results={"factory_status": "rejected"},
         authorized_at=datetime(2026, 8, 27, 9, 0),
     )
     assert service.consume_next_business_event(worker_id="s11-worker") is True
@@ -199,19 +206,270 @@ def test_authorization_rejects_template_keys_outside_current_mini_program_role(
         raise AssertionError("factory user must not authorize administrator templates")
 
 
+def test_submitted_shipment_uses_selected_supplier_shipment_template_fields(
+    test_database_engine: Engine,
+) -> None:
+    sessions, _order_service, _draft = _publish_order(
+        test_database_engine, factory_user_ids=["factory-notice-user"]
+    )
+    submitted_at = datetime(2026, 8, 27, 2, 15)
+    with sessions() as session, session.begin():
+        session.query(OutboxMessage).filter_by(message_kind="business_event").update(
+            {"status": "completed"}
+        )
+        assignment = session.query(OrderAssignment).one()
+        session.add(
+            Shipment(
+                shipment_id="shipment-notice",
+                shipment_no="FH20260827-001",
+                factory_id="factory-notice-a",
+                status="SHIPPED",
+                business_date=date(2026, 8, 27),
+                created_by="factory-notice-user",
+                submitted_by="factory-notice-user",
+                submitted_at=submitted_at,
+            )
+        )
+        session.flush()
+        session.add(
+            ShipmentLine(
+                shipment_id="shipment-notice",
+                order_assignment_id=assignment.order_assignment_id,
+                quantity=12,
+                order_no_snapshot="S11-001",
+                sku_id_snapshot="SKU-S11",
+                product_name_snapshot="通知测试童帽",
+                properties_value_snapshot="蓝色 / 120",
+            )
+        )
+        session.add(
+            OutboxMessage(
+                event_type="shipment.submitted",
+                aggregate_type="shipment",
+                aggregate_id="shipment-notice",
+                dedupe_key="shipment:shipment-notice:submitted",
+                payload={"shipmentId": "shipment-notice", "shipmentNo": "FH20260827-001"},
+                status="pending",
+                available_at=submitted_at,
+            )
+        )
+
+    service = NotificationsAuditService(sessions)
+    service.record_authorizations(
+        user_id="admin-notice",
+        results={"admin_shipment": "accepted"},
+        authorized_at=datetime(2026, 8, 27, 2, 0),
+    )
+    assert service.consume_next_business_event(
+        worker_id="s11-shipment-event", now=submitted_at
+    ) is True
+    notifier = FakeWechatNotifier()
+    assert service.deliver_next(
+        worker_id="s11-shipment-delivery",
+        wechat_notifier=notifier,
+        now=submitted_at,
+    ) is True
+    assert notifier.sent[0].template_key == "admin_shipment"
+    assert notifier.sent[0].template_data == {
+        "character_string1": "FH20260827-001",
+        "thing2": "通知工厂甲",
+        "time3": "2026-08-27 10:15",
+        "number7": "12",
+        "thing4": "请查看发货单详情",
+    }
+
+
+def test_created_repair_uses_selected_product_repair_template_fields(
+    test_database_engine: Engine,
+) -> None:
+    sessions, _order_service, _draft = _publish_order(
+        test_database_engine, factory_user_ids=["factory-notice-user"]
+    )
+    created_at = datetime(2026, 8, 27, 3, 20)
+    with sessions() as session, session.begin():
+        session.query(OutboxMessage).filter_by(message_kind="business_event").update(
+            {"status": "completed"}
+        )
+        stored_file = StoredFile(
+            bucket="repair-test",
+            object_key="repair-test/s11.xlsx",
+            original_filename="s11.xlsx",
+            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            size_bytes=100,
+            content_sha256="a" * 64,
+            uploaded_by="admin-notice",
+        )
+        session.add(stored_file)
+        session.flush()
+        session.add(
+            RepairOrder(
+                repair_id="repair-notice",
+                repair_no="FX20260827-001",
+                factory_id="factory-notice-a",
+                status="INCOMPLETE",
+                warehouse_return_quantity=25,
+                repaired_quantity=0,
+                scrapped_quantity=0,
+                returned_quantity=0,
+                return_date=date(2026, 8, 27),
+                original_file_id=stored_file.file_id,
+                source_sha256="b" * 64,
+                created_by="admin-notice",
+            )
+        )
+        session.add(
+            OutboxMessage(
+                event_type="repair.created",
+                aggregate_type="repair",
+                aggregate_id="repair-notice",
+                dedupe_key="repair:repair-notice:created",
+                payload={"repairId": "repair-notice", "repairNo": "FX20260827-001"},
+                status="pending",
+                available_at=created_at,
+            )
+        )
+
+    service = NotificationsAuditService(sessions)
+    service.record_authorizations(
+        user_id="factory-notice-user",
+        results={"factory_repair": "accepted"},
+        authorized_at=datetime(2026, 8, 27, 3, 0),
+    )
+    assert service.consume_next_business_event(
+        worker_id="s11-repair-event", now=created_at
+    ) is True
+    notifier = FakeWechatNotifier()
+    assert service.deliver_next(
+        worker_id="s11-repair-delivery",
+        wechat_notifier=notifier,
+        now=created_at,
+    ) is True
+    assert notifier.sent[0].template_key == "factory_repair"
+    assert notifier.sent[0].template_data == {
+        "thing6": "通知工厂甲",
+        "thing2": "25",
+        "time4": "2026-08-27 11:20",
+        "thing5": "FX20260827-001待处理",
+    }
+
+
+def test_returned_repair_reuses_selected_product_repair_template_for_admin(
+    test_database_engine: Engine,
+) -> None:
+    sessions, _order_service, _draft = _publish_order(
+        test_database_engine, factory_user_ids=["factory-notice-user"]
+    )
+    submitted_at = datetime(2026, 8, 27, 6, 5)
+    with sessions() as session, session.begin():
+        session.query(OutboxMessage).filter_by(message_kind="business_event").update(
+            {"status": "completed"}
+        )
+        stored_file = StoredFile(
+            bucket="repair-return-test",
+            object_key="repair-return-test/s11.xlsx",
+            original_filename="s11.xlsx",
+            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            size_bytes=100,
+            content_sha256="c" * 64,
+            uploaded_by="admin-notice",
+        )
+        session.add(stored_file)
+        session.flush()
+        session.add(
+            RepairOrder(
+                repair_id="repair-return-notice",
+                repair_no="FX20260827-002",
+                factory_id="factory-notice-a",
+                status="COMPLETED",
+                warehouse_return_quantity=5,
+                repaired_quantity=5,
+                scrapped_quantity=0,
+                returned_quantity=5,
+                return_date=date(2026, 8, 27),
+                original_file_id=stored_file.file_id,
+                source_sha256="d" * 64,
+                created_by="admin-notice",
+            )
+        )
+        session.add(
+            RepairReturnBatch(
+                batch_id="repair-return-batch",
+                repair_id="repair-return-notice",
+                submitted_by="factory-notice-user",
+                submitted_at=submitted_at,
+                idempotency_key="s11-repair-return",
+                request_sha256="e" * 64,
+            )
+        )
+        session.flush()
+        session.add(
+            RepairReturnLine(
+                batch_id="repair-return-batch",
+                line_order=1,
+                variant_id="variant-notice",
+                repaired_quantity=5,
+                scrapped_quantity=0,
+            )
+        )
+        session.add(
+            OutboxMessage(
+                event_type="repair.return_submitted",
+                aggregate_type="repair",
+                aggregate_id="repair-return-notice",
+                dedupe_key="repair:repair-return-notice:return:repair-return-batch",
+                payload={
+                    "repairId": "repair-return-notice",
+                    "batchId": "repair-return-batch",
+                },
+                status="pending",
+                available_at=submitted_at,
+            )
+        )
+
+    service = NotificationsAuditService(sessions)
+    service.record_authorizations(
+        user_id="admin-notice",
+        results={"admin_repair": "accepted"},
+        authorized_at=datetime(2026, 8, 27, 6, 0),
+    )
+    assert service.consume_next_business_event(
+        worker_id="s11-repair-return-event", now=submitted_at
+    ) is True
+    notifier = FakeWechatNotifier()
+    assert service.deliver_next(
+        worker_id="s11-repair-return-delivery",
+        wechat_notifier=notifier,
+        now=submitted_at,
+    ) is True
+    assert notifier.sent[0].template_key == "admin_repair"
+    assert notifier.sent[0].template_data == {
+        "thing6": "通知工厂甲",
+        "thing2": "5",
+        "time4": "2026-08-27 14:05",
+        "thing5": "FX20260827-002已完成",
+    }
+
+
 def test_accepted_wechat_authorization_creates_and_sends_one_user_delivery(
     test_database_engine: Engine,
 ) -> None:
     sessions, _order_service, draft = _publish_order(
         test_database_engine, factory_user_ids=["factory-notice-user"]
     )
+    with sessions() as session, session.begin():
+        business_event = session.query(OutboxMessage).filter_by(
+            message_kind="business_event"
+        ).one()
+        business_event.available_at = datetime(2026, 8, 27, 1, 30)
     service = NotificationsAuditService(sessions)
     service.record_authorizations(
         user_id="factory-notice-user",
-        results={"factory_order": "accepted"},
-        authorized_at=datetime(2026, 8, 27, 9, 0),
+        results={"factory_status": "accepted"},
+        authorized_at=datetime(2026, 8, 27, 1, 0),
     )
-    assert service.consume_next_business_event(worker_id="s11-event-worker") is True
+    assert service.consume_next_business_event(
+        worker_id="s11-event-worker", now=datetime(2026, 8, 27, 1, 30)
+    ) is True
     with sessions() as session:
         pending_delivery = session.query(OutboxMessage).filter_by(message_kind="delivery").one()
         delivery_time = pending_delivery.available_at
@@ -225,7 +483,13 @@ def test_accepted_wechat_authorization_creates_and_sends_one_user_delivery(
 
     assert len(notifier.sent) == 1
     assert notifier.sent[0].recipient_id == "factory-notice-user"
-    assert notifier.sent[0].template_key == "factory_order"
+    assert notifier.sent[0].template_key == "factory_status"
+    assert notifier.sent[0].template_data == {
+        "thing1": "跟单管理系统",
+        "character_string2": "S11-001",
+        "phrase3": "新订单",
+        "time4": "2026-08-27 09:30",
+    }
     assert notifier.sent[0].target_id == draft.order_id
     with sessions() as session:
         delivery = session.query(OutboxMessage).filter_by(message_kind="delivery").one()
@@ -253,7 +517,7 @@ def test_retryable_wechat_failure_keeps_business_fact_and_resumes_after_worker_r
     service = NotificationsAuditService(sessions)
     service.record_authorizations(
         user_id="factory-notice-user",
-        results={"factory_order": "accepted"},
+        results={"factory_status": "accepted"},
         authorized_at=datetime(2026, 8, 27, 9, 0),
     )
     assert service.consume_next_business_event(worker_id="s11-event-worker") is True
@@ -316,7 +580,7 @@ def test_retry_exhaustion_requires_manual_review_and_uses_independent_ops_alert(
     service = NotificationsAuditService(sessions)
     service.record_authorizations(
         user_id="factory-notice-user",
-        results={"factory_order": "accepted"},
+        results={"factory_status": "accepted"},
         authorized_at=datetime(2026, 8, 27, 9, 0),
     )
     assert service.consume_next_business_event(worker_id="s11-event-worker") is True
@@ -357,7 +621,7 @@ def test_disabled_recipient_is_skipped_without_external_send_or_ops_alert(
     service = NotificationsAuditService(sessions)
     service.record_authorizations(
         user_id="factory-notice-user",
-        results={"factory_order": "accepted"},
+        results={"factory_status": "accepted"},
         authorized_at=datetime(2026, 8, 27, 9, 0),
     )
     assert service.consume_next_business_event(worker_id="s11-event-worker") is True
@@ -398,7 +662,7 @@ def test_unexpected_ops_alert_failure_keeps_manual_review_and_safe_failed_state(
     service = NotificationsAuditService(sessions)
     service.record_authorizations(
         user_id="factory-notice-user",
-        results={"factory_order": "accepted"},
+        results={"factory_status": "accepted"},
         authorized_at=datetime(2026, 8, 27, 9, 0),
     )
     assert service.consume_next_business_event(worker_id="s11-event-worker") is True
@@ -435,7 +699,7 @@ def test_unexpected_delivery_failure_is_safely_retried_and_stale_claim_is_recove
     service = NotificationsAuditService(sessions)
     service.record_authorizations(
         user_id="factory-notice-user",
-        results={"factory_order": "accepted"},
+        results={"factory_status": "accepted"},
         authorized_at=datetime(2026, 8, 27, 9, 0),
     )
     assert service.consume_next_business_event(worker_id="s11-event-worker") is True
@@ -496,11 +760,16 @@ def test_d3_scan_notifies_tracker_factory_users_and_two_special_admins_once(
     service = NotificationsAuditService(sessions)
     service.record_authorizations(
         user_id="factory-notice-user",
-        results={"factory_order": "accepted"},
+        results={"factory_due": "accepted"},
         authorized_at=datetime(2026, 9, 7, 8, 50),
     )
-    assert service.scan_due_reminders(business_date=date(2026, 9, 7)) == 4
-    assert service.scan_due_reminders(business_date=date(2026, 9, 7)) == 0
+    reminder_time = datetime(2026, 9, 7, 1, 0)
+    assert service.scan_due_reminders(
+        business_date=date(2026, 9, 7), now=reminder_time
+    ) == 4
+    assert service.scan_due_reminders(
+        business_date=date(2026, 9, 7), now=reminder_time
+    ) == 0
 
     for user_id in [
         "admin-notice",
@@ -523,6 +792,30 @@ def test_d3_scan_notifies_tracker_factory_users_and_two_special_admins_once(
             "feishu",
             "wechat",
         ]
+
+    wechat = FakeWechatNotifier()
+    feishu = FakeFeishuBusinessNotifier()
+    for index in range(4):
+        assert service.deliver_next(
+            worker_id=f"s11-due-delivery-{index}",
+            wechat_notifier=wechat,
+            feishu_notifier=feishu,
+            now=reminder_time,
+        ) is True
+    assert service.deliver_next(
+        worker_id="s11-due-delivery-empty",
+        wechat_notifier=wechat,
+        feishu_notifier=feishu,
+        now=reminder_time,
+    ) is False
+    assert len(wechat.sent) == 1
+    assert wechat.sent[0].template_key == "factory_due"
+    assert wechat.sent[0].template_data == {
+        "character_string1": "S11-001",
+        "thing5": "合同出货时间2026-09-10",
+        "short_thing6": "D-3",
+        "time8": "2026-09-07 09:00",
+    }
 
     assert service.list_notifications(
         user_id="factory-disabled", unread_only=False, page=1, page_size=10

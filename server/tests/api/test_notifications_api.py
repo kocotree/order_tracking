@@ -166,7 +166,13 @@ def test_notification_and_audit_http_contract_enforces_terminal_owner_csrf_and_r
         assert factory.post(f"/api/v1/mini/notifications/{own_id}/read").status_code == 200
         authorized = factory.post(
             "/api/v1/mini/notification-authorizations",
-            json={"results": {"factory_order": "accepted", "factory_repair": "rejected"}},
+            json={
+                "results": {
+                    "factory_status": "accepted",
+                    "factory_due": "closed",
+                    "factory_repair": "rejected",
+                }
+            },
         )
         assert authorized.status_code == 201
         invalid_role_template = factory.post(

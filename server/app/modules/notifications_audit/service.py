@@ -1,8 +1,9 @@
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select, update
 from sqlalchemy.engine import CursorResult
@@ -17,6 +18,7 @@ from app.adapters.notifications import (
     WechatNotifier,
 )
 from app.db.models import (
+    Factory,
     Notification,
     NotificationAuthorization,
     Order,
@@ -26,6 +28,7 @@ from app.db.models import (
     QuantityLedger,
     RepairOrder,
     RepairReturnBatch,
+    RepairReturnLine,
     Shipment,
     ShipmentLine,
     ShipmentVoidRequest,
@@ -34,6 +37,12 @@ from app.db.models import (
 from app.modules.infrastructure import utc_now
 
 logger = logging.getLogger(__name__)
+BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
+
+
+def _wechat_time(value: datetime) -> str:
+    aware = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    return aware.astimezone(BUSINESS_TIME_ZONE).strftime("%Y-%m-%d %H:%M")
 
 
 @dataclass(frozen=True)
@@ -101,7 +110,7 @@ class NotificationsAuditService:
             allowed_keys = (
                 {"admin_shipment", "admin_repair"}
                 if user.role == "admin"
-                else {"factory_order", "factory_repair"}
+                else {"factory_status", "factory_due", "factory_repair"}
             )
             if not set(results).issubset(allowed_keys):
                 raise ValueError("notification template is not allowed for role")
@@ -307,9 +316,11 @@ class NotificationsAuditService:
             )
             return int(result.rowcount or 0)
 
-    def scan_due_reminders(self, *, business_date: date) -> int:
+    def scan_due_reminders(
+        self, *, business_date: date, now: datetime | None = None
+    ) -> int:
         created = 0
-        current = utc_now()
+        current = now or utc_now()
         with self._session_factory() as session, session.begin():
             orders = session.scalars(
                 select(Order)
@@ -464,7 +475,7 @@ class NotificationsAuditService:
                     authorization = self._take_authorization(
                         session,
                         user_id=user.user_id,
-                        template_key="factory_order",
+                        template_key="factory_due",
                         consumed_at=current,
                     )
                     if authorization is not None:
@@ -476,7 +487,7 @@ class NotificationsAuditService:
                             source_event_id=None,
                             recipient_id=user.user_id,
                             channel="wechat",
-                            template_key="factory_order",
+                            template_key="factory_due",
                             title=title,
                             summary=summary,
                             target_type="factory_task",
@@ -486,6 +497,15 @@ class NotificationsAuditService:
                                 f"delivery:due:{order.order_id}:{node}:{user.user_id}:wechat"
                             ),
                             available_at=current,
+                            template_data={
+                                "character_string1": order.order_no,
+                                "thing5": (
+                                    "合同出货时间"
+                                    f"{order.contract_ship_date.isoformat()}"
+                                ),
+                                "short_thing6": node,
+                                "time8": _wechat_time(current),
+                            },
                         )
                     created += 1
         return created
@@ -658,7 +678,7 @@ class NotificationsAuditService:
             authorization = NotificationsAuditService._take_authorization(
                 session,
                 user_id=user.user_id,
-                template_key="factory_order",
+                template_key="factory_status",
                 consumed_at=message.locked_at or utc_now(),
             )
             if authorization is None:
@@ -675,7 +695,7 @@ class NotificationsAuditService:
                         aggregate_id=message.aggregate_id,
                         dedupe_key=delivery_dedupe,
                         payload={
-                            "templateKey": "factory_order",
+                            "templateKey": "factory_status",
                             "title": "新订单任务",
                             "summary": f"订单 {order.order_no} 已发布，请查看本厂任务",
                             "targetType": "factory_task",
@@ -684,6 +704,12 @@ class NotificationsAuditService:
                                 "/pages/factory-task-detail/factory-task-detail"
                                 f"?orderId={order_id}"
                             ),
+                            "templateData": {
+                                "thing1": "跟单管理系统",
+                                "character_string2": order.order_no,
+                                "phrase3": "新订单",
+                                "time4": _wechat_time(message.locked_at or utc_now()),
+                            },
                         },
                         message_kind="delivery",
                         channel="wechat",
@@ -710,13 +736,34 @@ class NotificationsAuditService:
                 summary=f"订单 {order.order_no} 已不再可执行，请返回任务列表查看",
                 target_path="/pages/factory-tasks/factory-tasks",
                 channel="wechat",
-                template_key="factory_order",
+                template_key="factory_status",
+                template_data={
+                    "thing1": "跟单管理系统",
+                    "character_string2": order.order_no,
+                    "phrase3": (
+                        "已撤回" if message.event_type == "order_withdrawn" else "已删除"
+                    ),
+                    "time4": _wechat_time(message.locked_at or utc_now()),
+                },
             )
 
     def _consume_shipment_submitted(self, session: Session, message: OutboxMessage) -> None:
         shipment = session.get(Shipment, message.aggregate_id)
         if shipment is None:
             return
+        factory_name = session.scalar(
+            select(Factory.factory_name).where(Factory.factory_id == shipment.factory_id)
+        )
+        total_quantity = int(
+            session.scalar(
+                select(func.sum(ShipmentLine.quantity)).where(
+                    ShipmentLine.shipment_id == shipment.shipment_id
+                )
+            )
+            or 0
+        )
+        shipment_no = shipment.shipment_no or shipment.shipment_id
+        submitted_at = shipment.submitted_at or message.locked_at or utc_now()
         for user in self._enabled_admins(session):
             self._notify_user(
                 session,
@@ -734,6 +781,13 @@ class NotificationsAuditService:
                 ),
                 channel="wechat",
                 template_key="admin_shipment",
+                template_data={
+                    "character_string1": shipment_no,
+                    "thing2": factory_name or "工厂",
+                    "time3": _wechat_time(submitted_at),
+                    "number7": str(total_quantity),
+                    "thing4": "请查看发货单详情",
+                },
             )
 
     def _consume_void_requested(self, session: Session, message: OutboxMessage) -> None:
@@ -775,7 +829,13 @@ class NotificationsAuditService:
                 f"?shipmentId={shipment.shipment_id}"
             ),
             channel="wechat",
-            template_key="factory_order",
+            template_key="factory_status",
+            template_data={
+                "thing1": "跟单管理系统",
+                "character_string2": shipment.shipment_no or shipment.shipment_id,
+                "phrase3": "撤回通过" if approved else "撤回拒绝",
+                "time4": _wechat_time(message.locked_at or utc_now()),
+            },
         )
 
     def _consume_shipment_returned(self, session: Session, message: OutboxMessage) -> None:
@@ -809,13 +869,22 @@ class NotificationsAuditService:
                     f"/pages/factory-task-detail/factory-task-detail?orderId={order_id}"
                 ),
                 channel="wechat",
-                template_key="factory_order",
+                template_key="factory_status",
+                template_data={
+                    "thing1": "跟单管理系统",
+                    "character_string2": shipment.shipment_no or shipment.shipment_id,
+                    "phrase3": "退回生效",
+                    "time4": _wechat_time(message.locked_at or utc_now()),
+                },
             )
 
     def _consume_repair_created(self, session: Session, message: OutboxMessage) -> None:
         repair = session.get(RepairOrder, message.aggregate_id)
         if repair is None:
             return
+        factory_name = session.scalar(
+            select(Factory.factory_name).where(Factory.factory_id == repair.factory_id)
+        )
         for user in self._enabled_factory_users(session, repair.factory_id):
             self._notify_user(
                 session,
@@ -832,6 +901,12 @@ class NotificationsAuditService:
                 ),
                 channel="wechat",
                 template_key="factory_repair",
+                template_data={
+                    "thing6": factory_name or "工厂",
+                    "thing2": str(repair.warehouse_return_quantity),
+                    "time4": _wechat_time(message.locked_at or utc_now()),
+                    "thing5": f"{repair.repair_no}待处理",
+                },
             )
 
     def _consume_repair_returned(self, session: Session, message: OutboxMessage) -> None:
@@ -839,6 +914,22 @@ class NotificationsAuditService:
         if repair is None:
             return
         batch = session.get(RepairReturnBatch, str(message.payload["batchId"]))
+        factory_name = session.scalar(
+            select(Factory.factory_name).where(Factory.factory_id == repair.factory_id)
+        )
+        batch_quantity = 0
+        if batch is not None:
+            batch_quantity = int(
+                session.scalar(
+                    select(
+                        func.sum(
+                            RepairReturnLine.repaired_quantity
+                            + RepairReturnLine.scrapped_quantity
+                        )
+                    ).where(RepairReturnLine.batch_id == batch.batch_id)
+                )
+                or 0
+            )
         status_text = "，返修已完成" if repair.status == "COMPLETED" else ""
         for user in self._enabled_admins(session):
             self._notify_user(
@@ -861,6 +952,20 @@ class NotificationsAuditService:
                 ),
                 channel="wechat",
                 template_key="admin_repair",
+                template_data={
+                    "thing6": factory_name or "工厂",
+                    "thing2": str(batch_quantity),
+                    "time4": _wechat_time(
+                        batch.submitted_at
+                        if batch is not None
+                        else message.locked_at or utc_now()
+                    ),
+                    "thing5": (
+                        f"{repair.repair_no}已完成"
+                        if repair.status == "COMPLETED"
+                        else f"{repair.repair_no}已发回"
+                    ),
+                },
             )
 
     @staticmethod
@@ -902,6 +1007,7 @@ class NotificationsAuditService:
         delivery_target_path: str | None = None,
         channel: str | None,
         template_key: str | None,
+        template_data: dict[str, str] | None = None,
     ) -> None:
         dedupe_key = f"event:{message.dedupe_key}"
         if self._notification_exists(session, user_id, dedupe_key):
@@ -946,6 +1052,7 @@ class NotificationsAuditService:
             target_path=delivery_target_path or target_path,
             dedupe_key=f"delivery:{message.dedupe_key}:{user_id}:{channel}",
             available_at=message.locked_at or utc_now(),
+            template_data=template_data,
         )
 
     @staticmethod
@@ -998,6 +1105,7 @@ class NotificationsAuditService:
         target_path: str,
         dedupe_key: str,
         available_at: datetime,
+        template_data: dict[str, str] | None = None,
     ) -> None:
         session.add(
             OutboxMessage(
@@ -1012,6 +1120,7 @@ class NotificationsAuditService:
                     "targetType": target_type,
                     "targetId": target_id,
                     "targetPath": target_path,
+                    "templateData": template_data or {},
                 },
                 message_kind="delivery",
                 channel=channel,
@@ -1040,6 +1149,9 @@ class NotificationsAuditService:
     def _delivery_request(message: OutboxMessage) -> DeliveryRequest:
         if message.recipient_id is None or message.channel is None:
             raise ValueError("delivery recipient and channel are required")
+        template_data = message.payload.get("templateData", {})
+        if not isinstance(template_data, dict):
+            raise ValueError("delivery template data must be an object")
         return DeliveryRequest(
             delivery_id=message.id,
             recipient_id=message.recipient_id,
@@ -1050,6 +1162,7 @@ class NotificationsAuditService:
             target_type=str(message.payload["targetType"]),
             target_id=str(message.payload["targetId"]),
             target_path=str(message.payload["targetPath"]),
+            template_data={str(key): str(value) for key, value in template_data.items()},
         )
 
     @classmethod

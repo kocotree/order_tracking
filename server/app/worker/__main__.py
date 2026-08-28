@@ -7,9 +7,12 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.notifications import (
+    AppCredentialWechatNotifier,
     DisabledFeishuBusinessNotifier,
     DisabledOpsAlertNotifier,
     DisabledWechatNotifier,
+    WechatNotifier,
+    WechatSubscriptionConfig,
 )
 from app.adapters.order_source import (
     AppCredentialFeishuOrderSource,
@@ -66,6 +69,19 @@ def main() -> None:
         service=OrderImportService(sessions), source=order_source
     )
     notification_service = NotificationsAuditService(sessions)
+    wechat_notifier: WechatNotifier = (
+        AppCredentialWechatNotifier(
+            WechatSubscriptionConfig(
+                app_id=settings.wechat_identity_app_id,
+                app_secret=settings.wechat_identity_app_secret,
+                template_ids=settings.wechat_notification_template_ids,
+                miniprogram_state=settings.wechat_notification_miniprogram_state,
+            ),
+            sessions,
+        )
+        if settings.wechat_notifications_enabled
+        else DisabledWechatNotifier()
+    )
     notification_handlers = NotificationWorkerHandlers(
         service=notification_service,
         store=store,
@@ -100,7 +116,7 @@ def main() -> None:
             lambda: notification_service.consume_next_business_event(worker_id=worker_id),
             lambda: notification_service.deliver_next(
                 worker_id=worker_id,
-                wechat_notifier=DisabledWechatNotifier(),
+                wechat_notifier=wechat_notifier,
                 feishu_notifier=DisabledFeishuBusinessNotifier(),
                 ops_alert_notifier=DisabledOpsAlertNotifier(),
             ),

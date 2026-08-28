@@ -3,13 +3,9 @@
     <article class="notifications-page">
       <section class="section-card notifications-card">
         <header class="notifications-header">
-          <div class="notifications-title-row">
-            <button class="notifications-back-button" type="button" @click="goBack" aria-label="返回上一页">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
-              <span>返回</span>
-            </button>
-            <h1>通知记录</h1>
-          </div>
+          <button class="detail-back-button notifications-back-button" type="button" @click="goBack" aria-label="返回上一页">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>返回
+          </button>
           <nav class="notification-tabs" aria-label="通知筛选">
             <button type="button" :class="{ 'is-active': status === 'all' }" @click="setStatus('all')">全部</button>
             <button type="button" :class="{ 'is-active': status === 'unread' }" @click="setStatus('unread')">未读</button>

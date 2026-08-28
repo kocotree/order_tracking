@@ -201,7 +201,7 @@
 
 .mini-card-number {
   color: #1c2430;
-  font-size: 46rpx;
+  font-size: 34rpx;
   font-weight: 800;
   letter-spacing: 1rpx;
   line-height: 1;

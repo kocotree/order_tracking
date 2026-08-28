@@ -1,8 +1,8 @@
 <view class="order-mini-page">
   <mini-titlebar title="订单" />
-  <view class="mini-search-bar">
-    <view class="mini-search-field"><image class="mini-search-icon" src="/assets/icons/search-gray.svg" mode="aspectFit" /><input value="{{keyword}}" placeholder="搜索订单编号或产品名称" bindinput="keywordChanged" confirm-type="search" bindconfirm="search" /></view>
-    <button class="mini-filter-button" bindtap="toggleFilter"><view class="mini-filter-icon" /><text>筛选</text><text wx:if="{{activeFilterCount}}" class="mini-filter-count">{{activeFilterCount}}</text></button>
+  <view class="admin-order-search-row">
+    <view class="admin-order-search"><image src="/assets/icons/search-gray.svg" mode="aspectFit" /><input value="{{keyword}}" placeholder="订单编号或产品名称" bindinput="keywordChanged" confirm-type="search" bindconfirm="search" /></view>
+    <view role="button" aria-label="筛选" class="admin-order-filter" bindtap="toggleFilter"><image src="/assets/icons/filter-blue.svg" mode="aspectFit"/><text>筛选</text><text wx:if="{{activeFilterCount}}" class="admin-order-filter-count">{{activeFilterCount}}</text></view>
   </view>
   <view class="mini-order-content">
     <view wx:if="{{loading}}" class="mini-empty">正在加载订单…</view><view wx:elif="{{error}}" class="mini-empty mini-error">{{error}}</view>

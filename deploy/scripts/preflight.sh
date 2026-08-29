@@ -31,6 +31,10 @@ fi
 
 docker version >/dev/null
 docker compose version >/dev/null
+command -v ossutil >/dev/null || {
+  echo "Alibaba Cloud ossutil 2.x is required before OSS backup verification" >&2
+  exit 1
+}
 docker network inspect traefik-network >/dev/null
 compose config --quiet
 echo "preflight passed for ${environment} at ${target_commit}"

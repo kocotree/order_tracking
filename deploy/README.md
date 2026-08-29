@@ -10,7 +10,8 @@ add automatic CD and never stores real credentials.
 - The examples document required names only. Copy the matching example on the
   server, replace every placeholder there, and run `chmod 600` on the real file.
 - Each environment must use a different database, least-privilege database user,
-  MinIO buckets, domain, Compose project, and external-system identities. The web
+  private Alibaba Cloud OSS bucket and RAM credentials, domain, Compose project,
+  and external-system identities. The web
   UI and `/api/` share one domain per environment through the Nginx proxy.
 
 ## First clone and later updates
@@ -32,7 +33,7 @@ shell history. Confirm the exact SHA equals the CI-passed target before continui
 ## Release order
 
 1. Run `scripts/preflight.sh shared-test <40-character-commit>`.
-2. Create and verify MySQL and MinIO backups in protected independent storage.
+2. Create and verify MySQL and OSS backups in protected independent storage.
 3. Set `ORDER_TRACKING_BACKUP_CONFIRMED=yes` only for the release shell.
 4. Run `scripts/release.sh shared-test <commit> <successful-ci-run-id>`.
 5. Review `docker compose ps`, worker/API logs, and internal health results.
@@ -48,6 +49,7 @@ upload, trial operation, or production cutover.
 - `rollback.sh` switches a clean deployment worktree to an exact prior commit,
   rebuilds the application, and intentionally does not run Alembic downgrade.
 - `restore-mysql.sh` only accepts a target database ending in `_restore`.
-- `restore-minio.sh` only accepts a target bucket ending in `-restore`.
+- `restore-oss.sh` only accepts a target bucket ending in `-restore` and requires
+  isolated restore credentials in the protected shell environment.
 - Restore rehearsal, production rollback, DNS, and live data changes require their
   own explicit approval. Backup files and runtime records remain outside Git.

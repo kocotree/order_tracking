@@ -20,9 +20,9 @@ from app.adapters.identity import (
     FeishuIdentityConfig,
 )
 from app.adapters.private_files import (
+    AliyunOssPrivateFileStore,
     DisabledPrivateFileStore,
     FakePrivateFileStore,
-    MinioPrivateFileStore,
     PrivateFileStore,
 )
 from app.adapters.wechat import (
@@ -126,20 +126,21 @@ def create_app(
         private_file_store = FakePrivateFileStore(bucket="local-demo-contract-files")
     elif all(
         (
-            settings.private_file_endpoint,
-            settings.private_file_access_key,
-            settings.private_file_secret_key,
+            settings.oss_region,
+            settings.oss_endpoint,
+            settings.oss_access_key_id,
+            settings.oss_access_key_secret,
         )
     ):
-        private_file_store = MinioPrivateFileStore(
-            endpoint=settings.private_file_endpoint,
-            access_key=settings.private_file_access_key,
-            secret_key=settings.private_file_secret_key,
-            bucket=settings.private_file_bucket,
-            secure=settings.private_file_secure,
+        private_file_store = AliyunOssPrivateFileStore(
+            endpoint=settings.oss_endpoint,
+            region=settings.oss_region,
+            access_key_id=settings.oss_access_key_id,
+            access_key_secret=settings.oss_access_key_secret,
+            bucket=settings.oss_bucket,
         )
     else:
-        private_file_store = DisabledPrivateFileStore(bucket=settings.private_file_bucket)
+        private_file_store = DisabledPrivateFileStore(bucket=settings.oss_bucket)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
@@ -189,20 +190,21 @@ def create_app(
             avatar_store = FakeAvatarStore(bucket="local-demo-private-avatar")
         elif all(
             (
-                settings.private_file_endpoint,
-                settings.private_file_access_key,
-                settings.private_file_secret_key,
+                settings.oss_region,
+                settings.oss_endpoint,
+                settings.oss_access_key_id,
+                settings.oss_access_key_secret,
             )
         ):
-            avatar_store = MinioPrivateFileStore(
-                endpoint=settings.private_file_endpoint,
-                access_key=settings.private_file_access_key,
-                secret_key=settings.private_file_secret_key,
-                bucket=settings.avatar_bucket,
-                secure=settings.private_file_secure,
+            avatar_store = AliyunOssPrivateFileStore(
+                endpoint=settings.oss_endpoint,
+                region=settings.oss_region,
+                access_key_id=settings.oss_access_key_id,
+                access_key_secret=settings.oss_access_key_secret,
+                bucket=settings.oss_bucket,
             )
         else:
-            avatar_store = DisabledAvatarStore(bucket=settings.avatar_bucket)
+            avatar_store = DisabledAvatarStore(bucket=settings.oss_bucket)
         identity_service = IdentityAccessService(
             session_factory,
             feishu_identity=feishu_identity,

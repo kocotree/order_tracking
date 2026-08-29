@@ -32,18 +32,16 @@ class Settings(BaseSettings):
     wechat_notification_miniprogram_state: Literal["developer", "trial", "formal"] = (
         "formal"
     )
-    avatar_bucket: str = "unconfigured-avatar"
-    product_image_bucket: str = "unconfigured-product-images"
     feishu_order_app_id: str = ""
     feishu_order_app_secret: str = ""
     feishu_order_app_token: str = ""
     feishu_order_table_id: str = ""
     feishu_order_view_id: str = ""
-    private_file_endpoint: str = ""
-    private_file_access_key: str = ""
-    private_file_secret_key: str = ""
-    private_file_bucket: str = "unconfigured-contract-files"
-    private_file_secure: bool = True
+    oss_region: str = ""
+    oss_endpoint: str = ""
+    oss_access_key_id: str = ""
+    oss_access_key_secret: str = ""
+    oss_bucket: str = "unconfigured-private-files"
     jst_product_endpoint: str = "https://openapi.jushuitan.com"
     jst_product_app_key: str = ""
     jst_product_app_secret: str = ""
@@ -138,12 +136,11 @@ class Settings(BaseSettings):
             self.feishu_order_app_token,
             self.feishu_order_table_id,
             self.feishu_order_view_id,
-            self.private_file_endpoint,
-            self.private_file_access_key,
-            self.private_file_secret_key,
-            self.private_file_bucket,
-            self.avatar_bucket,
-            self.product_image_bucket,
+            self.oss_region,
+            self.oss_endpoint,
+            self.oss_access_key_id,
+            self.oss_access_key_secret,
+            self.oss_bucket,
             self.jst_product_app_key,
             self.jst_product_app_secret,
             self.jst_product_token_cache_path,
@@ -160,6 +157,7 @@ class Settings(BaseSettings):
                 self.feishu_identity_redirect_uri,
                 self.admin_web_base_url,
                 self.jst_product_endpoint,
+                self.oss_endpoint,
             )
         )
 

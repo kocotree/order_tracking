@@ -23,12 +23,11 @@ def _deployment_settings(*, app_env: str) -> dict[str, object]:
         "feishu_order_app_token": "base-token",
         "feishu_order_table_id": "table-id",
         "feishu_order_view_id": "view-id",
-        "private_file_endpoint": "minio.internal:9000",
-        "private_file_access_key": "access-key",
-        "private_file_secret_key": "secret-key",
-        "private_file_bucket": "contracts-private",
-        "avatar_bucket": "avatars-private",
-        "product_image_bucket": "products-private",
+        "oss_region": "cn-hangzhou",
+        "oss_endpoint": "https://oss-cn-hangzhou-internal.aliyuncs.com",
+        "oss_access_key_id": "access-key-id",
+        "oss_access_key_secret": "access-key-secret",
+        "oss_bucket": "order-tracking-shared-test-example",
         "jst_product_app_key": "app-key",
         "jst_product_app_secret": "app-secret",
         "jst_product_token_cache_path": "/var/lib/order-tracking/jst/token.json",
@@ -129,6 +128,16 @@ def test_shared_test_rejects_missing_real_external_adapters() -> None:
             web_cookie_secure=True,
             wechat_notification_miniprogram_state="trial",
         )
+
+
+def test_shared_test_accepts_complete_oss_adapter_configuration() -> None:
+    values = _deployment_settings(app_env="shared_test")
+
+    settings = Settings(**values)  # type: ignore[arg-type]
+
+    assert settings.oss_region == "cn-hangzhou"
+    assert settings.oss_endpoint == "https://oss-cn-hangzhou-internal.aliyuncs.com"
+    assert settings.oss_bucket == "order-tracking-shared-test-example"
 
 
 def test_shared_test_rejects_insecure_web_cookies() -> None:

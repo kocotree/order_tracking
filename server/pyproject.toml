@@ -8,8 +8,8 @@ dependencies = [
   "cryptography>=46,<47",
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
-  "minio>=7.2,<8",
   "openpyxl>=3.1,<4",
+  "oss2>=2.19,<3",
   "pillow>=11,<12",
   "pydantic-settings>=2.10,<3",
   "pymysql>=1.1,<2",
@@ -48,5 +48,5 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["pymysql.*"]
+module = ["oss2.*", "pymysql.*"]
 ignore_missing_imports = true

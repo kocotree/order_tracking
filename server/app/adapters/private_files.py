@@ -1,7 +1,4 @@
-from io import BytesIO
 from typing import Protocol
-
-from minio import Minio
 
 from app.adapters.errors import ExternalAdapterUnavailable
 
@@ -19,6 +16,23 @@ class PrivateFileStore(Protocol):
     def get(self, *, object_key: str) -> bytes: ...
 
     def delete(self, *, object_key: str) -> None: ...
+
+
+class OssObject(Protocol):
+    def read(self) -> bytes: ...
+
+
+class OssBucketClient(Protocol):
+    def put_object(
+        self,
+        object_key: str,
+        content: bytes,
+        headers: dict[str, str] | None = None,
+    ) -> object: ...
+
+    def get_object(self, object_key: str) -> OssObject: ...
+
+    def delete_object(self, object_key: str) -> object: ...
 
 
 class FakePrivateFileStore:
@@ -70,23 +84,24 @@ class DisabledPrivateFileStore:
         del object_key
 
 
-class MinioPrivateFileStore:
+class AliyunOssPrivateFileStore:
     def __init__(
         self,
         *,
         endpoint: str,
-        access_key: str,
-        secret_key: str,
+        region: str,
+        access_key_id: str,
+        access_key_secret: str,
         bucket: str,
-        secure: bool,
+        bucket_client: OssBucketClient | None = None,
     ) -> None:
         self._bucket = bucket
-        self._client = Minio(
-            endpoint,
-            access_key=access_key,
-            secret_key=secret_key,
-            secure=secure,
-        )
+        if bucket_client is None:
+            import oss2
+
+            auth = oss2.AuthV4(access_key_id, access_key_secret)
+            bucket_client = oss2.Bucket(auth, endpoint, bucket, region=region)
+        self._client = bucket_client
 
     @property
     def bucket(self) -> str:
@@ -95,28 +110,21 @@ class MinioPrivateFileStore:
     def put(self, *, object_key: str, content: bytes, content_type: str) -> None:
         try:
             self._client.put_object(
-                self._bucket,
                 object_key,
-                BytesIO(content),
-                len(content),
-                content_type=content_type,
+                content,
+                headers={"Content-Type": content_type},
             )
         except Exception as error:
             raise PrivateFileStoreUnavailable("private file upload failed") from error
 
     def get(self, *, object_key: str) -> bytes:
         try:
-            response = self._client.get_object(self._bucket, object_key)
-            try:
-                return response.read()
-            finally:
-                response.close()
-                response.release_conn()
+            return self._client.get_object(object_key).read()
         except Exception as error:
-            raise PrivateFileStoreUnavailable("private file download failed") from error
+            raise PrivateFileStoreUnavailable("private file does not exist") from error
 
     def delete(self, *, object_key: str) -> None:
         try:
-            self._client.remove_object(self._bucket, object_key)
+            self._client.delete_object(object_key)
         except Exception as error:
             raise PrivateFileStoreUnavailable("private file delete failed") from error

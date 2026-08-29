@@ -24,7 +24,7 @@ from app.adapters.order_source import (
     DisabledFeishuOrderSource,
     FeishuOrderSourceConfig,
 )
-from app.adapters.private_files import MinioPrivateFileStore
+from app.adapters.private_files import AliyunOssPrivateFileStore
 from app.adapters.product import (
     AppCredentialJstProductSource,
     DisabledJstProductSource,
@@ -75,19 +75,20 @@ def main() -> None:
     )
     product_image_store = (
         PrivateProductImageStore(
-            MinioPrivateFileStore(
-                endpoint=settings.private_file_endpoint,
-                access_key=settings.private_file_access_key,
-                secret_key=settings.private_file_secret_key,
-                bucket=settings.product_image_bucket,
-                secure=settings.private_file_secure,
+            AliyunOssPrivateFileStore(
+                endpoint=settings.oss_endpoint,
+                region=settings.oss_region,
+                access_key_id=settings.oss_access_key_id,
+                access_key_secret=settings.oss_access_key_secret,
+                bucket=settings.oss_bucket,
             )
         )
         if all(
             (
-                settings.private_file_endpoint,
-                settings.private_file_access_key,
-                settings.private_file_secret_key,
+                settings.oss_region,
+                settings.oss_endpoint,
+                settings.oss_access_key_id,
+                settings.oss_access_key_secret,
             )
         )
         else DisabledProductImageStore()

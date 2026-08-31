@@ -62,9 +62,7 @@ def test_real_feishu_adapters_send_business_message_and_ops_alert(
                 200,
                 json={"code": 0, "tenant_access_token": "tenant-token", "expire": 7200},
             )
-        payload = json.loads(request.content)
         assert request.headers["authorization"] == "Bearer tenant-token"
-        assert payload["msg_type"] == "text"
         return httpx.Response(200, json={"code": 0, "msg": "success"})
 
     config = FeishuNotificationConfig(
@@ -92,6 +90,14 @@ def test_real_feishu_adapters_send_business_message_and_ops_alert(
             target_id="order-1",
             target_path="/orders/order-1",
             template_data={},
+            card_rows=(
+                {
+                    "orderNo": "E81",
+                    "productName": "儿童遮阳帽",
+                    "factoryNames": "通知工厂甲、通知工厂乙",
+                    "contractShipDate": "2026-09-10",
+                },
+            ),
         )
     )
     ops.send(
@@ -110,11 +116,77 @@ def test_real_feishu_adapters_send_business_message_and_ops_alert(
     business_payload = json.loads(message_requests[0].content)
     assert message_requests[0].url.params["receive_id_type"] == "open_id"
     assert business_payload["receive_id"] == "tracker-open-id"
-    assert json.loads(business_payload["content"])["text"] == (
-        "合同出货提醒\n订单 E81 距合同出货时间还有 3 天\n"
-        "https://order-test.example.test/orders/order-1"
-    )
+    assert business_payload["msg_type"] == "interactive"
+    card = json.loads(business_payload["content"])
+    assert card["schema"] == "2.0"
+    assert card["header"] == {
+        "template": "orange",
+        "title": {"tag": "plain_text", "content": "合同出货提醒"},
+    }
+    assert card["body"]["elements"] == [
+        {
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": "订单 E81 距合同出货时间还有 3 天",
+            },
+        },
+        {
+            "tag": "table",
+            "page_size": 10,
+            "row_height": "high",
+            "freeze_first_column": True,
+            "header_style": {"bold": True, "background_style": "grey"},
+            "columns": [
+                {
+                    "name": "orderNo",
+                    "display_name": "订单编号",
+                    "data_type": "text",
+                    "width": "auto",
+                },
+                {
+                    "name": "productName",
+                    "display_name": "商品名称",
+                    "data_type": "text",
+                    "width": "auto",
+                },
+                {
+                    "name": "factoryNames",
+                    "display_name": "生产工厂",
+                    "data_type": "text",
+                    "width": "auto",
+                },
+                {
+                    "name": "contractShipDate",
+                    "display_name": "合同出货时间",
+                    "data_type": "text",
+                    "width": "auto",
+                },
+            ],
+            "rows": [
+                {
+                    "orderNo": "E81",
+                    "productName": "儿童遮阳帽",
+                    "factoryNames": "通知工厂甲、通知工厂乙",
+                    "contractShipDate": "2026-09-10",
+                }
+            ],
+        },
+        {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "查看订单详情"},
+            "type": "primary",
+            "width": "fill",
+            "behaviors": [
+                {
+                    "type": "open_url",
+                    "default_url": "https://order-test.example.test/orders/order-1",
+                }
+            ],
+        },
+    ]
     ops_payload = json.loads(message_requests[1].content)
     assert ops_payload["receive_id"] == "ops-open-id"
+    assert ops_payload["msg_type"] == "text"
     assert "delivery_id=2" in json.loads(ops_payload["content"])["text"]
     assert "wechat_delivery_unavailable" in json.loads(ops_payload["content"])["text"]

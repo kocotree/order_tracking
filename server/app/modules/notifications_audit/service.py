@@ -326,6 +326,7 @@ class NotificationsAuditService:
     ) -> int:
         created = 0
         current = now or utc_now()
+        feishu_batches: dict[tuple[str, str], dict[str, Order]] = {}
         with self._session_factory() as session, session.begin():
             orders = session.scalars(
                 select(Order)
@@ -341,7 +342,7 @@ class NotificationsAuditService:
                         ]
                     ),
                 )
-                .order_by(Order.order_id)
+                .order_by(Order.order_no, Order.order_id)
             ).all()
             for order in orders:
                 days = (order.contract_ship_date - business_date).days
@@ -389,6 +390,9 @@ class NotificationsAuditService:
                     if user.user_id in seen_admins:
                         continue
                     seen_admins.add(user.user_id)
+                    feishu_batches.setdefault((user.user_id, node), {})[
+                        order.order_id
+                    ] = order
                     dedupe_key = f"due:{order.order_id}:{node}"
                     if self._notification_exists(session, user.user_id, dedupe_key):
                         continue
@@ -405,23 +409,6 @@ class NotificationsAuditService:
                             dedupe_key=dedupe_key,
                             created_at=current,
                         )
-                    )
-                    self._add_delivery(
-                        session,
-                        event_type="order.due_reminder",
-                        aggregate_type="order",
-                        aggregate_id=order.order_id,
-                        source_event_id=None,
-                        recipient_id=user.user_id,
-                        channel="feishu",
-                        template_key="due_reminder",
-                        title=title,
-                        summary=summary,
-                        target_type="order",
-                        target_id=order.order_id,
-                        target_path=f"/orders/{order.order_id}",
-                        dedupe_key=f"delivery:due:{order.order_id}:{node}:{user.user_id}:feishu",
-                        available_at=current,
                     )
                     created += 1
 
@@ -522,7 +509,99 @@ class NotificationsAuditService:
                             },
                         )
                     created += 1
+
+            for (recipient_id, node), orders_by_id in sorted(feishu_batches.items()):
+                batch_orders = sorted(
+                    orders_by_id.values(), key=lambda item: (item.order_no, item.order_id)
+                )
+                page_count = (len(batch_orders) + 9) // 10
+                single_order = batch_orders[0] if len(batch_orders) == 1 else None
+                for page_offset in range(0, len(batch_orders), 10):
+                    page_number = page_offset // 10 + 1
+                    page_orders = batch_orders[page_offset : page_offset + 10]
+                    dedupe_key = (
+                        f"delivery:due:{business_date.isoformat()}:{node}:"
+                        f"{recipient_id}:feishu:{page_number}"
+                    )
+                    if session.scalar(
+                        select(OutboxMessage.id).where(
+                            OutboxMessage.dedupe_key == dedupe_key
+                        )
+                    ) is not None:
+                        continue
+                    title = f"合同出货提醒｜{node}"
+                    if page_count > 1:
+                        title += f"｜第 {page_number}/{page_count} 张"
+                    self._add_delivery(
+                        session,
+                        event_type="order.due_reminder",
+                        aggregate_type=(
+                            "order" if single_order is not None else "order_batch"
+                        ),
+                        aggregate_id=(
+                            single_order.order_id
+                            if single_order is not None
+                            else (
+                                f"{business_date.isoformat()}:{node}:"
+                                f"{recipient_id}:{page_number}"
+                            )
+                        ),
+                        source_event_id=None,
+                        recipient_id=recipient_id,
+                        channel="feishu",
+                        template_key="due_reminder",
+                        title=title,
+                        summary=f"今天有 {len(batch_orders)} 个订单需要跟进",
+                        target_type=(
+                            "order" if single_order is not None else "order_list"
+                        ),
+                        target_id=(
+                            single_order.order_id
+                            if single_order is not None
+                            else f"{business_date.isoformat()}:{node}"
+                        ),
+                        target_path=(
+                            f"/orders/{single_order.order_id}"
+                            if single_order is not None
+                            else "/orders"
+                        ),
+                        dedupe_key=dedupe_key,
+                        available_at=current,
+                        card_rows=self._due_card_rows(session, page_orders),
+                    )
         return created
+
+    @staticmethod
+    def _due_card_rows(
+        session: Session, orders: list[Order]
+    ) -> tuple[dict[str, str], ...]:
+        rows: list[dict[str, str]] = []
+        for order in orders:
+            product_factories: dict[str, list[str]] = {}
+            assignments = session.execute(
+                select(OrderLine.product_name_snapshot, Factory.factory_name)
+                .join(
+                    OrderAssignment,
+                    OrderAssignment.order_line_id == OrderLine.order_line_id,
+                )
+                .join(Factory, Factory.factory_id == OrderAssignment.factory_id)
+                .where(OrderLine.order_id == order.order_id)
+                .order_by(OrderLine.order_line_id, Factory.factory_code)
+            ).all()
+            for product_name, factory_name in assignments:
+                factory_names = product_factories.setdefault(product_name, [])
+                if factory_name not in factory_names:
+                    factory_names.append(factory_name)
+            rows.extend(
+                {
+                    "orderNo": order.order_no,
+                    "productName": product_name,
+                    "factoryNames": "、".join(factory_names),
+                    "contractShipDate": order.contract_ship_date.isoformat(),
+                }
+                for product_name, factory_names in product_factories.items()
+            )
+        return tuple(rows)
 
     def list_notifications(
         self,
@@ -1120,6 +1199,7 @@ class NotificationsAuditService:
         dedupe_key: str,
         available_at: datetime,
         template_data: dict[str, str] | None = None,
+        card_rows: tuple[dict[str, str], ...] | None = None,
     ) -> None:
         session.add(
             OutboxMessage(
@@ -1135,6 +1215,7 @@ class NotificationsAuditService:
                     "targetId": target_id,
                     "targetPath": target_path,
                     "templateData": template_data or {},
+                    "cardRows": list(card_rows or ()),
                 },
                 message_kind="delivery",
                 channel=channel,
@@ -1166,6 +1247,11 @@ class NotificationsAuditService:
         template_data = message.payload.get("templateData", {})
         if not isinstance(template_data, dict):
             raise ValueError("delivery template data must be an object")
+        card_rows = message.payload.get("cardRows", [])
+        if not isinstance(card_rows, list) or any(
+            not isinstance(row, dict) for row in card_rows
+        ):
+            raise ValueError("delivery card rows must be a list of objects")
         return DeliveryRequest(
             delivery_id=message.id,
             recipient_id=message.recipient_id,
@@ -1177,6 +1263,10 @@ class NotificationsAuditService:
             target_id=str(message.payload["targetId"]),
             target_path=str(message.payload["targetPath"]),
             template_data={str(key): str(value) for key, value in template_data.items()},
+            card_rows=tuple(
+                {str(key): str(value) for key, value in row.items()}
+                for row in card_rows
+            ),
         )
 
     @classmethod

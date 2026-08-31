@@ -24,6 +24,7 @@ class DeliveryRequest:
     target_id: str
     target_path: str
     template_data: dict[str, str]
+    card_rows: tuple[dict[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,26 @@ class _AppCredentialFeishuSender:
         self._access_token_lock = Lock()
 
     def send_text(self, *, recipient_id: str, text: str) -> None:
+        self._send_message(
+            recipient_id=recipient_id,
+            msg_type="text",
+            content={"text": text},
+        )
+
+    def send_card(self, *, recipient_id: str, card: dict[str, object]) -> None:
+        self._send_message(
+            recipient_id=recipient_id,
+            msg_type="interactive",
+            content=card,
+        )
+
+    def _send_message(
+        self,
+        *,
+        recipient_id: str,
+        msg_type: str,
+        content: dict[str, object],
+    ) -> None:
         open_id = self._recipient_openid(recipient_id)
         if open_id is None:
             raise NotificationDeliveryError(
@@ -127,8 +148,8 @@ class _AppCredentialFeishuSender:
                     headers={"Authorization": f"Bearer {token}"},
                     json={
                         "receive_id": open_id,
-                        "msg_type": "text",
-                        "content": json.dumps({"text": text}, ensure_ascii=False),
+                        "msg_type": msg_type,
+                        "content": json.dumps(content, ensure_ascii=False),
                     },
                 )
                 response.raise_for_status()
@@ -215,9 +236,82 @@ class AppCredentialFeishuBusinessNotifier:
 
     def send(self, request: DeliveryRequest) -> None:
         target_url = f"{self._config.admin_web_base_url.rstrip('/')}{request.target_path}"
-        self._sender.send_text(
+        self._sender.send_card(
             recipient_id=request.recipient_id,
-            text=f"{request.title}\n{request.summary}\n{target_url}",
+            card={
+                "schema": "2.0",
+                "header": {
+                    "template": "orange",
+                    "title": {"tag": "plain_text", "content": request.title},
+                },
+                "body": {
+                    "elements": [
+                        {
+                            "tag": "div",
+                            "text": {
+                                "tag": "lark_md",
+                                "content": request.summary,
+                            },
+                        },
+                        {
+                            "tag": "table",
+                            "page_size": 10,
+                            "row_height": "high",
+                            "freeze_first_column": True,
+                            "header_style": {
+                                "bold": True,
+                                "background_style": "grey",
+                            },
+                            "columns": [
+                                {
+                                    "name": "orderNo",
+                                    "display_name": "订单编号",
+                                    "data_type": "text",
+                                    "width": "auto",
+                                },
+                                {
+                                    "name": "productName",
+                                    "display_name": "商品名称",
+                                    "data_type": "text",
+                                    "width": "auto",
+                                },
+                                {
+                                    "name": "factoryNames",
+                                    "display_name": "生产工厂",
+                                    "data_type": "text",
+                                    "width": "auto",
+                                },
+                                {
+                                    "name": "contractShipDate",
+                                    "display_name": "合同出货时间",
+                                    "data_type": "text",
+                                    "width": "auto",
+                                },
+                            ],
+                            "rows": list(request.card_rows),
+                        },
+                        {
+                            "tag": "button",
+                            "text": {
+                                "tag": "plain_text",
+                                "content": (
+                                    "查看订单详情"
+                                    if request.target_type == "order"
+                                    else "查看订单列表"
+                                ),
+                            },
+                            "type": "primary",
+                            "width": "fill",
+                            "behaviors": [
+                                {
+                                    "type": "open_url",
+                                    "default_url": target_url,
+                                }
+                            ],
+                        },
+                    ]
+                },
+            },
         )
 
 

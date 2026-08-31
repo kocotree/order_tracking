@@ -870,6 +870,212 @@ def test_d3_scan_notifies_tracker_factory_users_and_two_special_admins_once(
     assert service.scan_due_reminders(business_date=date(2026, 9, 3)) == 0
 
 
+def test_due_scan_groups_orders_products_and_factories_into_one_feishu_delivery(
+    test_database_engine: Engine,
+) -> None:
+    sessions, order_service, _draft = _publish_order(
+        test_database_engine, factory_user_ids=["factory-notice-user"]
+    )
+    with sessions() as session, session.begin():
+        session.add(
+            Factory(
+                factory_id="factory-notice-b",
+                supplier_number="S11B",
+                factory_name="通知工厂乙",
+                factory_code="S11B",
+                is_enabled=True,
+            )
+        )
+        session.add(
+            User(
+                user_id="factory-notice-user-b",
+                role="factory",
+                is_enabled=True,
+                feishu_display_name="工厂用户乙",
+                factory_id="factory-notice-b",
+                factory_position="employee",
+            )
+        )
+        session.add(
+            Product(
+                product_id="product-notice-b",
+                source_i_id="ITEM-S11-B",
+                name="通知测试童鞋",
+                is_available=True,
+                source_modified_at=datetime(2026, 8, 27, 8, 0),
+                first_synced_at=datetime(2026, 8, 27, 8, 0),
+                last_synced_at=datetime(2026, 8, 27, 8, 0),
+            )
+        )
+        session.add(
+            ProductVariant(
+                variant_id="variant-notice-b",
+                product_id="product-notice-b",
+                source_sku_id="SKU-S11-B",
+                properties_value="米白色 / 26",
+                source_category="童鞋",
+                source_enabled=1,
+                is_available=True,
+                source_modified_at=datetime(2026, 8, 27, 8, 0),
+                first_synced_at=datetime(2026, 8, 27, 8, 0),
+                last_synced_at=datetime(2026, 8, 27, 8, 0),
+            )
+        )
+
+    second = order_service.create_draft(
+        actor_id="admin-notice",
+        order_no="S11-002",
+        order_date=date(2026, 8, 27),
+        tracker="松子",
+        contract_ship_date=date(2026, 9, 10),
+        lines=[
+            DraftLineInput(
+                variant_id="variant-notice",
+                order_quantity=100,
+                assignments=[
+                    AssignmentInput(factory_id="factory-notice-a", quantity=40),
+                    AssignmentInput(factory_id="factory-notice-b", quantity=60),
+                ],
+            ),
+            DraftLineInput(
+                variant_id="variant-notice-b",
+                order_quantity=80,
+                assignments=[
+                    AssignmentInput(factory_id="factory-notice-b", quantity=80)
+                ],
+            ),
+        ],
+        request_id="s11-create-order-2",
+    )
+    order_service.publish(
+        actor_id="admin-notice",
+        order_id=second.order_id,
+        version=second.version,
+        request_id="s11-publish-order-2",
+        idempotency_key="s11-publish-order-2",
+    )
+
+    service = NotificationsAuditService(sessions)
+    reminder_time = datetime(2026, 9, 7, 1, 0)
+    assert service.scan_due_reminders(
+        business_date=date(2026, 9, 7), now=reminder_time
+    ) == 5
+
+    feishu = FakeFeishuBusinessNotifier()
+    assert service.deliver_next(
+        worker_id="s12-feishu-table-card",
+        wechat_notifier=FakeWechatNotifier(),
+        feishu_notifier=feishu,
+        enabled_channels={"feishu"},
+        now=reminder_time,
+    ) is True
+    assert service.deliver_next(
+        worker_id="s12-feishu-table-card-empty",
+        wechat_notifier=FakeWechatNotifier(),
+        feishu_notifier=feishu,
+        enabled_channels={"feishu"},
+        now=reminder_time,
+    ) is False
+
+    assert len(feishu.sent) == 1
+    request = feishu.sent[0]
+    assert request.title == "合同出货提醒｜D-3"
+    assert request.summary == "今天有 2 个订单需要跟进"
+    assert request.target_path == "/orders"
+    assert request.card_rows == (
+        {
+            "orderNo": "S11-001",
+            "productName": "通知测试童帽",
+            "factoryNames": "通知工厂甲",
+            "contractShipDate": "2026-09-10",
+        },
+        {
+            "orderNo": "S11-002",
+            "productName": "通知测试童帽",
+            "factoryNames": "通知工厂甲、通知工厂乙",
+            "contractShipDate": "2026-09-10",
+        },
+        {
+            "orderNo": "S11-002",
+            "productName": "通知测试童鞋",
+            "factoryNames": "通知工厂乙",
+            "contractShipDate": "2026-09-10",
+        },
+    )
+
+
+def test_due_scan_splits_more_than_ten_orders_without_dropping_card_rows(
+    test_database_engine: Engine,
+) -> None:
+    sessions, order_service, _draft = _publish_order(
+        test_database_engine, factory_user_ids=["factory-notice-user"]
+    )
+    for index in range(2, 12):
+        draft = order_service.create_draft(
+            actor_id="admin-notice",
+            order_no=f"S11-{index:03d}",
+            order_date=date(2026, 8, 27),
+            tracker="松子",
+            contract_ship_date=date(2026, 9, 10),
+            lines=[
+                DraftLineInput(
+                    variant_id="variant-notice",
+                    order_quantity=100,
+                    assignments=[
+                        AssignmentInput(factory_id="factory-notice-a", quantity=100)
+                    ],
+                )
+            ],
+            request_id=f"s11-create-order-{index}",
+        )
+        order_service.publish(
+            actor_id="admin-notice",
+            order_id=draft.order_id,
+            version=draft.version,
+            request_id=f"s11-publish-order-{index}",
+            idempotency_key=f"s11-publish-order-{index}",
+        )
+
+    service = NotificationsAuditService(sessions)
+    reminder_time = datetime(2026, 9, 7, 1, 0)
+    assert service.scan_due_reminders(
+        business_date=date(2026, 9, 7), now=reminder_time
+    ) == 22
+
+    feishu = FakeFeishuBusinessNotifier()
+    for index in range(2):
+        assert service.deliver_next(
+            worker_id=f"s12-feishu-table-page-{index}",
+            wechat_notifier=FakeWechatNotifier(),
+            feishu_notifier=feishu,
+            enabled_channels={"feishu"},
+            now=reminder_time,
+        ) is True
+    assert service.deliver_next(
+        worker_id="s12-feishu-table-page-empty",
+        wechat_notifier=FakeWechatNotifier(),
+        feishu_notifier=feishu,
+        enabled_channels={"feishu"},
+        now=reminder_time,
+    ) is False
+
+    assert [request.title for request in feishu.sent] == [
+        "合同出货提醒｜D-3｜第 1/2 张",
+        "合同出货提醒｜D-3｜第 2/2 张",
+    ]
+    assert [request.summary for request in feishu.sent] == [
+        "今天有 11 个订单需要跟进",
+        "今天有 11 个订单需要跟进",
+    ]
+    assert [request.target_path for request in feishu.sent] == ["/orders", "/orders"]
+    assert [len(request.card_rows) for request in feishu.sent] == [10, 1]
+    assert [
+        row["orderNo"]
+        for request in feishu.sent
+        for row in request.card_rows
+    ] == [f"S11-{index:03d}" for index in range(1, 12)]
+
+
 def test_due_scan_stops_and_restores_for_fully_shipped_factory_and_completed_order(
     test_database_engine: Engine,
 ) -> None:

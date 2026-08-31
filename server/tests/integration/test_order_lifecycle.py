@@ -156,7 +156,8 @@ def test_admin_creates_and_publishes_complete_multi_factory_draft(
         test_database_engine
     )
     service = OrderService(
-        sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+        sessionmaker(test_database_engine, class_=Session, expire_on_commit=False),
+        clock=lambda: datetime(2026, 8, 21, tzinfo=UTC),
     )
 
     draft = service.create_draft(

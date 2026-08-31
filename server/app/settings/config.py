@@ -146,9 +146,10 @@ class Settings(BaseSettings):
             self.jst_product_token_cache_path,
             self.jst_product_initial_sync_begin,
             self.admin_web_base_url,
-            self.ops_alert_recipient_user_id,
             *self.wechat_notification_template_ids.values(),
         )
+        if self.ops_alerts_enabled:
+            required_values += (self.ops_alert_recipient_user_id,)
         if not all(self._is_real_value(value) for value in required_values):
             return False
         return all(

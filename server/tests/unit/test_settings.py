@@ -140,6 +140,22 @@ def test_shared_test_accepts_complete_oss_adapter_configuration() -> None:
     assert settings.oss_bucket == "order-tracking-shared-test-example"
 
 
+def test_deployment_requires_ops_recipient_only_when_ops_alerts_are_enabled() -> None:
+    values = _deployment_settings(app_env="shared_test")
+    values["ops_alert_recipient_user_id"] = "replace-with-approved-test-user-id"
+
+    settings = Settings(**values)  # type: ignore[arg-type]
+
+    assert settings.ops_alerts_enabled is False
+
+    values["ops_alerts_enabled"] = True
+    with pytest.raises(
+        ValidationError,
+        match="shared_test requires complete real external adapter configuration",
+    ):
+        Settings(**values)  # type: ignore[arg-type]
+
+
 def test_shared_test_rejects_insecure_web_cookies() -> None:
     with pytest.raises(
         ValidationError,

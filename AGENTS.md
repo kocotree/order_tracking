@@ -69,6 +69,16 @@
 - 任务结束时记录修改文件、验证结果、遗留问题和下一步范围；只有更换 Agent、暂停未完成任务或存在未提交修改时才写完整交接记录。
 - 任何 Agent 接手前必须读取正式资料和交接记录，不得只依赖上一个 Agent 的总结。
 
+## Agent skills
+
+### Issue tracker
+
+新的缺陷、功能切片、Spec 和执行 Ticket 使用 GitHub Issues 跟踪；既有正式工单保留在 `docs/project/work-orders/`，不批量迁移或重复维护。具体关系与操作约定见 `docs/agents/issue-tracker.md`。
+
+### Domain docs
+
+本仓库采用单一上下文：领域术语集中在根目录 `CONTEXT.md`，正式需求、原型、技术决策、开发计划和工单仍按本文件规定的资料层级执行。具体读取规则见 `docs/agents/domain.md`。
+
 ## Agent 协作
 
 - 同一时间只有一个 Agent 修改主工作区。

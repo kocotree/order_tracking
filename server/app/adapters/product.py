@@ -17,7 +17,6 @@ import httpx
 from app.adapters.private_files import PrivateFileStore
 
 BUSINESS_TZ = ZoneInfo("Asia/Shanghai")
-JST_MAX_PAGE_INDEX = 800
 
 
 class ProductSourceError(RuntimeError):
@@ -53,16 +52,23 @@ class SourceProductPage:
     has_next: bool
     candidate_cursor: str
     source_request_id: str | None = None
+    next_checkpoint: str | None = None
 
 
 class JstProductSource(Protocol):
-    def fetch_initial_page(self, *, page_number: int) -> SourceProductPage: ...
+    def fetch_initial_page(
+        self,
+        *,
+        page_number: int,
+        checkpoint: str | None = None,
+    ) -> SourceProductPage: ...
 
     def fetch_incremental_page(
         self,
         *,
         start_cursor: str | None,
         page_number: int,
+        checkpoint: str | None = None,
     ) -> SourceProductPage: ...
 
 
@@ -77,6 +83,7 @@ class JstProductSourceConfig:
     request_interval_seconds: float = 0.8
     retry_attempts: int = 3
     retry_base_delay_seconds: float = 1.0
+    max_pages_per_window: int = 200
 
 
 @dataclass(frozen=True)
@@ -120,8 +127,15 @@ class AppCredentialJstProductSource:
         self._api_page = 1
         self._expected_page = 1
 
-    def fetch_initial_page(self, *, page_number: int) -> SourceProductPage:
-        if page_number == 1:
+    def fetch_initial_page(
+        self,
+        *,
+        page_number: int,
+        checkpoint: str | None = None,
+    ) -> SourceProductPage:
+        if checkpoint is not None:
+            self._restore_checkpoint(checkpoint, mode="initial")
+        elif page_number == 1:
             self._start_scan("initial", self._config.initial_sync_begin)
         return self._fetch_page(page_number=page_number)
 
@@ -130,8 +144,11 @@ class AppCredentialJstProductSource:
         *,
         start_cursor: str | None,
         page_number: int,
+        checkpoint: str | None = None,
     ) -> SourceProductPage:
-        if page_number == 1:
+        if checkpoint is not None:
+            self._restore_checkpoint(checkpoint, mode="incremental")
+        elif page_number == 1:
             start = (
                 datetime.fromisoformat(start_cursor)
                 if start_cursor
@@ -172,7 +189,10 @@ class AppCredentialJstProductSource:
                 modified_begin=self._window_start,
                 modified_end=window_end,
             )
-            if self._api_page != 1 or self._page_count(data) <= JST_MAX_PAGE_INDEX:
+            if (
+                self._api_page != 1
+                or self._page_count(data) <= self._config.max_pages_per_window
+            ):
                 break
             window_seconds = int((window_end - self._window_start).total_seconds())
             if window_seconds <= 1:
@@ -189,13 +209,78 @@ class AppCredentialJstProductSource:
             self._window_end = None
             self._api_page = 1
         self._expected_page += 1
+        has_next = upstream_has_next or has_later_window
         return SourceProductPage(
             page_number=page_number,
             items=items,
-            has_next=upstream_has_next or has_later_window,
+            has_next=has_next,
             candidate_cursor=self._scan_end.isoformat(),
             source_request_id=self._optional_text(data.get("requestId")),
+            next_checkpoint=self._serialize_checkpoint() if has_next else None,
         )
+
+    def _serialize_checkpoint(self) -> str:
+        if (
+            self._scan_mode is None
+            or self._scan_start is None
+            or self._scan_end is None
+            or self._window_start is None
+        ):
+            raise ProductSourceError("product_source_pagination_invalid")
+        return json.dumps(
+            {
+                "mode": self._scan_mode,
+                "scan_start": self._scan_start.isoformat(),
+                "scan_end": self._scan_end.isoformat(),
+                "window_start": self._window_start.isoformat(),
+                "window_end": self._window_end.isoformat() if self._window_end else None,
+                "api_page": self._api_page,
+                "expected_page": self._expected_page,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+
+    def _restore_checkpoint(self, checkpoint: str, *, mode: str) -> None:
+        try:
+            payload = json.loads(checkpoint)
+            if not isinstance(payload, dict) or payload.get("mode") != mode:
+                raise ValueError("invalid checkpoint mode")
+            scan_start = self._business_datetime(
+                datetime.fromisoformat(str(payload["scan_start"]))
+            )
+            scan_end = self._business_datetime(
+                datetime.fromisoformat(str(payload["scan_end"]))
+            )
+            window_start = self._business_datetime(
+                datetime.fromisoformat(str(payload["window_start"]))
+            )
+            window_end_raw = payload.get("window_end")
+            window_end = (
+                self._business_datetime(datetime.fromisoformat(str(window_end_raw)))
+                if window_end_raw is not None
+                else None
+            )
+            api_page = int(payload["api_page"])
+            expected_page = int(payload["expected_page"])
+            if (
+                scan_start >= scan_end
+                or window_start < scan_start
+                or window_start >= scan_end
+                or (window_end is not None and not window_start < window_end <= scan_end)
+                or api_page < 1
+                or expected_page < 1
+            ):
+                raise ValueError("invalid checkpoint values")
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            raise ProductSourceError("product_source_checkpoint_invalid") from error
+        self._scan_mode = mode
+        self._scan_start = scan_start
+        self._scan_end = scan_end
+        self._window_start = window_start
+        self._window_end = window_end
+        self._api_page = api_page
+        self._expected_page = expected_page
 
     def _request_page(
         self,
@@ -503,8 +588,13 @@ class ProductImageStore(Protocol):
 
 
 class DisabledJstProductSource:
-    def fetch_initial_page(self, *, page_number: int) -> SourceProductPage:
-        del page_number
+    def fetch_initial_page(
+        self,
+        *,
+        page_number: int,
+        checkpoint: str | None = None,
+    ) -> SourceProductPage:
+        del page_number, checkpoint
         raise ProductSourceError("product_source_not_configured")
 
     def fetch_incremental_page(
@@ -512,8 +602,9 @@ class DisabledJstProductSource:
         *,
         start_cursor: str | None,
         page_number: int,
+        checkpoint: str | None = None,
     ) -> SourceProductPage:
-        del start_cursor, page_number
+        del start_cursor, page_number, checkpoint
         raise ProductSourceError("product_source_not_configured")
 
 
@@ -622,9 +713,18 @@ class FakeJstProductSource:
         self._candidate_cursor = candidate_cursor
         self._fail_initial_page = fail_initial_page
         self._fail_incremental_page = fail_incremental_page
+        self.initial_page_numbers: list[int] = []
+        self.incremental_page_numbers: list[int] = []
         self.incremental_start_cursors: list[str | None] = []
 
-    def fetch_initial_page(self, *, page_number: int) -> SourceProductPage:
+    def fetch_initial_page(
+        self,
+        *,
+        page_number: int,
+        checkpoint: str | None = None,
+    ) -> SourceProductPage:
+        del checkpoint
+        self.initial_page_numbers.append(page_number)
         if page_number == self._fail_initial_page:
             raise ProductSourceError("product_source_page_failed")
         return self._page(self._initial_pages, page_number)
@@ -634,7 +734,10 @@ class FakeJstProductSource:
         *,
         start_cursor: str | None,
         page_number: int,
+        checkpoint: str | None = None,
     ) -> SourceProductPage:
+        del checkpoint
+        self.incremental_page_numbers.append(page_number)
         self.incremental_start_cursors.append(start_cursor)
         if page_number == self._fail_incremental_page:
             raise ProductSourceError("product_source_page_failed")
@@ -654,4 +757,9 @@ class FakeJstProductSource:
             has_next=page_number < len(pages),
             candidate_cursor=self._candidate_cursor,
             source_request_id=f"fake-product-page-{page_number}",
+            next_checkpoint=(
+                f"fake-product-page-{page_number + 1}"
+                if page_number < len(pages)
+                else None
+            ),
         )

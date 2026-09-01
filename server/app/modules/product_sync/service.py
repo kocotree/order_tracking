@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import uuid4
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -14,7 +14,14 @@ from app.adapters.product import (
     ProductSourceError,
     SourceProductVariant,
 )
-from app.db.models import AuditLog, BackgroundJob, Product, ProductSyncRun, ProductVariant
+from app.db.models import (
+    AuditLog,
+    BackgroundJob,
+    Product,
+    ProductSyncRun,
+    ProductSyncStagedVariant,
+    ProductVariant,
+)
 from app.modules.infrastructure import utc_now
 
 PRODUCT_CATEGORY_ALLOWLIST = frozenset(
@@ -143,35 +150,32 @@ class ProductSyncService:
         worker_id: str,
         actor_id: str | None = None,
     ) -> ProductSyncResult:
-        run_id = str(uuid4())
-        started_at = utc_now()
-        with self._session_factory() as session, session.begin():
-            session.add(
-                ProductSyncRun(
-                    run_id=run_id,
-                    run_type="initial",
-                    status="running",
-                    active_key="product-sync",
-                    start_cursor=None,
-                    candidate_cursor=None,
-                    success_cursor=None,
-                    started_at=started_at,
-                    worker_id=worker_id,
-                    request_id=request_id,
-                )
-            )
+        run_id = self._start_or_resume_run(
+            run_type="initial",
+            start_cursor=None,
+            request_id=request_id,
+            worker_id=worker_id,
+        )
         try:
-            records, pages_read, candidate_cursor = self._read_initial_pages()
-            unique_records = self._deduplicate(records)
-            eligible = [record for record in unique_records if self._is_available(record)]
-            for record in eligible:
-                self._required_properties_value(record)
-            ignored = len(unique_records) - len(eligible)
+            if not self._source_completed(run_id=run_id):
+                self._stage_initial_pages(run_id=run_id)
             with self._session_factory() as session, session.begin():
                 now = utc_now()
                 created = 0
                 updated = 0
-                for record in eligible:
+                included = 0
+                staged_records = session.scalars(
+                    select(ProductSyncStagedVariant)
+                    .where(
+                        ProductSyncStagedVariant.run_id == run_id,
+                        ProductSyncStagedVariant.category.in_(PRODUCT_CATEGORY_ALLOWLIST),
+                        ProductSyncStagedVariant.enabled == 1,
+                    )
+                    .order_by(ProductSyncStagedVariant.staged_id)
+                )
+                for staged in staged_records:
+                    record = self._staged_record(staged)
+                    self._required_properties_value(record)
                     existing_variant = session.scalar(
                         select(ProductVariant.variant_id).where(
                             ProductVariant.source_sku_id == record.sku_id
@@ -182,27 +186,41 @@ class ProductSyncService:
                         created += 1
                     else:
                         updated += 1
+                    included += 1
                 run = session.get(ProductSyncRun, run_id)
                 if run is None:
                     raise RuntimeError("product_sync_run_missing")
+                staged_total = int(
+                    session.scalar(
+                        select(func.count(ProductSyncStagedVariant.staged_id)).where(
+                            ProductSyncStagedVariant.run_id == run_id
+                        )
+                    )
+                    or 0
+                )
+                ignored = staged_total - included
                 run.status = "succeeded"
                 run.active_key = None
-                run.candidate_cursor = candidate_cursor
-                run.success_cursor = candidate_cursor
+                run.success_cursor = run.candidate_cursor
                 run.finished_at = now
-                run.pages_read = pages_read
-                run.records_read = len(records)
-                run.included_records = len(eligible)
+                run.included_records = included
                 run.created_records = created
                 run.updated_records = updated
                 run.ignored_records = ignored
+                run.source_checkpoint = None
+                success_cursor = run.success_cursor
+                session.execute(
+                    delete(ProductSyncStagedVariant).where(
+                        ProductSyncStagedVariant.run_id == run_id
+                    )
+                )
                 session.add(
                     AuditLog(
                         request_id=request_id,
                         action="product_sync.succeeded",
                         target_type="product_sync_run",
                         target_id=run_id,
-                        changes={"runType": "initial", "recordsRead": len(records)},
+                        changes={"runType": "initial", "recordsRead": run.records_read},
                         actor_id=actor_id,
                         source_terminal="worker",
                     )
@@ -213,10 +231,157 @@ class ProductSyncService:
         return ProductSyncResult(
             run_id=run_id,
             status="succeeded",
-            included_records=len(eligible),
+            included_records=included,
             ignored_records=ignored,
-            success_cursor=candidate_cursor,
+            success_cursor=success_cursor,
         )
+
+    def _start_or_resume_run(
+        self,
+        *,
+        run_type: str,
+        start_cursor: str | None,
+        request_id: str,
+        worker_id: str,
+    ) -> str:
+        with self._session_factory() as session, session.begin():
+            run = session.scalar(
+                select(ProductSyncRun)
+                .where(
+                    ProductSyncRun.run_type == run_type,
+                    ProductSyncRun.request_id == request_id,
+                    ProductSyncRun.status == "failed",
+                )
+                .order_by(ProductSyncRun.started_at.desc(), ProductSyncRun.run_id.desc())
+                .limit(1)
+            )
+            if run is None:
+                run = ProductSyncRun(
+                    run_id=str(uuid4()),
+                    run_type=run_type,
+                    status="running",
+                    active_key="product-sync",
+                    start_cursor=start_cursor,
+                    candidate_cursor=None,
+                    success_cursor=None,
+                    started_at=utc_now(),
+                    worker_id=worker_id,
+                    request_id=request_id,
+                )
+                session.add(run)
+            else:
+                run.status = "running"
+                run.active_key = "product-sync"
+                run.finished_at = None
+                run.worker_id = worker_id
+                run.error_code = None
+            return run.run_id
+
+    def _stage_initial_pages(self, *, run_id: str) -> None:
+        with self._session_factory() as session:
+            run = session.get(ProductSyncRun, run_id)
+            if run is None:
+                raise RuntimeError("product_sync_run_missing")
+            page_number = run.next_page
+            checkpoint = run.source_checkpoint
+            candidate_cursor = run.candidate_cursor
+        while True:
+            page = self._source.fetch_initial_page(
+                page_number=page_number,
+                checkpoint=checkpoint,
+            )
+            if page.page_number != page_number:
+                raise ValueError("product_source_pagination_invalid")
+            if candidate_cursor is not None and page.candidate_cursor != candidate_cursor:
+                raise ValueError("product_source_cursor_changed")
+            if page.has_next and page.next_checkpoint is None:
+                raise ValueError("product_source_checkpoint_missing")
+            candidate_cursor = page.candidate_cursor
+            with self._session_factory() as session, session.begin():
+                run = session.get(ProductSyncRun, run_id)
+                if run is None:
+                    raise RuntimeError("product_sync_run_missing")
+                for record in page.items:
+                    if self._is_available(record):
+                        self._required_properties_value(record)
+                    self._stage_record(session, run_id=run_id, record=record)
+                run.candidate_cursor = candidate_cursor
+                run.pages_read += 1
+                run.records_read += len(page.items)
+                run.next_page = page_number + 1
+                run.source_checkpoint = page.next_checkpoint
+                run.source_completed = not page.has_next
+            if not page.has_next:
+                return
+            assert page.next_checkpoint is not None
+            checkpoint = page.next_checkpoint
+            page_number += 1
+
+    @staticmethod
+    def _stage_record(
+        session: Session,
+        *,
+        run_id: str,
+        record: SourceProductVariant,
+    ) -> None:
+        staged = session.scalar(
+            select(ProductSyncStagedVariant).where(
+                ProductSyncStagedVariant.run_id == run_id,
+                ProductSyncStagedVariant.source_sku_id == record.sku_id,
+            )
+        )
+        if staged is None:
+            session.add(
+                ProductSyncStagedVariant(
+                    run_id=run_id,
+                    source_i_id=record.i_id,
+                    source_sku_id=record.sku_id,
+                    name=record.name,
+                    properties_value=record.properties_value,
+                    pic=record.pic,
+                    category=record.category,
+                    enabled=record.enabled,
+                    source_modified_at=record.source_modified_at,
+                )
+            )
+            return
+        if staged.source_i_id != record.i_id:
+            raise ValueError("product_source_identity_conflict")
+        staged_record = ProductSyncService._staged_record(staged)
+        if record.source_modified_at < staged.source_modified_at:
+            return
+        if record.source_modified_at == staged.source_modified_at and record != staged_record:
+            raise ValueError("product_source_duplicate_conflict")
+        staged.name = record.name
+        staged.properties_value = record.properties_value
+        staged.pic = record.pic
+        staged.category = record.category
+        staged.enabled = record.enabled
+        staged.source_modified_at = record.source_modified_at
+
+    @staticmethod
+    def _staged_record(staged: ProductSyncStagedVariant) -> SourceProductVariant:
+        return SourceProductVariant(
+            i_id=staged.source_i_id,
+            sku_id=staged.source_sku_id,
+            name=staged.name,
+            properties_value=staged.properties_value,
+            pic=staged.pic,
+            category=staged.category,
+            enabled=staged.enabled,
+            source_modified_at=staged.source_modified_at,
+        )
+
+    def _source_completed(self, *, run_id: str) -> bool:
+        with self._session_factory() as session:
+            completed = session.scalar(
+                select(ProductSyncRun.source_completed).where(
+                    ProductSyncRun.run_id == run_id
+                )
+            )
+        if completed is None:
+            raise RuntimeError("product_sync_run_missing")
+        return bool(completed)
 
     def run_incremental(
         self,
@@ -226,27 +391,23 @@ class ProductSyncService:
         actor_id: str | None = None,
     ) -> ProductSyncResult:
         start_cursor = self._last_success_cursor()
-        run_id = str(uuid4())
-        started_at = utc_now()
-        with self._session_factory() as session, session.begin():
-            session.add(
-                ProductSyncRun(
-                    run_id=run_id,
-                    run_type="incremental",
-                    status="running",
-                    active_key="product-sync",
-                    start_cursor=start_cursor,
-                    candidate_cursor=None,
-                    success_cursor=None,
-                    started_at=started_at,
-                    worker_id=worker_id,
-                    request_id=request_id,
-                )
-            )
+        run_id = self._start_or_resume_run(
+            run_type="incremental",
+            start_cursor=start_cursor,
+            request_id=request_id,
+            worker_id=worker_id,
+        )
         try:
-            records, pages_read, candidate_cursor = self._read_incremental_pages(
-                start_cursor=start_cursor
-            )
+            with self._session_factory() as session:
+                run = session.get(ProductSyncRun, run_id)
+                if run is None:
+                    raise RuntimeError("product_sync_run_missing")
+                persisted_start_cursor = run.start_cursor
+            if not self._source_completed(run_id=run_id):
+                self._stage_incremental_pages(
+                    run_id=run_id,
+                    start_cursor=persisted_start_cursor,
+                )
             with self._session_factory() as session, session.begin():
                 now = utc_now()
                 included = 0
@@ -256,7 +417,13 @@ class ProductSyncService:
                 disabled = 0
                 moved_out = 0
                 touched_products: set[str] = set()
-                for record in self._deduplicate(records):
+                staged_records = session.scalars(
+                    select(ProductSyncStagedVariant)
+                    .where(ProductSyncStagedVariant.run_id == run_id)
+                    .order_by(ProductSyncStagedVariant.staged_id)
+                )
+                for staged in staged_records:
+                    record = self._staged_record(staged)
                     available = self._is_available(record)
                     properties_value = (
                         self._required_properties_value(record) if available else None
@@ -334,24 +501,28 @@ class ProductSyncService:
                     raise RuntimeError("product_sync_run_missing")
                 run.status = "succeeded"
                 run.active_key = None
-                run.candidate_cursor = candidate_cursor
-                run.success_cursor = candidate_cursor
+                run.success_cursor = run.candidate_cursor
                 run.finished_at = now
-                run.pages_read = pages_read
-                run.records_read = len(records)
                 run.included_records = included
                 run.created_records = created
                 run.updated_records = updated
                 run.ignored_records = ignored
                 run.disabled_records = disabled
                 run.moved_out_records = moved_out
+                run.source_checkpoint = None
+                success_cursor = run.success_cursor
+                session.execute(
+                    delete(ProductSyncStagedVariant).where(
+                        ProductSyncStagedVariant.run_id == run_id
+                    )
+                )
                 session.add(
                     AuditLog(
                         request_id=request_id,
                         action="product_sync.succeeded",
                         target_type="product_sync_run",
                         target_id=run_id,
-                        changes={"runType": "incremental", "recordsRead": len(records)},
+                        changes={"runType": "incremental", "recordsRead": run.records_read},
                         actor_id=actor_id,
                         source_terminal="worker",
                     )
@@ -364,8 +535,54 @@ class ProductSyncService:
             status="succeeded",
             included_records=included,
             ignored_records=ignored,
-            success_cursor=candidate_cursor,
+            success_cursor=success_cursor,
         )
+
+    def _stage_incremental_pages(
+        self,
+        *,
+        run_id: str,
+        start_cursor: str | None,
+    ) -> None:
+        with self._session_factory() as session:
+            run = session.get(ProductSyncRun, run_id)
+            if run is None:
+                raise RuntimeError("product_sync_run_missing")
+            page_number = run.next_page
+            checkpoint = run.source_checkpoint
+            candidate_cursor = run.candidate_cursor
+        while True:
+            page = self._source.fetch_incremental_page(
+                start_cursor=start_cursor,
+                page_number=page_number,
+                checkpoint=checkpoint,
+            )
+            if page.page_number != page_number:
+                raise ValueError("product_source_pagination_invalid")
+            if candidate_cursor is not None and page.candidate_cursor != candidate_cursor:
+                raise ValueError("product_source_cursor_changed")
+            if page.has_next and page.next_checkpoint is None:
+                raise ValueError("product_source_checkpoint_missing")
+            candidate_cursor = page.candidate_cursor
+            with self._session_factory() as session, session.begin():
+                run = session.get(ProductSyncRun, run_id)
+                if run is None:
+                    raise RuntimeError("product_sync_run_missing")
+                for record in page.items:
+                    if self._is_available(record):
+                        self._required_properties_value(record)
+                    self._stage_record(session, run_id=run_id, record=record)
+                run.candidate_cursor = candidate_cursor
+                run.pages_read += 1
+                run.records_read += len(page.items)
+                run.next_page = page_number + 1
+                run.source_checkpoint = page.next_checkpoint
+                run.source_completed = not page.has_next
+            if not page.has_next:
+                return
+            assert page.next_checkpoint is not None
+            checkpoint = page.next_checkpoint
+            page_number += 1
 
     def _last_success_cursor(self) -> str | None:
         with self._session_factory() as session:
@@ -406,59 +623,6 @@ class ProductSyncService:
                     source_terminal="worker",
                 )
             )
-
-    def _read_initial_pages(self) -> tuple[list[SourceProductVariant], int, str]:
-        records: list[SourceProductVariant] = []
-        page_number = 1
-        candidate_cursor: str | None = None
-        while True:
-            page = self._source.fetch_initial_page(page_number=page_number)
-            if page.page_number != page_number:
-                raise ValueError("product_source_pagination_invalid")
-            if candidate_cursor is not None and page.candidate_cursor != candidate_cursor:
-                raise ValueError("product_source_cursor_changed")
-            candidate_cursor = page.candidate_cursor
-            records.extend(page.items)
-            if not page.has_next:
-                break
-            page_number += 1
-        if candidate_cursor is None:
-            raise ValueError("product_source_cursor_missing")
-        return records, page_number, candidate_cursor
-
-    def _read_incremental_pages(
-        self, *, start_cursor: str | None
-    ) -> tuple[list[SourceProductVariant], int, str]:
-        records: list[SourceProductVariant] = []
-        page_number = 1
-        candidate_cursor: str | None = None
-        while True:
-            page = self._source.fetch_incremental_page(
-                start_cursor=start_cursor,
-                page_number=page_number,
-            )
-            if page.page_number != page_number:
-                raise ValueError("product_source_pagination_invalid")
-            if candidate_cursor is not None and page.candidate_cursor != candidate_cursor:
-                raise ValueError("product_source_cursor_changed")
-            candidate_cursor = page.candidate_cursor
-            records.extend(page.items)
-            if not page.has_next:
-                break
-            page_number += 1
-        if candidate_cursor is None:
-            raise ValueError("product_source_cursor_missing")
-        return records, page_number, candidate_cursor
-
-    @staticmethod
-    def _deduplicate(records: list[SourceProductVariant]) -> list[SourceProductVariant]:
-        by_sku: dict[str, SourceProductVariant] = {}
-        for record in records:
-            existing = by_sku.get(record.sku_id)
-            if existing is not None and existing != record:
-                raise ValueError("product_source_duplicate_conflict")
-            by_sku[record.sku_id] = record
-        return list(by_sku.values())
 
     @staticmethod
     def _is_available(record: SourceProductVariant) -> bool:

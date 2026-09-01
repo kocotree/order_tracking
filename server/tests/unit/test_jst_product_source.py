@@ -154,7 +154,7 @@ def test_jst_product_source_splits_sync_into_seven_day_windows(
     assert cached["refresh_token"] == "refresh-token"
 
 
-def test_jst_product_source_splits_window_before_unsupported_deep_pages(
+def test_jst_product_source_splits_a_dense_window_at_the_internal_page_target(
     tmp_path: Path,
 ) -> None:
     business_bodies: list[dict[str, object]] = []
@@ -179,8 +179,8 @@ def test_jst_product_source_splits_window_before_unsupported_deep_pages(
         if modified_end == "2026-07-16 00:00:00" and body["modified_begin"] == (
             "2026-07-09 00:00:00"
         ):
-            item_id = "UNSUPPORTED-DEEP-WINDOW"
-            page_count = 801
+            item_id = "DENSE-WINDOW"
+            page_count = 201
         elif modified_end == "2026-07-12 12:00:00":
             item_id = f"LEFT-HALF-{body['page_index']}"
             page_count = 2
@@ -309,6 +309,82 @@ def test_jst_product_source_accepts_empty_window_with_zero_pages(
     assert page.items == ()
     assert page.has_next is False
     assert page.candidate_cursor == "2026-07-16T00:00:00+08:00"
+
+
+def test_jst_product_source_resumes_the_next_page_from_a_persisted_checkpoint(
+    tmp_path: Path,
+) -> None:
+    business_bodies: list[dict[str, object]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/openWeb/auth/getInitToken":
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "access_token": "access-token",
+                        "refresh_token": "refresh-token",
+                        "expires_in": 2_592_000,
+                    },
+                },
+            )
+        body = json.loads(parse_qs(request.content.decode())["biz"][0])
+        business_bodies.append(body)
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "datas": [],
+                    "page_index": body["page_index"],
+                    "page_count": 2,
+                },
+            },
+        )
+
+    config = JstProductSourceConfig(
+        app_key="app-key",
+        app_secret="app-secret",
+        initial_sync_begin=datetime(2026, 7, 9, tzinfo=ZoneInfo("Asia/Shanghai")),
+        token_cache_path=tmp_path / "jst-token.json",
+        request_interval_seconds=0,
+    )
+    first_source = AppCredentialJstProductSource(
+        config,
+        transport=httpx.MockTransport(respond),
+        clock=lambda: datetime(2026, 7, 10, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+    first = first_source.fetch_initial_page(page_number=1)
+
+    assert first.next_checkpoint is not None
+    resumed_source = AppCredentialJstProductSource(
+        config,
+        transport=httpx.MockTransport(respond),
+        clock=lambda: datetime(2026, 7, 11, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    second = resumed_source.fetch_initial_page(
+        page_number=2,
+        checkpoint=first.next_checkpoint,
+    )
+
+    assert second.has_next is False
+    assert second.candidate_cursor == "2026-07-10T00:00:00+08:00"
+    assert business_bodies == [
+        {
+            "page_index": 1,
+            "page_size": 50,
+            "modified_begin": "2026-07-09 00:00:00",
+            "modified_end": "2026-07-10 00:00:00",
+        },
+        {
+            "page_index": 2,
+            "page_size": 50,
+            "modified_begin": "2026-07-09 00:00:00",
+            "modified_end": "2026-07-10 00:00:00",
+        },
+    ]
 
 
 def test_jst_product_source_refreshes_rejected_access_token(tmp_path: Path) -> None:

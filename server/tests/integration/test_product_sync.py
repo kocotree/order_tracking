@@ -5,7 +5,12 @@ from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.product import FakeJstProductSource, ProductSourceError, SourceProductVariant
-from app.db.models import Product, ProductSyncRun, ProductVariant
+from app.db.models import (
+    Product,
+    ProductSyncRun,
+    ProductSyncStagedVariant,
+    ProductVariant,
+)
 from app.modules.product_sync import ProductSyncService
 
 
@@ -33,6 +38,7 @@ def source_variant(
 def clean_product_tables(test_database_engine: Engine) -> None:
     with Session(test_database_engine) as session, session.begin():
         session.execute(delete(ProductVariant))
+        session.execute(delete(ProductSyncStagedVariant))
         session.execute(delete(ProductSyncRun))
         session.execute(delete(Product))
 
@@ -207,6 +213,160 @@ def test_failed_source_page_records_failure_without_advancing_the_last_success_c
     assert [variant.source_sku_id for variant in variants] == ["SKU-1"]
 
 
+def test_initial_sync_stages_each_page_and_resumes_the_same_run_after_failure(
+    test_database_engine: Engine,
+) -> None:
+    session_factory = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    first_record = source_variant(
+        i_id="HAT-RESUME-1",
+        sku_id="SKU-RESUME-1",
+        category="童帽春夏",
+        enabled=1,
+    )
+    second_record = source_variant(
+        i_id="HAT-RESUME-2",
+        sku_id="SKU-RESUME-2",
+        category="童配秋冬",
+        enabled=1,
+    )
+    failing_source = FakeJstProductSource(
+        initial_pages=[[first_record], [second_record]],
+        candidate_cursor="cursor-resume",
+        fail_initial_page=2,
+    )
+    service = ProductSyncService(session_factory, source=failing_source)
+
+    with pytest.raises(ProductSourceError, match="product_source_page_failed"):
+        service.run_initial(request_id="request-resume", worker_id="worker-first")
+
+    with session_factory() as session:
+        failed_run = session.scalar(
+            select(ProductSyncRun).where(ProductSyncRun.request_id == "request-resume")
+        )
+        staged = session.scalars(select(ProductSyncStagedVariant)).all()
+        published = session.scalars(select(ProductVariant)).all()
+    assert failed_run is not None
+    assert (
+        failed_run.status,
+        failed_run.pages_read,
+        failed_run.records_read,
+        failed_run.next_page,
+    ) == ("failed", 1, 1, 2)
+    assert failed_run.source_checkpoint is not None
+    assert [record.source_sku_id for record in staged] == ["SKU-RESUME-1"]
+    assert published == []
+
+    resumed_source = FakeJstProductSource(
+        initial_pages=[[first_record], [second_record]],
+        candidate_cursor="cursor-resume",
+    )
+    result = ProductSyncService(session_factory, source=resumed_source).run_initial(
+        request_id="request-resume",
+        worker_id="worker-second",
+    )
+
+    assert result.run_id == failed_run.run_id
+    assert resumed_source.initial_page_numbers == [2]
+    with session_factory() as session:
+        run = session.get(ProductSyncRun, result.run_id)
+        variants = session.scalars(
+            select(ProductVariant).order_by(ProductVariant.source_sku_id)
+        ).all()
+        remaining_staged = session.scalars(select(ProductSyncStagedVariant)).all()
+    assert run is not None
+    assert (run.status, run.pages_read, run.records_read) == ("succeeded", 2, 2)
+    assert [variant.source_sku_id for variant in variants] == [
+        "SKU-RESUME-1",
+        "SKU-RESUME-2",
+    ]
+    assert remaining_staged == []
+
+
+def test_initial_sync_retries_publication_without_refetching_completed_source(
+    test_database_engine: Engine,
+) -> None:
+    session_factory = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    conflicting_name = "冲突产品名称"
+    ProductSyncService(
+        session_factory,
+        source=FakeJstProductSource(
+            initial_pages=[
+                [
+                    SourceProductVariant(
+                        i_id="EXISTING",
+                        sku_id="SKU-EXISTING",
+                        name=conflicting_name,
+                        properties_value="蓝色,52",
+                        pic=None,
+                        category="童帽春夏",
+                        enabled=1,
+                        source_modified_at=datetime(2026, 8, 21, 8, 0),
+                    )
+                ]
+            ],
+            candidate_cursor="cursor-existing",
+        ),
+    ).run_initial(request_id="request-existing", worker_id="worker-test")
+    pending = SourceProductVariant(
+        i_id="PENDING",
+        sku_id="SKU-PENDING",
+        name=conflicting_name,
+        properties_value="红色,54",
+        pic=None,
+        category="童配秋冬",
+        enabled=1,
+        source_modified_at=datetime(2026, 8, 21, 9, 0),
+    )
+
+    with pytest.raises(ValueError, match="product_source_identity_conflict"):
+        ProductSyncService(
+            session_factory,
+            source=FakeJstProductSource(
+                initial_pages=[[pending]],
+                candidate_cursor="cursor-pending",
+            ),
+        ).run_initial(request_id="request-publish-retry", worker_id="worker-first")
+
+    with session_factory() as session:
+        failed_run = session.scalar(
+            select(ProductSyncRun).where(
+                ProductSyncRun.request_id == "request-publish-retry"
+            )
+        )
+    assert failed_run is not None
+    assert failed_run.source_completed is True
+    with session_factory() as session, session.begin():
+        existing_variant = session.scalar(
+            select(ProductVariant).where(
+                ProductVariant.source_sku_id == "SKU-EXISTING"
+            )
+        )
+        assert existing_variant is not None
+        session.delete(existing_variant)
+        existing_product = session.scalar(
+            select(Product).where(Product.source_i_id == "EXISTING")
+        )
+        assert existing_product is not None
+        session.delete(existing_product)
+
+    retry_source = FakeJstProductSource(
+        initial_pages=[[pending]],
+        candidate_cursor="cursor-pending",
+    )
+    result = ProductSyncService(session_factory, source=retry_source).run_initial(
+        request_id="request-publish-retry",
+        worker_id="worker-second",
+    )
+
+    assert result.run_id == failed_run.run_id
+    assert retry_source.initial_page_numbers == []
+    with session_factory() as session:
+        published = session.scalar(
+            select(ProductVariant).where(ProductVariant.source_sku_id == "SKU-PENDING")
+        )
+    assert published is not None and published.is_available is True
+
+
 def test_incremental_sync_updates_enter_exit_disable_and_reenable_without_deleting_history(
     test_database_engine: Engine,
 ) -> None:
@@ -286,6 +446,83 @@ def test_incremental_sync_updates_enter_exit_disable_and_reenable_without_deleti
     assert restored is not None
     assert restored.is_available is True
     assert reenable.incremental_start_cursors == ["cursor-increment-1"]
+
+
+def test_incremental_sync_stages_pages_and_resumes_without_partial_publication(
+    test_database_engine: Engine,
+) -> None:
+    session_factory = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    ProductSyncService(
+        session_factory,
+        source=FakeJstProductSource(
+            initial_pages=[
+                [source_variant(i_id="KEEP", sku_id="SKU-KEEP", category="童装春夏", enabled=1)]
+            ],
+            candidate_cursor="cursor-initial",
+        ),
+    ).run_initial(request_id="request-initial", worker_id="worker-test")
+    disabled = source_variant(
+        i_id="KEEP",
+        sku_id="SKU-KEEP",
+        category="童装春夏",
+        enabled=0,
+    )
+    added = source_variant(
+        i_id="ADD",
+        sku_id="SKU-ADD",
+        category="童配秋冬",
+        enabled=1,
+    )
+    failing_source = FakeJstProductSource(
+        incremental_pages=[[disabled], [added]],
+        candidate_cursor="cursor-increment",
+        fail_incremental_page=2,
+    )
+
+    with pytest.raises(ProductSourceError, match="product_source_page_failed"):
+        ProductSyncService(session_factory, source=failing_source).run_incremental(
+            request_id="request-increment-resume",
+            worker_id="worker-first",
+        )
+
+    with session_factory() as session:
+        still_available = session.scalar(
+            select(ProductVariant).where(ProductVariant.source_sku_id == "SKU-KEEP")
+        )
+        failed_run = session.scalar(
+            select(ProductSyncRun).where(
+                ProductSyncRun.request_id == "request-increment-resume"
+            )
+        )
+    assert still_available is not None and still_available.is_available is True
+    assert failed_run is not None
+    assert (failed_run.status, failed_run.pages_read, failed_run.next_page) == (
+        "failed",
+        1,
+        2,
+    )
+
+    resumed_source = FakeJstProductSource(
+        incremental_pages=[[disabled], [added]],
+        candidate_cursor="cursor-increment",
+    )
+    result = ProductSyncService(session_factory, source=resumed_source).run_incremental(
+        request_id="request-increment-resume",
+        worker_id="worker-second",
+    )
+
+    assert result.run_id == failed_run.run_id
+    assert resumed_source.incremental_page_numbers == [2]
+    with session_factory() as session:
+        variants = session.scalars(
+            select(ProductVariant).order_by(ProductVariant.source_sku_id)
+        ).all()
+        staged = session.scalars(select(ProductSyncStagedVariant)).all()
+    assert [(variant.source_sku_id, variant.is_available) for variant in variants] == [
+        ("SKU-ADD", True),
+        ("SKU-KEEP", False),
+    ]
+    assert staged == []
 
 
 def test_repeated_pages_and_repeated_initial_window_are_idempotent(

@@ -360,6 +360,11 @@ class ProductSyncRun(Base):
     start_cursor: Mapped[str | None] = mapped_column(String(255))
     candidate_cursor: Mapped[str | None] = mapped_column(String(255))
     success_cursor: Mapped[str | None] = mapped_column(String(255))
+    source_checkpoint: Mapped[str | None] = mapped_column(Text)
+    next_page: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    source_completed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0"
+    )
     started_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
     worker_id: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -376,6 +381,40 @@ class ProductSyncRun(Base):
     error_code: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class ProductSyncStagedVariant(Base):
+    __tablename__ = "product_sync_staged_variants"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "source_sku_id",
+            name="uq_product_sync_staged_run_sku",
+        ),
+        Index("ix_product_sync_staged_run", "run_id", "staged_id"),
+    )
+
+    staged_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("product_sync_runs.run_id", ondelete="CASCADE"), nullable=False
+    )
+    source_i_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_sku_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    properties_value: Mapped[str | None] = mapped_column(String(255))
+    pic: Mapped[str | None] = mapped_column(String(1000))
+    category: Mapped[str | None] = mapped_column(String(100))
+    enabled: Mapped[int | None] = mapped_column(Integer)
+    source_modified_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP(6)"),
+        server_onupdate=text("CURRENT_TIMESTAMP(6)"),
     )
 
 

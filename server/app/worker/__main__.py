@@ -196,7 +196,12 @@ def main() -> None:
             **notification_handlers.handlers(),
         },
         terminal_failure_handlers=order_handlers.terminal_failure_handlers(),
-        retry_limits={"product-image-cache": 3, "order_import": 3},
+        retry_limits={
+            "product-sync-initial": 3,
+            "product-sync-incremental": 3,
+            "product-image-cache": 3,
+            "order_import": 3,
+        },
         maintenance=ensure_daily_notification_scan,
         work_sources=[
             lambda: notification_service.consume_next_business_event(worker_id=worker_id),

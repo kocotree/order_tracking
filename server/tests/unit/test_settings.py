@@ -195,6 +195,48 @@ def test_deployment_rejects_invalid_product_sync_begin() -> None:
         Settings(**values)  # type: ignore[arg-type]
 
 
+def test_settings_exposes_bounded_jst_product_retry_policy() -> None:
+    settings = Settings(database_url="mysql+pymysql://test:test@127.0.0.1/test")
+
+    assert settings.jst_product_request_interval_seconds == 0.8
+    assert settings.jst_product_retry_attempts == 3
+    assert settings.jst_product_retry_base_delay_seconds == 1.0
+
+
+@pytest.mark.parametrize(
+    ("setting_name", "invalid_value", "message"),
+    [
+        (
+            "jst_product_request_interval_seconds",
+            0.59,
+            "jst product request interval must be between 0.6 and 60 seconds",
+        ),
+        (
+            "jst_product_retry_attempts",
+            11,
+            "jst product retry attempts must be between 0 and 10",
+        ),
+        (
+            "jst_product_retry_base_delay_seconds",
+            0,
+            "jst product retry base delay must be between 0 and 60 seconds",
+        ),
+    ],
+)
+def test_settings_rejects_unbounded_jst_product_retry_policy(
+    setting_name: str,
+    invalid_value: float | int,
+    message: str,
+) -> None:
+    values: dict[str, object] = {
+        "database_url": "mysql+pymysql://test:test@127.0.0.1/test",
+        setting_name: invalid_value,
+    }
+
+    with pytest.raises(ValidationError, match=message):
+        Settings(**values)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     "database_url",
     [

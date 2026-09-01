@@ -62,6 +62,13 @@ def main() -> None:
                 endpoint=settings.jst_product_endpoint,
                 token_cache_path=Path(settings.jst_product_token_cache_path),
                 page_size=settings.jst_product_page_size,
+                request_interval_seconds=(
+                    settings.jst_product_request_interval_seconds
+                ),
+                retry_attempts=settings.jst_product_retry_attempts,
+                retry_base_delay_seconds=(
+                    settings.jst_product_retry_base_delay_seconds
+                ),
             )
         )
         if all(

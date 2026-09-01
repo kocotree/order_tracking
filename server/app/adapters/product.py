@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from hashlib import md5
 from ipaddress import ip_address
 from pathlib import Path
-from time import time
+from time import monotonic, sleep, time
 from typing import Protocol
 from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
@@ -38,7 +38,7 @@ class SourceProductVariant:
     i_id: str
     sku_id: str
     name: str
-    properties_value: str
+    properties_value: str | None
     pic: str | None
     category: str | None
     enabled: int | None
@@ -73,6 +73,9 @@ class JstProductSourceConfig:
     endpoint: str = "https://openapi.jushuitan.com"
     token_cache_path: Path = Path("/tmp/order-tracking/jst-token.json")
     page_size: int = 50
+    request_interval_seconds: float = 0.8
+    retry_attempts: int = 3
+    retry_base_delay_seconds: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -99,10 +102,15 @@ class AppCredentialJstProductSource:
         *,
         transport: httpx.BaseTransport | None = None,
         clock: Callable[[], datetime] | None = None,
+        rate_clock: Callable[[], float] = monotonic,
+        sleeper: Callable[[float], None] = sleep,
     ) -> None:
         self._config = config
         self._transport = transport
         self._clock = clock or (lambda: datetime.now(BUSINESS_TZ))
+        self._rate_clock = rate_clock
+        self._sleeper = sleeper
+        self._last_business_request_at: float | None = None
         self._scan_mode: str | None = None
         self._scan_start: datetime | None = None
         self._scan_end: datetime | None = None
@@ -189,24 +197,66 @@ class AppCredentialJstProductSource:
         biz = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
         try:
             access_token = self._get_access_token()
-            try:
-                payload = self._post_form(
-                    "/open/sku/query",
-                    self._business_form(biz, access_token),
-                )
-            except _JstRequestRejected as error:
-                if error.code != "100":
-                    raise
-                payload = self._post_form(
-                    "/open/sku/query",
-                    self._business_form(biz, self._renew_access_token()),
-                )
+            payload = self._request_business_page(biz=biz, access_token=access_token)
         except (_JstRequestRejected, httpx.HTTPError, TypeError, ValueError) as error:
             raise ProductSourceError("product_source_unavailable") from error
         data = payload.get("data", payload)
         if not isinstance(data, dict):
             raise ProductSourceError("product_source_contract_invalid")
         return data
+
+    def _request_business_page(
+        self,
+        *,
+        biz: str,
+        access_token: str,
+    ) -> dict[str, object]:
+        retries = 0
+        token_refreshed = False
+        while True:
+            self._wait_for_business_slot()
+            try:
+                return self._post_form(
+                    "/open/sku/query",
+                    self._business_form(biz, access_token),
+                )
+            except _JstRequestRejected as error:
+                if error.code == "100" and not token_refreshed:
+                    access_token = self._renew_access_token()
+                    token_refreshed = True
+                    continue
+                if error.code not in {"199", "200"} or retries >= self._config.retry_attempts:
+                    raise
+            except httpx.HTTPError as error:
+                if (
+                    not self._is_retryable_http_error(error)
+                    or retries >= self._config.retry_attempts
+                ):
+                    raise
+            delay = self._config.retry_base_delay_seconds * (2**retries)
+            retries += 1
+            self._sleeper(delay)
+
+    @staticmethod
+    def _is_retryable_http_error(error: httpx.HTTPError) -> bool:
+        if isinstance(error, httpx.TransportError):
+            return True
+        if isinstance(error, httpx.HTTPStatusError):
+            status_code = error.response.status_code
+            return status_code == 429 or status_code >= 500
+        return False
+
+    def _wait_for_business_slot(self) -> None:
+        now = self._rate_clock()
+        if self._last_business_request_at is not None:
+            remaining = (
+                self._config.request_interval_seconds
+                - (now - self._last_business_request_at)
+            )
+            if remaining > 0:
+                self._sleeper(remaining)
+                now = self._rate_clock()
+        self._last_business_request_at = now
 
     def _business_form(self, biz: str, access_token: str) -> dict[str, str]:
         form = {
@@ -373,7 +423,7 @@ class AppCredentialJstProductSource:
                 i_id=cls._required_text(raw, "i_id"),
                 sku_id=cls._required_text(raw, "sku_id"),
                 name=cls._required_text(raw, "name"),
-                properties_value=cls._required_text(raw, "properties_value"),
+                properties_value=cls._optional_text(raw.get("properties_value")),
                 pic=cls._optional_text(raw.get("pic")),
                 category=cls._optional_text(raw.get("category")),
                 enabled=enabled,

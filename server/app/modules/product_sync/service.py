@@ -8,7 +8,12 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.adapters.product import JstProductSource, ProductImageStore, SourceProductVariant
+from app.adapters.product import (
+    JstProductSource,
+    ProductImageStore,
+    ProductSourceError,
+    SourceProductVariant,
+)
 from app.db.models import AuditLog, BackgroundJob, Product, ProductSyncRun, ProductVariant
 from app.modules.infrastructure import utc_now
 
@@ -159,6 +164,8 @@ class ProductSyncService:
             records, pages_read, candidate_cursor = self._read_initial_pages()
             unique_records = self._deduplicate(records)
             eligible = [record for record in unique_records if self._is_available(record)]
+            for record in eligible:
+                self._required_properties_value(record)
             ignored = len(unique_records) - len(eligible)
             with self._session_factory() as session, session.begin():
                 now = utc_now()
@@ -251,6 +258,9 @@ class ProductSyncService:
                 touched_products: set[str] = set()
                 for record in self._deduplicate(records):
                     available = self._is_available(record)
+                    properties_value = (
+                        self._required_properties_value(record) if available else None
+                    )
                     variant = session.scalar(
                         select(ProductVariant).where(ProductVariant.source_sku_id == record.sku_id)
                     )
@@ -290,7 +300,8 @@ class ProductSyncService:
                         existing_product.source_modified_at, record.source_modified_at
                     )
                     existing_product.last_synced_at = now
-                    variant.properties_value = record.properties_value
+                    if properties_value is not None:
+                        variant.properties_value = properties_value
                     variant.source_category = record.category
                     variant.source_enabled = record.enabled
                     variant.is_available = available
@@ -454,12 +465,20 @@ class ProductSyncService:
         return record.category in PRODUCT_CATEGORY_ALLOWLIST and record.enabled == 1
 
     @staticmethod
+    def _required_properties_value(record: SourceProductVariant) -> str:
+        value = record.properties_value
+        if not isinstance(value, str) or not value.strip():
+            raise ProductSourceError("product_source_contract_invalid")
+        return value
+
+    @staticmethod
     def _upsert_available(
         session: Session,
         *,
         record: SourceProductVariant,
         now: datetime,
     ) -> Product:
+        properties_value = ProductSyncService._required_properties_value(record)
         product = session.scalar(select(Product).where(Product.source_i_id == record.i_id))
         if product is None:
             same_name = session.scalar(select(Product).where(Product.name == record.name))
@@ -509,7 +528,7 @@ class ProductSyncService:
                     variant_id=str(uuid4()),
                     product_id=product.product_id,
                     source_sku_id=record.sku_id,
-                    properties_value=record.properties_value,
+                    properties_value=properties_value,
                     source_category=record.category,
                     source_enabled=record.enabled,
                     is_available=True,
@@ -521,7 +540,7 @@ class ProductSyncService:
         else:
             if variant.product_id != product.product_id:
                 raise ValueError("product_source_identity_conflict")
-            variant.properties_value = record.properties_value
+            variant.properties_value = properties_value
             variant.source_category = record.category
             variant.source_enabled = record.enabled
             variant.is_available = True

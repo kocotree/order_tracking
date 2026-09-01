@@ -15,12 +15,13 @@ def source_variant(
     sku_id: str,
     category: str | None,
     enabled: int | None,
+    properties_value: str | None = "藏青,54",
 ) -> SourceProductVariant:
     return SourceProductVariant(
         i_id=i_id,
         sku_id=sku_id,
         name=f"产品 {i_id}",
-        properties_value="藏青,54",
+        properties_value=properties_value,
         pic=None,
         category=category,
         enabled=enabled,
@@ -91,6 +92,80 @@ def test_initial_sync_only_makes_exact_allowlisted_enabled_variants_available(
     ]
 
 
+def test_initial_sync_ignores_out_of_scope_variant_missing_properties(
+    test_database_engine: Engine,
+) -> None:
+    session_factory = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    source = FakeJstProductSource(
+        initial_pages=[
+            [
+                source_variant(
+                    i_id="SHOE-OUT",
+                    sku_id="SKU-SHOE-OUT",
+                    category="KQ童鞋（福建）",
+                    enabled=1,
+                    properties_value=None,
+                ),
+                source_variant(
+                    i_id="HAT-IN",
+                    sku_id="SKU-HAT-IN",
+                    category="童帽春夏",
+                    enabled=1,
+                ),
+            ]
+        ],
+        candidate_cursor="cursor-out-of-scope-missing-properties",
+    )
+
+    result = ProductSyncService(session_factory, source=source).run_initial(
+        request_id="request-out-of-scope-missing-properties",
+        worker_id="worker-test",
+    )
+
+    assert result.included_records == 1
+    assert result.ignored_records == 1
+    with session_factory() as session:
+        variants = session.scalars(select(ProductVariant)).all()
+    assert [variant.source_sku_id for variant in variants] == ["SKU-HAT-IN"]
+
+
+def test_initial_sync_rejects_allowlisted_variant_missing_properties(
+    test_database_engine: Engine,
+) -> None:
+    session_factory = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    source = FakeJstProductSource(
+        initial_pages=[
+            [
+                source_variant(
+                    i_id="HAT-MISSING",
+                    sku_id="SKU-HAT-MISSING",
+                    category="童帽春夏",
+                    enabled=1,
+                    properties_value=None,
+                )
+            ]
+        ],
+        candidate_cursor="cursor-missing-properties",
+    )
+
+    with pytest.raises(ProductSourceError, match="product_source_contract_invalid"):
+        ProductSyncService(session_factory, source=source).run_initial(
+            request_id="request-missing-properties",
+            worker_id="worker-test",
+        )
+
+    with session_factory() as session:
+        run = session.scalar(select(ProductSyncRun))
+        variants = session.scalars(select(ProductVariant)).all()
+    assert run is not None
+    assert (run.status, run.success_cursor, run.error_code) == (
+        "failed",
+        None,
+        "product_source_contract_invalid",
+    )
+    assert variants == []
+
+
 def test_failed_source_page_records_failure_without_advancing_the_last_success_cursor(
     test_database_engine: Engine,
 ) -> None:
@@ -157,7 +232,13 @@ def test_incremental_sync_updates_enter_exit_disable_and_reenable_without_deleti
             [
                 source_variant(i_id="KEEP", sku_id="SKU-KEEP", category="童装春夏", enabled=1),
                 source_variant(i_id="OFF", sku_id="SKU-OFF", category="童帽春夏", enabled=0),
-                source_variant(i_id="OUT", sku_id="SKU-OUT", category="成人帽", enabled=1),
+                source_variant(
+                    i_id="OUT",
+                    sku_id="SKU-OUT",
+                    category="成人帽",
+                    enabled=1,
+                    properties_value=None,
+                ),
                 source_variant(i_id="BACK", sku_id="SKU-BACK", category="童装秋冬", enabled=0),
                 source_variant(i_id="ENTER", sku_id="SKU-ENTER", category="童配春夏", enabled=1),
             ]
@@ -183,6 +264,10 @@ def test_incremental_sync_updates_enter_exit_disable_and_reenable_without_deleti
         ("SKU-OFF", False),
         ("SKU-OUT", False),
     ]
+    moved_out = next(
+        variant for variant in variants if variant.source_sku_id == "SKU-OUT"
+    )
+    assert moved_out.properties_value == "藏青,54"
 
     reenable = FakeJstProductSource(
         incremental_pages=[

@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     jst_product_token_cache_path: str = "/tmp/order-tracking/jst-token.json"
     jst_product_initial_sync_begin: str = ""
     jst_product_page_size: int = 50
+    jst_product_request_interval_seconds: float = 0.8
+    jst_product_retry_attempts: int = 3
+    jst_product_retry_base_delay_seconds: float = 1.0
     admin_web_base_url: str = ""
     ops_alert_recipient_user_id: str = ""
     notification_due_scan_hour: int = 9
@@ -100,6 +103,16 @@ class Settings(BaseSettings):
             raise ValueError("notification due scan hour must be between 0 and 23")
         if not 1 <= self.jst_product_page_size <= 50:
             raise ValueError("jst product page size must be between 1 and 50")
+        if not 0.6 <= self.jst_product_request_interval_seconds <= 60:
+            raise ValueError(
+                "jst product request interval must be between 0.6 and 60 seconds"
+            )
+        if not 0 <= self.jst_product_retry_attempts <= 10:
+            raise ValueError("jst product retry attempts must be between 0 and 10")
+        if not 0 < self.jst_product_retry_base_delay_seconds <= 60:
+            raise ValueError(
+                "jst product retry base delay must be between 0 and 60 seconds"
+            )
         if deployment_env:
             expected_miniprogram_state = (
                 "trial" if self.app_env == "shared_test" else "formal"

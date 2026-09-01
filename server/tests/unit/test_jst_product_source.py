@@ -253,6 +253,55 @@ def test_jst_product_source_splits_window_before_unsupported_deep_pages(
     ]
 
 
+def test_jst_product_source_accepts_empty_window_with_zero_pages(
+    tmp_path: Path,
+) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/openWeb/auth/getInitToken":
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "access_token": "access-token",
+                        "refresh_token": "refresh-token",
+                        "expires_in": 2_592_000,
+                    },
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "datas": [],
+                    "page_index": 1,
+                    "page_count": 0,
+                },
+            },
+        )
+
+    source = AppCredentialJstProductSource(
+        JstProductSourceConfig(
+            app_key="app-key",
+            app_secret="app-secret",
+            initial_sync_begin=datetime(
+                2026, 7, 9, tzinfo=ZoneInfo("Asia/Shanghai")
+            ),
+            token_cache_path=tmp_path / "jst-token.json",
+            request_interval_seconds=0,
+        ),
+        transport=httpx.MockTransport(respond),
+        clock=lambda: datetime(2026, 7, 16, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+    page = source.fetch_initial_page(page_number=1)
+
+    assert page.items == ()
+    assert page.has_next is False
+    assert page.candidate_cursor == "2026-07-16T00:00:00+08:00"
+
+
 def test_jst_product_source_refreshes_rejected_access_token(tmp_path: Path) -> None:
     paths: list[str] = []
     business_tokens: list[str] = []

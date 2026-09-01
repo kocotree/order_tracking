@@ -460,7 +460,7 @@ class AppCredentialJstProductSource:
     @staticmethod
     def _page_count(data: dict[str, object]) -> int:
         page_count = data.get("page_count")
-        if isinstance(page_count, bool) or not isinstance(page_count, int) or page_count < 1:
+        if isinstance(page_count, bool) or not isinstance(page_count, int) or page_count < 0:
             raise ProductSourceError("product_source_contract_invalid")
         return page_count
 

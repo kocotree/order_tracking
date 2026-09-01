@@ -182,8 +182,8 @@ def test_jst_product_source_splits_window_before_unsupported_deep_pages(
             item_id = "UNSUPPORTED-DEEP-WINDOW"
             page_count = 801
         elif modified_end == "2026-07-12 12:00:00":
-            item_id = "LEFT-HALF"
-            page_count = 1
+            item_id = f"LEFT-HALF-{body['page_index']}"
+            page_count = 2
         else:
             item_id = "RIGHT-HALF"
             page_count = 1
@@ -226,11 +226,14 @@ def test_jst_product_source_splits_window_before_unsupported_deep_pages(
 
     first = source.fetch_initial_page(page_number=1)
     second = source.fetch_initial_page(page_number=2)
+    third = source.fetch_initial_page(page_number=3)
 
-    assert [item.i_id for item in first.items] == ["LEFT-HALF"]
+    assert [item.i_id for item in first.items] == ["LEFT-HALF-1"]
     assert first.has_next is True
-    assert [item.i_id for item in second.items] == ["RIGHT-HALF"]
-    assert second.has_next is False
+    assert [item.i_id for item in second.items] == ["LEFT-HALF-2"]
+    assert second.has_next is True
+    assert [item.i_id for item in third.items] == ["RIGHT-HALF"]
+    assert third.has_next is False
     assert business_bodies == [
         {
             "page_index": 1,
@@ -240,6 +243,12 @@ def test_jst_product_source_splits_window_before_unsupported_deep_pages(
         },
         {
             "page_index": 1,
+            "page_size": 50,
+            "modified_begin": "2026-07-09 00:00:00",
+            "modified_end": "2026-07-12 12:00:00",
+        },
+        {
+            "page_index": 2,
             "page_size": 50,
             "modified_begin": "2026-07-09 00:00:00",
             "modified_end": "2026-07-12 12:00:00",

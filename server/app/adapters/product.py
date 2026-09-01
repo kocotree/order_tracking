@@ -116,6 +116,7 @@ class AppCredentialJstProductSource:
         self._scan_start: datetime | None = None
         self._scan_end: datetime | None = None
         self._window_start: datetime | None = None
+        self._window_end: datetime | None = None
         self._api_page = 1
         self._expected_page = 1
 
@@ -148,6 +149,7 @@ class AppCredentialJstProductSource:
         self._scan_start = scan_start
         self._scan_end = scan_end
         self._window_start = scan_start
+        self._window_end = None
         self._api_page = 1
         self._expected_page = 1
 
@@ -159,7 +161,11 @@ class AppCredentialJstProductSource:
             or page_number != self._expected_page
         ):
             raise ProductSourceError("product_source_pagination_invalid")
-        window_end = min(self._window_start + timedelta(days=7), self._scan_end)
+        if self._window_end is None:
+            self._window_end = min(
+                self._window_start + timedelta(days=7), self._scan_end
+            )
+        window_end = self._window_end
         while True:
             data = self._request_page(
                 page_index=self._api_page,
@@ -172,6 +178,7 @@ class AppCredentialJstProductSource:
             if window_seconds <= 1:
                 raise ProductSourceError("product_source_window_too_dense")
             window_end = self._window_start + timedelta(seconds=window_seconds // 2)
+            self._window_end = window_end
         items = tuple(self._parse_item(item) for item in self._items(data))
         upstream_has_next = self._has_next(data, current_page=self._api_page)
         has_later_window = window_end < self._scan_end
@@ -179,6 +186,7 @@ class AppCredentialJstProductSource:
             self._api_page += 1
         elif has_later_window:
             self._window_start = window_end
+            self._window_end = None
             self._api_page = 1
         self._expected_page += 1
         return SourceProductPage(

@@ -196,7 +196,10 @@ class AppCredentialJstProductSource:
                 break
             window_seconds = int((window_end - self._window_start).total_seconds())
             if window_seconds <= 1:
-                raise ProductSourceError("product_source_window_too_dense")
+                # The target is only an internal checkpoint size. When many
+                # records share one modified second, time splitting cannot make
+                # the window smaller, so continue with normal source paging.
+                break
             window_end = self._window_start + timedelta(seconds=window_seconds // 2)
             self._window_end = window_end
         items = tuple(self._parse_item(item) for item in self._items(data))

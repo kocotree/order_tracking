@@ -262,6 +262,98 @@ def test_jst_product_source_splits_a_dense_window_at_the_internal_page_target(
     ]
 
 
+def test_jst_product_source_pages_through_an_unsplittable_one_second_window(
+    tmp_path: Path,
+) -> None:
+    business_bodies: list[dict[str, object]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        form = parse_qs(request.content.decode())
+        if request.url.path == "/openWeb/auth/getInitToken":
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "access_token": "access-token",
+                        "refresh_token": "refresh-token",
+                        "expires_in": 2_592_000,
+                    },
+                },
+            )
+        body = json.loads(form["biz"][0])
+        business_bodies.append(body)
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "datas": [
+                        {
+                            "i_id": f"DENSE-SECOND-{body['page_index']}",
+                            "sku_id": f"SKU-{body['page_index']}",
+                            "name": "同秒密集商品",
+                            "properties_value": None,
+                            "pic": None,
+                            "category": "童帽春夏",
+                            "enabled": 1,
+                            "modified": "2026-07-11 10:31:57",
+                        }
+                    ],
+                    "page_index": body["page_index"],
+                    "page_count": 201,
+                },
+            },
+        )
+
+    source = AppCredentialJstProductSource(
+        JstProductSourceConfig(
+            app_key="app-key",
+            app_secret="app-secret",
+            initial_sync_begin=datetime(
+                2026, 7, 11, 10, 31, 57, tzinfo=ZoneInfo("Asia/Shanghai")
+            ),
+            token_cache_path=tmp_path / "jst-token.json",
+            request_interval_seconds=0,
+        ),
+        transport=httpx.MockTransport(respond),
+        clock=lambda: datetime(
+            2026, 7, 11, 10, 31, 59, tzinfo=ZoneInfo("Asia/Shanghai")
+        ),
+    )
+
+    first = source.fetch_initial_page(page_number=1)
+    second = source.fetch_initial_page(
+        page_number=2,
+        checkpoint=first.next_checkpoint,
+    )
+
+    assert [item.sku_id for item in first.items] == ["SKU-1"]
+    assert [item.sku_id for item in second.items] == ["SKU-2"]
+    assert first.has_next is True
+    assert second.has_next is True
+    assert business_bodies == [
+        {
+            "page_index": 1,
+            "page_size": 50,
+            "modified_begin": "2026-07-11 10:31:57",
+            "modified_end": "2026-07-11 10:31:59",
+        },
+        {
+            "page_index": 1,
+            "page_size": 50,
+            "modified_begin": "2026-07-11 10:31:57",
+            "modified_end": "2026-07-11 10:31:58",
+        },
+        {
+            "page_index": 2,
+            "page_size": 50,
+            "modified_begin": "2026-07-11 10:31:57",
+            "modified_end": "2026-07-11 10:31:58",
+        },
+    ]
+
+
 def test_jst_product_source_accepts_empty_window_with_zero_pages(
     tmp_path: Path,
 ) -> None:

@@ -645,9 +645,6 @@ class ProductSyncService:
         properties_value = ProductSyncService._required_properties_value(record)
         product = session.scalar(select(Product).where(Product.source_i_id == record.i_id))
         if product is None:
-            same_name = session.scalar(select(Product).where(Product.name == record.name))
-            if same_name is not None:
-                raise ValueError("product_source_identity_conflict")
             product = Product(
                 product_id=str(uuid4()),
                 source_i_id=record.i_id,
@@ -662,14 +659,6 @@ class ProductSyncService:
             session.add(product)
             session.flush()
         else:
-            same_name = session.scalar(
-                select(Product).where(
-                    Product.name == record.name,
-                    Product.product_id != product.product_id,
-                )
-            )
-            if same_name is not None:
-                raise ValueError("product_source_identity_conflict")
             image_changed = product.image_source_ref != record.pic
             product.name = record.name
             product.is_available = True

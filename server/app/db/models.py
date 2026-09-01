@@ -282,10 +282,7 @@ class FactoryApplication(Base):
 
 class Product(Base):
     __tablename__ = "products"
-    __table_args__ = (
-        UniqueConstraint("source_i_id", name="uq_products_source_i_id"),
-        UniqueConstraint("name", name="uq_products_name"),
-    )
+    __table_args__ = (UniqueConstraint("source_i_id", name="uq_products_source_i_id"),)
 
     product_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     source_i_id: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -315,11 +312,7 @@ class ProductVariant(Base):
     __tablename__ = "product_variants"
     __table_args__ = (
         UniqueConstraint("source_sku_id", name="uq_product_variants_source_sku_id"),
-        UniqueConstraint(
-            "product_id",
-            "properties_value",
-            name="uq_product_variants_product_properties",
-        ),
+        Index("ix_product_variants_product_id", "product_id"),
         Index("ix_product_variants_available", "is_available", "variant_id"),
     )
 

@@ -20,12 +20,13 @@ def source_variant(
     sku_id: str,
     category: str | None,
     enabled: int | None,
+    name: str | None = None,
     properties_value: str | None = "藏青,54",
 ) -> SourceProductVariant:
     return SourceProductVariant(
         i_id=i_id,
         sku_id=sku_id,
-        name=f"产品 {i_id}",
+        name=name or f"产品 {i_id}",
         properties_value=properties_value,
         pic=None,
         category=category,
@@ -95,6 +96,75 @@ def test_initial_sync_only_makes_exact_allowlisted_enabled_variants_available(
     ]
     assert sorted((variant.source_sku_id, variant.is_available) for variant in variants) == [
         (f"SKU-{index}", True) for index in range(1, 7)
+    ]
+
+
+def test_initial_sync_preserves_unique_source_ids_when_display_fields_repeat(
+    test_database_engine: Engine,
+) -> None:
+    session_factory = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    source = FakeJstProductSource(
+        initial_pages=[
+            [
+                source_variant(
+                    i_id="STYLE-DRAWING-1",
+                    sku_id="SKU-DRAWING-BLUE",
+                    name="儿童便携绘画本升级版",
+                    category="童配春夏",
+                    enabled=1,
+                    properties_value="蓝色",
+                ),
+                source_variant(
+                    i_id="STYLE-DRAWING-2",
+                    sku_id="SKU-DRAWING-PINK",
+                    name="儿童便携绘画本升级版",
+                    category="童配春夏",
+                    enabled=1,
+                    properties_value="粉色",
+                ),
+                source_variant(
+                    i_id="STYLE-SUIT",
+                    sku_id="SKU-SUIT-OLD",
+                    name="小风孔冰奶皮速干背心套装",
+                    category="童装春夏",
+                    enabled=1,
+                    properties_value="星夜蓝100",
+                ),
+                source_variant(
+                    i_id="STYLE-SUIT",
+                    sku_id="SKU-SUIT-NEW",
+                    name="小风孔冰奶皮速干背心套装",
+                    category="童装春夏",
+                    enabled=1,
+                    properties_value="星夜蓝100",
+                ),
+            ]
+        ],
+        candidate_cursor="cursor-repeated-display-fields",
+    )
+
+    result = ProductSyncService(session_factory, source=source).run_initial(
+        request_id="request-repeated-display-fields",
+        worker_id="worker-test",
+    )
+
+    assert result.status == "succeeded"
+    assert result.included_records == 4
+    with session_factory() as session:
+        products = session.scalars(select(Product).order_by(Product.source_i_id)).all()
+        variants = session.scalars(
+            select(ProductVariant).order_by(ProductVariant.source_sku_id)
+        ).all()
+    assert [(product.source_i_id, product.name) for product in products] == [
+        ("STYLE-DRAWING-1", "儿童便携绘画本升级版"),
+        ("STYLE-DRAWING-2", "儿童便携绘画本升级版"),
+        ("STYLE-SUIT", "小风孔冰奶皮速干背心套装"),
+    ]
+    assert [(variant.source_sku_id, variant.properties_value) for variant in variants] == [
+        ("SKU-DRAWING-BLUE", "蓝色"),
+        ("SKU-DRAWING-PINK", "粉色"),
+        ("SKU-SUIT-NEW", "星夜蓝100"),
+        ("SKU-SUIT-OLD", "星夜蓝100"),
     ]
 
 
@@ -286,7 +356,6 @@ def test_initial_sync_retries_publication_without_refetching_completed_source(
     test_database_engine: Engine,
 ) -> None:
     session_factory = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
-    conflicting_name = "冲突产品名称"
     ProductSyncService(
         session_factory,
         source=FakeJstProductSource(
@@ -295,7 +364,7 @@ def test_initial_sync_retries_publication_without_refetching_completed_source(
                     SourceProductVariant(
                         i_id="EXISTING",
                         sku_id="SKU-EXISTING",
-                        name=conflicting_name,
+                        name="现有产品",
                         properties_value="蓝色,52",
                         pic=None,
                         category="童帽春夏",
@@ -309,8 +378,8 @@ def test_initial_sync_retries_publication_without_refetching_completed_source(
     ).run_initial(request_id="request-existing", worker_id="worker-test")
     pending = SourceProductVariant(
         i_id="PENDING",
-        sku_id="SKU-PENDING",
-        name=conflicting_name,
+        sku_id="SKU-EXISTING",
+        name="待发布产品",
         properties_value="红色,54",
         pic=None,
         category="童配秋冬",
@@ -362,7 +431,7 @@ def test_initial_sync_retries_publication_without_refetching_completed_source(
     assert retry_source.initial_page_numbers == []
     with session_factory() as session:
         published = session.scalar(
-            select(ProductVariant).where(ProductVariant.source_sku_id == "SKU-PENDING")
+            select(ProductVariant).where(ProductVariant.source_sku_id == "SKU-EXISTING")
         )
     assert published is not None and published.is_available is True
 

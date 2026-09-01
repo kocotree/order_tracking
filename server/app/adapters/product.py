@@ -17,6 +17,7 @@ import httpx
 from app.adapters.private_files import PrivateFileStore
 
 BUSINESS_TZ = ZoneInfo("Asia/Shanghai")
+JST_MAX_PAGE_INDEX = 800
 
 
 class ProductSourceError(RuntimeError):
@@ -159,11 +160,18 @@ class AppCredentialJstProductSource:
         ):
             raise ProductSourceError("product_source_pagination_invalid")
         window_end = min(self._window_start + timedelta(days=7), self._scan_end)
-        data = self._request_page(
-            page_index=self._api_page,
-            modified_begin=self._window_start,
-            modified_end=window_end,
-        )
+        while True:
+            data = self._request_page(
+                page_index=self._api_page,
+                modified_begin=self._window_start,
+                modified_end=window_end,
+            )
+            if self._api_page != 1 or self._page_count(data) <= JST_MAX_PAGE_INDEX:
+                break
+            window_seconds = int((window_end - self._window_start).total_seconds())
+            if window_seconds <= 1:
+                raise ProductSourceError("product_source_window_too_dense")
+            window_end = self._window_start + timedelta(seconds=window_seconds // 2)
         items = tuple(self._parse_item(item) for item in self._items(data))
         upstream_has_next = self._has_next(data, current_page=self._api_page)
         has_later_window = window_end < self._scan_end
@@ -448,6 +456,13 @@ class AppCredentialJstProductSource:
         if isinstance(page_count, int):
             return current_page < page_count
         raise ProductSourceError("product_source_contract_invalid")
+
+    @staticmethod
+    def _page_count(data: dict[str, object]) -> int:
+        page_count = data.get("page_count")
+        if isinstance(page_count, bool) or not isinstance(page_count, int) or page_count < 1:
+            raise ProductSourceError("product_source_contract_invalid")
+        return page_count
 
     @staticmethod
     def _required_text(payload: dict[object, object], key: str) -> str:

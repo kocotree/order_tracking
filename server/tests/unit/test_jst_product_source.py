@@ -154,6 +154,105 @@ def test_jst_product_source_splits_sync_into_seven_day_windows(
     assert cached["refresh_token"] == "refresh-token"
 
 
+def test_jst_product_source_splits_window_before_unsupported_deep_pages(
+    tmp_path: Path,
+) -> None:
+    business_bodies: list[dict[str, object]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        form = parse_qs(request.content.decode())
+        if request.url.path == "/openWeb/auth/getInitToken":
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "access_token": "access-token",
+                        "refresh_token": "refresh-token",
+                        "expires_in": 2_592_000,
+                    },
+                },
+            )
+        body = json.loads(form["biz"][0])
+        business_bodies.append(body)
+        modified_end = body["modified_end"]
+        if modified_end == "2026-07-16 00:00:00" and body["modified_begin"] == (
+            "2026-07-09 00:00:00"
+        ):
+            item_id = "UNSUPPORTED-DEEP-WINDOW"
+            page_count = 801
+        elif modified_end == "2026-07-12 12:00:00":
+            item_id = "LEFT-HALF"
+            page_count = 1
+        else:
+            item_id = "RIGHT-HALF"
+            page_count = 1
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "datas": [
+                        {
+                            "i_id": item_id,
+                            "sku_id": f"SKU-{item_id}",
+                            "name": item_id,
+                            "properties_value": "蓝色 / 120",
+                            "pic": None,
+                            "category": "童帽春夏",
+                            "enabled": 1,
+                            "modified": "2026-07-10 12:00:00",
+                        }
+                    ],
+                    "page_index": body["page_index"],
+                    "page_count": page_count,
+                },
+            },
+        )
+
+    source = AppCredentialJstProductSource(
+        JstProductSourceConfig(
+            app_key="app-key",
+            app_secret="app-secret",
+            initial_sync_begin=datetime(
+                2026, 7, 9, tzinfo=ZoneInfo("Asia/Shanghai")
+            ),
+            token_cache_path=tmp_path / "jst-token.json",
+            request_interval_seconds=0,
+        ),
+        transport=httpx.MockTransport(respond),
+        clock=lambda: datetime(2026, 7, 16, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+    first = source.fetch_initial_page(page_number=1)
+    second = source.fetch_initial_page(page_number=2)
+
+    assert [item.i_id for item in first.items] == ["LEFT-HALF"]
+    assert first.has_next is True
+    assert [item.i_id for item in second.items] == ["RIGHT-HALF"]
+    assert second.has_next is False
+    assert business_bodies == [
+        {
+            "page_index": 1,
+            "page_size": 50,
+            "modified_begin": "2026-07-09 00:00:00",
+            "modified_end": "2026-07-16 00:00:00",
+        },
+        {
+            "page_index": 1,
+            "page_size": 50,
+            "modified_begin": "2026-07-09 00:00:00",
+            "modified_end": "2026-07-12 12:00:00",
+        },
+        {
+            "page_index": 1,
+            "page_size": 50,
+            "modified_begin": "2026-07-12 12:00:00",
+            "modified_end": "2026-07-16 00:00:00",
+        },
+    ]
+
+
 def test_jst_product_source_refreshes_rejected_access_token(tmp_path: Path) -> None:
     paths: list[str] = []
     business_tokens: list[str] = []

@@ -227,6 +227,7 @@ describe("administrator identity web", () => {
 
   it("shows the confirmed read-only product list with server search and no operation column", async () => {
     const requestedUrls: string[] = [];
+    let imageVersion = 1;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       requestedUrls.push(url);
@@ -240,10 +241,20 @@ describe("administrator identity web", () => {
               skuId: "SKU-01",
               name: "春夏童帽",
               propertiesValue: "蓝色,52",
+              imageAvailable: true,
+              imageUrl: `/api/v1/admin/products/product-1/image?v=version-${imageVersion}`,
+            },
+            {
+              variantId: "variant-2",
+              iId: "ITEM-02",
+              skuId: "SKU-02",
+              name: "秋冬童帽",
+              propertiesValue: "米色,54",
               imageAvailable: false,
+              imageUrl: null,
             },
           ],
-          total: 1,
+          total: 2,
           page: 1,
           pageSize: 10,
         });
@@ -265,9 +276,21 @@ describe("administrator identity web", () => {
     expect(wrapper.find(".product-list-table").text()).not.toContain("编辑");
     expect(wrapper.find(".order-list-filter-card").exists()).toBe(true);
     expect(wrapper.find(".section-card.product-list-card").exists()).toBe(true);
+    const image = wrapper.get("img.product-list-image");
+    expect(image.attributes("src")).toBe(
+      "/api/v1/admin/products/product-1/image?v=version-1",
+    );
+    expect(wrapper.findAll('[aria-label="产品图片未上传"]')).toHaveLength(1);
+    await image.trigger("error");
+    expect(wrapper.find("img.product-list-image").exists()).toBe(false);
+    expect(wrapper.findAll('[aria-label="产品图片未上传"]')).toHaveLength(2);
+    imageVersion = 2;
     await wrapper.get('input[type="search"]').setValue("蓝色,52");
     await wrapper.get(".product-search-form").trigger("submit");
     await flushPromises();
+    expect(wrapper.get("img.product-list-image").attributes("src")).toBe(
+      "/api/v1/admin/products/product-1/image?v=version-2",
+    );
     expect(requestedUrls.some((url) => url.includes("keyword=%E8%93%9D%E8%89%B2%2C52"))).toBe(true);
   });
 });

@@ -34,8 +34,15 @@
                 <td class="product-sequence">{{ (page - 1) * pageSize + index + 1 }}</td>
                 <td class="product-item-no">{{ item.iId }}</td>
                 <td>
-                  <span class="product-list-thumb" :aria-label="item.imageAvailable ? '产品图片可用' : '产品图片未上传'">
-                    <svg viewBox="0 0 28 34" fill="none" aria-hidden="true"><path d="m9 5 5-2 5 2 5 6-4 3v15H8V14l-4-3 5-6Z" /><path d="M11 5c.6 2 1.6 3 3 3s2.4-1 3-3" /></svg>
+                  <span class="product-list-thumb" :aria-label="showsImage(item) ? '产品图片' : '产品图片未上传'">
+                    <img
+                      v-if="showsImage(item)"
+                      class="product-list-image"
+                      :src="item.imageUrl || undefined"
+                      alt=""
+                      @error="markImageFailed(item.imageUrl)"
+                    />
+                    <svg v-else viewBox="0 0 28 34" fill="none" aria-hidden="true"><path d="m9 5 5-2 5 2 5 6-4 3v15H8V14l-4-3 5-6Z" /><path d="M11 5c.6 2 1.6 3 3 3s2.4-1 3-3" /></svg>
                   </span>
                 </td>
                 <td class="product-code-cell">{{ item.skuId }}</td>
@@ -90,12 +97,21 @@ const total = ref(0);
 const sortBy = ref<SortField>("iId");
 const sortOrder = ref<"asc" | "desc">("asc");
 const errorMessage = ref("");
+const failedImageUrls = ref(new Set<string>());
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
 const pageNumbers = computed(() => {
   if (totalPages.value <= 7) return Array.from({ length: totalPages.value }, (_, index) => index + 1);
   const start = Math.max(1, Math.min(page.value - 2, totalPages.value - 4));
   return Array.from({ length: 5 }, (_, index) => start + index);
 });
+
+function showsImage(item: ProductListItem) {
+  return Boolean(item.imageUrl && !failedImageUrls.value.has(item.imageUrl));
+}
+
+function markImageFailed(imageUrl: string | null) {
+  if (imageUrl) failedImageUrls.value = new Set(failedImageUrls.value).add(imageUrl);
+}
 
 async function load() {
   errorMessage.value = "";

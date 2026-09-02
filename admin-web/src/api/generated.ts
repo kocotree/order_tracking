@@ -603,6 +603,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/products/{product_id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Product Image */
+        get: operations["get_product_image_api_v1_admin_products__product_id__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/repair-previews": {
         parameters: {
             query?: never;
@@ -2225,6 +2242,8 @@ export interface components {
             iId: string;
             /** Imageavailable */
             imageAvailable: boolean;
+            /** Imageurl */
+            imageUrl: string | null;
             /** Name */
             name: string;
             /** Propertiesvalue */
@@ -4227,6 +4246,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProductListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_product_image_api_v1_admin_products__product_id__image_get: {
+        parameters: {
+            query: {
+                v: string;
+            };
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
                 };
             };
             /** @description Validation Error */

@@ -112,6 +112,7 @@ def create_app(
     contract_service: ContractService | None = None,
     shipment_service: ShipmentService | None = None,
     notifications_audit_service: NotificationsAuditService | None = None,
+    private_file_store: PrivateFileStore | None = None,
     extra_routers: Sequence[APIRouter] = (),
 ) -> FastAPI:
     settings = Settings(database_url=database_url) if database_url is not None else Settings()
@@ -121,26 +122,26 @@ def create_app(
     logger = event_logger or StructuredLogger()
     configure_uvicorn_access_log_redaction()
     local_demo_enabled = settings.app_env == "local_demo"
-    private_file_store: PrivateFileStore
-    if local_demo_enabled:
-        private_file_store = FakePrivateFileStore(bucket="local-demo-contract-files")
-    elif all(
-        (
-            settings.oss_region,
-            settings.oss_endpoint,
-            settings.oss_access_key_id,
-            settings.oss_access_key_secret,
-        )
-    ):
-        private_file_store = AliyunOssPrivateFileStore(
-            endpoint=settings.oss_endpoint,
-            region=settings.oss_region,
-            access_key_id=settings.oss_access_key_id,
-            access_key_secret=settings.oss_access_key_secret,
-            bucket=settings.oss_bucket,
-        )
-    else:
-        private_file_store = DisabledPrivateFileStore(bucket=settings.oss_bucket)
+    if private_file_store is None:
+        if local_demo_enabled:
+            private_file_store = FakePrivateFileStore(bucket="local-demo-contract-files")
+        elif all(
+            (
+                settings.oss_region,
+                settings.oss_endpoint,
+                settings.oss_access_key_id,
+                settings.oss_access_key_secret,
+            )
+        ):
+            private_file_store = AliyunOssPrivateFileStore(
+                endpoint=settings.oss_endpoint,
+                region=settings.oss_region,
+                access_key_id=settings.oss_access_key_id,
+                access_key_secret=settings.oss_access_key_secret,
+                bucket=settings.oss_bucket,
+            )
+        else:
+            private_file_store = DisabledPrivateFileStore(bucket=settings.oss_bucket)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
@@ -272,7 +273,13 @@ def create_app(
         )
     )
     app.include_router(create_factory_router(factory_service, identity_service))
-    app.include_router(create_product_router(product_service, identity_service))
+    app.include_router(
+        create_product_router(
+            product_service,
+            identity_service,
+            file_store=private_file_store,
+        )
+    )
     app.include_router(
         create_order_router(
             order_service, identity_service, order_import_service=order_import_service

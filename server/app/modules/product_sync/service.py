@@ -47,12 +47,14 @@ class ProductSyncResult:
 
 @dataclass(frozen=True)
 class ProductListItem:
+    product_id: str
     variant_id: str
     i_id: str
     sku_id: str
     name: str
     properties_value: str
     image_available: bool
+    image_version: str | None
 
 
 @dataclass(frozen=True)
@@ -115,6 +117,7 @@ class ProductCatalogService:
         return ProductListPage(
             items=[
                 ProductListItem(
+                    product_id=product.product_id,
                     variant_id=variant.variant_id,
                     i_id=product.source_i_id,
                     sku_id=variant.source_sku_id,
@@ -124,6 +127,12 @@ class ProductCatalogService:
                         product.image_cache_status == "cached"
                         and product.image_object_key is not None
                     ),
+                    image_version=(
+                        hashlib.sha256(product.image_object_key.encode()).hexdigest()[:16]
+                        if product.image_cache_status == "cached"
+                        and product.image_object_key is not None
+                        else None
+                    ),
                 )
                 for variant, product in rows
             ],
@@ -131,6 +140,26 @@ class ProductCatalogService:
             page=page,
             page_size=page_size,
         )
+
+    def get_cached_image_object_key(
+        self,
+        *,
+        product_id: str,
+        image_version: str,
+    ) -> str | None:
+        with self._session_factory() as session:
+            product = session.get(Product, product_id)
+            if (
+                product is None
+                or not product.is_available
+                or product.image_cache_status != "cached"
+                or product.image_object_key is None
+            ):
+                return None
+            current_version = hashlib.sha256(product.image_object_key.encode()).hexdigest()[:16]
+            if image_version != current_version:
+                return None
+            return product.image_object_key
 
 
 class ProductSyncService:

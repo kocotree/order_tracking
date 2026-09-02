@@ -1,8 +1,11 @@
+from io import BytesIO
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Cookie, Query
+from fastapi import APIRouter, Cookie, HTTPException, Query, Response
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict
 
+from app.adapters.private_files import PrivateFileStore, PrivateFileStoreUnavailable
 from app.modules.identity_access import IdentityAccessService, PermissionDenied, SessionInvalid
 from app.modules.product_sync import ProductCatalogService, ProductListItem
 
@@ -23,6 +26,7 @@ class ProductListItemResponse(ApiModel):
     name: str
     properties_value: str
     image_available: bool
+    image_url: str | None
 
 
 class ProductListResponse(ApiModel):
@@ -33,12 +37,28 @@ class ProductListResponse(ApiModel):
 
 
 def _item_response(item: ProductListItem) -> ProductListItemResponse:
-    return ProductListItemResponse.model_validate(item, from_attributes=True)
+    image_url = None
+    if item.image_version is not None:
+        image_url = (
+            f"/api/v1/admin/products/{item.product_id}/image"
+            f"?v={item.image_version}"
+        )
+    return ProductListItemResponse(
+        variant_id=item.variant_id,
+        i_id=item.i_id,
+        sku_id=item.sku_id,
+        name=item.name,
+        properties_value=item.properties_value,
+        image_available=item.image_available,
+        image_url=image_url,
+    )
 
 
 def create_product_router(
     service: ProductCatalogService,
     identity: IdentityAccessService,
+    *,
+    file_store: PrivateFileStore,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
@@ -78,6 +98,52 @@ def create_product_router(
             total=result.total,
             page=result.page,
             page_size=result.page_size,
+        )
+
+    @router.get(
+        "/admin/products/{product_id}/image",
+        tags=["product-admin"],
+        response_class=Response,
+        responses={
+            200: {
+                "content": {
+                    "image/*": {"schema": {"type": "string", "format": "binary"}}
+                }
+            }
+        },
+    )
+    def get_product_image(
+        product_id: str,
+        v: Annotated[str, Query(min_length=1, max_length=64)],
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> Response:
+        if not ot_web_session:
+            raise SessionInvalid("web session is missing")
+        actor = identity.authenticate_session(token=ot_web_session, terminal="web")
+        if actor.role != "admin":
+            raise PermissionDenied("administrator role required")
+        object_key = service.get_cached_image_object_key(
+            product_id=product_id,
+            image_version=v,
+        )
+        if object_key is None:
+            raise HTTPException(status_code=404, detail="产品图片不存在")
+        try:
+            content = file_store.get(object_key=object_key)
+            with Image.open(BytesIO(content)) as image:
+                media_type = image.get_format_mimetype()
+        except (PrivateFileStoreUnavailable, UnidentifiedImageError, OSError):
+            raise HTTPException(status_code=404, detail="产品图片不存在") from None
+        if media_type is None or not media_type.startswith("image/"):
+            raise HTTPException(status_code=404, detail="产品图片不存在")
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "private, max-age=31536000, immutable",
+                "Vary": "Cookie",
+                "X-Content-Type-Options": "nosniff",
+            },
         )
 
     return router

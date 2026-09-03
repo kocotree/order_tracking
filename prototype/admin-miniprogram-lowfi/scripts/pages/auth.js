@@ -9,26 +9,12 @@
       description: "正在通过微信身份确认管理员账号，请稍候。",
       note: "身份识别完成后将自动进入下一步",
     },
-    pending: {
-      mark: "审",
-      tone: "pending",
-      title: "管理员申请审核中",
-      description: "已匹配到网页端提交的管理员申请，审核通过后即可使用小程序。",
-      note: "请等待最高管理员审核",
-    },
-    rejected: {
-      mark: "驳",
-      tone: "rejected",
-      title: "管理员申请未通过",
-      description: "已匹配到未通过的管理员申请，小程序内不能重新提交申请。",
-      note: "请前往管理员网页端重新申请",
-    },
     unmatched: {
       mark: "!",
       tone: "unmatched",
-      title: "未找到管理员申请",
-      description: "当前手机号没有匹配到网页端已验证的管理员申请。",
-      note: "请先前往管理员网页端提交申请",
+      title: "未找到管理员账号",
+      description: "当前手机号没有匹配到网页端飞书登录已建立的管理员账号。",
+      note: "请先前往管理员网页端完成飞书登录",
     },
     ambiguous: {
       mark: "!",
@@ -82,10 +68,8 @@
 
   function renderStatus(status) {
     const content = statusContent[status];
-    const action = status === "pending"
-      ? `<button type="button" class="auth-primary-button" data-auth-refresh>刷新状态</button>`
-      : status === "logged-out"
-        ? `<button type="button" class="auth-primary-button" data-auth-login>重新登录</button>`
+    const action = status === "logged-out"
+      ? `<button type="button" class="auth-primary-button" data-auth-login>重新登录</button>`
       : "";
 
     return `
@@ -120,7 +104,6 @@
       }
       navigate("orders");
     });
-    document.querySelector("[data-auth-refresh]")?.addEventListener("click", () => navigate("orders"));
     document.querySelector("[data-auth-login]")?.addEventListener("click", () => navigate("orders"));
   }
 

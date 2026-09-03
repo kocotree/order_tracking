@@ -332,18 +332,8 @@
   text-align: center;
 }
 
-.auth-status-mark--pending {
-  background: var(--warning);
-  box-shadow: 0 12px 24px rgb(233 123 25 / 22%);
-}
-
 .auth-status-mark--identifying {
   background: var(--blue);
-}
-
-.auth-status-mark--rejected {
-  background: var(--danger);
-  box-shadow: 0 12px 24px rgb(229 72 77 / 22%);
 }
 
 .auth-status-mark--disabled {
@@ -371,19 +361,9 @@
   text-align: center;
 }
 
-.auth-status-note--pending {
-  background: var(--warning-soft);
-  color: var(--warning);
-}
-
 .auth-status-note--identifying {
   background: var(--blue-soft);
   color: var(--blue-deep);
-}
-
-.auth-status-note--rejected {
-  background: var(--danger-soft);
-  color: var(--danger);
 }
 
 .auth-status-note--disabled {

@@ -540,12 +540,6 @@ export const peopleManagementData = {
     role: "admin",
     isSuperAdmin: true,
   },
-  adminApplications: [
-    { id: "admin-application-1", name: "烧麦", appliedAt: "2026-08-17 09:12", status: "pending" },
-    { id: "admin-application-2", name: "松子", appliedAt: "2026-08-16 14:35", status: "pending" },
-    { id: "admin-application-3", name: "橄榄", appliedAt: "2026-08-15 10:08", status: "approved" },
-    { id: "admin-application-4", name: "大葱", appliedAt: "2026-08-14 16:42", status: "rejected" },
-  ],
   factoryApplications: [
     { id: "factory-application-1", name: "李兰", phone: "18036504889", phoneVerified: true, position: "工厂员工", requestedFactoryId: "factory-11", requestedFactoryName: "宇婷", appliedAt: "2026-08-17 08:46", status: "pending", reviewedBy: "", reviewedAt: "", rejectReason: "" },
     { id: "factory-application-2", name: "陈波", phone: "18751787548", phoneVerified: true, position: "工厂员工", requestedFactoryId: "factory-14", requestedFactoryName: "悦圆", appliedAt: "2026-08-16 15:20", status: "pending", reviewedBy: "", reviewedAt: "", rejectReason: "" },

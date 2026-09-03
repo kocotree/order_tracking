@@ -1,6 +1,4 @@
 const statusIcons = {
-  pending: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5l3.2 1.9"/></svg>`,
-  rejected: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m9 9 6 6m0-6-6 6"/></svg>`,
   disabled: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 20v-1.5a5.5 5.5 0 0 1 11 0V20M11 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="m17 9 4 4m0-4-4 4"/></svg>`,
 };
 
@@ -49,72 +47,12 @@ export function bindLoginPage() {
     label.textContent = "正在识别飞书身份…";
     feedback.textContent = "正在读取当前飞书用户信息";
     window.setTimeout(() => {
-      window.location.hash = "/admin-apply";
+      window.location.hash = "/dashboard";
     }, 750);
   });
 }
 
-export function renderAdminApplyPage() {
-  return renderAuthFrame(`
-    <form class="auth-card auth-card--apply" data-admin-apply-form novalidate>
-      <div class="auth-card__heading auth-card__heading--compact">
-        <h1>管理员申请</h1>
-      </div>
-
-      <div class="auth-identity">
-        <span class="auth-avatar" aria-hidden="true">煎</span>
-        <div>
-          <span>飞书用户</span>
-          <strong>煎饼</strong>
-        </div>
-        <span class="auth-identity__state">身份已识别</span>
-      </div>
-
-      <div class="auth-field">
-        <label>飞书手机号</label>
-        <div class="auth-readonly-value">138****5122</div>
-      </div>
-      <p class="auth-form-hint">手机号由飞书企业身份提供，无需短信验证。</p>
-
-      <p class="auth-form-message" aria-live="polite" data-form-message></p>
-      <button class="auth-primary-button" type="submit">提交申请</button>
-    </form>
-  `, "auth-page--apply");
-}
-
-export function bindAdminApplyPage() {
-  const form = document.querySelector("[data-admin-apply-form]");
-  const message = document.querySelector("[data-form-message]");
-  if (!form || !message) return;
-
-  const setMessage = (text, tone = "") => {
-    message.textContent = text;
-    message.dataset.tone = tone;
-  };
-
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    window.location.hash = "/access-status/pending";
-  });
-}
-
 const statusContent = {
-  pending: {
-    eyebrow: "申请已提交",
-    title: "等待审核",
-    description: "",
-    detailLabel: "当前状态",
-    detailValue: "待审核",
-    action: "刷新审核状态",
-  },
-  rejected: {
-    eyebrow: "申请未通过",
-    title: "管理员申请已被拒绝",
-    description: "拒绝原因：申请信息未核实，请确认手机号后重新提交。",
-    detailLabel: "审核结果",
-    detailValue: "已拒绝",
-    action: "重新申请",
-  },
   disabled: {
     eyebrow: "无法进入系统",
     title: "当前账号已停用",
@@ -126,10 +64,10 @@ const statusContent = {
 };
 
 export function renderAccessStatusPage(status) {
-  const content = statusContent[status] ?? statusContent.pending;
+  const content = statusContent[status] ?? statusContent.disabled;
   return renderAuthFrame(`
     <div class="auth-card auth-card--status is-${status}" data-status-panel>
-      <span class="auth-status-icon">${statusIcons[status] ?? statusIcons.pending}</span>
+      <span class="auth-status-icon">${statusIcons[status] ?? statusIcons.disabled}</span>
       <div class="auth-card__heading auth-card__heading--status">
         <p class="auth-eyebrow">${content.eyebrow}</p>
         <h1>${content.title}</h1>
@@ -145,22 +83,6 @@ export function renderAccessStatusPage(status) {
   `, `auth-page--status auth-page--${status}`);
 }
 
-export function bindAccessStatusPage(status) {
-  const action = document.querySelector("[data-status-action]");
-  const feedback = document.querySelector("[data-status-feedback]");
-  if (!action) return;
-
-  action.addEventListener("click", () => {
-    if (status === "rejected") {
-      window.location.hash = "/admin-apply";
-      return;
-    }
-    action.disabled = true;
-    action.textContent = "正在刷新…";
-    window.setTimeout(() => {
-      action.disabled = false;
-      action.textContent = "刷新审核状态";
-      if (feedback) feedback.textContent = "当前仍为待审核状态";
-    }, 650);
-  });
+export function bindAccessStatusPage() {
+  // 无权限页只做提示，没有可执行操作。
 }

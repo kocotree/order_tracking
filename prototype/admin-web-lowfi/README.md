@@ -36,13 +36,10 @@ python3 -m http.server 4173
 
 待导入订单：`http://127.0.0.1:4173/#/pending-imports`。
 
-登录与访问申请原型：
+登录与访问状态原型：
 
-- 飞书登录：`http://127.0.0.1:4173/#/login`
-- 管理员申请：`http://127.0.0.1:4173/#/admin-apply`
-- 审核中：`http://127.0.0.1:4173/#/access-status/pending`
-- 已拒绝：`http://127.0.0.1:4173/#/access-status/rejected`
-- 已停用：`http://127.0.0.1:4173/#/access-status/disabled`
+- 飞书登录：`http://127.0.0.1:4173/#/login`（授权成功后自动获得普通管理员并进入订单看板，不再提交管理员申请）
+- 无权限：`http://127.0.0.1:4173/#/access-status/disabled`（账号已停用或登录失败）
 
 ## 文件边界
 

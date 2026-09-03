@@ -8,7 +8,6 @@ const statusMeta = {
   rejected: { label: "已拒绝", className: "is-danger" },
 };
 
-let adminApplications = peopleManagementData.adminApplications.map((item) => ({ ...item }));
 let factoryApplications = peopleManagementData.factoryApplications.map((item) => ({ ...item }));
 let users = peopleManagementData.users.map((item) => ({ ...item }));
 
@@ -19,19 +18,6 @@ function renderStatus(status) {
 
 function renderEmptyRow(colspan, message) {
   return `<tr><td colspan="${colspan}"><div class="people-empty-state">${escapeHTML(message)}</div></td></tr>`;
-}
-
-function renderAdminRows(rows) {
-  if (rows.length === 0) return renderEmptyRow(5, "暂无管理员申请");
-  return rows.map((item, index) => `
-    <tr>
-      <td class="people-sequence">${index + 1}</td>
-      <td>${escapeHTML(item.name)}</td>
-      <td>${escapeHTML(item.appliedAt)}</td>
-      <td>${renderStatus(item.status)}</td>
-      <td>${item.status === "pending" ? `<div class="people-row-actions"><button class="text-button" type="button" data-people-action="approve-admin" data-record-id="${escapeHTML(item.id)}">通过</button><button class="text-button people-danger-action" type="button" data-people-action="reject-admin" data-record-id="${escapeHTML(item.id)}">拒绝</button></div>` : "—"}</td>
-    </tr>
-  `).join("");
 }
 
 function renderFactoryApplicationRows(rows) {
@@ -91,7 +77,6 @@ function readFactoryFilter() {
 
 function renderTabs(activeTab) {
   const tabs = [
-    ...(peopleManagementData.currentUser.isSuperAdmin ? [{ id: "admin-applications", label: "管理员申请" }] : []),
     { id: "factory-applications", label: "工厂用户申请" },
     { id: "users", label: "用户列表" },
   ];
@@ -111,11 +96,6 @@ function renderUserToolbar(factoryFilter) {
 }
 
 function renderTable(activeTab, sortState, factoryFilter) {
-  if (activeTab === "admin-applications") {
-    const rows = sortRows(adminApplications, sortState, applicationSortValue);
-    return `<table class="people-table people-admin-table data-grid-table"><thead><tr><th scope="col">序号</th>${renderSortableHeader("申请人", "name")}${renderSortableHeader("申请时间", "appliedAt")}${renderSortableHeader("申请状态", "status")}<th scope="col">操作</th></tr></thead><tbody>${renderAdminRows(rows)}</tbody></table>`;
-  }
-
   if (activeTab === "factory-applications") {
     const rows = sortRows(factoryApplications, sortState, applicationSortValue);
     return `<table class="people-table people-factory-application-table data-grid-table"><thead><tr><th scope="col">序号</th>${renderSortableHeader("姓名", "name")}${renderSortableHeader("职位", "position")}${renderSortableHeader("申请工厂", "requestedFactoryName")}${renderSortableHeader("申请时间", "appliedAt")}${renderSortableHeader("申请状态", "status")}<th scope="col">操作</th></tr></thead><tbody>${renderFactoryApplicationRows(rows)}</tbody></table>`;
@@ -168,22 +148,18 @@ function renderActionModal(modal) {
   }
   const isFactoryApproval = modal.action === "approve-factory";
   const isToggle = modal.action === "toggle-user";
-  const record = modal.action.includes("admin")
-    ? adminApplications.find((item) => item.id === modal.id)
-    : modal.action.includes("factory")
-      ? factoryApplications.find((item) => item.id === modal.id)
-      : users.find((item) => item.id === modal.id);
+  const record = modal.action.includes("factory")
+    ? factoryApplications.find((item) => item.id === modal.id)
+    : users.find((item) => item.id === modal.id);
   const isReject = modal.action.startsWith("reject");
   const title = isToggle
     ? `${record?.enabled ? "停用" : "启用"}用户`
-    : `${isReject ? "拒绝" : "通过"}${modal.action.includes("admin") ? "管理员" : "工厂用户"}申请`;
+    : `${isReject ? "拒绝" : "通过"}工厂用户申请`;
   const description = isToggle
     ? `确认${record?.enabled ? "停用" : "启用"}“${record?.name ?? "该用户"}”吗？`
     : isReject
       ? `确认拒绝“${record?.name ?? "该申请人"}”的申请吗？拒绝记录将继续保留。`
-      : modal.action === "approve-admin"
-        ? `通过后，“${record?.name ?? "该申请人"}”将获得普通管理员角色。`
-        : `通过后，“${record?.name ?? "该申请人"}”将绑定到所选工厂并进入用户列表。`;
+      : `通过后，“${record?.name ?? "该申请人"}”将绑定到所选工厂并进入用户列表。`;
 
   return `
     <div class="people-modal-backdrop" data-people-modal-backdrop>
@@ -225,10 +201,9 @@ export function bindPeopleManagementPage() {
   const tableRoot = page.querySelector("[data-people-table-root]");
   const modalRoot = page.querySelector("[data-people-modal-root]");
   let factoryFilter = readFactoryFilter();
-  let activeTab = factoryFilter ? "users" : peopleManagementData.currentUser.isSuperAdmin ? "admin-applications" : "factory-applications";
+  let activeTab = factoryFilter ? "users" : "factory-applications";
   let modal = null;
   const sortStates = {
-    "admin-applications": { key: null, direction: "asc" },
     "factory-applications": { key: null, direction: "asc" },
     users: { key: null, direction: "asc" },
   };
@@ -297,16 +272,6 @@ export function bindPeopleManagementPage() {
     const action = form.dataset.action;
     const id = form.dataset.recordId;
     let toastMessage = "人员状态已更新。";
-
-    if (action === "approve-admin" || action === "reject-admin") {
-      const approved = action === "approve-admin";
-      const application = adminApplications.find((item) => item.id === id);
-      adminApplications = adminApplications.map((item) => item.id === id ? { ...item, status: approved ? "approved" : "rejected" } : item);
-      if (approved && application && !users.some((user) => user.name === application.name && user.role === "admin")) {
-        users = [...users, { id: `user-admin-${Date.now()}`, name: application.name, role: "admin", position: "跟单人员", factoryId: "", factoryName: "—", enabled: true, isSuperAdmin: false }];
-      }
-      toastMessage = approved ? `${application?.name ?? "申请人"}已成为普通管理员。` : `${application?.name ?? "申请人"}的管理员申请已拒绝。`;
-    }
 
     if (action === "approve-factory" || action === "reject-factory") {
       const approved = action === "approve-factory";

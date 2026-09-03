@@ -14,41 +14,33 @@ import { bindRepairCreatePage, renderRepairCreatePage } from "./pages/repair-cre
 import { bindRepairDetailPage, renderRepairDetailPage } from "./pages/repair-detail.js?v=20260827-s11-return-context";
 import { bindProductListPage, renderProductListPage } from "./pages/product-list.js?v=20260827-s09";
 import { bindFactoryListPage, renderFactoryListPage } from "./pages/factory-list.js?v=20260827-s09";
-import { bindPeopleManagementPage, renderPeopleManagementPage } from "./pages/people-management.js?v=20260827-s09";
+import { bindPeopleManagementPage, renderPeopleManagementPage } from "./pages/people-management.js?v=20260903-issue18";
 import {
   bindAccessStatusPage,
-  bindAdminApplyPage,
   bindLoginPage,
   renderAccessStatusPage,
-  renderAdminApplyPage,
   renderLoginPage,
-} from "./pages/auth.js?v=20260827-s09";
+} from "./pages/auth.js?v=20260903-issue18";
 
 const appRoot = document.querySelector("#app");
 
 function renderRoute(route) {
   if (!appRoot) return;
 
-  const accessStatusMatch = route.match(/^\/access-status\/(pending|rejected|disabled)$/);
+  const accessStatusMatch = route.match(/^\/access-status\/(disabled)$/);
   const standalonePage = route === "/login"
     ? {
         content: renderLoginPage,
         bind: bindLoginPage,
         title: "登录｜跟单管理系统低保真原型",
       }
-    : route === "/admin-apply"
+    : accessStatusMatch
       ? {
-          content: renderAdminApplyPage,
-          bind: bindAdminApplyPage,
-          title: "管理员申请｜跟单管理系统低保真原型",
+          content: () => renderAccessStatusPage(accessStatusMatch[1]),
+          bind: () => bindAccessStatusPage(accessStatusMatch[1]),
+          title: "访问状态｜跟单管理系统低保真原型",
         }
-      : accessStatusMatch
-        ? {
-            content: () => renderAccessStatusPage(accessStatusMatch[1]),
-            bind: () => bindAccessStatusPage(accessStatusMatch[1]),
-            title: "访问状态｜跟单管理系统低保真原型",
-          }
-        : null;
+      : null;
 
   if (standalonePage) {
     appRoot.innerHTML = standalonePage.content();

@@ -138,12 +138,6 @@
   background: #f7fbfe;
 }
 
-.people-admin-table th:nth-child(1) { width: 72px; }
-.people-admin-table th:nth-child(2) { width: 220px; }
-.people-admin-table th:nth-child(3) { width: 260px; }
-.people-admin-table th:nth-child(4) { width: 170px; }
-.people-admin-table th:nth-child(5) { width: 180px; }
-
 .people-factory-application-table th:nth-child(1) { width: 72px; }
 .people-factory-application-table th:nth-child(2) { width: 150px; }
 .people-factory-application-table th:nth-child(3) { width: 160px; }

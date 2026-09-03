@@ -82,6 +82,8 @@
 
 新的缺陷、功能切片、Spec 和执行 Ticket 使用 GitHub Issues 跟踪；既有正式工单保留在 `docs/project/work-orders/`，不批量迁移或重复维护。具体关系与操作约定见 `docs/agents/issue-tracker.md`。
 
+业务同事的问题和建议先进入飞书多维表格 `跟单管理系统｜反馈与迭代台账` 的 `业务反馈`；分析后在 `开发任务` 建立关联记录，需要正式实施或长期跟踪时再创建 GitHub Issue。Base、GitHub Issue 与正式资料的职责边界、字段状态和回填流程统一见 `docs/agents/issue-tracker.md`；仓库不得保存 Base Token、数据表或记录 ID、访问凭证及带资源标识的内部链接。
+
 ### Domain docs
 
 本仓库采用单一上下文：领域术语集中在根目录 `CONTEXT.md`，正式需求、原型、技术决策、开发计划和工单仍按本文件规定的资料层级执行。具体读取规则见 `docs/agents/domain.md`。

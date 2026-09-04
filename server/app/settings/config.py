@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     feishu_identity_app_id: str = ""
     feishu_identity_app_secret: str = ""
     feishu_identity_redirect_uri: str = ""
+    feishu_super_admin_subjects: str = ""
     web_cookie_secure: bool = True
     wechat_identity_scope: str = "unconfigured-wechat"
     wechat_identity_app_id: str = ""
@@ -142,6 +143,7 @@ class Settings(BaseSettings):
             feishu_app_id,
             feishu_app_secret,
             self.feishu_identity_redirect_uri,
+            self.feishu_super_admin_subjects,
             self.wechat_identity_app_id,
             self.wechat_identity_app_secret,
             self.feishu_order_app_id,
@@ -187,6 +189,14 @@ class Settings(BaseSettings):
     def _is_https_url(value: str) -> bool:
         parsed = urlparse(value)
         return parsed.scheme == "https" and bool(parsed.hostname)
+
+    @property
+    def feishu_super_admin_subject_set(self) -> frozenset[str]:
+        return frozenset(
+            subject.strip()
+            for subject in self.feishu_super_admin_subjects.split(",")
+            if subject.strip()
+        )
 
     @property
     def wechat_notification_template_ids(self) -> dict[str, str]:

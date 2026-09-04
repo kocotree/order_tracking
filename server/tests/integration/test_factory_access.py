@@ -34,11 +34,15 @@ def clean_factory_tables(engine: Engine) -> None:
 
 def create_admin(engine: Engine, *, subject: str = "ou_factory_admin") -> str:
     identity = IdentityAccessService(sessionmaker(engine, class_=Session))
-    admin = identity.bootstrap_super_admin(
+    admin = identity.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject=subject, display_name="松子"),
-        operator_source="test",
+        profile=FeishuProfile(
+            subject=subject,
+            display_name="松子",
+            phone="13812345122",
+        ),
         request_id=f"req-{uuid4()}",
+        auto_grant_admin=True,
     )
     return admin.user_id
 
@@ -47,14 +51,14 @@ def create_ordinary_admin(engine: Engine, *, subject: str) -> str:
     identity = IdentityAccessService(sessionmaker(engine, class_=Session))
     user = identity.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject=subject, display_name="橄榄"),
+        profile=FeishuProfile(
+            subject=subject,
+            display_name="橄榄",
+            phone="13912345678",
+        ),
         request_id=f"req-{uuid4()}",
+        auto_grant_admin=True,
     )
-    with engine.begin() as connection:
-        connection.execute(
-            text("UPDATE users SET role = 'admin' WHERE user_id = :user_id"),
-            {"user_id": user.user_id},
-        )
     return user.user_id
 
 

@@ -16,6 +16,7 @@ def _deployment_settings(*, app_env: str) -> dict[str, object]:
         "feishu_identity_app_id": "cli_app_id",
         "feishu_identity_app_secret": "app-secret",
         "feishu_identity_redirect_uri": "https://web.test/auth/callback",
+        "feishu_super_admin_subjects": "ou_super_a,ou_super_b",
         "wechat_identity_app_id": "wx-app-id",
         "wechat_identity_app_secret": "wx-secret",
         "feishu_order_app_id": "cli_order_app",
@@ -41,6 +42,17 @@ def _deployment_settings(*, app_env: str) -> dict[str, object]:
         "wechat_notification_factory_repair_template_id": "factory-repair",
         "wechat_notification_miniprogram_state": miniprogram_state,
     }
+
+
+def test_settings_parses_configured_feishu_super_admin_subjects() -> None:
+    settings = Settings(
+        database_url="mysql+pymysql://test:test@127.0.0.1/test",
+        feishu_super_admin_subjects="ou_super_a, ou_super_b,ou_super_a",
+    )
+
+    assert settings.feishu_super_admin_subject_set == frozenset(
+        {"ou_super_a", "ou_super_b"}
+    )
 
 
 def test_settings_exposes_complete_wechat_notification_template_mapping() -> None:

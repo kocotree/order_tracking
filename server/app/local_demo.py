@@ -10,18 +10,20 @@ from app.adapters.wechat import WechatProfile, WechatUnavailable
 LOCAL_DEMO_FEISHU_SCOPE = "local-demo/feishu"
 LOCAL_DEMO_WECHAT_SCOPE = "local-demo/wechat"
 LOCAL_DEMO_PHONE = "10000000000"
+LOCAL_DEMO_SUPER_PHONE = "10000000001"
 
 
 class LocalDemoFeishuIdentity:
     _profiles = {
-        "applicant": FeishuProfile(
-            subject="local-demo-applicant",
-            display_name="演示申请人",
+        "ordinary": FeishuProfile(
+            subject="local-demo-ordinary",
+            display_name="演示普通管理员",
             phone=LOCAL_DEMO_PHONE,
         ),
         "super": FeishuProfile(
             subject="local-demo-super",
             display_name="演示最高管理员",
+            phone=LOCAL_DEMO_SUPER_PHONE,
         ),
     }
 
@@ -64,7 +66,7 @@ def create_local_demo_router() -> APIRouter:
         identity: str | None = Query(default=None),
     ) -> Response:
         if identity is not None:
-            if identity not in {"applicant", "super"}:
+            if identity not in {"ordinary", "super"}:
                 raise HTTPException(status_code=422)
             callback_query = urlencode({"state": state, "code": identity})
             return RedirectResponse(
@@ -72,7 +74,7 @@ def create_local_demo_router() -> APIRouter:
                 status_code=303,
             )
 
-        applicant_query = urlencode({"state": state, "identity": "applicant"})
+        ordinary_query = urlencode({"state": state, "identity": "ordinary"})
         super_query = urlencode({"state": state, "identity": "super"})
         html = f"""<!doctype html>
 <html lang="zh-CN">
@@ -99,7 +101,7 @@ def create_local_demo_router() -> APIRouter:
       <h1>本地身份选择</h1>
       <p class="notice">仅限本机演示，不会连接真实飞书、短信或微信。</p>
       <div class="actions">
-        <a href="/api/v1/local-demo/feishu-authorize?{escape(applicant_query)}">申请人登录</a>
+        <a href="/api/v1/local-demo/feishu-authorize?{escape(ordinary_query)}">普通管理员登录</a>
         <a href="/api/v1/local-demo/feishu-authorize?{escape(super_query)}">最高管理员登录</a>
       </div>
       <p>申请人手机号：<code>{LOCAL_DEMO_PHONE}</code></p>

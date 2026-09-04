@@ -69,11 +69,15 @@ def test_admin_product_list_enforces_role_and_returns_only_available_searchable_
         phone_encryption_secret=b"test-phone-encryption-secret",
         phone_digest_secret=b"test-phone-digest-secret",
     )
-    admin = identity.bootstrap_super_admin(
+    admin = identity.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_product_admin", display_name="松子"),
-        operator_source="test",
-        request_id="request-bootstrap-product-admin",
+        profile=FeishuProfile(
+            subject="ou_product_admin",
+            display_name="松子",
+            phone="13812345122",
+        ),
+        request_id="request-login-product-admin",
+        auto_grant_admin=True,
     )
     admin_session = identity.issue_session(user_id=admin.user_id, terminal="web")
     with sessions() as session, session.begin():

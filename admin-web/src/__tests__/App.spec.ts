@@ -51,70 +51,49 @@ describe("administrator identity web", () => {
     expect(wrapper.text()).not.toContain("手机号");
   });
 
-  it("submits the application using the verified Feishu phone without SMS", async () => {
-    const applicant = user({ role: null, capabilities: [] });
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith("/v1/me")) return response(applicant);
-      if (url.endsWith("/v1/admin-applications/me")) return response(null);
-      if (url.endsWith("/v1/admin-applications") && init?.method === "POST") {
-        return response({ applicationId: "application-1", userId: applicant.userId, displayName: "煎饼", phoneMasked: "138****5122", status: "pending", rejectionReason: null, submittedAt: "2026-08-20T08:00:00", reviewedAt: null, reviewedBy: null, version: 1 }, 201);
-      }
-      throw new Error(`unexpected request: ${url}`);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    document.cookie = "ot_csrf=csrf-test";
-    const pinia = createPinia();
-    const router = createAppRouter(pinia, "/admin-apply");
-    await router.isReady();
-    const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+  it.each(["/admin-apply", "/people/admin-applications"])(
+    "does not expose the retired administrator application route %s",
+    async (initialPath) => {
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/v1/me")) return response(user());
+        throw new Error(`unexpected request: ${url}`);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const pinia = createPinia();
+      const router = createAppRouter(pinia, initialPath);
+      await router.isReady();
+      const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+      await flushPromises();
 
-    expect(wrapper.text()).toContain("管理员申请");
-    expect(wrapper.text()).toContain("138****5122");
-    expect(wrapper.text()).not.toContain("验证码");
-    expect(wrapper.text()).not.toContain("职位");
-    await wrapper.get("form").trigger("submit");
-    await flushPromises();
+      expect(router.currentRoute.value.name).toBe("not-found");
+      expect(wrapper.text()).not.toContain("提交管理员申请");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
 
-    expect(router.currentRoute.value.fullPath).toBe("/access-status/pending");
-    const submitCall = fetchMock.mock.calls.find(([input, init]) =>
-      String(input).endsWith("/v1/admin-applications") && init?.method === "POST",
-    );
-    expect(new Headers(submitCall?.[1]?.headers).get("X-CSRF-Token")).toBe("csrf-test");
-  });
-
-  it("keeps the super administrator application flow and shows all people entries", async () => {
+  it("keeps administrator account management without the retired application entry", async () => {
     const superAdmin = user({ userId: "super-1", isSuperAdmin: true });
-    let reviewed = false;
-    const pending = { applicationId: "application-1", userId: "user-2", displayName: "小树", phoneMasked: "139****6677", status: "pending", rejectionReason: null, submittedAt: "2026-08-20T08:00:00", reviewedAt: null, reviewedBy: null, version: 1 };
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const ordinaryAdmin = user({ userId: "admin-2", displayName: "小树" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/v1/me")) return response(superAdmin);
-      if (url.includes("/approve") && init?.method === "POST") {
-        reviewed = true;
-        return response({ ...pending, status: "approved", version: 2 });
-      }
-      if (url.includes("/v1/admin/admin-applications")) {
-        return response({ items: reviewed ? [{ ...pending, status: "approved", version: 2 }] : [pending], total: 1 });
-      }
+      if (url.endsWith("/v1/admin/users?role=admin")) return response({ items: [superAdmin, ordinaryAdmin], total: 2 });
+      if (url.endsWith("/v1/admin/users?role=factory")) return response({ items: [], total: 0 });
+      if (url.includes("/v1/admin/factories")) return response({ items: [], total: 0 });
       throw new Error(`unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
     const pinia = createPinia();
-    const router = createAppRouter(pinia, "/people/admin-applications");
+    const router = createAppRouter(pinia, "/people/admin-users");
     await router.isReady();
     const wrapper = mount(App, { global: { plugins: [pinia, router] } });
     await flushPromises();
 
-    expect(wrapper.text()).toContain("管理员申请");
+    expect(wrapper.text()).not.toContain("管理员申请");
     expect(wrapper.text()).toContain("工厂用户申请");
     expect(wrapper.text()).toContain("用户列表");
-    await wrapper.get(".people-row-actions .text-button").trigger("click");
-    expect(wrapper.text()).toContain("将获得普通管理员角色");
-    await wrapper.get(".modal").trigger("submit");
-    await flushPromises();
-    expect(reviewed).toBe(true);
-    expect(wrapper.text()).toContain("已通过");
+    expect(wrapper.text()).toContain("小树");
   });
 
   it("keeps ordinary administrators out of super-administrator pages", async () => {

@@ -3,14 +3,12 @@ import { defineStore } from "pinia";
 import {
   ApiError,
   identityApi,
-  type AdminApplication,
   type User,
 } from "@/api/client";
 
 export const useIdentityStore = defineStore("identity", {
   state: () => ({
     currentUser: null as User | null,
-    ownApplication: null as AdminApplication | null,
     userLoaded: false,
   }),
   actions: {
@@ -24,11 +22,6 @@ export const useIdentityStore = defineStore("identity", {
       }
       this.userLoaded = true;
       return this.currentUser;
-    },
-    async loadOwnApplication(force = false): Promise<AdminApplication | null> {
-      if (this.ownApplication && !force) return this.ownApplication;
-      this.ownApplication = await identityApi.getMyApplication();
-      return this.ownApplication;
     },
     async logout(): Promise<void> {
       await identityApi.logout();

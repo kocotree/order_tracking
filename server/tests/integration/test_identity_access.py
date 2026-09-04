@@ -85,6 +85,7 @@ def test_oauth_state_is_short_lived_single_use_and_callback_creates_web_session(
                 subject="ou_login_user",
                 display_name="煎饼",
                 avatar_url=None,
+                phone="13812345122",
             )
         }
     )
@@ -96,7 +97,7 @@ def test_oauth_state_is_short_lived_single_use_and_callback_creates_web_session(
     )
 
     started = service.start_feishu_login(
-        return_to="/admin-apply",
+        return_to="/",
         request_id="req-oauth-start",
     )
     completed = service.complete_feishu_login(
@@ -110,7 +111,9 @@ def test_oauth_state_is_short_lived_single_use_and_callback_creates_web_session(
     assert completed.web_session_token
     assert completed.refresh_token
     assert completed.csrf_token
-    assert completed.redirect_to == "/admin-apply"
+    assert completed.redirect_to == "/"
+    assert completed.user.role == "admin"
+    assert completed.user.is_super_admin is False
 
     restarted_service = IdentityAccessService(
         sessionmaker(test_database_engine, class_=Session),
@@ -145,6 +148,68 @@ def test_oauth_state_is_short_lived_single_use_and_callback_creates_web_session(
             code="valid-code",
             request_id="req-oauth-expired-callback",
         )
+
+
+def test_disabled_admin_cannot_reenter_through_feishu_oauth(
+    test_database_engine: Engine,
+) -> None:
+    clean_identity_tables(test_database_engine)
+    feishu = FakeFeishuIdentity(
+        profiles={
+            "super-code": FeishuProfile(
+                subject="ou_super",
+                display_name="松子",
+                phone="13912345678",
+            ),
+            "ordinary-code": FeishuProfile(
+                subject="ou_ordinary",
+                display_name="煎饼",
+                phone="13812345122",
+            ),
+        },
+        scope="tenant-a/app-a",
+    )
+    service = IdentityAccessService(
+        sessionmaker(test_database_engine, class_=Session),
+        feishu_identity=feishu,
+        super_admin_subjects={"ou_super"},
+        token_secret=b"test-token-secret-not-for-production",
+        phone_encryption_secret=b"test-phone-encryption-secret",
+        phone_digest_secret=b"test-phone-digest-secret",
+    )
+
+    super_start = service.start_feishu_login(return_to="/", request_id="req-super-start")
+    super_admin = service.complete_feishu_login(
+        state=super_start.state,
+        code="super-code",
+        request_id="req-super-login",
+    ).user
+    ordinary_start = service.start_feishu_login(
+        return_to="/",
+        request_id="req-ordinary-start",
+    )
+    ordinary = service.complete_feishu_login(
+        state=ordinary_start.state,
+        code="ordinary-code",
+        request_id="req-ordinary-login",
+    ).user
+    disabled = service.set_admin_enabled(
+        actor_id=super_admin.user_id,
+        target_user_id=ordinary.user_id,
+        enabled=False,
+        expected_version=ordinary.version,
+        request_id="req-disable-ordinary",
+    )
+
+    retry = service.start_feishu_login(return_to="/", request_id="req-disabled-retry")
+    with pytest.raises(PermissionDenied):
+        service.complete_feishu_login(
+            state=retry.state,
+            code="ordinary-code",
+            request_id="req-disabled-login",
+        )
+    assert disabled.is_enabled is False
+    assert service.get_user(user_id=ordinary.user_id).is_enabled is False
 
 
 def test_verified_sms_creates_one_pending_admin_application_without_plaintext(
@@ -268,15 +333,20 @@ def test_only_super_admin_can_review_and_approval_grants_ordinary_admin(
     service = IdentityAccessService(
         factory,
         sms_sender=sms,
+        super_admin_subjects={"ou_super"},
         token_secret=b"test-token-secret-not-for-production",
         phone_encryption_secret=b"test-phone-encryption-secret",
         phone_digest_secret=b"test-phone-digest-secret",
     )
-    super_admin = service.bootstrap_super_admin(
+    super_admin = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_super", display_name="松子"),
-        operator_source="deployment-command",
+        profile=FeishuProfile(
+            subject="ou_super",
+            display_name="松子",
+            phone="13912345678",
+        ),
         request_id="req-bootstrap-super",
+        auto_grant_admin=True,
     )
     applicant = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
@@ -332,12 +402,16 @@ def test_only_super_admin_can_review_and_approval_grants_ordinary_admin(
             request_id="req-approve-candidate-again",
         )
 
-    # Idempotent controlled bootstrap may promote only the configured external identity.
-    repeated_super = service.bootstrap_super_admin(
+    # Repeated OAuth keeps the same configured super-administrator identity.
+    repeated_super = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_super", display_name="松子"),
-        operator_source="deployment-command",
+        profile=FeishuProfile(
+            subject="ou_super",
+            display_name="松子",
+            phone="13912345678",
+        ),
         request_id="req-bootstrap-super-again",
+        auto_grant_admin=True,
     )
     assert repeated_super.user_id == super_admin.user_id
 
@@ -351,16 +425,21 @@ def test_rejection_requires_reason_and_reapplication_preserves_history(
     service = IdentityAccessService(
         sessionmaker(test_database_engine, class_=Session),
         sms_sender=sms,
+        super_admin_subjects={"ou_super"},
         token_secret=b"test-token-secret-not-for-production",
         phone_encryption_secret=b"test-phone-encryption-secret",
         phone_digest_secret=b"test-phone-digest-secret",
         clock=lambda: now[0],
     )
-    super_admin = service.bootstrap_super_admin(
+    super_admin = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_super", display_name="松子"),
-        operator_source="deployment-command",
+        profile=FeishuProfile(
+            subject="ou_super",
+            display_name="松子",
+            phone="13912345678",
+        ),
         request_id="req-bootstrap-super",
+        auto_grant_admin=True,
     )
     applicant = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
@@ -427,15 +506,20 @@ def test_disabling_admin_revokes_all_sessions_and_enable_does_not_revive_them(
     service = IdentityAccessService(
         sessionmaker(test_database_engine, class_=Session),
         sms_sender=sms,
+        super_admin_subjects={"ou_super"},
         token_secret=b"test-token-secret-not-for-production",
         phone_encryption_secret=b"test-phone-encryption-secret",
         phone_digest_secret=b"test-phone-digest-secret",
     )
-    super_admin = service.bootstrap_super_admin(
+    super_admin = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_super", display_name="松子"),
-        operator_source="deployment-command",
+        profile=FeishuProfile(
+            subject="ou_super",
+            display_name="松子",
+            phone="13912345678",
+        ),
         request_id="req-bootstrap-super",
+        auto_grant_admin=True,
     )
     candidate = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
@@ -526,15 +610,20 @@ def test_wechat_phone_binding_reuses_internal_user_and_scopes_external_identity(
         sessionmaker(test_database_engine, class_=Session),
         sms_sender=sms,
         wechat_identity=wechat,
+        super_admin_subjects={"ou_super"},
         token_secret=b"test-token-secret-not-for-production",
         phone_encryption_secret=b"test-phone-encryption-secret",
         phone_digest_secret=b"test-phone-digest-secret",
     )
-    super_admin = service.bootstrap_super_admin(
+    super_admin = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_super", display_name="松子"),
-        operator_source="deployment-command",
+        profile=FeishuProfile(
+            subject="ou_super",
+            display_name="松子",
+            phone="13912345678",
+        ),
         request_id="req-bootstrap-super",
+        auto_grant_admin=True,
     )
     applicant = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
@@ -620,55 +709,53 @@ def test_wechat_phone_binding_reuses_internal_user_and_scopes_external_identity(
     assert production_login.status == "phone_required"
 
 
-def test_wechat_phone_binding_reports_pending_rejected_and_unmatched_states(
+def test_wechat_phone_binding_ignores_historical_admin_application_states(
     test_database_engine: Engine,
 ) -> None:
     clean_identity_tables(test_database_engine)
-    sms = FakeSmsSender()
     wechat = FakeWechatIdentity(
         scope="test-appid",
         login_profiles={
             "wx-pending": WechatProfile(subject="openid-pending"),
             "wx-rejected": WechatProfile(subject="openid-rejected"),
-            "wx-unmatched": WechatProfile(subject="openid-unmatched"),
         },
         phone_codes={
             "phone-pending": "13812345122",
             "phone-rejected": "13812345123",
-            "phone-unmatched": "13812345999",
         },
     )
     service = IdentityAccessService(
         sessionmaker(test_database_engine, class_=Session),
-        sms_sender=sms,
         wechat_identity=wechat,
+        super_admin_subjects={"ou_super"},
         token_secret=b"test-token-secret-not-for-production",
         phone_encryption_secret=b"test-phone-encryption-secret",
         phone_digest_secret=b"test-phone-digest-secret",
     )
-    super_admin = service.bootstrap_super_admin(
+    super_admin = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_super", display_name="松子"),
-        operator_source="deployment-command",
-        request_id="req-bootstrap-state-super",
+        profile=FeishuProfile(
+            subject="ou_super",
+            display_name="松子",
+            phone="13912345678",
+        ),
+        request_id="req-login-state-super",
+        auto_grant_admin=True,
     )
 
     applications: dict[str, AdminApplicationSnapshot] = {}
     for state, phone in (("pending", "13812345122"), ("rejected", "13812345123")):
         applicant = service.resolve_feishu_identity(
             scope="tenant-a/app-a",
-            profile=FeishuProfile(subject=f"ou_{state}", display_name=state),
+            profile=FeishuProfile(
+                subject=f"ou_{state}",
+                display_name=state,
+                phone=phone,
+            ),
             request_id=f"req-create-{state}",
-        )
-        challenge = service.send_admin_application_code(
-            user_id=applicant.user_id,
-            phone=phone,
-            request_id=f"req-send-{state}",
         )
         applications[state] = service.submit_admin_application(
             user_id=applicant.user_id,
-            challenge_id=challenge.challenge_id,
-            verification_code=sms.last_code_for(phone),
             request_id=f"req-submit-{state}",
         )
     rejected = applications["rejected"]
@@ -679,11 +766,21 @@ def test_wechat_phone_binding_reports_pending_rejected_and_unmatched_states(
         reason="资料未核实",
         request_id="req-reject-state",
     )
+    for state, phone in (("pending", "13812345122"), ("rejected", "13812345123")):
+        service.resolve_feishu_identity(
+            scope="tenant-a/app-a",
+            profile=FeishuProfile(
+                subject=f"ou_{state}",
+                display_name=state,
+                phone=phone,
+            ),
+            request_id=f"req-auto-grant-{state}",
+            auto_grant_admin=True,
+        )
 
-    for login_code, phone_code, expected_status in (
-        ("wx-pending", "phone-pending", "pending"),
-        ("wx-rejected", "phone-rejected", "rejected"),
-        ("wx-unmatched", "phone-unmatched", "factory_application_required"),
+    for login_code, phone_code in (
+        ("wx-pending", "phone-pending"),
+        ("wx-rejected", "phone-rejected"),
     ):
         login = service.begin_wechat_login(
             login_code=login_code,
@@ -693,11 +790,11 @@ def test_wechat_phone_binding_reports_pending_rejected_and_unmatched_states(
         result = service.bind_wechat_phone(
             binding_token=login.binding_token,
             phone_code=phone_code,
-            request_id=f"req-bind-{expected_status}",
+            request_id=f"req-bind-{login_code}",
         )
-        assert result.status == expected_status
-    assert result.user is not None
-    assert result.user.role is None
+        assert result.status == "authenticated"
+        assert result.user is not None
+        assert result.user.role == "admin"
 
 
 def test_mini_avatar_is_private_idempotent_and_does_not_replace_feishu_avatar(
@@ -708,17 +805,19 @@ def test_mini_avatar_is_private_idempotent_and_does_not_replace_feishu_avatar(
     service = IdentityAccessService(
         sessionmaker(test_database_engine, class_=Session),
         avatar_store=avatar_store,
+        super_admin_subjects={"ou_avatar"},
         token_secret=b"test-token-secret-not-for-production",
     )
-    user = service.bootstrap_super_admin(
+    user = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
         profile=FeishuProfile(
             subject="ou_avatar",
             display_name="煎饼",
             avatar_url="https://example.invalid/feishu-avatar.png",
+            phone="13912345678",
         ),
-        operator_source="deployment-command",
         request_id="req-bootstrap-avatar-user",
+        auto_grant_admin=True,
     )
     content = b"\x89PNG\r\n\x1a\n" + b"avatar-content"
 

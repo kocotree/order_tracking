@@ -1,13 +1,17 @@
+import hashlib
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from io import BytesIO
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.adapters.private_files import PrivateFileStore
 from app.db.models import (
     AuditLog,
     Factory,
@@ -21,11 +25,13 @@ from app.db.models import (
     Shipment,
     ShipmentBox,
     ShipmentBoxItem,
+    ShipmentFile,
     ShipmentLine,
     ShipmentNumberCounter,
     ShipmentReturnEvent,
     ShipmentReturnLine,
     ShipmentVoidRequest,
+    StoredFile,
     User,
 )
 from app.modules.shipments.workbook import (
@@ -35,6 +41,17 @@ from app.modules.shipments.workbook import (
 )
 
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
+SHIPMENT_FILE_MAX_BYTES = 5 * 1024 * 1024
+SHIPMENT_FILE_MIME_BY_FORMAT = {
+    "JPEG": "image/jpeg",
+    "PNG": "image/png",
+    "WEBP": "image/webp",
+}
+SHIPMENT_FILE_EXTENSION_BY_MIME = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+}
 
 
 class ShipmentError(Exception):
@@ -141,6 +158,26 @@ class ShipmentExportResult:
 
 
 @dataclass(frozen=True)
+class ShipmentFileSnapshot:
+    file_id: int
+    filename: str
+    mime_type: str
+    size_bytes: int
+    content_sha256: str
+    display_order: int
+
+    @property
+    def content_url(self) -> str:
+        return f"/api/v1/shipment-files/{self.file_id}/content"
+
+
+@dataclass(frozen=True)
+class ShipmentFileContent:
+    content: bytes
+    mime_type: str
+
+
+@dataclass(frozen=True)
 class ShipmentDraftSnapshot:
     shipment_id: str
     status: str
@@ -157,6 +194,7 @@ class ShipmentDraftSnapshot:
     total_quantity: int = 0
     lines: list[ShipmentLineSnapshot] = field(default_factory=list)
     boxes: list[ShipmentBoxSnapshot] = field(default_factory=list)
+    files: list[ShipmentFileSnapshot] = field(default_factory=list)
     void_request: ShipmentVoidRequestSnapshot | None = None
     return_events: list[ShipmentReturnEventSnapshot] = field(default_factory=list)
 
@@ -180,9 +218,11 @@ class ShipmentService:
         sessions: sessionmaker[Session],
         *,
         workbook_renderer: ShipmentWorkbookRenderer | None = None,
+        file_store: PrivateFileStore | None = None,
     ) -> None:
         self._sessions = sessions
         self._workbook_renderer = workbook_renderer
+        self._file_store = file_store
 
     def create_or_reuse_draft(
         self,
@@ -320,6 +360,160 @@ class ShipmentService:
             if shipment is None:
                 raise ShipmentNotFound("draft not found")
             return self._detail_snapshot(session, shipment)
+
+    def upload_file(
+        self,
+        *,
+        actor_id: str,
+        factory_id: str,
+        shipment_id: str,
+        filename: str,
+        declared_mime_type: str,
+        content: bytes,
+        idempotency_key: str,
+    ) -> tuple[ShipmentFileSnapshot, bool]:
+        if self._file_store is None:
+            raise ShipmentConflict("private file store is not configured")
+        if not idempotency_key or len(idempotency_key) > 191:
+            raise ShipmentValidationError("file idempotency key is invalid")
+        actual_mime_type = self._validated_image_mime_type(
+            content=content,
+            declared_mime_type=declared_mime_type,
+        )
+        with self._sessions() as session:
+            existing = session.execute(
+                select(ShipmentFile, StoredFile)
+                .join(StoredFile, StoredFile.file_id == ShipmentFile.stored_file_id)
+                .where(
+                    StoredFile.uploaded_by == actor_id,
+                    StoredFile.idempotency_key == idempotency_key,
+                )
+            ).one_or_none()
+            if existing is not None:
+                relationship, stored = existing
+                if relationship.shipment_id != shipment_id:
+                    raise ShipmentConflict("file idempotency key belongs to another shipment")
+                return self._file_snapshot(relationship, stored), False
+
+        extension = SHIPMENT_FILE_EXTENSION_BY_MIME[actual_mime_type]
+        object_key = f"shipments/{shipment_id}/{uuid4().hex}.{extension}"
+        self._file_store.put(
+            object_key=object_key,
+            content=content,
+            content_type=actual_mime_type,
+        )
+        try:
+            with self._sessions.begin() as session:
+                shipment = self._owned_shipment(
+                    session, shipment_id, actor_id, factory_id, lock=True
+                )
+                if shipment.status != "DRAFT":
+                    raise ShipmentConflict("submitted shipment cannot accept files")
+                existing_files = list(
+                    session.scalars(
+                        select(ShipmentFile)
+                        .where(ShipmentFile.shipment_id == shipment_id)
+                        .order_by(ShipmentFile.display_order)
+                    )
+                )
+                if len(existing_files) >= 3:
+                    raise ShipmentValidationError("shipment accepts at most 3 files")
+                stored = StoredFile(
+                    bucket=self._file_store.bucket,
+                    object_key=object_key,
+                    original_filename=(filename or "shipment-evidence")[:255],
+                    mime_type=actual_mime_type,
+                    size_bytes=len(content),
+                    content_sha256=hashlib.sha256(content).hexdigest(),
+                    uploaded_by=actor_id,
+                    idempotency_key=idempotency_key,
+                )
+                session.add(stored)
+                session.flush()
+                relationship = ShipmentFile(
+                    shipment_id=shipment_id,
+                    stored_file_id=stored.file_id,
+                    display_order=len(existing_files),
+                )
+                session.add(relationship)
+                session.flush()
+                return self._file_snapshot(relationship, stored), True
+        except Exception:
+            self._file_store.delete(object_key=object_key)
+            raise
+
+    def get_file_content(
+        self,
+        *,
+        file_id: int,
+        actor_role: str | None,
+        actor_factory_id: str | None,
+    ) -> ShipmentFileContent:
+        if self._file_store is None:
+            raise ShipmentNotFound("shipment file not found")
+        with self._sessions() as session:
+            row = session.execute(
+                select(ShipmentFile, StoredFile, Shipment)
+                .join(StoredFile, StoredFile.file_id == ShipmentFile.stored_file_id)
+                .join(Shipment, Shipment.shipment_id == ShipmentFile.shipment_id)
+                .where(
+                    StoredFile.file_id == file_id,
+                    Shipment.deleted_at.is_(None),
+                )
+            ).one_or_none()
+            if row is None:
+                raise ShipmentNotFound("shipment file not found")
+            _relationship, stored, shipment = row
+            if actor_role == "factory":
+                if actor_factory_id is None or shipment.factory_id != actor_factory_id:
+                    raise ShipmentNotFound("shipment file not found")
+            elif actor_role == "admin":
+                if shipment.status == "DRAFT":
+                    raise ShipmentNotFound("shipment file not found")
+            else:
+                raise ShipmentPermissionDenied("shipment file permission denied")
+            return ShipmentFileContent(
+                content=self._file_store.get(object_key=stored.object_key),
+                mime_type=stored.mime_type,
+            )
+
+    def remove_file(
+        self,
+        *,
+        actor_id: str,
+        factory_id: str,
+        shipment_id: str,
+        file_id: int,
+        now: datetime | None = None,
+    ) -> None:
+        with self._sessions.begin() as session:
+            shipment = self._owned_shipment(
+                session, shipment_id, actor_id, factory_id, lock=True
+            )
+            if shipment.status != "DRAFT":
+                raise ShipmentConflict("submitted shipment files cannot be removed")
+            relationship = session.scalar(
+                select(ShipmentFile).where(
+                    ShipmentFile.shipment_id == shipment_id,
+                    ShipmentFile.stored_file_id == file_id,
+                )
+            )
+            if relationship is None:
+                raise ShipmentNotFound("shipment file not found")
+            stored = session.get(StoredFile, file_id)
+            session.delete(relationship)
+            session.flush()
+            remaining = list(
+                session.scalars(
+                    select(ShipmentFile)
+                    .where(ShipmentFile.shipment_id == shipment_id)
+                    .order_by(ShipmentFile.display_order)
+                )
+            )
+            for display_order, item in enumerate(remaining):
+                item.display_order = display_order
+            if stored is not None:
+                stored.replaced_at = now or datetime.now(UTC)
 
     def submit_draft(
         self,
@@ -1155,6 +1349,12 @@ class ShipmentService:
                 .order_by(ShipmentReturnEvent.created_at, ShipmentReturnEvent.event_id)
             )
         )
+        file_rows = session.execute(
+            select(ShipmentFile, StoredFile)
+            .join(StoredFile, StoredFile.file_id == ShipmentFile.stored_file_id)
+            .where(ShipmentFile.shipment_id == shipment.shipment_id)
+            .order_by(ShipmentFile.display_order)
+        ).all()
         return ShipmentDraftSnapshot(
             shipment_id=shipment.shipment_id,
             shipment_no=shipment.shipment_no,
@@ -1169,6 +1369,7 @@ class ShipmentService:
             total_quantity=sum(totals.values()),
             lines=lines,
             boxes=boxes,
+            files=[self._file_snapshot(link, stored) for link, stored in file_rows],
             created_at=shipment.created_at,
             submitted_at=shipment.submitted_at,
             void_request=(
@@ -1177,6 +1378,34 @@ class ShipmentService:
                 else None
             ),
             return_events=[self._return_event_snapshot(session, item) for item in return_events],
+        )
+
+    @staticmethod
+    def _validated_image_mime_type(*, content: bytes, declared_mime_type: str) -> str:
+        if not content or len(content) > SHIPMENT_FILE_MAX_BYTES:
+            raise ShipmentValidationError("shipment file size is invalid")
+        try:
+            with Image.open(BytesIO(content)) as image:
+                image.verify()
+                actual_mime_type = SHIPMENT_FILE_MIME_BY_FORMAT.get(image.format or "")
+        except (UnidentifiedImageError, OSError, ValueError):
+            actual_mime_type = None
+        if actual_mime_type is None or actual_mime_type != declared_mime_type:
+            raise ShipmentValidationError("shipment file type is invalid")
+        return actual_mime_type
+
+    @staticmethod
+    def _file_snapshot(
+        relationship: ShipmentFile,
+        stored: StoredFile,
+    ) -> ShipmentFileSnapshot:
+        return ShipmentFileSnapshot(
+            file_id=stored.file_id,
+            filename=stored.original_filename,
+            mime_type=stored.mime_type,
+            size_bytes=stored.size_bytes,
+            content_sha256=stored.content_sha256,
+            display_order=relationship.display_order,
         )
 
     @staticmethod

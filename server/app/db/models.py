@@ -881,6 +881,33 @@ class ShipmentLine(Base):
     properties_value_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
 
 
+class ShipmentFile(Base):
+    __tablename__ = "shipment_files"
+    __table_args__ = (
+        UniqueConstraint("shipment_id", "display_order", name="uq_shipment_files_order"),
+        UniqueConstraint("stored_file_id", name="uq_shipment_files_stored_file"),
+        CheckConstraint(
+            "display_order >= 0 AND display_order < 3",
+            name="ck_shipment_files_display_order",
+        ),
+        Index("ix_shipment_files_shipment", "shipment_id", "display_order"),
+    )
+
+    shipment_file_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True
+    )
+    shipment_id: Mapped[str] = mapped_column(
+        ForeignKey("shipments.shipment_id", ondelete="CASCADE"), nullable=False
+    )
+    stored_file_id: Mapped[int] = mapped_column(
+        ForeignKey("stored_files.file_id", ondelete="RESTRICT", use_alter=True), nullable=False
+    )
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
 class ShipmentVoidRequest(Base):
     __tablename__ = "shipment_void_requests"
     __table_args__ = (

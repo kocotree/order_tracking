@@ -241,6 +241,7 @@ def create_app(
             workbook_renderer=ShipmentWorkbookRenderer(
                 template_path=Path(__file__).resolve().parent / "templates/shipment_list_v1.xlsx"
             ),
+            file_store=private_file_store,
         )
     if order_service is None:
         order_service = OrderService(session_factory, execution_guard=shipment_service)

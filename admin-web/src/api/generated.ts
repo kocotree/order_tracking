@@ -1028,6 +1028,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/factory/shipments/drafts/{shipment_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Draft File */
+        post: operations["upload_draft_file_api_v1_factory_shipments_drafts__shipment_id__files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/shipments/drafts/{shipment_id}/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Draft File */
+        delete: operations["remove_draft_file_api_v1_factory_shipments_drafts__shipment_id__files__file_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/factory/shipments/drafts/{shipment_id}/submit": {
         parameters: {
             query?: never;
@@ -1301,6 +1335,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shipment-files/{file_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Shipment File Content */
+        get: operations["shipment_file_content_api_v1_shipment_files__file_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -1494,6 +1545,11 @@ export interface components {
         Body_replace_mini_avatar_api_v1_mini_me_avatar_post: {
             /** Avatar */
             avatar: string;
+        };
+        /** Body_upload_draft_file_api_v1_factory_shipments_drafts__shipment_id__files_post */
+        Body_upload_draft_file_api_v1_factory_shipments_drafts__shipment_id__files_post: {
+            /** File */
+            file: string;
         };
         /** CandidateLineResponse */
         CandidateLineResponse: {
@@ -2446,6 +2502,11 @@ export interface components {
              */
             factoryName: string;
             /**
+             * Files
+             * @default []
+             */
+            files: components["schemas"]["ShipmentFileResponse"][];
+            /**
              * Lines
              * @default []
              */
@@ -2481,6 +2542,23 @@ export interface components {
              */
             totalQuantity: number;
             voidRequest?: components["schemas"]["ShipmentVoidRequestResponse"] | null;
+        };
+        /** ShipmentFileResponse */
+        ShipmentFileResponse: {
+            /** Contentsha256 */
+            contentSha256: string;
+            /** Contenturl */
+            contentUrl: string;
+            /** Displayorder */
+            displayOrder: number;
+            /** Fileid */
+            fileId: number;
+            /** Filename */
+            filename: string;
+            /** Mimetype */
+            mimeType: string;
+            /** Sizebytes */
+            sizeBytes: number;
         };
         /** ShipmentLineResponse */
         ShipmentLineResponse: {
@@ -4982,6 +5060,76 @@ export interface operations {
             };
         };
     };
+    upload_draft_file_api_v1_factory_shipments_drafts__shipment_id__files_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_draft_file_api_v1_factory_shipments_drafts__shipment_id__files_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentFileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_draft_file_api_v1_factory_shipments_drafts__shipment_id__files__file_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                shipment_id: string;
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_draft_api_v1_factory_shipments_drafts__shipment_id__submit_post: {
         parameters: {
             query?: never;
@@ -5552,6 +5700,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shipment_file_content_api_v1_shipment_files__file_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                file_id: number;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
                 };
             };
             /** @description Validation Error */

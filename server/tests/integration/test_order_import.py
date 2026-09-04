@@ -14,6 +14,7 @@ from app.db.models import (
     OrderImportCandidate,
     OrderImportCandidateLine,
     OrderImportRun,
+    OrderImportSourceCursor,
     OrderImportSourceRecord,
     OrderImportValidationIssue,
     OrderLine,
@@ -60,6 +61,7 @@ def _clean_import_data(engine: Engine) -> None:
         if imported_order_ids:
             session.execute(delete(Order).where(Order.order_id.in_(imported_order_ids)))
         session.execute(delete(OrderImportSourceRecord))
+        session.execute(delete(OrderImportSourceCursor))
         session.execute(
             delete(BackgroundJob).where(
                 BackgroundJob.job_type.in_(["order_import", "order_import_revalidate"])
@@ -773,6 +775,320 @@ def test_worker_reads_fake_pages_and_http_requires_admin_web_session(
         )
         assert created.status_code == 202
         assert created.json()["requestId"]
+
+    _clean_import_data(test_database_engine)
+
+
+def test_worker_processes_each_page_without_replaying_previous_rows(
+    test_database_engine: Engine,
+) -> None:
+    _clean_import_data(test_database_engine)
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    run = service.create_or_reuse_run(
+        actor_id="admin-order-import", request_id="worker-pages-once"
+    )
+    rows = [
+        SourceOrderRow(
+            f"rec-worker-{index}",
+            f"E10{index}",
+            "6970000000001",
+            "测试童帽",
+            "蓝色 / 120",
+            "童帽春夏",
+            "测试工厂",
+            100,
+            0,
+            100,
+            "松子",
+            date(2026, 8, 22),
+            date(2026, 8, 30),
+            {},
+        )
+        for index in (5, 6)
+    ]
+
+    handler = OrderImportWorkerHandlers(
+        service=service,
+        source=FakeFeishuOrderSource([[rows[0]], [rows[1]]]),
+    ).handlers()["order_import"]
+    handler({"runId": run.run_id})
+
+    completed = service.get_run(actor_id="admin-order-import", run_id=run.run_id)
+    assert completed.records_read == 2
+    assert completed.candidates_created == 2
+    assert completed.candidates_updated == 0
+
+    _clean_import_data(test_database_engine)
+
+
+def test_worker_processes_duplicate_record_only_once_per_run(
+    test_database_engine: Engine,
+) -> None:
+    _clean_import_data(test_database_engine)
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    run = service.create_or_reuse_run(
+        actor_id="admin-order-import", request_id="worker-duplicate"
+    )
+    first = SourceOrderRow(
+        "rec-duplicate",
+        "E110",
+        "6970000000001",
+        "测试童帽",
+        "蓝色 / 120",
+        "童帽春夏",
+        "测试工厂",
+        100,
+        0,
+        100,
+        "松子",
+        date(2026, 8, 22),
+        date(2026, 8, 30),
+        {"version": 1},
+        source_modified_at=datetime(2026, 9, 4, 1, 0),
+    )
+    duplicate = SourceOrderRow(
+        **{
+            **first.__dict__,
+            "order_quantity": 120,
+            "pending_quantity": 120,
+            "raw_fields": {"version": 2},
+            "source_modified_at": datetime(2026, 9, 4, 2, 0),
+        }
+    )
+
+    OrderImportWorkerHandlers(
+        service=service,
+        source=FakeFeishuOrderSource([[first], [duplicate]]),
+    ).handlers()["order_import"]({"runId": run.run_id})
+
+    completed = service.get_run(actor_id="admin-order-import", run_id=run.run_id)
+    with Session(test_database_engine) as session:
+        candidate = session.query(OrderImportCandidate).filter_by(order_no="E110").one()
+        assert candidate.total_quantity == 100
+    assert completed.candidates_created == 1
+    assert completed.candidates_updated == 0
+    assert completed.skipped_records == 1
+
+    _clean_import_data(test_database_engine)
+
+
+def test_successful_watermark_is_reused_and_failed_run_does_not_advance_it(
+    test_database_engine: Engine,
+) -> None:
+    _clean_import_data(test_database_engine)
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    first_modified = datetime(2026, 9, 4, 1, 0)
+    later_modified = datetime(2026, 9, 4, 2, 0)
+    first_row = SourceOrderRow(
+        "rec-watermark",
+        "E107",
+        "6970000000001",
+        "测试童帽",
+        "蓝色 / 120",
+        "童帽春夏",
+        "测试工厂",
+        100,
+        0,
+        100,
+        "松子",
+        date(2026, 8, 22),
+        date(2026, 8, 30),
+        {"version": 1},
+        source_modified_at=first_modified,
+    )
+    first_source = FakeFeishuOrderSource([[first_row]])
+    first_run = service.create_or_reuse_run(
+        actor_id="admin-order-import", request_id="watermark-first"
+    )
+    OrderImportWorkerHandlers(service=service, source=first_source).handlers()["order_import"](
+        {"runId": first_run.run_id}
+    )
+
+    assert first_source.modified_since_requests == [None]
+    assert service.successful_watermark(first_source.source_scope) == first_modified
+
+    changed_row = SourceOrderRow(
+        **{
+            **first_row.__dict__,
+            "order_quantity": 120,
+            "pending_quantity": 120,
+            "raw_fields": {"version": 2},
+            "source_modified_at": later_modified,
+        }
+    )
+    failing_source = FakeFeishuOrderSource([[changed_row], []], fail_on_page=2)
+    failed_run = service.create_or_reuse_run(
+        actor_id="admin-order-import", request_id="watermark-failed"
+    )
+    handler = OrderImportWorkerHandlers(service=service, source=failing_source)
+    try:
+        handler.handlers()["order_import"]({"runId": failed_run.run_id})
+    except Exception as error:
+        handler.terminal_failure_handlers()["order_import"](
+            {"runId": failed_run.run_id}, error
+        )
+    else:
+        raise AssertionError("the fake source should fail on its second page")
+
+    assert failing_source.modified_since_requests == [first_modified]
+    assert service.successful_watermark(failing_source.source_scope) == first_modified
+    latest_after_failure = service.latest_run(actor_id="admin-order-import")
+    assert latest_after_failure is not None
+    assert latest_after_failure.run_id == first_run.run_id
+    with Session(test_database_engine) as session:
+        unchanged = session.query(OrderImportCandidate).filter_by(order_no="E107").one()
+        assert unchanged.total_quantity == 100
+
+    retry_source = FakeFeishuOrderSource([[changed_row]])
+    retry_run = service.create_or_reuse_run(
+        actor_id="admin-order-import", request_id="watermark-retry"
+    )
+    OrderImportWorkerHandlers(service=service, source=retry_source).handlers()[
+        "order_import"
+    ]({"runId": retry_run.run_id})
+    retried = service.get_run(actor_id="admin-order-import", run_id=retry_run.run_id)
+    assert retry_source.modified_since_requests == [first_modified]
+    assert service.successful_watermark(retry_source.source_scope) == later_modified
+    assert retried.candidates_updated == 1
+    assert retried.skipped_records == 0
+
+    _clean_import_data(test_database_engine)
+
+
+def test_incremental_change_rebuilds_pending_candidate_from_saved_order_rows(
+    test_database_engine: Engine,
+) -> None:
+    _clean_import_data(test_database_engine)
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    first_modified = datetime(2026, 9, 4, 1, 0)
+    original_rows = [
+        SourceOrderRow(
+            f"rec-group-{index}",
+            "E108",
+            "6970000000001",
+            "测试童帽",
+            "蓝色 / 120",
+            "童帽春夏",
+            "测试工厂",
+            quantity,
+            0,
+            quantity,
+            "松子",
+            date(2026, 8, 22),
+            date(2026, 8, 30),
+            {"version": 1, "line": index},
+            source_modified_at=first_modified,
+        )
+        for index, quantity in ((1, 40), (2, 60))
+    ]
+    first_run = service.create_or_reuse_run(
+        actor_id="admin-order-import", request_id="group-first"
+    )
+    OrderImportWorkerHandlers(
+        service=service, source=FakeFeishuOrderSource([original_rows])
+    ).handlers()["order_import"]({"runId": first_run.run_id})
+
+    changed = SourceOrderRow(
+        **{
+            **original_rows[0].__dict__,
+            "order_quantity": 50,
+            "pending_quantity": 50,
+            "raw_fields": {"version": 2, "line": 1},
+            "source_modified_at": datetime(2026, 9, 4, 2, 0),
+        }
+    )
+    second_run = service.create_or_reuse_run(
+        actor_id="admin-order-import", request_id="group-second"
+    )
+    OrderImportWorkerHandlers(
+        service=service, source=FakeFeishuOrderSource([[changed]])
+    ).handlers()["order_import"]({"runId": second_run.run_id})
+
+    with Session(test_database_engine) as session:
+        candidate = session.query(OrderImportCandidate).filter_by(order_no="E108").one()
+        assert candidate.source_record_count == 2
+        assert candidate.total_quantity == 110
+        assert session.query(OrderImportCandidateLine).filter_by(
+            candidate_id=candidate.candidate_id
+        ).count() == 2
+
+    _clean_import_data(test_database_engine)
+
+
+def test_incremental_change_does_not_overwrite_imported_source_snapshot(
+    test_database_engine: Engine,
+) -> None:
+    _clean_import_data(test_database_engine)
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    original = SourceOrderRow(
+        "rec-frozen",
+        "E109",
+        "6970000000001",
+        "测试童帽",
+        "蓝色 / 120",
+        "童帽春夏",
+        "测试工厂",
+        100,
+        0,
+        100,
+        "松子",
+        date(2026, 8, 22),
+        date(2026, 8, 30),
+        {"version": 1},
+        source_modified_at=datetime(2026, 9, 4, 1, 0),
+    )
+    first_run = service.create_or_reuse_run(
+        actor_id="admin-order-import", request_id="frozen-first"
+    )
+    source = FakeFeishuOrderSource([[original]])
+    OrderImportWorkerHandlers(service=service, source=source).handlers()["order_import"](
+        {"runId": first_run.run_id}
+    )
+    with Session(test_database_engine) as session:
+        candidate_id = (
+            session.query(OrderImportCandidate)
+            .filter_by(order_no="E109")
+            .one()
+            .candidate_id
+        )
+    order_id = service.confirm_candidate(
+        actor_id="admin-order-import", candidate_id=candidate_id, request_id="frozen-confirm"
+    )
+
+    changed = SourceOrderRow(
+        **{
+            **original.__dict__,
+            "order_quantity": 999,
+            "pending_quantity": 999,
+            "raw_fields": {"version": 2},
+            "source_modified_at": datetime(2026, 9, 4, 2, 0),
+        }
+    )
+    second_run = service.create_or_reuse_run(
+        actor_id="admin-order-import", request_id="frozen-second"
+    )
+    OrderImportWorkerHandlers(
+        service=service, source=FakeFeishuOrderSource([[changed]])
+    ).handlers()["order_import"]({"runId": second_run.run_id})
+
+    with Session(test_database_engine) as session:
+        source_record = session.query(OrderImportSourceRecord).filter_by(
+            source_record_id="rec-frozen"
+        ).one()
+        order_line = session.query(OrderLine).filter_by(order_id=order_id).one()
+        assert source_record.raw_fields == {"version": 1}
+        assert source_record.source_modified_at == datetime(2026, 9, 4, 1, 0)
+        assert order_line.order_quantity == 100
 
     _clean_import_data(test_database_engine)
 

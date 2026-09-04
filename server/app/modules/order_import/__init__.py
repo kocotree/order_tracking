@@ -4,6 +4,7 @@ from app.modules.order_import.service import (
     CandidateSnapshot,
     ImportRunSnapshot,
     OrderImportService,
+    RevalidationSnapshot,
     SourceOrderRow,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "CandidateSnapshot",
     "ImportRunSnapshot",
     "OrderImportService",
+    "RevalidationSnapshot",
     "SourceOrderRow",
 ]

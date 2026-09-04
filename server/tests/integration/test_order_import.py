@@ -23,6 +23,7 @@ from app.db.models import (
     UserSession,
 )
 from app.main import create_app
+from app.modules.factory_access import FactoryAccessService
 from app.modules.identity_access import IdentityAccessService
 from app.modules.infrastructure import InfrastructureStore
 from app.modules.order_import import OrderImportService, SourceOrderRow
@@ -59,7 +60,11 @@ def _clean_import_data(engine: Engine) -> None:
         if imported_order_ids:
             session.execute(delete(Order).where(Order.order_id.in_(imported_order_ids)))
         session.execute(delete(OrderImportSourceRecord))
-        session.execute(delete(BackgroundJob).where(BackgroundJob.job_type == "order_import"))
+        session.execute(
+            delete(BackgroundJob).where(
+                BackgroundJob.job_type.in_(["order_import", "order_import_revalidate"])
+            )
+        )
         session.execute(
             delete(AuditLog).where(
                 AuditLog.action.in_(["order.imported_from_feishu", "order.draft_created"])
@@ -164,6 +169,186 @@ def test_two_admin_requests_reuse_one_active_import_run(
     assert repeated.status == "PENDING"
     with Session(test_database_engine) as session:
         assert session.query(OrderImportRun).count() == 1
+
+    _clean_import_data(test_database_engine)
+
+
+def test_factory_user_enable_enqueues_local_revalidation_job(
+    test_database_engine: Engine,
+) -> None:
+    _clean_import_data(test_database_engine)
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    with Session(test_database_engine) as session, session.begin():
+        factory_user = session.get(User, "factory-import-user")
+        assert factory_user is not None
+        factory_user.is_enabled = False
+
+    order_import = OrderImportService(sessions)
+    run = order_import.create_or_reuse_run(
+        actor_id="admin-order-import",
+        request_id="run-factory-user-trigger",
+    )
+    order_import.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[
+            SourceOrderRow(
+                "rec-factory-user-trigger",
+                "E-FACTORY-TRIGGER",
+                "6970000000001",
+                "测试童帽",
+                "蓝色 / 120",
+                "童帽春夏",
+                "测试工厂",
+                100,
+                0,
+                100,
+                "松子",
+                date(2026, 8, 22),
+                date(2026, 8, 30),
+                {},
+            )
+        ],
+    )
+    with Session(test_database_engine) as session, session.begin():
+        session.execute(delete(BackgroundJob).where(BackgroundJob.job_type == "order_import"))
+
+    FactoryAccessService(sessions).set_factory_user_enabled(
+        actor_id="admin-order-import",
+        target_user_id="factory-import-user",
+        enabled=True,
+        expected_version=1,
+        request_id="enable-factory-user",
+    )
+
+    with Session(test_database_engine) as session:
+        job = session.scalar(
+            select(BackgroundJob).where(
+                BackgroundJob.job_type == "order_import_revalidate"
+            )
+        )
+        assert job is not None
+        assert job.payload["factoryNames"] == ["测试工厂"]
+        assert job.status == "pending"
+
+    handlers = OrderImportWorkerHandlers(
+        service=order_import,
+        source=FakeFeishuOrderSource([]),
+    )
+    worker = Worker(
+        store=InfrastructureStore(sessions),
+        worker_id="candidate-revalidation-worker",
+        handlers=handlers.handlers(),
+        retry_limits={"order_import_revalidate": 3},
+    )
+    assert worker.run_once()
+
+    with Session(test_database_engine) as session:
+        candidate = session.scalar(
+            select(OrderImportCandidate).where(
+                OrderImportCandidate.order_no == "E-FACTORY-TRIGGER"
+            )
+        )
+        assert candidate is not None
+        assert candidate.validation_state == "READY"
+        assert session.scalar(
+            select(BackgroundJob.status).where(
+                BackgroundJob.job_type == "order_import_revalidate"
+            )
+        ) == "completed"
+
+    FactoryAccessService(sessions).set_factory_user_enabled(
+        actor_id="admin-order-import",
+        target_user_id="factory-import-user",
+        enabled=False,
+        expected_version=2,
+        request_id="disable-last-factory-user",
+    )
+    assert worker.run_once()
+    with Session(test_database_engine) as session:
+        candidate = session.scalar(
+            select(OrderImportCandidate).where(
+                OrderImportCandidate.order_no == "E-FACTORY-TRIGGER"
+            )
+        )
+        assert candidate is not None
+        assert candidate.validation_state == "INVALID"
+        assert candidate.validation_issues == ["FACTORY_HAS_NO_ENABLED_USER"]
+
+    _clean_import_data(test_database_engine)
+
+
+def test_pending_candidate_revalidates_from_saved_snapshot_after_factory_user_enabled(
+    test_database_engine: Engine,
+) -> None:
+    _clean_import_data(test_database_engine)
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    with Session(test_database_engine) as session, session.begin():
+        factory_user = session.get(User, "factory-import-user")
+        assert factory_user is not None
+        factory_user.is_enabled = False
+
+    service = OrderImportService(
+        sessions,
+        clock=lambda: datetime(2026, 8, 22, 9, 0, tzinfo=UTC),
+    )
+    run = service.create_or_reuse_run(
+        actor_id="admin-order-import",
+        request_id="run-needs-factory-user",
+    )
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[
+            SourceOrderRow(
+                "rec-needs-factory-user",
+                "E-REVALIDATE",
+                "6970000000001",
+                "测试童帽",
+                "蓝色 / 120",
+                "童帽春夏",
+                "测试工厂",
+                100,
+                0,
+                100,
+                "松子",
+                date(2026, 8, 22),
+                date(2026, 8, 30),
+                {},
+            )
+        ],
+    )
+    with Session(test_database_engine) as session, session.begin():
+        candidate = session.scalar(
+            select(OrderImportCandidate).where(
+                OrderImportCandidate.order_no == "E-REVALIDATE"
+            )
+        )
+        assert candidate is not None
+        assert candidate.validation_issues == ["FACTORY_HAS_NO_ENABLED_USER"]
+        factory_user = session.get(User, "factory-import-user")
+        assert factory_user is not None
+        factory_user.is_enabled = True
+
+    result = service.revalidate_pending_candidates(
+        factory_names=["测试工厂"],
+        reason="factory_user_enabled",
+        request_id="revalidate-factory-user",
+    )
+
+    assert result.checked_candidates == 1
+    assert result.updated_candidates == 1
+    with Session(test_database_engine) as session:
+        candidate = session.scalar(
+            select(OrderImportCandidate).where(
+                OrderImportCandidate.order_no == "E-REVALIDATE"
+            )
+        )
+        assert candidate is not None
+        assert candidate.validation_state == "READY"
+        assert candidate.validation_issues == []
 
     _clean_import_data(test_database_engine)
 

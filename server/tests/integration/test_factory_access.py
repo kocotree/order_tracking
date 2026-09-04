@@ -1,11 +1,12 @@
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.identity import FeishuProfile
 from app.adapters.wechat import FakeWechatIdentity, WechatProfile
+from app.db.models import BackgroundJob
 from app.modules.factory_access import (
     FactoryAccessService,
     FactoryConflict,
@@ -16,6 +17,9 @@ from app.modules.identity_access import IdentityAccessService, ResourceNotFound,
 
 def clean_factory_tables(engine: Engine) -> None:
     with engine.begin() as connection:
+        connection.execute(
+            text("DELETE FROM background_jobs WHERE job_type = 'order_import_revalidate'")
+        )
         connection.execute(text("UPDATE users SET mini_avatar_file_id = NULL"))
         connection.execute(text("DELETE FROM stored_files"))
         connection.execute(text("DELETE FROM mini_login_attempts"))
@@ -100,6 +104,15 @@ def test_factory_creation_normalizes_unique_keys_and_reports_contract_completene
     )
     assert complete.contract_complete is True
     assert complete.missing_contract_fields == ()
+    with Session(test_database_engine) as session:
+        jobs = list(
+            session.scalars(
+                select(BackgroundJob)
+                .where(BackgroundJob.job_type == "order_import_revalidate")
+                .order_by(BackgroundJob.id)
+            )
+        )
+        assert [job.payload["factoryNames"] for job in jobs] == [["禹帆"], ["宇倩"]]
 
     for supplier_number, factory_name, factory_code in [
         ("A10", "另一工厂", "Q1"),
@@ -157,6 +170,15 @@ def test_factory_edit_uses_version_and_keeps_supplier_number_read_only(
     assert updated.version == 2
     assert updated.contract_complete is True
     assert [contact.name for contact in updated.contacts] == ["王超", "徐陈杰"]
+    with Session(test_database_engine) as session:
+        update_job = session.scalar(
+            select(BackgroundJob).where(
+                BackgroundJob.job_type == "order_import_revalidate",
+                BackgroundJob.dedupe_key == "factory_updated:req-update-factory",
+            )
+        )
+        assert update_job is not None
+        assert update_job.payload["factoryNames"] == ["禹帆", "禹帆制帽"]
 
     with pytest.raises(FactoryConflict):
         service.update_factory(
@@ -255,6 +277,16 @@ def test_factory_applicant_uses_verified_wechat_phone_and_relogs_after_approval(
     )
     assert approved.status == "approved"
     assert approved.bound_factory_id == target.factory_id
+    with Session(test_database_engine) as session:
+        approval_job = session.scalar(
+            select(BackgroundJob).where(
+                BackgroundJob.job_type == "order_import_revalidate",
+                BackgroundJob.dedupe_key
+                == "factory_application_approved:req-approve-factory-application",
+            )
+        )
+        assert approval_job is not None
+        assert approval_job.payload["factoryNames"] == ["禹帆"]
 
     with pytest.raises(SessionInvalid):
         identity.authenticate_session(

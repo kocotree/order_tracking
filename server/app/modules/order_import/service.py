@@ -28,6 +28,13 @@ from app.modules.orders.service import (
 )
 
 ACTIVE_KEY = "feishu-order-import"
+LOCAL_DEPENDENCY_ISSUES = frozenset(
+    {
+        "PRODUCT_VARIANT_NOT_MATCHED",
+        "FACTORY_NOT_MATCHED",
+        "FACTORY_HAS_NO_ENABLED_USER",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -84,6 +91,12 @@ class BatchConfirmItem:
     succeeded: bool
     order_id: str | None = None
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class RevalidationSnapshot:
+    checked_candidates: int
+    updated_candidates: int
 
 
 @dataclass(frozen=True)
@@ -594,6 +607,171 @@ class OrderImportService:
             except Exception as error:
                 results.append(BatchConfirmItem(candidate_id, False, error=str(error)))
         return results
+
+    def revalidate_pending_candidates(
+        self,
+        *,
+        factory_names: list[str] | None = None,
+        source_sku_ids: list[str] | None = None,
+        reason: str,
+        request_id: str,
+        actor_id: str | None = None,
+    ) -> RevalidationSnapshot:
+        normalized_factories = {name.strip() for name in factory_names or [] if name.strip()}
+        normalized_skus = {sku.strip() for sku in source_sku_ids or [] if sku.strip()}
+        now = self._clock().replace(tzinfo=None)
+        checked = 0
+        updated = 0
+        with self._session_factory() as session, session.begin():
+            candidates = session.scalars(
+                select(OrderImportCandidate)
+                .where(OrderImportCandidate.status == "PENDING")
+                .order_by(OrderImportCandidate.candidate_id)
+            )
+            for candidate in candidates:
+                lines = self._candidate_lines(session, candidate.candidate_id)
+                if (normalized_factories or normalized_skus) and not any(
+                    line.factory_name in normalized_factories
+                    or line.source_sku_id in normalized_skus
+                    for line in lines
+                ):
+                    continue
+                checked += 1
+                if self._revalidate_candidate_dependencies(
+                    session,
+                    candidate=candidate,
+                    lines=lines,
+                    now=now,
+                ):
+                    updated += 1
+            session.add(
+                AuditLog(
+                    request_id=request_id,
+                    action="order_import.candidates_revalidated",
+                    target_type="order_import_revalidation",
+                    target_id=request_id,
+                    changes={
+                        "reason": reason,
+                        "checkedCandidates": checked,
+                        "updatedCandidates": updated,
+                    },
+                    actor_id=actor_id,
+                    source_terminal="worker",
+                    created_at=now,
+                )
+            )
+        return RevalidationSnapshot(
+            checked_candidates=checked,
+            updated_candidates=updated,
+        )
+
+    def _revalidate_candidate_dependencies(
+        self,
+        session: Session,
+        *,
+        candidate: OrderImportCandidate,
+        lines: list[OrderImportCandidateLine],
+        now: datetime,
+    ) -> bool:
+        candidate_issues = [
+            code
+            for code in candidate.validation_issues
+            if code not in LOCAL_DEPENDENCY_ISSUES
+        ]
+        line_updates: list[
+            tuple[OrderImportCandidateLine, list[str], str | None, str | None, str | None]
+        ] = []
+        for line in lines:
+            line_issues = [
+                code
+                for code in line.validation_issues
+                if code not in LOCAL_DEPENDENCY_ISSUES
+            ]
+            variant = session.scalar(
+                select(ProductVariant)
+                .join(Product, Product.product_id == ProductVariant.product_id)
+                .where(
+                    ProductVariant.source_sku_id == (line.source_sku_id or "").strip(),
+                    ProductVariant.properties_value
+                    == (line.properties_value or "").strip(),
+                    ProductVariant.is_available.is_(True),
+                    Product.name == (line.product_name or "").strip(),
+                    Product.is_available.is_(True),
+                )
+            )
+            product = session.get(Product, variant.product_id) if variant else None
+            if variant is None:
+                line_issues.append("PRODUCT_VARIANT_NOT_MATCHED")
+            factory = session.scalar(
+                select(Factory).where(
+                    Factory.factory_name == (line.factory_name or "").strip(),
+                    Factory.is_enabled.is_(True),
+                )
+            )
+            if factory is None:
+                line_issues.append("FACTORY_NOT_MATCHED")
+            elif (
+                session.scalar(
+                    select(User.user_id)
+                    .where(
+                        User.factory_id == factory.factory_id,
+                        User.role == "factory",
+                        User.is_enabled.is_(True),
+                    )
+                    .limit(1)
+                )
+                is None
+            ):
+                line_issues.append("FACTORY_HAS_NO_ENABLED_USER")
+            candidate_issues.extend(line_issues)
+            line_updates.append(
+                (
+                    line,
+                    line_issues,
+                    variant.variant_id if variant else None,
+                    factory.factory_id if factory else None,
+                    product.image_object_key if product else None,
+                )
+            )
+        candidate_issues = list(dict.fromkeys(candidate_issues))
+        changed = (
+            candidate.validation_issues != candidate_issues
+            or any(
+                line.validation_issues != issues
+                or line.matched_variant_id != variant_id
+                or line.matched_factory_id != factory_id
+                or line.image_object_key_snapshot != image_key
+                for line, issues, variant_id, factory_id, image_key in line_updates
+            )
+        )
+        if not changed:
+            return False
+        for line, issues, variant_id, factory_id, image_key in line_updates:
+            line.validation_issues = issues
+            line.matched_variant_id = variant_id
+            line.matched_factory_id = factory_id
+            line.image_object_key_snapshot = image_key
+        candidate.validation_issues = candidate_issues
+        candidate.issue_count = len(candidate_issues)
+        candidate.validation_state = "READY" if not candidate_issues else "INVALID"
+        candidate.updated_at = now
+        session.execute(
+            delete(OrderImportValidationIssue).where(
+                OrderImportValidationIssue.candidate_id == candidate.candidate_id
+            )
+        )
+        for sort_order, code in enumerate(candidate_issues, start=1):
+            field_name, message = self._issue_details(code)
+            session.add(
+                OrderImportValidationIssue(
+                    candidate_id=candidate.candidate_id,
+                    code=code,
+                    field_name=field_name,
+                    message=message,
+                    sort_order=sort_order,
+                )
+            )
+        return True
 
     def _refresh_candidate(
         self,

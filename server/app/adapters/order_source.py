@@ -18,17 +18,13 @@ class FeishuOrderSource(Protocol):
     @property
     def source_scope(self) -> str: ...
 
-    def read_pages(
-        self, *, modified_since: datetime | None = None
-    ) -> Iterable[list[SourceOrderRow]]: ...
+    def read_pages(self) -> Iterable[list[SourceOrderRow]]: ...
 
 
 class DisabledFeishuOrderSource:
     source_scope = "unconfigured-feishu-order-source"
 
-    def read_pages(
-        self, *, modified_since: datetime | None = None
-    ) -> Iterable[list[SourceOrderRow]]:
+    def read_pages(self) -> Iterable[list[SourceOrderRow]]:
         raise ExternalAdapterUnavailable("feishu_order_source_not_configured")
 
 
@@ -39,12 +35,8 @@ class FakeFeishuOrderSource:
         self._pages = pages
         self._fail_on_page = fail_on_page
         self.source_scope = "fake-feishu-order-source"
-        self.modified_since_requests: list[datetime | None] = []
 
-    def read_pages(
-        self, *, modified_since: datetime | None = None
-    ) -> Iterable[list[SourceOrderRow]]:
-        self.modified_since_requests.append(modified_since)
+    def read_pages(self) -> Iterable[list[SourceOrderRow]]:
         for page_number, page in enumerate(self._pages, start=1):
             if page_number == self._fail_on_page:
                 raise ExternalAdapterUnavailable("fake_feishu_page_failed")
@@ -58,7 +50,6 @@ class FeishuOrderSourceConfig:
     app_token: str
     table_id: str
     view_id: str
-    incremental_table_scope_confirmed: bool = False
     base_url: str = "https://open.feishu.cn"
 
 
@@ -70,13 +61,7 @@ class AppCredentialFeishuOrderSource:
         scope = f"{config.app_token}:{config.table_id}:{config.view_id}".encode()
         self.source_scope = f"feishu:{sha256(scope).hexdigest()[:32]}"
 
-    def read_pages(
-        self, *, modified_since: datetime | None = None
-    ) -> Iterable[list[SourceOrderRow]]:
-        if modified_since is not None and not self._config.incremental_table_scope_confirmed:
-            raise ExternalAdapterUnavailable(
-                "feishu_order_incremental_scope_not_confirmed"
-            )
+    def read_pages(self) -> Iterable[list[SourceOrderRow]]:
         try:
             with httpx.Client(base_url=self._config.base_url, timeout=30) as client:
                 token_response = client.post(
@@ -92,29 +77,13 @@ class AppCredentialFeishuOrderSource:
                 if token_payload.get("code") != 0 or not isinstance(token, str):
                     raise ExternalAdapterUnavailable("feishu_app_auth_failed")
                 headers = {"Authorization": f"Bearer {token}"}
-                modified_field_name = self._validate_fields(client, headers)
+                self._validate_fields(client, headers)
                 page_token: str | None = None
                 while True:
                     params: dict[str, str | int] = {
+                        "view_id": self._config.view_id,
                         "page_size": 500,
-                        "automatic_fields": "true",
                     }
-                    if modified_since is None:
-                        params["view_id"] = self._config.view_id
-                    else:
-                        local_date = (
-                            modified_since.replace(tzinfo=UTC)
-                            .astimezone(BUSINESS_TZ)
-                            .date()
-                            .isoformat()
-                        )
-                        if "]" in modified_field_name:
-                            raise ExternalAdapterUnavailable(
-                                "feishu_order_modified_time_field_invalid"
-                            )
-                        params["filter"] = (
-                            f'CurrentValue.[{modified_field_name}] >= TODATE("{local_date}")'
-                        )
                     if page_token:
                         params["page_token"] = page_token
                     response = client.get(
@@ -140,7 +109,7 @@ class AppCredentialFeishuOrderSource:
                 raise
             raise ExternalAdapterUnavailable("feishu_order_source_unavailable") from error
 
-    def _validate_fields(self, client: httpx.Client, headers: dict[str, str]) -> str:
+    def _validate_fields(self, client: httpx.Client, headers: dict[str, str]) -> None:
         response = client.get(
             f"/open-apis/bitable/v1/apps/{self._config.app_token}"
             f"/tables/{self._config.table_id}/fields",
@@ -174,12 +143,6 @@ class AppCredentialFeishuOrderSource:
             for name, allowed_types in compatible_types.items()
         ):
             raise ExternalAdapterUnavailable("feishu_order_field_contract_drift")
-        modified_fields = [
-            name for name, item in fields.items() if item.get("type") == 1002
-        ]
-        if len(modified_fields) != 1 or not isinstance(modified_fields[0], str):
-            raise ExternalAdapterUnavailable("feishu_order_modified_time_field_missing")
-        return modified_fields[0]
 
     @classmethod
     def _parse_record(cls, item: dict[str, Any]) -> SourceOrderRow:
@@ -218,15 +181,7 @@ class AppCredentialFeishuOrderSource:
             contract_ship_date=cls._date(fields.get("生产计划出货时间（提前或者推迟 的时间）")),
             raw_fields=allowed_fields,
             source_detail_id=cls._text(fields.get("下单明细ID")),
-            source_modified_at=cls._modified_at(item.get("last_modified_time")),
         )
-
-    @staticmethod
-    def _modified_at(value: Any) -> datetime:
-        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
-            raise ValueError("feishu record last_modified_time is missing")
-        milliseconds = int(value)
-        return datetime.fromtimestamp(milliseconds / 1000, tz=UTC).replace(tzinfo=None)
 
     @staticmethod
     def _text(value: Any) -> str | None:

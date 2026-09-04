@@ -14,7 +14,6 @@ from app.db.models import (
     OrderImportCandidate,
     OrderImportCandidateLine,
     OrderImportRun,
-    OrderImportSourceCursor,
     OrderImportSourceRecord,
     OrderImportValidationIssue,
     Product,
@@ -201,38 +200,15 @@ class OrderImportService:
             if run is None or run.active_key != ACTIVE_KEY:
                 raise ValueError("active import run not found")
             run.status = "RUNNING"
-            affected_order_nos: set[str] = set()
-            accepted_by_order: dict[str, int] = {}
-            seen_record_ids: set[str] = set()
-            skipped = 0
-            failed = 0
+            groups: dict[str, list[tuple[SourceOrderRow, OrderImportSourceRecord]]] = {}
             for row in rows:
                 normalized_order_no = (row.order_no or "").strip().upper() or None
-                if not row.record_id:
-                    failed += 1
-                    continue
-                if row.record_id in seen_record_ids:
-                    skipped += 1
-                    continue
-                seen_record_ids.add(row.record_id)
                 source = session.scalar(
                     select(OrderImportSourceRecord).where(
                         OrderImportSourceRecord.source_scope == source_scope,
                         OrderImportSourceRecord.source_record_id == row.record_id,
                     )
                 )
-                if source is not None and source.last_seen_run_id == run_id:
-                    skipped += 1
-                    continue
-                existing_order_no = source.order_no if source is not None else None
-                if any(
-                    self._order_is_frozen(session, order_no)
-                    for order_no in {existing_order_no, normalized_order_no}
-                    if order_no is not None
-                ):
-                    skipped += 1
-                    continue
-                normalized_fields = self._normalized_source_fields(row)
                 if source is None:
                     source = OrderImportSourceRecord(
                         source_scope=source_scope,
@@ -240,7 +216,6 @@ class OrderImportService:
                         source_detail_id=row.source_detail_id,
                         order_no=normalized_order_no,
                         raw_fields=row.raw_fields,
-                        normalized_fields=normalized_fields,
                         source_modified_at=row.source_modified_at,
                         parse_status="PARSED",
                         first_seen_run_id=run_id,
@@ -251,74 +226,52 @@ class OrderImportService:
                     session.add(source)
                     session.flush()
                 else:
-                    if (
-                        source.source_modified_at is not None
-                        and row.source_modified_at is not None
-                        and row.source_modified_at <= source.source_modified_at
-                    ):
-                        skipped += 1
-                        continue
-                    if source.normalized_fields == normalized_fields:
-                        source.source_detail_id = row.source_detail_id
-                        source.raw_fields = row.raw_fields
-                        source.source_modified_at = row.source_modified_at
-                        source.last_seen_run_id = run_id
-                        source.last_seen_at = now
-                        skipped += 1
-                        continue
                     source.order_no = normalized_order_no
                     source.source_detail_id = row.source_detail_id
                     source.raw_fields = row.raw_fields
-                    source.normalized_fields = normalized_fields
                     source.source_modified_at = row.source_modified_at
                     source.parse_status = "PARSED"
                     source.last_seen_run_id = run_id
                     source.last_seen_at = now
-                affected_order_nos.update(
-                    order_no
-                    for order_no in (existing_order_no, normalized_order_no)
-                    if order_no is not None
-                )
-                if normalized_order_no is None:
-                    failed += 1
-                else:
-                    accepted_by_order[normalized_order_no] = (
-                        accepted_by_order.get(normalized_order_no, 0) + 1
-                    )
+                if normalized_order_no is not None:
+                    group = groups.setdefault(normalized_order_no, [])
+                    group[:] = [
+                        item
+                        for item in group
+                        if item[1].source_record_pk != source.source_record_pk
+                    ]
+                    group.append((row, source))
             created = 0
             updated = 0
-            for order_no in affected_order_nos:
-                source_records = list(
-                    session.scalars(
-                        select(OrderImportSourceRecord)
-                        .where(
-                            OrderImportSourceRecord.source_scope == source_scope,
-                            OrderImportSourceRecord.order_no == order_no,
-                        )
-                        .order_by(OrderImportSourceRecord.source_record_pk)
-                    )
-                )
-                group = [
-                    (self._source_row(source), source)
-                    for source in source_records
-                    if source.normalized_fields is not None
-                ]
-                candidate = session.scalar(
-                    select(OrderImportCandidate).where(
-                        OrderImportCandidate.order_no == order_no
-                    )
-                )
-                if not group:
-                    if candidate is not None and candidate.status == "PENDING":
-                        self._delete_pending_candidate(session, candidate)
-                    continue
+            failed = len(rows) - sum(len(group) for group in groups.values())
+            skipped = 0
+            for order_no, group in groups.items():
                 if not any(self._is_below_half(row) for row, _ in group):
-                    if candidate is not None and candidate.status == "PENDING":
-                        self._delete_pending_candidate(session, candidate)
-                    skipped += accepted_by_order.get(order_no, 0)
+                    candidate = session.scalar(
+                        select(OrderImportCandidate).where(
+                            OrderImportCandidate.order_no == order_no,
+                            OrderImportCandidate.status == "PENDING",
+                        )
+                    )
+                    if candidate is not None:
+                        session.execute(
+                            delete(OrderImportValidationIssue).where(
+                                OrderImportValidationIssue.candidate_id == candidate.candidate_id
+                            )
+                        )
+                        session.execute(
+                            delete(OrderImportCandidateLine).where(
+                                OrderImportCandidateLine.candidate_id == candidate.candidate_id
+                            )
+                        )
+                        session.delete(candidate)
+                    skipped += len(group)
                     continue
+                candidate = session.scalar(
+                    select(OrderImportCandidate).where(OrderImportCandidate.order_no == order_no)
+                )
                 if candidate is not None and candidate.status != "PENDING":
-                    skipped += accepted_by_order.get(order_no, 0)
+                    skipped += len(group)
                     continue
                 if candidate is None:
                     candidate = OrderImportCandidate(
@@ -347,11 +300,11 @@ class OrderImportService:
                     )
                 self._refresh_candidate(session, candidate=candidate, group=group, now=now)
             run.pages_read = pages_read
-            run.records_read += len(rows)
+            run.records_read = len(rows)
             run.candidates_created += created
-            run.candidates_updated += updated
-            run.skipped_records += skipped
-            run.failed_records += failed
+            run.candidates_updated = updated
+            run.skipped_records = skipped
+            run.failed_records = failed
             if finalize:
                 run.status = "SUCCEEDED"
                 run.active_key = None
@@ -363,43 +316,19 @@ class OrderImportService:
         self,
         *,
         run_id: str,
-        rows: list[SourceOrderRow],
+        accumulated_rows: list[SourceOrderRow],
         page_number: int,
         source_scope: str,
     ) -> ImportRunSnapshot:
         return self.process_run(
             run_id=run_id,
-            rows=rows,
+            rows=accumulated_rows,
             pages_read=page_number,
             source_scope=source_scope,
             finalize=False,
         )
 
-    def start_run_attempt(self, *, run_id: str) -> None:
-        with self._session_factory() as session, session.begin():
-            run = session.get(OrderImportRun, run_id)
-            if run is None or run.active_key != ACTIVE_KEY:
-                raise ValueError("active import run not found")
-            run.status = "RUNNING"
-            run.pages_read = 0
-            run.records_read = 0
-            run.candidates_created = 0
-            run.candidates_updated = 0
-            run.skipped_records = 0
-            run.failed_records = 0
-
-    def successful_watermark(self, source_scope: str) -> datetime | None:
-        with self._session_factory() as session:
-            cursor = session.get(OrderImportSourceCursor, source_scope)
-            return cursor.successful_modified_at if cursor is not None else None
-
-    def complete_run(
-        self,
-        *,
-        run_id: str,
-        source_scope: str | None = None,
-        successful_modified_at: datetime | None = None,
-    ) -> ImportRunSnapshot:
+    def complete_run(self, *, run_id: str) -> ImportRunSnapshot:
         now = self._clock().replace(tzinfo=None)
         with self._session_factory() as session, session.begin():
             run = session.get(OrderImportRun, run_id)
@@ -408,21 +337,6 @@ class OrderImportService:
             run.status = "SUCCEEDED"
             run.active_key = None
             run.finished_at = now
-            if source_scope is not None and successful_modified_at is not None:
-                cursor = session.get(OrderImportSourceCursor, source_scope)
-                if cursor is None:
-                    session.add(
-                        OrderImportSourceCursor(
-                            source_scope=source_scope,
-                            successful_modified_at=successful_modified_at,
-                            successful_run_id=run_id,
-                            successful_at=now,
-                        )
-                    )
-                elif successful_modified_at >= cursor.successful_modified_at:
-                    cursor.successful_modified_at = successful_modified_at
-                    cursor.successful_run_id = run_id
-                    cursor.successful_at = now
             session.flush()
             return self._snapshot(run)
 
@@ -466,18 +380,10 @@ class OrderImportService:
         with self._session_factory() as session:
             self._require_admin(session, actor_id)
             run = session.scalar(
-                select(OrderImportRun)
-                .where(OrderImportRun.active_key == ACTIVE_KEY)
-                .order_by(OrderImportRun.started_at.desc(), OrderImportRun.run_id.desc())
-            )
-            if run is None:
-                run = session.scalar(
-                    select(OrderImportRun)
-                    .where(OrderImportRun.status == "SUCCEEDED")
-                    .order_by(
-                        OrderImportRun.started_at.desc(), OrderImportRun.run_id.desc()
-                    )
+                select(OrderImportRun).order_by(
+                    OrderImportRun.started_at.desc(), OrderImportRun.run_id.desc()
                 )
+            )
             return self._snapshot(run) if run else None
 
     def pending_count(self, *, actor_id: str) -> int:
@@ -688,100 +594,6 @@ class OrderImportService:
             except Exception as error:
                 results.append(BatchConfirmItem(candidate_id, False, error=str(error)))
         return results
-
-    @staticmethod
-    def _normalized_source_fields(row: SourceOrderRow) -> dict[str, object]:
-        return {
-            "orderNo": row.order_no,
-            "sourceSkuId": row.source_sku_id,
-            "productName": row.product_name,
-            "propertiesValue": row.properties_value,
-            "category": row.category,
-            "factoryName": row.factory_name,
-            "orderQuantity": row.order_quantity,
-            "shippedQuantity": row.shipped_quantity,
-            "pendingQuantity": row.pending_quantity,
-            "tracker": row.tracker,
-            "orderDate": row.order_date.isoformat() if row.order_date else None,
-            "contractShipDate": (
-                row.contract_ship_date.isoformat() if row.contract_ship_date else None
-            ),
-        }
-
-    @staticmethod
-    def _order_is_frozen(session: Session, order_no: str) -> bool:
-        candidate = session.scalar(
-            select(OrderImportCandidate).where(OrderImportCandidate.order_no == order_no)
-        )
-        return candidate is not None and candidate.status != "PENDING"
-
-    @staticmethod
-    def _source_row(source: OrderImportSourceRecord) -> SourceOrderRow:
-        fields = source.normalized_fields
-        if fields is None:
-            raise ValueError("normalized source snapshot missing")
-        order_date = fields.get("orderDate")
-        contract_ship_date = fields.get("contractShipDate")
-        return SourceOrderRow(
-            record_id=source.source_record_id,
-            order_no=fields.get("orderNo") if isinstance(fields.get("orderNo"), str) else None,
-            source_sku_id=(
-                fields.get("sourceSkuId")
-                if isinstance(fields.get("sourceSkuId"), str)
-                else None
-            ),
-            product_name=(
-                fields.get("productName")
-                if isinstance(fields.get("productName"), str)
-                else None
-            ),
-            properties_value=(
-                fields.get("propertiesValue")
-                if isinstance(fields.get("propertiesValue"), str)
-                else None
-            ),
-            category=(
-                fields.get("category") if isinstance(fields.get("category"), str) else None
-            ),
-            factory_name=(
-                fields.get("factoryName")
-                if isinstance(fields.get("factoryName"), str)
-                else None
-            ),
-            order_quantity=(
-                fields.get("orderQuantity")
-                if isinstance(fields.get("orderQuantity"), int)
-                else None
-            ),
-            shipped_quantity=int(fields.get("shippedQuantity") or 0),
-            pending_quantity=int(fields.get("pendingQuantity") or 0),
-            tracker=fields.get("tracker") if isinstance(fields.get("tracker"), str) else None,
-            order_date=date.fromisoformat(order_date) if isinstance(order_date, str) else None,
-            contract_ship_date=(
-                date.fromisoformat(contract_ship_date)
-                if isinstance(contract_ship_date, str)
-                else None
-            ),
-            raw_fields=source.raw_fields,
-            source_detail_id=source.source_detail_id,
-            source_modified_at=source.source_modified_at,
-        )
-
-    @staticmethod
-    def _delete_pending_candidate(
-        session: Session, candidate: OrderImportCandidate
-    ) -> None:
-        session.execute(
-            delete(OrderImportValidationIssue).where(
-                OrderImportValidationIssue.candidate_id == candidate.candidate_id
-            )
-        )
-        session.execute(
-            delete(OrderImportCandidateLine).where(
-                OrderImportCandidateLine.candidate_id == candidate.candidate_id
-            )
-        )
-        session.delete(candidate)
 
     def _refresh_candidate(
         self,

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     feishu_order_app_token: str = ""
     feishu_order_table_id: str = ""
     feishu_order_view_id: str = ""
+    feishu_order_incremental_table_scope_confirmed: bool = False
     oss_region: str = ""
     oss_endpoint: str = ""
     oss_access_key_id: str = ""
@@ -165,7 +166,9 @@ class Settings(BaseSettings):
         )
         if self.ops_alerts_enabled:
             required_values += (self.ops_alert_recipient_user_id,)
-        if not all(self._is_real_value(value) for value in required_values):
+        if not self.feishu_order_incremental_table_scope_confirmed or not all(
+            self._is_real_value(value) for value in required_values
+        ):
             return False
         return all(
             self._is_https_url(value)

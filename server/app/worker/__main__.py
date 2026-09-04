@@ -113,6 +113,9 @@ def main() -> None:
                 app_token=settings.feishu_order_app_token,
                 table_id=settings.feishu_order_table_id,
                 view_id=settings.feishu_order_view_id,
+                incremental_table_scope_confirmed=(
+                    settings.feishu_order_incremental_table_scope_confirmed
+                ),
             )
         )
         if all(

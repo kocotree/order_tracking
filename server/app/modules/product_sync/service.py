@@ -17,6 +17,7 @@ from app.adapters.product import (
 from app.db.models import (
     AuditLog,
     BackgroundJob,
+    OrderImportCandidate,
     Product,
     ProductSyncRun,
     ProductSyncStagedVariant,
@@ -253,6 +254,13 @@ class ProductSyncService:
                         actor_id=actor_id,
                         source_terminal="worker",
                     )
+                )
+                self._enqueue_candidate_revalidation(
+                    session,
+                    run_id=run_id,
+                    request_id=request_id,
+                    actor_id=actor_id,
+                    available_at=now,
                 )
         except Exception as error:
             self._record_failure(run_id=run_id, error=error, actor_id=actor_id)
@@ -556,6 +564,13 @@ class ProductSyncService:
                         source_terminal="worker",
                     )
                 )
+                self._enqueue_candidate_revalidation(
+                    session,
+                    run_id=run_id,
+                    request_id=request_id,
+                    actor_id=actor_id,
+                    available_at=now,
+                )
         except Exception as error:
             self._record_failure(run_id=run_id, error=error, actor_id=actor_id)
             raise
@@ -652,6 +667,38 @@ class ProductSyncService:
                     source_terminal="worker",
                 )
             )
+
+    @staticmethod
+    def _enqueue_candidate_revalidation(
+        session: Session,
+        *,
+        run_id: str,
+        request_id: str,
+        actor_id: str | None,
+        available_at: datetime,
+    ) -> None:
+        pending_candidate = session.scalar(
+            select(OrderImportCandidate.candidate_id)
+            .where(OrderImportCandidate.status == "PENDING")
+            .limit(1)
+        )
+        if pending_candidate is None:
+            return
+        session.add(
+            BackgroundJob(
+                job_type="order_import_revalidate",
+                dedupe_key=f"product_sync:{run_id}",
+                payload={
+                    "reason": "product_sync_succeeded",
+                    "requestId": f"candidate-revalidation:{request_id}",
+                    "actorId": actor_id,
+                },
+                status="pending",
+                available_at=available_at,
+                created_at=available_at,
+                updated_at=available_at,
+            )
+        )
 
     @staticmethod
     def _is_available(record: SourceProductVariant) -> bool:

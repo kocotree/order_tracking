@@ -11,7 +11,10 @@ class OrderImportWorkerHandlers:
         self._source = source
 
     def handlers(self) -> Mapping[str, Callable[[dict[str, Any]], None]]:
-        return {"order_import": self._run}
+        return {
+            "order_import": self._run,
+            "order_import_revalidate": self._revalidate,
+        }
 
     def terminal_failure_handlers(
         self,
@@ -57,3 +60,33 @@ class OrderImportWorkerHandlers:
         run_id = payload.get("runId")
         if isinstance(run_id, str) and run_id:
             self._service.fail_run(run_id=run_id, error_code=type(error).__name__)
+
+    def _revalidate(self, payload: dict[str, Any]) -> None:
+        factory_names = payload.get("factoryNames")
+        source_sku_ids = payload.get("sourceSkuIds")
+        reason = payload.get("reason")
+        request_id = payload.get("requestId")
+        actor_id = payload.get("actorId")
+        if not isinstance(reason, str) or not reason:
+            raise ValueError("order_import_revalidation_payload_invalid")
+        if not isinstance(request_id, str) or not request_id:
+            raise ValueError("order_import_revalidation_payload_invalid")
+        if actor_id is not None and not isinstance(actor_id, str):
+            raise ValueError("order_import_revalidation_payload_invalid")
+        if factory_names is not None and (
+            not isinstance(factory_names, list)
+            or not all(isinstance(name, str) for name in factory_names)
+        ):
+            raise ValueError("order_import_revalidation_payload_invalid")
+        if source_sku_ids is not None and (
+            not isinstance(source_sku_ids, list)
+            or not all(isinstance(sku, str) for sku in source_sku_ids)
+        ):
+            raise ValueError("order_import_revalidation_payload_invalid")
+        self._service.revalidate_pending_candidates(
+            factory_names=factory_names,
+            source_sku_ids=source_sku_ids,
+            reason=reason,
+            request_id=request_id,
+            actor_id=actor_id,
+        )

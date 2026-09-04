@@ -204,6 +204,7 @@ def main() -> None:
             "product-sync-incremental": 3,
             "product-image-cache": 3,
             "order_import": 3,
+            "order_import_revalidate": 3,
         },
         maintenance=ensure_daily_notification_scan,
         work_sources=[

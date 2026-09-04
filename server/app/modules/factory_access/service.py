@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import (
     AuditLog,
+    BackgroundJob,
     Factory,
     FactoryApplication,
     FactoryContact,
@@ -119,6 +120,7 @@ class FactoryAccessService:
         )
         try:
             with self._session_factory() as session, session.begin():
+                now = datetime.now(UTC).replace(tzinfo=None)
                 self._require_admin(session, actor_id)
                 session.add(factory)
                 session.flush()
@@ -137,6 +139,14 @@ class FactoryAccessService:
                         actor_id=actor_id,
                         source_terminal="web",
                     )
+                )
+                self._enqueue_candidate_revalidation(
+                    session,
+                    factory_names=[normalized_name],
+                    reason="factory_created",
+                    request_id=request_id,
+                    actor_id=actor_id,
+                    available_at=now,
                 )
                 session.flush()
                 return self._snapshot(session, factory)
@@ -177,6 +187,7 @@ class FactoryAccessService:
                     "factoryCode": factory.factory_code,
                     "version": factory.version,
                 }
+                previous_name = factory.factory_name
                 factory.factory_name = normalized_name
                 factory.factory_code = normalized_code
                 factory.legal_name = self._optional(legal_name)
@@ -201,6 +212,14 @@ class FactoryAccessService:
                         actor_id=actor_id,
                         source_terminal="web",
                     )
+                )
+                self._enqueue_candidate_revalidation(
+                    session,
+                    factory_names=[previous_name, normalized_name],
+                    reason="factory_updated",
+                    request_id=request_id,
+                    actor_id=actor_id,
+                    available_at=datetime.now(UTC).replace(tzinfo=None),
                 )
                 session.flush()
                 return self._snapshot(session, factory)
@@ -443,6 +462,9 @@ class FactoryAccessService:
             user.factory_position = application.position
             user.is_enabled = True
             user.version += 1
+            factory = session.get(Factory, factory_id)
+            if factory is None:
+                raise ResourceNotFound("factory was not found")
             session.execute(
                 update(UserSession)
                 .where(
@@ -466,6 +488,14 @@ class FactoryAccessService:
                     actor_id=actor_id,
                     source_terminal="web",
                 )
+            )
+            self._enqueue_candidate_revalidation(
+                session,
+                factory_names=[factory.factory_name],
+                reason="factory_application_approved",
+                request_id=request_id,
+                actor_id=actor_id,
+                available_at=now,
             )
             session.flush()
             return self._application_snapshot(session, application)
@@ -562,6 +592,9 @@ class FactoryAccessService:
             before = user.is_enabled
             user.is_enabled = enabled
             user.version += 1
+            factory = session.get(Factory, user.factory_id)
+            if factory is None:
+                raise ResourceNotFound("factory was not found")
             if not enabled:
                 session.execute(
                     update(UserSession)
@@ -582,8 +615,44 @@ class FactoryAccessService:
                     source_terminal="web",
                 )
             )
+            self._enqueue_candidate_revalidation(
+                session,
+                factory_names=[factory.factory_name],
+                reason="factory_user_enabled" if enabled else "factory_user_disabled",
+                request_id=request_id,
+                actor_id=actor_id,
+                available_at=now,
+            )
             session.flush()
             return self._factory_user_snapshot(session, user)
+
+    @staticmethod
+    def _enqueue_candidate_revalidation(
+        session: Session,
+        *,
+        factory_names: list[str],
+        reason: str,
+        request_id: str,
+        actor_id: str,
+        available_at: datetime,
+    ) -> None:
+        names = sorted({name.strip() for name in factory_names if name.strip()})
+        session.add(
+            BackgroundJob(
+                job_type="order_import_revalidate",
+                dedupe_key=f"{reason}:{request_id}",
+                payload={
+                    "factoryNames": names,
+                    "reason": reason,
+                    "requestId": f"candidate-revalidation:{request_id}",
+                    "actorId": actor_id,
+                },
+                status="pending",
+                available_at=available_at,
+                created_at=available_at,
+                updated_at=available_at,
+            )
+        )
 
     @staticmethod
     def _required(value: str, label: str) -> str:

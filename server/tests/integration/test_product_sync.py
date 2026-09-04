@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.product import FakeJstProductSource, ProductSourceError, SourceProductVariant
 from app.db.models import (
+    BackgroundJob,
+    OrderImportCandidate,
     Product,
     ProductSyncRun,
     ProductSyncStagedVariant,
@@ -38,6 +40,11 @@ def source_variant(
 @pytest.fixture(autouse=True)
 def clean_product_tables(test_database_engine: Engine) -> None:
     with Session(test_database_engine) as session, session.begin():
+        session.execute(
+            delete(BackgroundJob).where(
+                BackgroundJob.job_type == "order_import_revalidate"
+            )
+        )
         session.execute(delete(ProductVariant))
         session.execute(delete(ProductSyncStagedVariant))
         session.execute(delete(ProductSyncRun))
@@ -97,6 +104,66 @@ def test_initial_sync_only_makes_exact_allowlisted_enabled_variants_available(
     assert sorted((variant.source_sku_id, variant.is_available) for variant in variants) == [
         (f"SKU-{index}", True) for index in range(1, 7)
     ]
+
+
+def test_successful_product_sync_enqueues_candidate_revalidation(
+    test_database_engine: Engine,
+) -> None:
+    session_factory = sessionmaker(
+        test_database_engine,
+        class_=Session,
+        expire_on_commit=False,
+    )
+    now = datetime(2026, 8, 24, 9, 0)
+    with session_factory() as session, session.begin():
+        session.add(
+            OrderImportCandidate(
+                candidate_id="candidate-product-revalidate",
+                order_no="E-PRODUCT-REVALIDATE",
+                status="PENDING",
+                validation_state="INVALID",
+                validation_issues=["PRODUCT_VARIANT_NOT_MATCHED"],
+                issue_count=1,
+                source_record_count=1,
+                total_quantity=100,
+                shipped_quantity=0,
+                pending_quantity=100,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    source = FakeJstProductSource(
+        initial_pages=[
+            [
+                source_variant(
+                    i_id="ITEM-REVALIDATE",
+                    sku_id="SKU-REVALIDATE",
+                    category="童帽春夏",
+                    enabled=1,
+                )
+            ]
+        ],
+        candidate_cursor="cursor-revalidate",
+    )
+
+    ProductSyncService(session_factory, source=source).run_initial(
+        request_id="request-product-revalidate",
+        worker_id="worker-test",
+    )
+
+    with Session(test_database_engine) as session:
+        job = session.scalar(
+            select(BackgroundJob).where(
+                BackgroundJob.job_type == "order_import_revalidate"
+            )
+        )
+        assert job is not None
+        assert job.status == "pending"
+        assert job.payload == {
+            "reason": "product_sync_succeeded",
+            "requestId": "candidate-revalidation:request-product-revalidate",
+            "actorId": None,
+        }
 
 
 def test_initial_sync_preserves_unique_source_ids_when_display_fields_repeat(

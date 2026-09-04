@@ -160,6 +160,7 @@ class IdentityAccessService:
         sms_sender: SmsSender | None = None,
         wechat_identity: WechatIdentity | None = None,
         avatar_store: AvatarStore | None = None,
+        super_admin_subjects: set[str] | frozenset[str] = frozenset(),
         token_secret: bytes | None = None,
         phone_encryption_secret: bytes | None = None,
         phone_digest_secret: bytes | None = None,
@@ -171,6 +172,9 @@ class IdentityAccessService:
         self._sms_sender = sms_sender
         self._wechat_identity = wechat_identity
         self._avatar_store = avatar_store
+        self._super_admin_subjects = frozenset(
+            subject.strip() for subject in super_admin_subjects if subject.strip()
+        )
         self._token_secret = token_secret or secrets.token_bytes(32)
         self._phone = PhoneProtector(
             encryption_secret=phone_encryption_secret or secrets.token_bytes(32),
@@ -240,7 +244,10 @@ class IdentityAccessService:
             scope=self._feishu_identity.scope,
             profile=profile,
             request_id=request_id,
+            auto_grant_admin=True,
         )
+        if user.role != "admin" or not user.is_enabled:
+            raise PermissionDenied("enabled administrator role is required")
         session_token = secrets.token_urlsafe(32)
         refresh_token = secrets.token_urlsafe(32)
         csrf_token = secrets.token_urlsafe(32)
@@ -533,9 +540,13 @@ class IdentityAccessService:
         scope: str,
         profile: FeishuProfile,
         request_id: str,
+        auto_grant_admin: bool = False,
     ) -> UserSnapshot:
         now = self._now()
         phone = profile.phone
+        configured_super_admin = profile.subject in self._super_admin_subjects
+        if auto_grant_admin and phone is None:
+            raise VerificationInvalid("verified Feishu phone is unavailable")
         if phone is not None and re.fullmatch(r"1\d{10}", phone) is None:
             raise VerificationInvalid("Feishu phone is invalid")
         with self._session_factory() as session, session.begin():
@@ -557,6 +568,9 @@ class IdentityAccessService:
                         )
                 user = User(
                     user_id=str(uuid4()),
+                    role="admin" if auto_grant_admin else None,
+                    is_super_admin=auto_grant_admin and configured_super_admin,
+                    is_enabled=True,
                     feishu_display_name=profile.display_name,
                     feishu_avatar_url=profile.avatar_url,
                     phone_encrypted=self._phone.encrypt(phone) if phone else None,
@@ -585,6 +599,25 @@ class IdentityAccessService:
                         source_terminal="web",
                     )
                 )
+                if auto_grant_admin:
+                    session.add(
+                        AuditLog(
+                            request_id=request_id,
+                            action=(
+                                "admin.super_granted_from_config"
+                                if configured_super_admin
+                                else "admin.auto_granted"
+                            ),
+                            target_type="user",
+                            target_id=user.user_id,
+                            changes={
+                                "role": "admin",
+                                "isSuperAdmin": configured_super_admin,
+                            },
+                            actor_id=user.user_id,
+                            source_terminal="web",
+                        )
+                    )
             else:
                 existing_user = session.get(User, identity.user_id)
                 if existing_user is None:
@@ -608,6 +641,49 @@ class IdentityAccessService:
                     user.phone_encrypted = self._phone.encrypt(phone)
                     user.phone_digest = phone_digest
                     user.phone_masked = self._phone.mask(phone)
+                if auto_grant_admin and user.role is None:
+                    user.role = "admin"
+                    user.is_super_admin = configured_super_admin
+                    user.is_enabled = True
+                    user.version += 1
+                    session.add(
+                        AuditLog(
+                            request_id=request_id,
+                            action=(
+                                "admin.super_granted_from_config"
+                                if configured_super_admin
+                                else "admin.auto_granted"
+                            ),
+                            target_type="user",
+                            target_id=user.user_id,
+                            changes={
+                                "role": "admin",
+                                "isSuperAdmin": configured_super_admin,
+                            },
+                            actor_id=user.user_id,
+                            source_terminal="web",
+                        )
+                    )
+                elif (
+                    auto_grant_admin
+                    and user.role == "admin"
+                    and configured_super_admin
+                    and not user.is_super_admin
+                ):
+                    user.is_super_admin = True
+                    user.is_enabled = True
+                    user.version += 1
+                    session.add(
+                        AuditLog(
+                            request_id=request_id,
+                            action="admin.super_granted_from_config",
+                            target_type="user",
+                            target_id=user.user_id,
+                            changes={"role": "admin", "isSuperAdmin": True},
+                            actor_id=user.user_id,
+                            source_terminal="web",
+                        )
+                    )
 
             return self._user_snapshot(user)
 
@@ -616,45 +692,6 @@ class IdentityAccessService:
             user = session.get(User, user_id)
             if user is None:
                 raise KeyError(user_id)
-            return self._user_snapshot(user)
-
-    def bootstrap_super_admin(
-        self,
-        *,
-        scope: str,
-        profile: FeishuProfile,
-        operator_source: str,
-        request_id: str,
-    ) -> UserSnapshot:
-        snapshot = self.resolve_feishu_identity(
-            scope=scope,
-            profile=profile,
-            request_id=request_id,
-        )
-        with self._session_factory() as session, session.begin():
-            user = session.get(User, snapshot.user_id)
-            if user is None:
-                raise RuntimeError("super administrator target disappeared")
-            changed = user.role != "admin" or not user.is_super_admin or not user.is_enabled
-            user.role = "admin"
-            user.is_super_admin = True
-            user.is_enabled = True
-            if changed:
-                user.version += 1
-            session.add(
-                AuditLog(
-                    request_id=request_id,
-                    action="admin.super_initialized",
-                    target_type="user",
-                    target_id=user.user_id,
-                    changes={
-                        "result": "updated" if changed else "already_configured",
-                        "operatorSource": operator_source,
-                    },
-                    actor_id=None,
-                    source_terminal="command",
-                )
-            )
             return self._user_snapshot(user)
 
     def list_admin_applications(
@@ -1128,17 +1165,7 @@ class IdentityAccessService:
             ).all()
             if len(matched_users) > 1:
                 return MiniLoginResult(status="ambiguous")
-            if not matched_users:
-                user = None
-                application = None
-            else:
-                user = matched_users[0]
-                application = session.scalar(
-                    select(AdminApplication)
-                    .where(AdminApplication.user_id == user.user_id)
-                    .order_by(AdminApplication.submitted_at.desc())
-                    .limit(1)
-                )
+            user = None if not matched_users else matched_users[0]
 
         if user is None:
             user_id = str(uuid4())
@@ -1181,23 +1208,7 @@ class IdentityAccessService:
                 session=self.issue_session(user_id=user_id, terminal="mini"),
             )
 
-        if application is not None:
-            user = matched_users[0]
-            if application.status == "pending":
-                return MiniLoginResult(status="pending")
-            if application.status == "rejected":
-                return MiniLoginResult(
-                    status="rejected",
-                    rejection_reason=application.rejection_reason,
-                )
-            if user.role != "admin":
-                return MiniLoginResult(status="unmatched")
-            if not user.is_enabled:
-                return MiniLoginResult(status="disabled")
-            user_id = user.user_id
-            final_status = "authenticated"
-            final_reason = None
-        elif user.role == "factory":
+        if user.role == "factory":
             if not user.is_enabled or user.factory_id is None:
                 return MiniLoginResult(status="disabled")
             user_id = user.user_id

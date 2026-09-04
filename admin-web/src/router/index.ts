@@ -6,8 +6,6 @@ import {
   type Router,
 } from "vue-router";
 
-import AdminApplicationsPage from "@/pages/AdminApplicationsPage.vue";
-import AdminApplyPage from "@/pages/AdminApplyPage.vue";
 import AdminUsersPage from "@/pages/AdminUsersPage.vue";
 import AccessStatusPage from "@/pages/AccessStatusPage.vue";
 import FactoriesPage from "@/pages/FactoriesPage.vue";
@@ -50,17 +48,10 @@ export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
       { path: "/repairs/:repairId", name: "repair-detail", component: RepairDetailPage },
       { path: "/factories", name: "factories", component: FactoriesPage },
       { path: "/products", name: "products", component: ProductsPage },
-      { path: "/admin-apply", name: "admin-apply", component: AdminApplyPage },
       {
-        path: "/access-status/:status(pending|rejected|disabled)",
+        path: "/access-status/:status(disabled)",
         name: "access-status",
         component: AccessStatusPage,
-      },
-      {
-        path: "/people/admin-applications",
-        name: "admin-applications",
-        component: AdminApplicationsPage,
-        meta: { superAdmin: true },
       },
       {
         path: "/people/admin-users",
@@ -92,25 +83,8 @@ export function createAppRouter(pinia: Pinia, initialPath?: string): Router {
         ? true
         : { name: "access-status", params: { status: "disabled" } };
     }
-    if (user.role === null) {
-      const application = await identity.loadOwnApplication();
-      if (
-        application?.status === "rejected" &&
-        to.name === "admin-apply" &&
-        to.query.reapply === "1"
-      ) {
-        return true;
-      }
-      const expectedRoute =
-        application?.status === "pending" || application?.status === "rejected"
-          ? { name: "access-status", params: { status: application.status } }
-          : { name: "admin-apply" };
-      const matchesExpected =
-        to.name === expectedRoute.name &&
-        (to.name !== "access-status" || to.params.status === application?.status);
-      return matchesExpected ? true : expectedRoute;
-    }
-    if (to.name === "login" || to.name === "admin-apply" || to.name === "access-status") {
+    if (user.role !== "admin") return { name: "login" };
+    if (to.name === "login" || to.name === "access-status") {
       return { name: "home" };
     }
     if (to.meta.superAdmin && !user.isSuperAdmin) return { name: "home" };

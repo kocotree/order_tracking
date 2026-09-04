@@ -4,8 +4,6 @@ const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 
 export const apiBaseUrl = configuredBaseUrl || "/api";
 
-export type AdminApplication = components["schemas"]["AdminApplicationResponse"];
-export type AdminApplicationList = components["schemas"]["AdminApplicationListResponse"];
 export type AdminUserList = components["schemas"]["AdminUserListResponse"];
 export type Factory = components["schemas"]["FactoryResponse"];
 export type FactoryApplication = components["schemas"]["FactoryApplicationResponse"];
@@ -192,27 +190,6 @@ export const feishuLoginUrl = (returnTo = "/") =>
 export const identityApi = {
   getMe: () => request<User>("/v1/me"),
   logout: () => request<void>("/v1/auth/logout", { method: "POST" }),
-  getMyApplication: () =>
-    request<AdminApplication | null>("/v1/admin-applications/me"),
-  submitApplication: () =>
-    request<AdminApplication>("/v1/admin-applications", {
-      method: "POST",
-      body: JSON.stringify({}),
-    }),
-  listApplications: (status?: string) =>
-    request<AdminApplicationList>(
-      `/v1/admin/admin-applications${status ? `?status=${encodeURIComponent(status)}` : ""}`,
-    ),
-  approveApplication: (applicationId: string, version: number) =>
-    request<AdminApplication>(
-      `/v1/admin/admin-applications/${encodeURIComponent(applicationId)}/approve`,
-      { method: "POST", body: JSON.stringify({ version }) },
-    ),
-  rejectApplication: (applicationId: string, version: number, reason: string) =>
-    request<AdminApplication>(
-      `/v1/admin/admin-applications/${encodeURIComponent(applicationId)}/reject`,
-      { method: "POST", body: JSON.stringify({ version, reason }) },
-    ),
   listAdminUsers: () => request<AdminUserList>("/v1/admin/users?role=admin"),
   setAdminEnabled: (userId: string, version: number, enabled: boolean) =>
     request<User>(

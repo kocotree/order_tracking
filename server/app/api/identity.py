@@ -41,32 +41,6 @@ class UserResponse(ApiModel):
     capabilities: list[str]
 
 
-class AdminApplicationResponse(ApiModel):
-    application_id: str
-    user_id: str
-    display_name: str
-    phone_masked: str
-    status: str
-    rejection_reason: str | None
-    submitted_at: datetime
-    reviewed_at: datetime | None
-    reviewed_by: str | None
-    version: int
-
-
-class AdminApplicationListResponse(ApiModel):
-    items: list[AdminApplicationResponse]
-    total: int
-
-
-class ReviewRequest(ApiModel):
-    version: int
-
-
-class RejectRequest(ReviewRequest):
-    reason: str
-
-
 class AdminUserListResponse(ApiModel):
     items: list[UserResponse]
     total: int
@@ -114,8 +88,6 @@ def _capabilities(user: UserSnapshot) -> list[str]:
         return []
     if user.role is None:
         return [
-            "admin_application.submit",
-            "admin_application.read_own",
             "factory_application.submit",
             "factory_application.read_own",
         ]
@@ -123,7 +95,7 @@ def _capabilities(user: UserSnapshot) -> list[str]:
         return ["factory_identity.read", "mini.use"]
     capabilities = ["business.read", "factory.manage", "factory_application.review", "mini.use"]
     if user.is_super_admin:
-        capabilities.extend(["admin_application.review", "admin_user.manage"])
+        capabilities.append("admin_user.manage")
     return capabilities
 
 
@@ -144,10 +116,6 @@ def _user_response(user: UserSnapshot) -> UserResponse:
         version=user.version,
         capabilities=_capabilities(user),
     )
-
-
-def _application_response(application: object) -> AdminApplicationResponse:
-    return AdminApplicationResponse.model_validate(application, from_attributes=True)
 
 
 def _session_response(session: SessionTokens) -> SessionResponse:
@@ -356,124 +324,6 @@ def create_identity_router(
         )
         response.delete_cookie("ot_csrf", path="/", secure=secure_web_cookies)
         return response
-
-    @router.post(
-        "/admin-applications",
-        response_model=AdminApplicationResponse,
-        status_code=201,
-        tags=["identity"],
-    )
-    def create_admin_application(
-        request: Request,
-        ot_web_session: str | None = Cookie(default=None),
-        x_csrf_token: str | None = Header(default=None),
-    ) -> AdminApplicationResponse:
-        user = web_user(
-            web_session=ot_web_session,
-            csrf_token=x_csrf_token,
-            require_csrf=True,
-        )
-        application = service.submit_admin_application(
-            user_id=user.user_id,
-            request_id=request.state.request_id,
-        )
-        return _application_response(application)
-
-    @router.get(
-        "/admin-applications/me",
-        response_model=AdminApplicationResponse | None,
-        tags=["identity"],
-    )
-    def my_admin_application(
-        ot_web_session: str | None = Cookie(default=None),
-    ) -> AdminApplicationResponse | None:
-        user = web_user(web_session=ot_web_session)
-        application = service.get_my_application(user_id=user.user_id)
-        return _application_response(application) if application is not None else None
-
-    @router.get(
-        "/admin/admin-applications",
-        response_model=AdminApplicationListResponse,
-        tags=["identity-admin"],
-    )
-    def list_admin_applications(
-        status: str | None = Query(default=None),
-        ot_web_session: str | None = Cookie(default=None),
-    ) -> AdminApplicationListResponse:
-        actor = web_user(web_session=ot_web_session)
-        applications = service.list_admin_applications(actor_id=actor.user_id, status=status)
-        items = [_application_response(application) for application in applications]
-        return AdminApplicationListResponse(items=items, total=len(items))
-
-    @router.get(
-        "/admin/admin-applications/{application_id}",
-        response_model=AdminApplicationResponse,
-        tags=["identity-admin"],
-    )
-    def get_admin_application(
-        application_id: str,
-        ot_web_session: str | None = Cookie(default=None),
-    ) -> AdminApplicationResponse:
-        actor = web_user(web_session=ot_web_session)
-        return _application_response(
-            service.get_admin_application(
-                actor_id=actor.user_id,
-                application_id=application_id,
-            )
-        )
-
-    @router.post(
-        "/admin/admin-applications/{application_id}/approve",
-        response_model=AdminApplicationResponse,
-        tags=["identity-admin"],
-    )
-    def approve_admin_application(
-        application_id: str,
-        payload: ReviewRequest,
-        request: Request,
-        ot_web_session: str | None = Cookie(default=None),
-        x_csrf_token: str | None = Header(default=None),
-    ) -> AdminApplicationResponse:
-        actor = web_user(
-            web_session=ot_web_session,
-            csrf_token=x_csrf_token,
-            require_csrf=True,
-        )
-        return _application_response(
-            service.approve_admin_application(
-                actor_id=actor.user_id,
-                application_id=application_id,
-                expected_version=payload.version,
-                request_id=request.state.request_id,
-            )
-        )
-
-    @router.post(
-        "/admin/admin-applications/{application_id}/reject",
-        response_model=AdminApplicationResponse,
-        tags=["identity-admin"],
-    )
-    def reject_admin_application(
-        application_id: str,
-        payload: RejectRequest,
-        request: Request,
-        ot_web_session: str | None = Cookie(default=None),
-        x_csrf_token: str | None = Header(default=None),
-    ) -> AdminApplicationResponse:
-        actor = web_user(
-            web_session=ot_web_session,
-            csrf_token=x_csrf_token,
-            require_csrf=True,
-        )
-        return _application_response(
-            service.reject_admin_application(
-                actor_id=actor.user_id,
-                application_id=application_id,
-                expected_version=payload.version,
-                reason=payload.reason,
-                request_id=request.state.request_id,
-            )
-        )
 
     @router.get(
         "/admin/users",

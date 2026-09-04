@@ -74,47 +74,20 @@ def test_local_demo_completes_cross_terminal_identity_flow_over_public_http(
         assert response.status_code == 204
 
     with TestClient(app, base_url="http://testserver") as client:
-        log_in(client, "applicant", "/admin-apply")
-        applicant = client.get("/api/v1/me").json()
-        assert applicant["displayName"] == "演示申请人"
-        assert applicant["role"] is None
-
-        csrf_token = client.cookies.get("ot_csrf")
-        assert csrf_token
-        submitted = client.post(
-            "/api/v1/admin-applications",
-            headers={"X-CSRF-Token": csrf_token},
-            json={},
-        )
-        assert submitted.status_code == 201
-        assert submitted.json()["status"] == "pending"
+        log_in(client, "ordinary")
+        ordinary_admin = client.get("/api/v1/me").json()
+        assert ordinary_admin["displayName"] == "演示普通管理员"
+        assert ordinary_admin["role"] == "admin"
+        assert ordinary_admin["isSuperAdmin"] is False
         log_out(client)
 
         log_in(client, "super")
         super_admin = client.get("/api/v1/me").json()
         assert super_admin["isSuperAdmin"] is True
-        listing = client.get("/api/v1/admin/admin-applications")
-        assert listing.status_code == 200
-        application = listing.json()["items"][0]
-        csrf_token = client.cookies.get("ot_csrf")
-        assert csrf_token
-        approved = client.post(
-            f"/api/v1/admin/admin-applications/{application['applicationId']}/approve",
-            headers={"X-CSRF-Token": csrf_token},
-            json={"version": application["version"]},
-        )
-        assert approved.status_code == 200
+        assert client.get("/api/v1/admin/admin-applications").status_code == 404
         products = client.get("/api/v1/admin/products")
         assert products.status_code == 200
         assert products.json()["total"] == 12
-        log_out(client)
-
-        log_in(client, "applicant")
-        approved_applicant = client.get("/api/v1/me").json()
-        assert approved_applicant["role"] == "admin"
-        assert approved_applicant["isSuperAdmin"] is False
-        forbidden = client.get("/api/v1/admin/admin-applications")
-        assert forbidden.status_code == 403
         log_out(client)
 
         mini_login = client.post(
@@ -132,7 +105,7 @@ def test_local_demo_completes_cross_terminal_identity_flow_over_public_http(
         )
         assert mini_bound.status_code == 200
         assert mini_bound.json()["status"] == "authenticated"
-        assert mini_bound.json()["user"]["userId"] == applicant["userId"]
+        assert mini_bound.json()["user"]["userId"] == ordinary_admin["userId"]
 
 
 def test_local_demo_routes_are_absent_in_normal_development(

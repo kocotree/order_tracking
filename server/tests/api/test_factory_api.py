@@ -45,12 +45,17 @@ def test_factory_api_creates_reviews_and_disables_factory_user(
         phone_digest_secret=b"test-phone-digest-secret",
     )
     factories = FactoryAccessService(sessions)
-    admin = identity.bootstrap_super_admin(
+    admin = identity.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_factory_api_admin", display_name="松子"),
-        operator_source="test",
-        request_id="req-bootstrap-api-admin",
+        profile=FeishuProfile(
+            subject="ou_factory_api_admin",
+            display_name="松子",
+            phone="13812345122",
+        ),
+        request_id="req-login-api-admin",
+        auto_grant_admin=True,
     )
+    assert admin.is_super_admin is False
     web_session = identity.issue_session(user_id=admin.user_id, terminal="web")
     app = create_app(
         database_url=test_database_url,

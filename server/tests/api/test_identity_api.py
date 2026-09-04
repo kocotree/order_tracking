@@ -30,7 +30,164 @@ def clean_identity_tables(engine: Engine) -> None:
         connection.execute(text("DELETE FROM factories"))
 
 
-def test_web_identity_api_uses_secure_cookie_csrf_and_super_admin_authorization(
+def test_feishu_callback_auto_grants_ordinary_admin(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    clean_identity_tables(test_database_engine)
+    feishu = FakeFeishuIdentity(
+        profiles={
+            "new-admin-code": FeishuProfile(
+                subject="ou_new_admin",
+                display_name="煎饼",
+                phone="13812345122",
+            )
+        },
+        scope="tenant-a/app-a",
+    )
+    service = IdentityAccessService(
+        sessionmaker(test_database_engine, class_=Session),
+        feishu_identity=feishu,
+        token_secret=b"test-token-secret-not-for-production",
+        phone_encryption_secret=b"test-phone-encryption-secret",
+        phone_digest_secret=b"test-phone-digest-secret",
+    )
+    app = create_app(database_url=test_database_url, identity_service=service)
+
+    with TestClient(app, base_url="https://testserver") as client:
+        started = client.get("/api/v1/auth/feishu/start", follow_redirects=False)
+        state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+        callback = client.get(
+            "/api/v1/auth/feishu/callback",
+            params={"state": state, "code": "new-admin-code"},
+            follow_redirects=False,
+        )
+        me = client.get("/api/v1/me")
+
+    assert callback.status_code == 303
+    assert me.status_code == 200
+    assert me.json()["role"] == "admin"
+    assert me.json()["isSuperAdmin"] is False
+    assert me.json()["isEnabled"] is True
+
+
+def test_configured_super_admin_enters_through_the_same_feishu_oauth(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    clean_identity_tables(test_database_engine)
+    feishu = FakeFeishuIdentity(
+        profiles={
+            "super-code": FeishuProfile(
+                subject="ou_configured_super",
+                display_name="松子",
+                phone="13912345678",
+            )
+        },
+        scope="tenant-a/app-a",
+    )
+    service = IdentityAccessService(
+        sessionmaker(test_database_engine, class_=Session),
+        feishu_identity=feishu,
+        super_admin_subjects={"ou_configured_super"},
+        token_secret=b"test-token-secret-not-for-production",
+        phone_encryption_secret=b"test-phone-encryption-secret",
+        phone_digest_secret=b"test-phone-digest-secret",
+    )
+    app = create_app(database_url=test_database_url, identity_service=service)
+
+    with TestClient(app, base_url="https://testserver") as client:
+        started = client.get("/api/v1/auth/feishu/start", follow_redirects=False)
+        state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+        callback = client.get(
+            "/api/v1/auth/feishu/callback",
+            params={"state": state, "code": "super-code"},
+            follow_redirects=False,
+        )
+        me = client.get("/api/v1/me")
+
+    assert callback.status_code == 303
+    assert me.status_code == 200
+    assert me.json()["role"] == "admin"
+    assert me.json()["isSuperAdmin"] is True
+    assert me.json()["isEnabled"] is True
+
+
+def test_feishu_callback_without_verified_phone_does_not_create_session(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    clean_identity_tables(test_database_engine)
+    feishu = FakeFeishuIdentity(
+        profiles={
+            "missing-phone-code": FeishuProfile(
+                subject="ou_missing_phone",
+                display_name="无手机号用户",
+                phone=None,
+            )
+        },
+        scope="tenant-a/app-a",
+    )
+    service = IdentityAccessService(
+        sessionmaker(test_database_engine, class_=Session),
+        feishu_identity=feishu,
+        token_secret=b"test-token-secret-not-for-production",
+        phone_encryption_secret=b"test-phone-encryption-secret",
+        phone_digest_secret=b"test-phone-digest-secret",
+    )
+    app = create_app(database_url=test_database_url, identity_service=service)
+
+    with TestClient(app, base_url="https://testserver") as client:
+        started = client.get("/api/v1/auth/feishu/start", follow_redirects=False)
+        state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+        callback = client.get(
+            "/api/v1/auth/feishu/callback",
+            params={"state": state, "code": "missing-phone-code"},
+            follow_redirects=False,
+        )
+        me = client.get("/api/v1/me")
+
+    assert callback.status_code == 422
+    assert me.status_code == 401
+
+
+def test_admin_application_http_capability_is_removed(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    clean_identity_tables(test_database_engine)
+    app = create_app(database_url=test_database_url)
+    removed_paths = {
+        "/api/v1/admin-applications",
+        "/api/v1/admin-applications/me",
+        "/api/v1/admin/admin-applications",
+        "/api/v1/admin/admin-applications/{application_id}",
+        "/api/v1/admin/admin-applications/{application_id}/approve",
+        "/api/v1/admin/admin-applications/{application_id}/reject",
+    }
+
+    with TestClient(app, base_url="https://testserver") as client:
+        openapi_paths = set(client.get("/openapi.json").json()["paths"])
+        responses = [
+            client.post("/api/v1/admin-applications", json={}),
+            client.get("/api/v1/admin-applications/me"),
+            client.get("/api/v1/admin/admin-applications"),
+            client.get("/api/v1/admin/admin-applications/history-1"),
+            client.post(
+                "/api/v1/admin/admin-applications/history-1/approve",
+                json={"version": 1},
+            ),
+            client.post(
+                "/api/v1/admin/admin-applications/history-1/reject",
+                json={"version": 1, "reason": "旧流程已停用"},
+            ),
+        ]
+
+    assert removed_paths.isdisjoint(openapi_paths)
+    assert {response.status_code for response in responses} == {404}
+
+
+def test_web_identity_api_uses_secure_cookie_csrf_and_rotating_refresh(
     test_database_engine: Engine,
     test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -89,29 +246,10 @@ def test_web_identity_api_uses_secure_cookie_csrf_and_super_admin_authorization(
 
         me = client.get("/api/v1/me")
         assert me.status_code == 200
-        assert me.json()["role"] is None
+        assert me.json()["role"] == "admin"
+        assert me.json()["isSuperAdmin"] is False
         csrf_token = client.cookies.get("ot_csrf")
         assert csrf_token
-
-        missing_csrf = client.post("/api/v1/admin-applications", json={})
-        assert missing_csrf.status_code == 403
-
-        assert client.post(
-            "/api/v1/sms/challenges",
-            headers={"X-CSRF-Token": csrf_token},
-            json={"phone": "13812345122"},
-        ).status_code == 404
-        submitted = client.post(
-            "/api/v1/admin-applications",
-            headers={"X-CSRF-Token": csrf_token},
-            json={},
-        )
-        assert submitted.status_code == 201
-        assert submitted.json()["status"] == "pending"
-
-        forbidden = client.get("/api/v1/admin/admin-applications")
-        assert forbidden.status_code == 403
-        assert forbidden.json()["requestId"]
 
         refresh_before_logout = client.cookies.get("ot_web_refresh")
         logged_out = client.post(
@@ -124,21 +262,6 @@ def test_web_identity_api_uses_secure_cookie_csrf_and_super_admin_authorization(
         with TestClient(app, base_url="https://testserver") as logged_out_client:
             logged_out_client.cookies.set("ot_web_refresh", refresh_before_logout)
             assert logged_out_client.post("/api/v1/auth/refresh").status_code == 401
-
-    super_admin = service.bootstrap_super_admin(
-        scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_super", display_name="松子"),
-        operator_source="deployment-command",
-        request_id="req-bootstrap-super",
-    )
-    super_session = service.issue_session(user_id=super_admin.user_id, terminal="web")
-    with TestClient(app, base_url="https://testserver") as super_client:
-        super_client.cookies.set("ot_web_session", super_session.access_token)
-        super_client.cookies.set("ot_csrf", super_session.csrf_token or "")
-        listing = super_client.get("/api/v1/admin/admin-applications")
-        assert listing.status_code == 200
-        assert listing.json()["total"] == 1
-
 
 def test_mini_identity_api_binds_refreshes_uploads_avatar_and_logs_out(
     test_database_engine: Engine,
@@ -164,12 +287,6 @@ def test_mini_identity_api_binds_refreshes_uploads_avatar_and_logs_out(
         phone_encryption_secret=b"test-phone-encryption-secret",
         phone_digest_secret=b"test-phone-digest-secret",
     )
-    super_admin = service.bootstrap_super_admin(
-        scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_super", display_name="松子"),
-        operator_source="deployment-command",
-        request_id="req-bootstrap-super",
-    )
     applicant = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
         profile=FeishuProfile(
@@ -178,16 +295,7 @@ def test_mini_identity_api_binds_refreshes_uploads_avatar_and_logs_out(
             phone="13812345122",
         ),
         request_id="req-create-applicant",
-    )
-    application = service.submit_admin_application(
-        user_id=applicant.user_id,
-        request_id="req-submit-application",
-    )
-    service.approve_admin_application(
-        actor_id=super_admin.user_id,
-        application_id=application.application_id,
-        expected_version=application.version,
-        request_id="req-approve-application",
+        auto_grant_admin=True,
     )
     app = create_app(database_url=test_database_url, identity_service=service)
 

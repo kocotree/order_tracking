@@ -43,7 +43,6 @@ from app.api.router import api_router
 from app.api.shipments import create_shipment_router
 from app.db.session import create_database_engine, create_session_factory
 from app.local_demo import (
-    LOCAL_DEMO_FEISHU_SCOPE,
     LocalDemoFeishuIdentity,
     LocalDemoWechatIdentity,
     create_local_demo_router,
@@ -211,6 +210,11 @@ def create_app(
             feishu_identity=feishu_identity,
             wechat_identity=wechat_identity,
             avatar_store=avatar_store,
+            super_admin_subjects=(
+                {"local-demo-super"}
+                if local_demo_enabled
+                else settings.feishu_super_admin_subject_set
+            ),
             token_secret=(
                 settings.identity_token_secret.encode()
                 if settings.identity_token_secret
@@ -227,13 +231,6 @@ def create_app(
                 else secrets.token_bytes(32)
             ),
         )
-        if local_demo_enabled:
-            identity_service.bootstrap_super_admin(
-                scope=LOCAL_DEMO_FEISHU_SCOPE,
-                profile=LocalDemoFeishuIdentity().exchange_code(code="super"),
-                operator_source="local-demo-startup",
-                request_id="local-demo-bootstrap",
-            )
     if factory_service is None:
         factory_service = FactoryAccessService(session_factory)
     if product_service is None:

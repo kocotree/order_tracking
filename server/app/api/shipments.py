@@ -1,7 +1,8 @@
 from datetime import date, datetime
+from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, Cookie, Header, Request, Response
+from fastapi import APIRouter, Cookie, File, Header, Request, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from app.modules.identity_access import IdentityAccessService, PermissionDenied, SessionInvalid
@@ -16,6 +17,7 @@ from app.modules.shipments import (
     ShipmentValidationError,
     ShipmentVoidRequestSnapshot,
 )
+from app.modules.shipments.service import SHIPMENT_FILE_MAX_BYTES
 
 
 def to_camel(value: str) -> str:
@@ -60,6 +62,7 @@ class ShipmentDraftResponse(ApiModel):
     submitted_at: datetime | None = None
     lines: list["ShipmentLineResponse"] = []
     boxes: list["ShipmentBoxResponse"] = []
+    files: list["ShipmentFileResponse"] = []
     void_request: ShipmentVoidRequestResponse | None = None
     return_events: list["ShipmentReturnEventResponse"] = []
 
@@ -136,6 +139,16 @@ class ShipmentBoxResponse(ApiModel):
     box_no: int
     group_key: str | None
     items: list[ShipmentLineResponse]
+
+
+class ShipmentFileResponse(ApiModel):
+    file_id: int
+    filename: str
+    mime_type: str
+    size_bytes: int
+    content_sha256: str
+    display_order: int
+    content_url: str
 
 
 class ShipmentListResponse(ApiModel):
@@ -269,6 +282,54 @@ def create_shipment_router(
             service.get_current_draft(actor_id=actor.user_id, factory_id=actor.factory_id or "")
         )
 
+    @router.post(
+        "/factory/shipments/drafts/{shipment_id}/files",
+        response_model=ShipmentFileResponse,
+        status_code=201,
+        tags=["shipment-factory"],
+    )
+    async def upload_draft_file(
+        shipment_id: str,
+        file: Annotated[UploadFile, File()],
+        response: Response,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> ShipmentFileResponse:
+        actor = factory_user(authorization)
+        if not idempotency_key:
+            raise ShipmentValidationError("Idempotency-Key is required")
+        result, created = service.upload_file(
+            actor_id=actor.user_id,
+            factory_id=actor.factory_id or "",
+            shipment_id=shipment_id,
+            filename=file.filename or "shipment-evidence",
+            declared_mime_type=file.content_type or "application/octet-stream",
+            content=await file.read(SHIPMENT_FILE_MAX_BYTES + 1),
+            idempotency_key=idempotency_key,
+        )
+        if not created:
+            response.status_code = 200
+        return ShipmentFileResponse.model_validate(result, from_attributes=True)
+
+    @router.delete(
+        "/factory/shipments/drafts/{shipment_id}/files/{file_id}",
+        status_code=204,
+        tags=["shipment-factory"],
+    )
+    def remove_draft_file(
+        shipment_id: str,
+        file_id: int,
+        authorization: str | None = Header(default=None),
+    ) -> Response:
+        actor = factory_user(authorization)
+        service.remove_file(
+            actor_id=actor.user_id,
+            factory_id=actor.factory_id or "",
+            shipment_id=shipment_id,
+            file_id=file_id,
+        )
+        return Response(status_code=204)
+
     @router.put(
         "/factory/shipments/drafts/{shipment_id}",
         response_model=ShipmentDraftResponse,
@@ -367,6 +428,38 @@ def create_shipment_router(
         actor = factory_user(authorization)
         return _draft_response(
             service.get_shipment(shipment_id=shipment_id, factory_id=actor.factory_id)
+        )
+
+    @router.get(
+        "/shipment-files/{file_id}/content",
+        tags=["shipment-files"],
+        response_class=Response,
+        responses={
+            200: {
+                "content": {
+                    "image/*": {"schema": {"type": "string", "format": "binary"}}
+                }
+            }
+        },
+    )
+    def shipment_file_content(
+        file_id: int,
+        ot_web_session: str | None = Cookie(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> Response:
+        actor, _terminal = query_user(ot_web_session, authorization)
+        result = service.get_file_content(
+            file_id=file_id,
+            actor_role=actor.role,
+            actor_factory_id=actor.factory_id,
+        )
+        return Response(
+            content=result.content,
+            media_type=result.mime_type,
+            headers={
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
         )
 
     @router.get("/admin/shipments", response_model=ShipmentListResponse, tags=["shipment-admin"])

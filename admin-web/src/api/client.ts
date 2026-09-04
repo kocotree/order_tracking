@@ -50,6 +50,16 @@ export interface ShipmentBox {
   items: ShipmentLine[];
 }
 
+export interface ShipmentFile {
+  fileId: number;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  contentSha256: string;
+  displayOrder: number;
+  contentUrl: string;
+}
+
 export interface Shipment {
   shipmentId: string;
   shipmentNo: string | null;
@@ -64,6 +74,7 @@ export interface Shipment {
   totalQuantity: number;
   lines: ShipmentLine[];
   boxes: ShipmentBox[];
+  files: ShipmentFile[];
   voidRequest: ShipmentVoidRequest | null;
   returnEvents: ShipmentReturnEvent[];
   createdAt: string;

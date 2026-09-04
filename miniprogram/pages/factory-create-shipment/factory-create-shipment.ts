@@ -1,5 +1,6 @@
 import { shipmentApi, type CatalogItem, type DraftBoxWrite } from "../../api/shipments";
 import { isDevPreview, PREVIEW_SHIPMENT_CATALOG } from "../../modules/dev-preview";
+import { newShipmentEvidencePhoto, submitShipmentWithEvidence, type ShipmentEvidencePhoto } from "../../modules/shipment-evidence";
 
 type BoxView = DraftBoxWrite & { total: number };
 type CatalogChoice = CatalogItem & { orderLabel: string };
@@ -14,8 +15,8 @@ Page({
     specOptions: [] as CatalogItem[], specIndex: 0, orderOptions: [] as CatalogChoice[], orderIndex: 0,
     selectedCatalog: null as CatalogItem | null, selectedPackedQuantity: 0, selectedRemainingQuantity: 0,
     packedBoxCount: 0, currentItems: [] as PackedItemView[], previewBoxes: [] as PreviewBox[],
-    productSummaries: [] as ProductSummary[], quantity: "", photos: [] as string[], note: "",
-    previewMode: false, loading: false, totalQuantity: 0,
+    productSummaries: [] as ProductSummary[], quantity: "", photos: [] as ShipmentEvidencePhoto[], note: "",
+    previewMode: false, loading: false, totalQuantity: 0, draftId: "", uploadError: "",
     expandedProducts: [] as string[], expandedBoxes: [] as number[],
   },
 
@@ -121,8 +122,31 @@ Page({
     this.refreshDerived();
   },
 
-  choosePhoto() { wx.chooseMedia({ count: 3 - this.data.photos.length, mediaType: ["image"], success: (result) => this.setData({ photos: [...this.data.photos, ...result.tempFiles.map((file) => file.tempFilePath)].slice(0, 3) }) }); },
-  removePhoto(event: WechatMiniprogram.TouchEvent) { const index = Number(event.currentTarget.dataset.index); this.setData({ photos: this.data.photos.filter((_, itemIndex) => itemIndex !== index) }); },
+  choosePhoto() {
+    wx.chooseMedia({
+      count: 3 - this.data.photos.length,
+      mediaType: ["image"],
+      success: async (result) => {
+        try {
+          const added: ShipmentEvidencePhoto[] = [];
+          for (const file of result.tempFiles) {
+            const localPath = await new Promise<string>((resolve, reject) => wx.compressImage({ src: file.tempFilePath, quality: 80, success: value => resolve(value.tempFilePath), fail: reject }));
+            added.push(newShipmentEvidencePhoto(localPath));
+          }
+          this.setData({ photos: [...this.data.photos, ...added].slice(0, 3), uploadError: "" });
+        } catch { wx.showToast({ title: "图片压缩失败，请重试", icon: "none" }); }
+      },
+    });
+  },
+  async removePhoto(event: WechatMiniprogram.TouchEvent) {
+    const index = Number(event.currentTarget.dataset.index);
+    const photo = this.data.photos[index];
+    if (!photo) return;
+    try {
+      if (photo.fileId && this.data.draftId) await shipmentApi.removeFile(this.data.draftId, photo.fileId);
+      this.setData({ photos: this.data.photos.filter((_, itemIndex) => itemIndex !== index), uploadError: "" });
+    } catch { wx.showToast({ title: "凭证移除失败，请重试", icon: "none" }); }
+  },
   noteChanged(event: WechatMiniprogram.TextareaInput) { this.setData({ note: event.detail.value }); },
   next() {
     if (this.data.step === 1 && !this.data.boxes.length) { wx.showToast({ title: "请先生成箱号", icon: "none" }); return; }
@@ -150,11 +174,25 @@ Page({
     if (this.data.previewMode) { wx.showToast({ title: "预览提交成功", icon: "success" }); setTimeout(() => wx.redirectTo({ url: "/pages/factory-shipment-detail/factory-shipment-detail?shipmentId=preview-shipment&preview=1" }), 500); return; }
     this.setData({ loading: true });
     try {
-      const draft = await shipmentApi.createDraft();
-      await shipmentApi.saveDraft(draft.shipmentId, this.data.boxes.map(({ boxNo, groupKey, items }) => ({ boxNo, groupKey, items })), this.data.note);
-      const submitted = await shipmentApi.submitDraft(draft.shipmentId);
+      const result = await submitShipmentWithEvidence({
+        photos: this.data.photos,
+        boxes: this.data.boxes.map(({ boxNo, groupKey, items }) => ({ boxNo, groupKey, items })),
+        note: this.data.note,
+        gateway: {
+          createDraft: async () => { const draft = await shipmentApi.createDraft(); this.setData({ draftId: draft.shipmentId }); return draft; },
+          saveDraft: shipmentApi.saveDraft,
+          uploadFile: (shipmentId, photo, onProgress) => shipmentApi.uploadFile(shipmentId, photo.localPath, photo.uploadKey, onProgress),
+          submitDraft: shipmentApi.submitDraft,
+        },
+        onPhotosChange: photos => this.setData({ photos }),
+      });
+      const submitted = result.shipment;
       wx.redirectTo({ url: `/pages/factory-shipment-detail/factory-shipment-detail?shipmentId=${encodeURIComponent(submitted.shipmentId)}` });
-    } catch { wx.showToast({ title: "提交失败，请检查装箱数量", icon: "none" }); }
+    } catch {
+      const uploadFailed = this.data.photos.some(photo => photo.status === "failed");
+      this.setData({ uploadError: uploadFailed ? "凭证上传失败，发货单尚未提交，可点击重试" : "" });
+      wx.showToast({ title: uploadFailed ? "凭证上传失败，请重试" : "提交失败，请检查装箱数量", icon: "none" });
+    }
     finally { this.setData({ loading: false }); }
   },
   goBack() { if (this.data.step > 1) this.previous(); else wx.navigateBack(); },

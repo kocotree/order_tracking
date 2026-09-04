@@ -68,3 +68,8 @@
 .ship-bottom button { height: 82rpx; line-height: 82rpx; }
 .ship-bottom .ship-secondary { width: 160rpx; flex: 0 0 160rpx; }
 .ship-bottom .ship-primary { width: auto; min-width: 0; flex: 1 1 auto; }
+.ship-photo-progress { position: absolute; right: 0; bottom: 0; left: 0; padding: 9rpx 6rpx; color: #fff; font-size: 20rpx; text-align: center; background: rgba(22,119,255,.82); }
+.ship-photo-progress.is-error { background: rgba(196,49,49,.86); }
+.ship-photo-progress.is-done { background: rgba(42,132,91,.86); }
+.ship-photo-progress.is-pending { background: rgba(83,96,110,.76); }
+.ship-upload-error { display: block; padding: 0 28rpx 24rpx; color: #c43131; font-size: 22rpx; }

@@ -24,6 +24,7 @@ def _deployment_settings(*, app_env: str) -> dict[str, object]:
         "feishu_order_app_token": "base-token",
         "feishu_order_table_id": "table-id",
         "feishu_order_view_id": "view-id",
+        "feishu_order_incremental_table_scope_confirmed": True,
         "oss_region": "cn-hangzhou",
         "oss_endpoint": "https://oss-cn-hangzhou-internal.aliyuncs.com",
         "oss_access_key_id": "access-key-id",

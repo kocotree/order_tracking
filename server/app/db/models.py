@@ -455,6 +455,7 @@ class OrderImportSourceRecord(Base):
     source_detail_id: Mapped[str | None] = mapped_column(String(100))
     order_no: Mapped[str | None] = mapped_column(String(100))
     raw_fields: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    normalized_fields: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     source_modified_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
     parse_status: Mapped[str] = mapped_column(String(32), nullable=False)
     error_code: Mapped[str | None] = mapped_column(String(100))
@@ -467,6 +468,17 @@ class OrderImportSourceRecord(Base):
     )
     first_seen_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class OrderImportSourceCursor(Base):
+    __tablename__ = "order_import_source_cursors"
+
+    source_scope: Mapped[str] = mapped_column(String(191), primary_key=True)
+    successful_modified_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    successful_run_id: Mapped[str] = mapped_column(
+        ForeignKey("order_import_runs.run_id", ondelete="RESTRICT"), nullable=False
+    )
+    successful_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
 
 
 class OrderImportCandidate(Base):

@@ -22,24 +22,36 @@ class OrderImportWorkerHandlers:
         run_id = payload.get("runId")
         if not isinstance(run_id, str) or not run_id:
             raise ValueError("order_import_job_payload_invalid")
-        accumulated_rows = []
-        page_number = 0
-        for page_number, page in enumerate(self._source.read_pages(), start=1):
-            accumulated_rows.extend(page)
-            self._service.process_page(
-                run_id=run_id,
-                accumulated_rows=accumulated_rows,
-                page_number=page_number,
-                source_scope=self._source.source_scope,
-            )
-        if page_number == 0:
-            self._service.process_page(
-                run_id=run_id,
-                accumulated_rows=[],
-                page_number=0,
-                source_scope=self._source.source_scope,
-            )
-        self._service.complete_run(run_id=run_id)
+        source_scope = self._source.source_scope
+        watermark = self._service.successful_watermark(source_scope)
+        maximum_modified_at = watermark
+        pages_read = 0
+        rows = []
+        for page in self._source.read_pages(modified_since=watermark):
+            pages_read += 1
+            rows.extend(page)
+            page_modified_times = [
+                row.source_modified_at for row in page if row.source_modified_at is not None
+            ]
+            if page_modified_times:
+                page_maximum = max(page_modified_times)
+                maximum_modified_at = (
+                    page_maximum
+                    if maximum_modified_at is None
+                    else max(maximum_modified_at, page_maximum)
+                )
+        self._service.start_run_attempt(run_id=run_id)
+        self._service.process_page(
+            run_id=run_id,
+            rows=rows,
+            page_number=pages_read,
+            source_scope=source_scope,
+        )
+        self._service.complete_run(
+            run_id=run_id,
+            source_scope=source_scope,
+            successful_modified_at=maximum_modified_at,
+        )
 
     def _fail(self, payload: dict[str, Any], error: Exception) -> None:
         run_id = payload.get("runId")

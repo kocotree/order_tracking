@@ -1,3 +1,4 @@
+import { createPinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +22,7 @@ beforeEach(() => {
 
 describe("administrator notifications", () => {
   it("keeps unread paging context when opening a target and marks the item read", async () => {
+    vi.spyOn(notificationApi, "unreadCount").mockResolvedValue({ count: 1, requestId: "test" });
     vi.spyOn(notificationApi, "list").mockResolvedValue({
       items: [{
         notificationId: 11,
@@ -42,7 +44,7 @@ describe("administrator notifications", () => {
     vi.spyOn(notificationApi, "markRead").mockResolvedValue(undefined);
 
     const wrapper = mount(NotificationsPage, {
-      global: { stubs: { AdminShell: { template: "<div><slot /></div>" } } },
+      global: { plugins: [createPinia()], stubs: { AdminShell: { template: "<div><slot /></div>" } } },
     });
     await flushPromises();
     expect(notificationApi.list).toHaveBeenCalledWith("unread", 2, 10);

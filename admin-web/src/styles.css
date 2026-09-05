@@ -1304,3 +1304,23 @@ h1, h2, p { margin-top: 0; }
 .return-reason-field, .reopen-field { display: grid; gap: 8px; color: var(--ink-strong); font-size: 13px; font-weight: 700; }
 .return-reason-field textarea, .reopen-field textarea { box-sizing: border-box; width: 100%; min-height: 84px; padding: 10px 12px; resize: vertical; border: 1px solid #cfd6de; border-radius: 4px; font: inherit; font-weight: 500; }
 @media (max-width: 760px) { .shipment-void-content { align-items: stretch; flex-direction: column; } .shipment-void-content dl { grid-template-columns: 1fr; } .shipment-void-content dl > div.is-wide { grid-column: auto; } }
+
+/* Issue #15: preserve notification columns even when the read marker is hidden. */
+.notification-unread-dot.is-read { visibility: hidden; }
+.notification-list-item { width: 100%; grid-template-columns: 8px 86px minmax(0, 1fr) 150px; }
+.notification-category { white-space: nowrap; }
+.notification-list-item:not(.is-unread) .notification-copy strong { color: var(--muted); font-weight: 400; }
+.dashboard-notification-list button { width: 100%; grid-template-columns: 8px minmax(0, 1fr); }
+.dashboard-notification-list time { grid-column: 2; white-space: nowrap; }
+.dashboard-notification-list strong, .notification-popover-item strong, .notification-copy strong { min-width: 0; }
+@media (max-width: 700px) {
+  .notification-list-item { grid-template-columns: 8px 64px minmax(0, 1fr); gap: 8px; padding: 12px; }
+  .notification-list-item time { grid-column: 3; text-align: left; }
+  .notification-popover { right: 8px; width: min(340px, calc(100vw - 32px)); }
+}
+.dashboard-stat-card { text-decoration: none; }
+.dashboard-stat-card:focus-visible { outline: 2px solid var(--erp-blue); outline-offset: 2px; }
+.dashboard-notification-list button { row-gap: 3px; }
+.dashboard-notification-list button > span { display: flex; align-items: baseline; gap: 6px; }
+.dashboard-notification-list strong { flex: 0 1 auto; max-width: 65%; }
+.dashboard-notification-list small { flex: 1; min-width: 0; }

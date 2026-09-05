@@ -72,6 +72,7 @@
             <button v-for="item in recentNotifications" :key="item.notificationId" type="button" class="notification-popover-item" @click="openNotification(item)">
               <i v-if="!item.readAt" aria-hidden="true"></i><span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small></span>
             </button>
+            <p v-if="notificationError" role="alert">{{ notificationError }}</p>
             <p v-if="!recentNotifications.length">暂无通知</p>
           </section>
           <button class="user-chip" type="button" aria-label="查看当前账号信息" :aria-expanded="accountOpen" @click.stop="accountOpen = !accountOpen">
@@ -105,11 +106,13 @@
 </template>
 
 <script setup lang="ts">
+import { storeToRefs } from "pinia";
+import { useNotificationsStore } from "@/stores/notifications";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import BrandLogo from "@/components/BrandLogo.vue";
-import { notificationApi, type NotificationItem } from "@/api/client";
+import { type NotificationItem } from "@/api/client";
 import { useIdentityStore } from "@/stores";
 
 defineProps<{ title?: string }>();
@@ -135,8 +138,10 @@ const router = useRouter();
 const mobileMenuOpen = ref(false);
 const accountOpen = ref(false);
 const notificationOpen = ref(false);
-const unreadCount = ref(0);
-const recentNotifications = ref<NotificationItem[]>([]);
+const notificationError = ref("");
+const notificationStore = useNotificationsStore();
+const { unreadCount, recent: recentNotifications } = storeToRefs(notificationStore);
+watch(() => identity.currentUser?.userId, (userId) => notificationStore.setUser(userId), { immediate: true });
 const sidebarCollapsed = ref(window.localStorage?.getItem("order-tracking-sidebar-collapsed") === "true");
 
 const activeModule = computed(() => {
@@ -167,21 +172,23 @@ async function logout() {
 
 async function loadNotifications() {
   try {
-    const [recent, unread] = await Promise.all([notificationApi.list("all", 1, 3), notificationApi.unreadCount()]);
-    recentNotifications.value = recent.items;
-    unreadCount.value = unread.count;
+    await notificationStore.refresh();
   } catch { /* Header notifications must not block the current page. */ }
 }
 
 async function openNotification(item:NotificationItem) {
   notificationOpen.value = false;
-  if (!item.readAt) { await notificationApi.markRead(item.notificationId); unreadCount.value = Math.max(0, unreadCount.value - 1); }
+  try { await notificationStore.markRead(item); }
+  catch { notificationError.value = "通知标记已读失败，请重试"; notificationOpen.value = true; return; }
+  notificationError.value = "";
   await router.push({ path:item.targetPath, query:{ notificationReturnTo:route.fullPath } });
 }
 
 onMounted(loadNotifications);
 
+watch(notificationOpen, (open) => { if (open) void loadNotifications(); });
 watch(() => route.fullPath, () => {
+  void loadNotifications();
   mobileMenuOpen.value = false;
   accountOpen.value = false;
   notificationOpen.value = false;

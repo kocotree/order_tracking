@@ -1,6 +1,8 @@
+import { createPinia } from "pinia";
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createMemoryHistory, createRouter } from "vue-router";
 import { notificationApi, orderApi, type Order } from "@/api/client";
 import HomePage from "@/pages/HomePage.vue";
 
@@ -69,10 +71,11 @@ describe("order dashboard prototype alignment", () => {
       recentOrders: [order(), mixedOrder],
       requestId: "request-dashboard",
     });
+    vi.spyOn(notificationApi, "unreadCount").mockResolvedValue({ count: 1, requestId: "test" });
     vi.spyOn(notificationApi, "list").mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 3, requestId: "request-notifications" });
 
     const wrapper = mount(HomePage, {
-      global: {
+      global: { plugins: [createPinia()],
         stubs: {
           AdminShell: { template: "<div><slot /></div>" },
           RouterLink: { props: ["to"], template: "<a><slot /></a>" },
@@ -95,4 +98,22 @@ describe("order dashboard prototype alignment", () => {
     await orderNumberHeader?.trigger("click");
     expect(wrapper.findAll("tbody tr")[0].text()).toContain("090#");
   });
+});
+
+it("links statistics to Shanghai today and overdue filters, and requests unread summaries", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-05T18:00:00Z"));
+  vi.spyOn(orderApi, "dashboard").mockResolvedValue({ recentOrders: [], overdueOrders: 2, todayShipments: 1, pendingImportOrders: 0 } as never);
+  vi.spyOn(notificationApi, "list").mockResolvedValue({ items: [], total: 0 } as never);
+  vi.spyOn(notificationApi, "unreadCount").mockResolvedValue({ count: 0 } as never);
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/:pathMatch(.*)*", component: { template: "<div/>" } }] });
+  await router.push("/");
+  const wrapper = mount(HomePage, { global: { plugins: [createPinia(), router], stubs: { AdminShell: { template: "<div><slot/></div>" } } } });
+  await flushPromises();
+  expect(notificationApi.list).toHaveBeenCalledWith("unread", 1, 3);
+  const links = wrapper.findAll(".dashboard-stat-card");
+  expect(links[1].attributes("href")).toBe("/shipments?dateFrom=2026-09-06&dateTo=2026-09-06");
+  await links[2].trigger("click"); await flushPromises();
+  expect(router.currentRoute.value.query.status).toBe("已逾期");
+  wrapper.unmount(); vi.useRealTimers();
 });

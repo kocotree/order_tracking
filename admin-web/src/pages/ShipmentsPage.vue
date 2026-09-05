@@ -29,13 +29,16 @@
 </template>
 
 <script setup lang="ts">
+import { useRoute } from "vue-router";
 import { computed, onMounted, ref } from "vue";
 import { ApiError, shipmentApi, type Shipment } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 import TableSortButton from "@/components/TableSortButton.vue";
 type SortKey = "shipmentNo" | "orderNos" | "factory" | "productNames" | "totalQuantity" | "businessDate";
 const columns: { key: SortKey; label: string }[] = [{ key: "shipmentNo", label: "发货单号" }, { key: "orderNos", label: "关联订单" }, { key: "factory", label: "工厂" }, { key: "productNames", label: "产品名称" }, { key: "totalQuantity", label: "发货数量" }, { key: "businessDate", label: "发货日期" }];
-const items = ref<Shipment[]>([]); const keyword = ref(""); const factoryName = ref(""); const dateFrom = ref(""); const dateTo = ref(""); const loading = ref(true); const error = ref(""); const page = ref(1); const pageSize = 10; const sortKey = ref<SortKey | null>(null); const sortDirection = ref<"asc" | "desc">("asc");
+const route = useRoute();
+const queryDate = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value ? value : "";
+const items = ref<Shipment[]>([]); const keyword = ref(""); const factoryName = ref(""); const dateFrom = ref(queryDate(route?.query.dateFrom)); const dateTo = ref(queryDate(route?.query.dateTo)); const loading = ref(true); const error = ref(""); const page = ref(1); const pageSize = 10; const sortKey = ref<SortKey | null>(null); const sortDirection = ref<"asc" | "desc">("asc");
 const number = (value: number) => value.toLocaleString("zh-CN"); const orderNos = (item: Shipment) => [...new Set(item.lines.map((line) => line.orderNo))].join("、") || "—"; const productNames = (item: Shipment) => [...new Set(item.lines.map((line) => line.productName))].join("、") || "—";
 const factories = computed(() => [...new Set(items.value.map((item) => item.factoryName || item.factoryId))].sort((a, b) => a.localeCompare(b, "zh-CN")));
 function sortValue(item: Shipment, key: SortKey): string | number { if (key === "orderNos") return orderNos(item); if (key === "factory") return item.factoryName || item.factoryId; if (key === "productNames") return productNames(item); return item[key] ?? ""; }

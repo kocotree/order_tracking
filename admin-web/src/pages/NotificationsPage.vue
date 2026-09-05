@@ -14,8 +14,8 @@
         <p v-if="loading" class="page-state">正在加载通知…</p>
         <p v-else-if="errorMessage" class="page-error">{{ errorMessage }}</p>
         <div v-else-if="items.length" class="notification-list">
-          <button v-for="item in items" :key="item.notificationId" class="notification-list-item" type="button" @click="open(item)">
-            <i v-if="!item.readAt" class="notification-unread-dot" aria-label="未读"></i>
+          <button v-for="item in items" :key="item.notificationId" class="notification-list-item" :class="{ 'is-unread': !item.readAt }" type="button" @click="open(item)">
+            <i class="notification-unread-dot" :class="{ 'is-read': item.readAt }" :aria-label="item.readAt ? '已读' : '未读'"></i>
             <span class="notification-category">{{ categoryLabel(item.category) }}</span>
             <span class="notification-copy"><strong>{{ item.title }}</strong><span>{{ item.summary }}</span></span>
             <time>{{ dateTime(item.createdAt) }}</time>
@@ -37,8 +37,10 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { ApiError, notificationApi, type NotificationItem } from "@/api/client";
+import { useNotificationsStore } from "@/stores/notifications";
 import AdminShell from "@/components/AdminShell.vue";
 
+const notificationStore = useNotificationsStore();
 const route = useRoute();
 const router = useRouter();
 const status = ref<"all" | "unread">(route.query.status === "unread" ? "unread" : "all");
@@ -67,7 +69,10 @@ async function syncRoute() { await router.push({ path:"/notifications", query:{ 
 async function setStatus(value:"all"|"unread") { status.value = value; page.value = 1; await syncRoute(); }
 async function setPage(value:number) { page.value = value; await syncRoute(); }
 async function open(item:NotificationItem) {
-  if (!item.readAt) { await notificationApi.markRead(item.notificationId); item.readAt = new Date().toISOString(); }
+  try {
+    await notificationStore.markRead(item);
+    if (status.value === "unread") { items.value = items.value.filter((entry) => entry.notificationId !== item.notificationId); total.value = Math.max(0, total.value - 1); }
+  } catch { errorMessage.value = "通知标记已读失败，请重试"; return; }
   await router.push({ path:item.targetPath, query:{ notificationReturnTo:`/notifications?status=${status.value}&page=${page.value}` } });
 }
 onMounted(load);

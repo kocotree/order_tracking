@@ -1,0 +1,30 @@
+import { flushPromises, mount } from "@vue/test-utils";
+import { createPinia } from "pinia";
+import { createMemoryHistory, createRouter } from "vue-router";
+import { afterEach, expect, it, vi } from "vitest";
+import AdminShell from "@/components/AdminShell.vue";
+import { notificationApi } from "@/api/client";
+import { useIdentityStore } from "@/stores";
+
+afterEach(() => vi.restoreAllMocks());
+it("only requests unread summaries and removes the selected item and badge after reading", async () => {
+  let read = false;
+  const item = { notificationId: 12, readAt: null, title: "新发货", summary: "明细", targetPath: "/shipments/test" };
+  vi.spyOn(notificationApi, "list").mockImplementation(async () => ({ items: read ? [] : [{ ...item }], total: read ? 0 : 1 } as never));
+  vi.spyOn(notificationApi, "unreadCount").mockImplementation(async () => ({ count: read ? 0 : 1 } as never));
+  vi.spyOn(notificationApi, "markRead").mockImplementation(async () => { read = true; });
+  const pinia = createPinia();
+  useIdentityStore(pinia).currentUser = { userId: "test", displayName: "测试", capabilities: [] } as never;
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/:pathMatch(.*)*", component: { template: "<div/>" } }] });
+  await router.push("/");
+  const wrapper = mount(AdminShell, { global: { plugins: [pinia, router] } }); await flushPromises();
+  expect(wrapper.get(".notification-badge").text()).toBe("1");
+  await wrapper.get(".notification-bell").trigger("click"); await flushPromises();
+  expect(notificationApi.list).toHaveBeenLastCalledWith("unread", 1, 3);
+  await wrapper.get(".notification-popover-item").trigger("click"); await flushPromises();
+  expect(router.currentRoute.value.path).toBe("/shipments/test");
+  expect(wrapper.find(".notification-badge").exists()).toBe(false);
+  await wrapper.get(".notification-bell").trigger("click"); await flushPromises();
+  expect(wrapper.find(".notification-popover-item").exists()).toBe(false);
+  wrapper.unmount();
+});

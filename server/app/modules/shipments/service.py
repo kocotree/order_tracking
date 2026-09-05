@@ -646,13 +646,26 @@ class ShipmentService:
             session.flush()
             return self._detail_snapshot(session, shipment)
 
-    def list_shipments(self, *, factory_id: str | None = None) -> list[ShipmentDraftSnapshot]:
+    def list_shipments(
+        self, *, factory_id: str | None = None, order_id: str | None = None
+    ) -> list[ShipmentDraftSnapshot]:
         with self._sessions() as session:
             query = select(Shipment).where(
                 Shipment.status != "DRAFT", Shipment.deleted_at.is_(None)
             )
             if factory_id is not None:
                 query = query.where(Shipment.factory_id == factory_id)
+            if order_id is not None:
+                related_ids = (
+                    select(ShipmentLine.shipment_id)
+                    .join(
+                        OrderAssignment,
+                        OrderAssignment.order_assignment_id == ShipmentLine.order_assignment_id,
+                    )
+                    .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+                    .where(OrderLine.order_id == order_id)
+                )
+                query = query.where(Shipment.shipment_id.in_(related_ids))
             shipments = list(
                 session.scalars(query.order_by(Shipment.submitted_at.desc(), Shipment.shipment_id))
             )

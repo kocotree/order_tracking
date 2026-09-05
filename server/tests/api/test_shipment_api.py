@@ -1372,3 +1372,122 @@ def test_retrying_acknowledged_save_preserves_draft_and_uploaded_evidence(
             == 204
         )
         assert client.get(uploaded["contentUrl"]).status_code == 404
+
+
+def test_admin_filters_shipments_by_actual_order_lines(
+    test_database_engine: Engine, test_database_url: str
+) -> None:
+    assignment_id = _seed(test_database_engine, initial_shipped_quantity=5)
+    with Session(test_database_engine) as session, session.begin():
+        session.add(
+            Order(
+                order_id="second-order",
+                order_no="OTHER-ORDER",
+                source="manual",
+                tracker="松子",
+                contract_ship_date=date(2026, 9, 30),
+                lifecycle="PUBLISHED",
+                created_by=ADMIN_ID,
+                updated_by=ADMIN_ID,
+            )
+        )
+        session.flush()
+        line = OrderLine(
+            order_id="second-order",
+            product_variant_id=VARIANT_ID,
+            order_quantity=40,
+            sku_id_snapshot="SKU-SHIPMENT-API",
+            product_name_snapshot="第二订单",
+            properties_value_snapshot="海军蓝 / 120",
+        )
+        session.add(line)
+        session.flush()
+        other = OrderAssignment(
+            order_line_id=line.order_line_id,
+            factory_id=FACTORY_IDS[0],
+            assigned_quantity=40,
+            factory_name_snapshot="S07接口工厂1",
+        )
+        session.add(other)
+        session.flush()
+        other_assignment_id = other.order_assignment_id
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"filter-token",
+        phone_encryption_secret=b"filter-phone",
+        phone_digest_secret=b"filter-digest",
+    )
+    admin = identity.issue_session(user_id=ADMIN_ID, terminal="web")
+    factory = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    app = create_app(database_url=test_database_url, identity_service=identity)
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("ot_web_session", admin.access_token)
+        assert (
+            client.get("/api/v1/admin/shipments", params={"orderId": ORDER_ID}).json()["items"]
+            == []
+        )
+        with TestClient(app, base_url="https://testserver") as factory_client:
+            factory_client.headers["Authorization"] = f"Bearer {factory.access_token}"
+            assert (
+                factory_client.get(
+                    "/api/v1/admin/shipments", params={"orderId": ORDER_ID}
+                ).status_code
+                == 403
+            )
+            shipment_ids = []
+            for index in range(2):
+                shipment_id = factory_client.post(
+                    "/api/v1/factory/shipments/drafts", json={}
+                ).json()["shipmentId"]
+                assert (
+                    factory_client.put(
+                        f"/api/v1/factory/shipments/drafts/{shipment_id}",
+                        json={
+                            "boxes": [
+                                {
+                                    "boxNo": 1,
+                                    "items": [
+                                        {"assignmentId": assignment_id, "quantity": 2},
+                                        *(
+                                            [{"assignmentId": other_assignment_id, "quantity": 3}]
+                                            if index == 0
+                                            else []
+                                        ),
+                                    ],
+                                }
+                            ]
+                        },
+                    ).status_code
+                    == 200
+                )
+                assert (
+                    factory_client.post(
+                        f"/api/v1/factory/shipments/drafts/{shipment_id}/submit",
+                        headers={"Idempotency-Key": f"filter-{index}"},
+                    ).status_code
+                    == 200
+                )
+                shipment_ids.append(shipment_id)
+        result = client.get("/api/v1/admin/shipments", params={"orderId": ORDER_ID}).json()
+        assert result["total"] == 2
+        assert {item["shipmentId"] for item in result["items"]} == set(shipment_ids)
+        assert all(item["preferredOrderId"] is None for item in result["items"])
+        second = client.get("/api/v1/admin/shipments", params={"orderId": "second-order"}).json()
+        assert [item["shipmentId"] for item in second["items"]] == [shipment_ids[0]]
+        assert (
+            next(item for item in result["items"] if item["shipmentId"] == shipment_ids[0])[
+                "totalQuantity"
+            ]
+            == 5
+        )
+        with Session(test_database_engine) as session, session.begin():
+            session.get(Shipment, shipment_ids[0]).status = "VOIDED"
+            session.get(Shipment, shipment_ids[1]).status = "VOID_PENDING"
+        statuses = client.get("/api/v1/admin/shipments", params={"orderId": ORDER_ID}).json()
+        assert {item["status"] for item in statuses["items"]} == {"VOIDED", "VOID_PENDING"}
+        unrelated = client.get(
+            "/api/v1/admin/shipments", params={"orderId": "unrelated-order"}
+        ).json()
+        assert unrelated["items"] == []
+        assert client.get("/api/v1/admin/shipments").json()["total"] == 2

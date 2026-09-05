@@ -1120,3 +1120,255 @@ def test_web_admin_downloads_shipment_workbook_from_submitted_facts(
             assert submitted["shipmentNo"] in response.headers["content-disposition"]
     finally:
         _clean(test_database_engine)
+
+
+def test_factory_can_save_and_reopen_empty_and_partly_packed_boxes(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    assignment_id = _seed(test_database_engine)
+    sessions = sessionmaker(
+        test_database_engine, class_=Session, expire_on_commit=False
+    )
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"draft-test",
+        phone_encryption_secret=b"draft-phone",
+        phone_digest_secret=b"draft-digest",
+    )
+    token = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    app = create_app(database_url=test_database_url, identity_service=identity)
+    headers = {"Authorization": f"Bearer {token.access_token}"}
+    with TestClient(app, base_url="https://testserver", headers=headers) as client:
+        draft = client.post("/api/v1/factory/shipments/drafts", json={}).json()
+        path = f"/api/v1/factory/shipments/drafts/{draft['shipmentId']}"
+        saved = client.put(
+            path,
+            json={
+                "boxes": [
+                    {"boxNo": 1, "items": []},
+                    {"boxNo": 2, "items": []},
+                ],
+                "note": "半成品草稿",
+            },
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["totalBoxes"] == 2
+        boxes = [
+            {"boxNo": 1, "items": [{"assignmentId": assignment_id, "quantity": 5}]},
+            {"boxNo": 2, "items": []},
+        ]
+        saved = client.put(
+            path,
+            json={
+                "boxes": boxes,
+                "note": "先装一箱",
+                "version": saved.json()["version"],
+            },
+        )
+        assert saved.status_code == 200, saved.text
+        assert (
+            client.post(
+                path + "/submit", headers={"Idempotency-Key": "empty-box"}
+            ).status_code
+            == 422
+        )
+    with TestClient(app, base_url="https://testserver", headers=headers) as reopened:
+        current = reopened.get("/api/v1/factory/shipments/drafts/current").json()
+        assert current["shipmentId"] == draft["shipmentId"]
+        assert current["totalBoxes"] == 2
+        assert current["totalQuantity"] == 5
+        assert current["boxes"][1]["items"] == []
+        assert current["note"] == "先装一箱"
+
+
+def test_factory_can_abandon_only_own_current_version_and_restart(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    _seed(test_database_engine)
+    sessions = sessionmaker(
+        test_database_engine, class_=Session, expire_on_commit=False
+    )
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"draft-delete",
+        phone_encryption_secret=b"draft-phone",
+        phone_digest_secret=b"draft-digest",
+    )
+    app = create_app(database_url=test_database_url, identity_service=identity)
+    owner = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    colleague = identity.issue_session(user_id=SAME_FACTORY_USER_ID, terminal="mini")
+    with TestClient(app, base_url="https://testserver") as client:
+        client.headers["Authorization"] = f"Bearer {owner.access_token}"
+        draft = client.post("/api/v1/factory/shipments/drafts", json={}).json()
+        path = f"/api/v1/factory/shipments/drafts/{draft['shipmentId']}"
+        saved = client.put(
+            path,
+            json={
+                "boxes": [{"boxNo": 1, "items": []}],
+                "note": "保留新内容",
+                "version": 1,
+            },
+        ).json()
+        assert (
+            client.put(
+                path,
+                json={
+                    "boxes": [{"boxNo": 1, "items": []}],
+                    "note": "过时覆盖",
+                    "version": 1,
+                },
+            ).status_code
+            == 409
+        )
+        client.headers["Authorization"] = f"Bearer {colleague.access_token}"
+        assert client.get("/api/v1/factory/shipments/drafts/current").status_code == 404
+        assert (
+            client.delete(path, params={"version": saved["version"]}).status_code == 404
+        )
+        client.headers["Authorization"] = f"Bearer {owner.access_token}"
+        assert client.delete(path, params={"version": 1}).status_code == 409
+        assert (
+            client.get("/api/v1/factory/shipments/drafts/current").json()["note"]
+            == "保留新内容"
+        )
+        assert (
+            client.delete(path, params={"version": saved["version"]}).status_code == 204
+        )
+        assert client.get("/api/v1/factory/shipments/drafts/current").status_code == 404
+        assert (
+            client.put(path, json={"boxes": [{"boxNo": 1, "items": []}]}).status_code
+            == 404
+        )
+        replacement = client.post("/api/v1/factory/shipments/drafts", json={}).json()
+        assert replacement["shipmentId"] != draft["shipmentId"]
+        assert client.get("/api/v1/factory/shipments").json()["items"] == []
+
+
+def test_concurrent_draft_creation_and_saves_do_not_duplicate_or_overwrite(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    assignment_id = _seed(test_database_engine)
+    sessions = sessionmaker(
+        test_database_engine, class_=Session, expire_on_commit=False
+    )
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"draft-race",
+        phone_encryption_secret=b"draft-phone",
+        phone_digest_secret=b"draft-digest",
+    )
+    token = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    app = create_app(database_url=test_database_url, identity_service=identity)
+    headers = {"Authorization": f"Bearer {token.access_token}"}
+    gate = Barrier(2)
+
+    def create() -> dict:
+        with TestClient(app, base_url="https://testserver", headers=headers) as client:
+            gate.wait()
+            response = client.post("/api/v1/factory/shipments/drafts", json={})
+            assert response.status_code in (200, 201), response.text
+            return response.json()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        a, b = list(pool.map(lambda _: create(), range(2)))
+    assert a["shipmentId"] == b["shipmentId"]
+    path = f"/api/v1/factory/shipments/drafts/{a['shipmentId']}"
+    boxes = [{"boxNo": 1, "items": [{"assignmentId": assignment_id, "quantity": 3}]}]
+
+    def save(note: str) -> tuple[int, str]:
+        with TestClient(app, base_url="https://testserver", headers=headers) as client:
+            gate.wait()
+            response = client.put(
+                path, json={"version": 1, "boxes": boxes, "note": note}
+            )
+            return response.status_code, note
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(save, ["设备甲", "设备乙"]))
+    assert sorted(code for code, _ in results) == [200, 409]
+    winning_note = next(note for code, note in results if code == 200)
+    with TestClient(app, base_url="https://testserver", headers=headers) as client:
+        current = client.get("/api/v1/factory/shipments/drafts/current").json()
+        assert current["note"] == winning_note
+        assert (
+            client.post(
+                path + "/submit?version=1", headers={"Idempotency-Key": "stale"}
+            ).status_code
+            == 409
+        )
+        submitted = client.post(
+            path + f"/submit?version={current['version']}",
+            headers={"Idempotency-Key": "fresh"},
+        )
+        assert submitted.status_code == 200
+        repeated = client.post(
+            path + f"/submit?version={current['version']}",
+            headers={"Idempotency-Key": "retry"},
+        )
+        assert repeated.json()["shipmentNo"] == submitted.json()["shipmentNo"]
+        assert repeated.json()["totalQuantity"] == 3
+        assert client.get("/api/v1/factory/shipments/drafts/current").status_code == 404
+        assert (
+            client.delete(path, params={"version": current["version"]}).status_code
+            == 409
+        )
+
+
+def test_retrying_acknowledged_save_preserves_draft_and_uploaded_evidence(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    _seed(test_database_engine)
+    sessions = sessionmaker(
+        test_database_engine, class_=Session, expire_on_commit=False
+    )
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"draft-evidence",
+        phone_encryption_secret=b"draft-phone",
+        phone_digest_secret=b"draft-digest",
+    )
+    token = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    app = create_app(
+        database_url=test_database_url,
+        identity_service=identity,
+        private_file_store=FakePrivateFileStore(bucket="draft-evidence-test"),
+    )
+    content = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+    with TestClient(app, base_url="https://testserver") as client:
+        client.headers["Authorization"] = f"Bearer {token.access_token}"
+        draft = client.post("/api/v1/factory/shipments/drafts", json={}).json()
+        path = f"/api/v1/factory/shipments/drafts/{draft['shipmentId']}"
+        payload = {
+            "version": 1,
+            "boxes": [{"boxNo": 1, "items": []}],
+            "note": "保存成功回包丢失",
+        }
+        saved = client.put(path, json=payload).json()
+        uploaded = client.post(
+            path + "/files",
+            headers={"Idempotency-Key": "proof"},
+            files={"file": ("proof.png", content, "image/png")},
+        ).json()
+        retried = client.put(path, json=payload)
+        assert retried.status_code == 200, retried.text
+        assert retried.json()["version"] == saved["version"]
+        current = client.get("/api/v1/factory/shipments/drafts/current").json()
+        assert current["files"] == [uploaded]
+        assert current["note"] == payload["note"]
+        assert client.get(uploaded["contentUrl"]).content == content
+        reused = client.post("/api/v1/factory/shipments/drafts", json={}).json()
+        assert reused == current
+        assert (
+            client.delete(path, params={"version": current["version"]}).status_code
+            == 204
+        )
+        assert client.get(uploaded["contentUrl"]).status_code == 404

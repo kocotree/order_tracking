@@ -6,6 +6,7 @@ export interface ShipmentEvidencePhoto {
   localPath: string;
   uploadKey: string;
   fileId?: number;
+  downloadFailed?: boolean;
   status: ShipmentEvidenceStatus;
   progress: number;
 }
@@ -30,6 +31,23 @@ export async function submitShipmentWithEvidence<T>(options: {
 }): Promise<{ shipment: T; photos: ShipmentEvidencePhoto[] }> {
   const draft = await options.gateway.createDraft();
   await options.gateway.saveDraft(draft.shipmentId, options.boxes, options.note);
+  const photos = await uploadShipmentEvidence({
+    shipmentId: draft.shipmentId, photos: options.photos,
+    uploadFile: options.gateway.uploadFile, onPhotosChange: options.onPhotosChange,
+  });
+
+  return {
+    shipment: await options.gateway.submitDraft(draft.shipmentId),
+    photos,
+  };
+}
+
+export async function uploadShipmentEvidence(options: {
+  shipmentId: string;
+  photos: ShipmentEvidencePhoto[];
+  uploadFile: ShipmentEvidenceGateway<unknown>["uploadFile"];
+  onPhotosChange: (photos: ShipmentEvidencePhoto[]) => void;
+}): Promise<ShipmentEvidencePhoto[]> {
   let photos = options.photos.map((photo) => ({ ...photo }));
 
   const update = (index: number, patch: Partial<ShipmentEvidencePhoto>) => {
@@ -41,8 +59,8 @@ export async function submitShipmentWithEvidence<T>(options: {
     if (photos[index].fileId) continue;
     update(index, { status: "uploading", progress: 0 });
     try {
-      const stored = await options.gateway.uploadFile(
-        draft.shipmentId,
+      const stored = await options.uploadFile(
+        options.shipmentId,
         photos[index],
         (progress) => update(index, { status: "uploading", progress }),
       );
@@ -53,10 +71,7 @@ export async function submitShipmentWithEvidence<T>(options: {
     }
   }
 
-  return {
-    shipment: await options.gateway.submitDraft(draft.shipmentId),
-    photos,
-  };
+  return photos;
 }
 
 export function newShipmentEvidencePhoto(localPath: string): ShipmentEvidencePhoto {

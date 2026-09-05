@@ -988,17 +988,16 @@
             "title": "Groupkey"
           },
           "items": {
+            "default": [],
             "items": {
               "$ref": "#/components/schemas/DraftItemWrite"
             },
-            "minItems": 1,
             "title": "Items",
             "type": "array"
           }
         },
         "required": [
-          "boxNo",
-          "items"
+          "boxNo"
         ],
         "title": "DraftBoxWrite",
         "type": "object"
@@ -1066,6 +1065,12 @@
             "maxLength": 500,
             "title": "Note",
             "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -3162,6 +3167,11 @@
           "totalQuantity": {
             "default": 0,
             "title": "Totalquantity",
+            "type": "integer"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
             "type": "integer"
           },
           "voidRequest": {
@@ -8637,6 +8647,65 @@
       }
     },
     "/api/v1/factory/shipments/drafts/{shipment_id}": {
+      "delete": {
+        "operationId": "abandon_draft_api_v1_factory_shipments_drafts__shipment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipment_id",
+            "required": true,
+            "schema": {
+              "title": "Shipment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Abandon Draft",
+        "tags": [
+          "shipment-factory"
+        ]
+      },
       "put": {
         "operationId": "save_draft_api_v1_factory_shipments_drafts__shipment_id__put",
         "parameters": [
@@ -8859,6 +8928,23 @@
             "schema": {
               "title": "Shipment Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
             }
           },
           {

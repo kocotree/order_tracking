@@ -798,6 +798,7 @@ class Shipment(Base):
     factory_id: Mapped[str] = mapped_column(
         ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
     )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     business_date: Mapped[date | None] = mapped_column(Date)
     preferred_order_id: Mapped[str | None] = mapped_column(

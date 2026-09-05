@@ -1022,7 +1022,8 @@ export interface paths {
         /** Save Draft */
         put: operations["save_draft_api_v1_factory_shipments_drafts__shipment_id__put"];
         post?: never;
-        delete?: never;
+        /** Abandon Draft */
+        delete: operations["abandon_draft_api_v1_factory_shipments_drafts__shipment_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1713,7 +1714,10 @@ export interface components {
             boxNo: number;
             /** Groupkey */
             groupKey?: string | null;
-            /** Items */
+            /**
+             * Items
+             * @default []
+             */
             items: components["schemas"]["DraftItemWrite"][];
         };
         /** DraftItemWrite */
@@ -1744,6 +1748,11 @@ export interface components {
              * @default
              */
             note: string;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /** DraftUpdate */
         DraftUpdate: {
@@ -2541,6 +2550,11 @@ export interface components {
              * @default 0
              */
             totalQuantity: number;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
             voidRequest?: components["schemas"]["ShipmentVoidRequestResponse"] | null;
         };
         /** ShipmentFileResponse */
@@ -5060,6 +5074,39 @@ export interface operations {
             };
         };
     };
+    abandon_draft_api_v1_factory_shipments_drafts__shipment_id__delete: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     upload_draft_file_api_v1_factory_shipments_drafts__shipment_id__files_post: {
         parameters: {
             query?: never;
@@ -5132,7 +5179,9 @@ export interface operations {
     };
     submit_draft_api_v1_factory_shipments_drafts__shipment_id__submit_post: {
         parameters: {
-            query?: never;
+            query?: {
+                version?: number | null;
+            };
             header?: {
                 authorization?: string | null;
                 "Idempotency-Key"?: string | null;

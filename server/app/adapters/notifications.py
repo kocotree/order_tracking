@@ -235,6 +235,9 @@ class AppCredentialFeishuBusinessNotifier:
         )
 
     def send(self, request: DeliveryRequest) -> None:
+        if request.template_key in {"admin_shipment", "admin_repair", "admin_void_request"}:
+            self._send_admin_card(request)
+            return
         target_url = f"{self._config.admin_web_base_url.rstrip('/')}{request.target_path}"
         self._sender.send_card(
             recipient_id=request.recipient_id,
@@ -311,6 +314,100 @@ class AppCredentialFeishuBusinessNotifier:
                         },
                     ]
                 },
+            },
+        )
+
+    def _send_admin_card(self, request: DeliveryRequest) -> None:
+        elements: list[dict[str, object]] = [
+            {"tag": "div", "text": {"tag": "plain_text", "content": request.summary}}
+        ]
+        columns: tuple[tuple[str, str], ...] = ()
+        if request.template_key == "admin_shipment":
+            columns = (
+                ("orderNo", "订单编号"),
+                ("productName", "商品名称"),
+                ("propertiesValue", "颜色规格"),
+                ("quantity", "发货数量"),
+            )
+            button = "查看发货单"
+        elif request.template_key == "admin_repair":
+            columns = (
+                ("factoryName", "工厂"),
+                ("repairedQuantity", "返修数量"),
+                ("scrappedQuantity", "报废数量"),
+                ("returnedQuantity", "返回总数量"),
+            )
+            elements.append({"tag": "div", "text": {"tag": "plain_text", "content": "本次发回"}})
+            button = "查看返修详情"
+        else:
+            button = "查看并处理"
+            for key, label in (
+                ("factoryName", "工厂"),
+                ("shipmentNo", "发货单号"),
+                ("applicant", "申请人"),
+                ("requestedAt", "申请时间"),
+                ("reason", "申请原因"),
+            ):
+                elements.append(
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "plain_text",
+                            "content": f"{label}：{request.template_data[key]}",
+                        },
+                    }
+                )
+        if columns:
+            elements.append(
+                {
+                    "tag": "table",
+                    "page_size": 10,
+                    "row_height": "high",
+                    "freeze_first_column": True,
+                    "header_style": {"bold": True, "background_style": "grey"},
+                    "columns": [
+                        {"name": key, "display_name": label, "data_type": "text", "width": "auto"}
+                        for key, label in columns
+                    ],
+                    "rows": list(request.card_rows),
+                }
+            )
+        if request.template_key == "admin_shipment":
+            elements.append(
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "plain_text",
+                        "content": f"发货总数量：{request.template_data['totalQuantity']}",
+                    },
+                }
+            )
+        elements.append(
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": button},
+                "type": "primary",
+                "width": "fill",
+                "behaviors": [
+                    {
+                        "type": "open_url",
+                        "default_url": (
+                            f"{self._config.admin_web_base_url.rstrip('/')}"
+                            f"{request.target_path}"
+                        ),
+                    }
+                ],
+            }
+        )
+        self._sender.send_card(
+            recipient_id=request.recipient_id,
+            card={
+                "schema": "2.0",
+                "header": {
+                    "template": "orange",
+                    "title": {"tag": "plain_text", "content": request.title},
+                },
+                "body": {"elements": elements},
             },
         )
 

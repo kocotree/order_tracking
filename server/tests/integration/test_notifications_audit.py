@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta
 
+import pytest
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -205,7 +206,7 @@ def test_authorization_rejects_template_keys_outside_current_mini_program_role(
         raise AssertionError("factory user must not authorize administrator templates")
 
 
-def test_submitted_shipment_sends_feishu_to_four_admins_without_wechat_authorization(
+def test_submitted_shipment_sends_feishu_to_five_admins_and_order_tracker(
     test_database_engine: Engine,
 ) -> None:
     sessions, _order_service, _draft = _publish_order(
@@ -250,7 +251,7 @@ def test_submitted_shipment_sends_feishu_to_four_admins_without_wechat_authoriza
                 feishu_display_name=name,
             )
             for index, name in enumerate(
-                ["王心玲&煎饼", "张小薇&花卷", "陆小易&怡宝", "程月红&蜜桔"]
+                ["王心玲&煎饼", "张小薇&花卷", "陆小易&怡宝", "程月红&蜜桔", "杨嘉彬&核桃"]
             )
         )
     service = NotificationsAuditService(sessions)
@@ -268,8 +269,10 @@ def test_submitted_shipment_sends_feishu_to_four_admins_without_wechat_authoriza
         "recipient-1",
         "recipient-2",
         "recipient-3",
+        "recipient-4",
+        "admin-notice",
     }
-    assert len(feishu.sent) == 4
+    assert len(feishu.sent) == 6
     item = feishu.sent[0]
     assert item.target_path == f"/shipments/{draft.shipment_id}"
     assert item.card_rows == (
@@ -438,16 +441,34 @@ def test_returned_repair_feishu_card_uses_current_batch_not_cumulative_totals(
         )
 
     with sessions() as session, session.begin():
-        session.get(User, "admin-notice").feishu_display_name = "王心玲&煎饼"
+        session.add_all(
+            User(
+                user_id=f"repair-recipient-{index}",
+                role="admin",
+                is_enabled=True,
+                feishu_display_name=name,
+            )
+            for index, name in enumerate(
+                ["王心玲&煎饼", "张小薇&花卷", "陆小易&怡宝", "程月红&蜜桔", "杨嘉彬&核桃"]
+            )
+        )
     service = NotificationsAuditService(sessions)
     assert service.consume_next_business_event(worker_id="repair", now=submitted_at)
     wechat = FakeWechatNotifier()
     feishu = FakeFeishuBusinessNotifier()
-    assert service.deliver_next(
+    while service.deliver_next(
         worker_id="delivery", wechat_notifier=wechat, feishu_notifier=feishu, now=submitted_at
-    )
+    ):
+        pass
     assert wechat.sent == []
-    assert len(feishu.sent) == 1
+    assert {item.recipient_id for item in feishu.sent} == {
+        "repair-recipient-0",
+        "repair-recipient-1",
+        "repair-recipient-2",
+        "repair-recipient-3",
+        "repair-recipient-4",
+    }
+    assert len(feishu.sent) == 5
     assert feishu.sent[0].target_path == "/repairs/repair-return-notice"
     assert feishu.sent[0].card_rows == (
         {
@@ -1274,3 +1295,145 @@ def test_existing_admin_wechat_delivery_is_still_sent(test_database_engine: Engi
     assert wechat.sent[0].template_key == "admin_shipment"
     assert wechat.sent[0].template_data == {"number7": "12"}
     assert feishu.sent == []
+
+
+@pytest.mark.parametrize(
+    "tracker_state", ["enabled", "full_name", "disabled", "ambiguous", "missing"]
+)
+def test_shipment_and_withdrawal_notify_only_involved_order_trackers(
+    test_database_engine: Engine,
+    tracker_state: str,
+) -> None:
+    from app.db.models import OrderLine
+    from app.modules.shipments.service import DraftBoxInput, DraftItemInput, ShipmentService
+
+    sessions, orders, first = _publish_order(
+        test_database_engine, factory_user_ids=["factory-notice-user"]
+    )
+    with sessions() as session, session.begin():
+        session.add_all(
+            [
+                User(
+                    user_id="walnut",
+                    role="admin",
+                    is_enabled=True,
+                    feishu_display_name="杨嘉彬&核桃",
+                ),
+                User(
+                    user_id="second-tracker",
+                    role="admin",
+                    is_enabled=True,
+                    feishu_display_name="测试&烧麦",
+                ),
+                User(
+                    user_id="unrelated-tracker",
+                    role="admin",
+                    is_enabled=True,
+                    feishu_display_name="测试&橄榄",
+                ),
+            ]
+        )
+    order_ids = [first.order_id]
+    # Same factory, four orders; the fourth is absent from this shipment.
+    for index, tracker in enumerate(["烧麦", "松子", "橄榄"], start=2):
+        draft = orders.create_draft(
+            actor_id="admin-notice",
+            order_no=f"TRACK-{index}",
+            order_date=date(2026, 8, 27),
+            tracker=tracker,
+            contract_ship_date=date(2026, 9, 10),
+            lines=[
+                DraftLineInput(
+                    variant_id="variant-notice",
+                    order_quantity=100,
+                    assignments=[AssignmentInput(factory_id="factory-notice-a", quantity=100)],
+                )
+            ],
+            request_id=f"tracker-create-{index}",
+        )
+        orders.publish(
+            actor_id="admin-notice",
+            order_id=draft.order_id,
+            version=draft.version,
+            request_id=f"tracker-publish-{index}",
+            idempotency_key=f"tracker-{index}",
+        )
+        if index < 4:
+            order_ids.append(draft.order_id)
+    with sessions() as session, session.begin():
+        session.query(OutboxMessage).update({"status": "completed"})
+        assignments = (
+            session.query(OrderAssignment)
+            .join(OrderLine)
+            .filter(OrderLine.order_id.in_(order_ids))
+            .all()
+        )
+        assignment_ids = [item.order_assignment_id for item in assignments]
+        if tracker_state == "full_name":
+            session.query(Order).filter(Order.tracker == "松子").update({"tracker": "浦钢毅&松子"})
+        elif tracker_state == "disabled":
+            session.get(User, "admin-notice").is_enabled = False
+        elif tracker_state == "missing":
+            session.get(User, "admin-notice").feishu_display_name = "改名后的管理员"
+        elif tracker_state == "ambiguous":
+            session.add(
+                User(
+                    user_id="duplicate-tracker",
+                    role="admin",
+                    is_enabled=True,
+                    feishu_display_name="另一个人&松子",
+                )
+            )
+    now = datetime(2026, 9, 5, 8, 0)
+    shipments = ShipmentService(sessions)
+    draft, _ = shipments.create_or_reuse_draft(
+        actor_id="factory-notice-user", factory_id="factory-notice-a", preferred_order_id=None
+    )
+    shipments.save_draft(
+        actor_id="factory-notice-user",
+        factory_id="factory-notice-a",
+        shipment_id=draft.shipment_id,
+        note="",
+        boxes=[
+            DraftBoxInput(
+                box_no=1, group_key=None, items=[DraftItemInput(item, 5) for item in assignment_ids]
+            )
+        ],
+    )
+    shipments.submit_draft(
+        actor_id="factory-notice-user",
+        factory_id="factory-notice-a",
+        shipment_id=draft.shipment_id,
+        idempotency_key="tracker-submit",
+        now=now,
+    )
+    service = NotificationsAuditService(sessions)
+    expected = {"walnut", "second-tracker"}
+    if tracker_state in {"enabled", "full_name"}:
+        expected.add("admin-notice")
+    for template in ["admin_shipment", "admin_void_request"]:
+        if template == "admin_void_request":
+            for _ in range(2):
+                shipments.request_void(
+                    actor_id="factory-notice-user",
+                    factory_id="factory-notice-a",
+                    shipment_id=draft.shipment_id,
+                    reason="测试撤回",
+                    idempotency_key="tracker-void",
+                    now=now,
+                )
+        assert service.consume_next_business_event(worker_id="tracker-event", now=now)
+        assert not service.consume_next_business_event(worker_id="tracker-event", now=now)
+        feishu, wechat = FakeFeishuBusinessNotifier(), FakeWechatNotifier()
+        while service.deliver_next(
+            worker_id="tracker-delivery", wechat_notifier=wechat, feishu_notifier=feishu, now=now
+        ):
+            pass
+        assert {item.recipient_id for item in feishu.sent} == expected
+        assert len(feishu.sent) == len(expected)
+        assert {item.template_key for item in feishu.sent} == {template}
+        assert wechat.sent == []
+        # The unrelated tracker retains station notifications but receives no Feishu.
+        assert service.list_notifications(
+            user_id="unrelated-tracker", unread_only=False, page=1, page_size=10
+        ).total == (1 if template == "admin_shipment" else 2)

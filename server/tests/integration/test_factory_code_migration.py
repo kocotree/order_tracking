@@ -121,21 +121,21 @@ def test_database_failure_rolls_back_all_codes_and_audits(
     sessions = sessionmaker(test_database_engine, class_=Session)
     plan = preview(sessions)
     backup = tmp_path / "failed.json"
+    # Allow the initial NULL pass, then fail the version update in the same transaction.
+    # A CHECK constraint needs no SUPER privilege when MySQL binary logging is enabled.
     with test_database_engine.begin() as connection:
         connection.execute(
             text(
-                "CREATE TRIGGER issue16_fail_update BEFORE UPDATE ON factories FOR EACH ROW "
-                "BEGIN IF NEW.factory_id = 'f2' AND NEW.version > OLD.version THEN "
-                "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'simulated storage failure'; "
-                "END IF; END"
+                "ALTER TABLE factories ADD CONSTRAINT issue16_fail_update "
+                "CHECK (factory_id <> 'f2' OR version = 1)"
             )
         )
     try:
-        with pytest.raises(DBAPIError):
+        with pytest.raises(DBAPIError, match="issue16_fail_update"):
             apply_plan(sessions, plan, backup)
     finally:
         with test_database_engine.begin() as connection:
-            connection.execute(text("DROP TRIGGER issue16_fail_update"))
+            connection.execute(text("ALTER TABLE factories DROP CHECK issue16_fail_update"))
     assert preview(sessions) == plan
     with sessions() as session:
         assert session.scalars(select(AuditLog)).all() == []

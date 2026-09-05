@@ -38,6 +38,13 @@ from app.modules.infrastructure import utc_now
 
 logger = logging.getLogger(__name__)
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
+# Confirmed recipients for Issue #8; match the full Feishu profile name, never a nickname suffix.
+ADMIN_BUSINESS_RECIPIENT_NAMES = (
+    "王心玲&煎饼",
+    "张小薇&花卷",
+    "陆小易&怡宝",
+    "程月红&蜜桔",
+)
 
 
 def _wechat_time(value: datetime) -> str:
@@ -844,19 +851,32 @@ class NotificationsAuditService:
         shipment = session.get(Shipment, message.aggregate_id)
         if shipment is None:
             return
-        factory_name = session.scalar(
-            select(Factory.factory_name).where(Factory.factory_id == shipment.factory_id)
-        )
-        total_quantity = int(
-            session.scalar(
-                select(func.sum(ShipmentLine.quantity)).where(
-                    ShipmentLine.shipment_id == shipment.shipment_id
-                )
+        lines = session.scalars(
+            select(ShipmentLine)
+            .where(ShipmentLine.shipment_id == shipment.shipment_id)
+            .order_by(ShipmentLine.line_id)
+        ).all()
+        # ShipmentLine already totals boxes per assignment. Merge equivalent snapshots too.
+        quantities: dict[tuple[str, str, str, str], int] = {}
+        for line in lines:
+            key = (
+                line.order_no_snapshot,
+                line.sku_id_snapshot,
+                line.product_name_snapshot,
+                line.properties_value_snapshot,
             )
-            or 0
+            quantities[key] = quantities.get(key, 0) + line.quantity
+        rows = tuple(
+            {
+                "orderNo": key[0],
+                "productName": key[2],
+                "propertiesValue": key[3],
+                "quantity": str(quantity),
+            }
+            for key, quantity in sorted(quantities.items())
         )
-        shipment_no = shipment.shipment_no or shipment.shipment_id
-        submitted_at = shipment.submitted_at or message.locked_at or utc_now()
+        total_quantity = sum(quantities.values())
+        recipients = self._admin_business_recipient_ids(session)
         for user in self._enabled_admins(session):
             self._notify_user(
                 session,
@@ -868,25 +888,22 @@ class NotificationsAuditService:
                 title="工厂已提交发货",
                 summary=f"发货单 {shipment.shipment_no or shipment.shipment_id} 已形成正式记录",
                 target_path=f"/shipments/{shipment.shipment_id}",
-                delivery_target_path=(
-                    "/pages/admin-shipment-detail/admin-shipment-detail"
-                    f"?shipmentId={shipment.shipment_id}"
-                ),
-                channel="wechat",
+                channel="feishu" if user.user_id in recipients else None,
                 template_key="admin_shipment",
-                template_data={
-                    "character_string1": shipment_no,
-                    "thing2": factory_name or "工厂",
-                    "time3": _wechat_time(submitted_at),
-                    "number7": str(total_quantity),
-                    "thing4": "请查看发货单详情",
-                },
+                template_data={"totalQuantity": str(total_quantity)},
+                card_rows=rows,
             )
 
     def _consume_void_requested(self, session: Session, message: OutboxMessage) -> None:
         shipment = session.get(Shipment, message.aggregate_id)
         if shipment is None:
             return
+        request = session.get(ShipmentVoidRequest, str(message.payload["requestId"]))
+        if request is None or request.shipment_id != shipment.shipment_id:
+            raise ValueError("withdrawal event has no matching request")
+        factory = session.get(Factory, shipment.factory_id)
+        applicant = session.get(User, request.requested_by)
+        recipients = self._admin_business_recipient_ids(session)
         for user in self._enabled_admins(session):
             self._notify_user(
                 session,
@@ -898,8 +915,15 @@ class NotificationsAuditService:
                 title="收到撤回发货申请",
                 summary=f"发货单 {shipment.shipment_no or shipment.shipment_id} 等待审核",
                 target_path=f"/shipments/{shipment.shipment_id}",
-                channel=None,
-                template_key=None,
+                channel="feishu" if user.user_id in recipients else None,
+                template_key="admin_void_request",
+                template_data={
+                    "factoryName": factory.factory_name if factory else "工厂",
+                    "shipmentNo": shipment.shipment_no or shipment.shipment_id,
+                    "applicant": applicant.feishu_display_name if applicant else "申请人",
+                    "requestedAt": _wechat_time(request.created_at),
+                    "reason": request.reason,
+                },
             )
 
     def _consume_void_result(self, session: Session, message: OutboxMessage) -> None:
@@ -1010,20 +1034,17 @@ class NotificationsAuditService:
         factory_name = session.scalar(
             select(Factory.factory_name).where(Factory.factory_id == repair.factory_id)
         )
-        batch_quantity = 0
-        if batch is not None:
-            batch_quantity = int(
-                session.scalar(
-                    select(
-                        func.sum(
-                            RepairReturnLine.repaired_quantity
-                            + RepairReturnLine.scrapped_quantity
-                        )
-                    ).where(RepairReturnLine.batch_id == batch.batch_id)
-                )
-                or 0
-            )
+        if batch is None or batch.repair_id != repair.repair_id:
+            raise ValueError("repair return event has no matching batch")
+        quantities = session.execute(
+            select(
+                func.coalesce(func.sum(RepairReturnLine.repaired_quantity), 0),
+                func.coalesce(func.sum(RepairReturnLine.scrapped_quantity), 0),
+            ).where(RepairReturnLine.batch_id == batch.batch_id)
+        ).one()
+        repaired_quantity, scrapped_quantity = int(quantities[0]), int(quantities[1])
         status_text = "，返修已完成" if repair.status == "COMPLETED" else ""
+        recipients = self._admin_business_recipient_ids(session)
         for user in self._enabled_admins(session):
             self._notify_user(
                 session,
@@ -1033,33 +1054,39 @@ class NotificationsAuditService:
                 target_type="repair",
                 target_id=repair.repair_id,
                 title="工厂已提交返修结果",
-                summary=(
-                    f"返修单 {repair.repair_no} 已提交一批发回记录{status_text}"
-                    if batch is not None
-                    else f"返修单 {repair.repair_no} 已更新{status_text}"
-                ),
+                summary=f"返修单 {repair.repair_no} 已提交一批发回记录{status_text}",
                 target_path=f"/repairs/{repair.repair_id}",
-                delivery_target_path=(
-                    "/pages/admin-repair-detail/admin-repair-detail"
-                    f"?repairId={repair.repair_id}"
-                ),
-                channel="wechat",
+                channel="feishu" if user.user_id in recipients else None,
                 template_key="admin_repair",
-                template_data={
-                    "thing6": factory_name or "工厂",
-                    "thing2": str(batch_quantity),
-                    "time4": _wechat_time(
-                        batch.submitted_at
-                        if batch is not None
-                        else message.locked_at or utc_now()
-                    ),
-                    "thing5": (
-                        f"{repair.repair_no}已完成"
-                        if repair.status == "COMPLETED"
-                        else f"{repair.repair_no}已发回"
-                    ),
-                },
+                card_rows=(
+                    {
+                        "factoryName": factory_name or "工厂",
+                        "repairedQuantity": str(repaired_quantity),
+                        "scrappedQuantity": str(scrapped_quantity),
+                        "returnedQuantity": str(repaired_quantity + scrapped_quantity),
+                    },
+                ),
             )
+
+    @staticmethod
+    def _admin_business_recipient_ids(session: Session) -> set[str]:
+        users = session.scalars(
+            select(User).where(
+                User.role == "admin",
+                User.feishu_display_name.in_(ADMIN_BUSINESS_RECIPIENT_NAMES),
+            )
+        ).all()
+        recipient_ids: set[str] = set()
+        for name in ADMIN_BUSINESS_RECIPIENT_NAMES:
+            matches = [user for user in users if user.feishu_display_name == name]
+            if len(matches) != 1:
+                logger.warning(
+                    "admin_feishu_recipient_missing_or_ambiguous",
+                    extra={"recipient_name": name, "match_count": len(matches)},
+                )
+            elif matches[0].is_enabled:
+                recipient_ids.add(matches[0].user_id)
+        return recipient_ids
 
     @staticmethod
     def _enabled_admins(session: Session) -> list[User]:
@@ -1101,6 +1128,7 @@ class NotificationsAuditService:
         channel: str | None,
         template_key: str | None,
         template_data: dict[str, str] | None = None,
+        card_rows: tuple[dict[str, str], ...] | None = None,
     ) -> None:
         dedupe_key = f"event:{message.dedupe_key}"
         if self._notification_exists(session, user_id, dedupe_key):
@@ -1146,6 +1174,7 @@ class NotificationsAuditService:
             dedupe_key=f"delivery:{message.dedupe_key}:{user_id}:{channel}",
             available_at=message.locked_at or utc_now(),
             template_data=template_data,
+            card_rows=card_rows,
         )
 
     @staticmethod

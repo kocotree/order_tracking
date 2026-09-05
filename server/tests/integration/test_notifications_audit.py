@@ -22,7 +22,6 @@ from app.db.models import (
     RepairReturnBatch,
     RepairReturnLine,
     Shipment,
-    ShipmentLine,
     StoredFile,
     User,
 )
@@ -206,77 +205,89 @@ def test_authorization_rejects_template_keys_outside_current_mini_program_role(
         raise AssertionError("factory user must not authorize administrator templates")
 
 
-def test_submitted_shipment_uses_selected_supplier_shipment_template_fields(
+def test_submitted_shipment_sends_feishu_to_four_admins_without_wechat_authorization(
     test_database_engine: Engine,
 ) -> None:
     sessions, _order_service, _draft = _publish_order(
         test_database_engine, factory_user_ids=["factory-notice-user"]
     )
+    from app.modules.shipments.service import DraftBoxInput, DraftItemInput, ShipmentService
+
     submitted_at = datetime(2026, 8, 27, 2, 15)
     with sessions() as session, session.begin():
         session.query(OutboxMessage).filter_by(message_kind="business_event").update(
             {"status": "completed"}
         )
-        assignment = session.query(OrderAssignment).one()
-        session.add(
-            Shipment(
-                shipment_id="shipment-notice",
-                shipment_no="FH20260827-001",
-                factory_id="factory-notice-a",
-                status="SHIPPED",
-                business_date=date(2026, 8, 27),
-                created_by="factory-notice-user",
-                submitted_by="factory-notice-user",
-                submitted_at=submitted_at,
-            )
-        )
-        session.flush()
-        session.add(
-            ShipmentLine(
-                shipment_id="shipment-notice",
-                order_assignment_id=assignment.order_assignment_id,
-                quantity=12,
-                order_no_snapshot="S11-001",
-                sku_id_snapshot="SKU-S11",
-                product_name_snapshot="通知测试童帽",
-                properties_value_snapshot="蓝色 / 120",
-            )
-        )
-        session.add(
-            OutboxMessage(
-                event_type="shipment.submitted",
-                aggregate_type="shipment",
-                aggregate_id="shipment-notice",
-                dedupe_key="shipment:shipment-notice:submitted",
-                payload={"shipmentId": "shipment-notice", "shipmentNo": "FH20260827-001"},
-                status="pending",
-                available_at=submitted_at,
-            )
-        )
-
-    service = NotificationsAuditService(sessions)
-    service.record_authorizations(
-        user_id="admin-notice",
-        results={"admin_shipment": "accepted"},
-        authorized_at=datetime(2026, 8, 27, 2, 0),
+        assignment_id = session.query(OrderAssignment).one().order_assignment_id
+    shipments = ShipmentService(sessions)
+    draft, _ = shipments.create_or_reuse_draft(
+        actor_id="factory-notice-user", factory_id="factory-notice-a", preferred_order_id=None
     )
-    assert service.consume_next_business_event(
-        worker_id="s11-shipment-event", now=submitted_at
-    ) is True
-    notifier = FakeWechatNotifier()
-    assert service.deliver_next(
-        worker_id="s11-shipment-delivery",
-        wechat_notifier=notifier,
-        now=submitted_at,
-    ) is True
-    assert notifier.sent[0].template_key == "admin_shipment"
-    assert notifier.sent[0].template_data == {
-        "character_string1": "FH20260827-001",
-        "thing2": "通知工厂甲",
-        "time3": "2026-08-27 10:15",
-        "number7": "12",
-        "thing4": "请查看发货单详情",
+    shipments.save_draft(
+        actor_id="factory-notice-user",
+        factory_id="factory-notice-a",
+        shipment_id=draft.shipment_id,
+        note="",
+        boxes=[
+            DraftBoxInput(box_no=1, group_key=None, items=[DraftItemInput(assignment_id, 5)]),
+            DraftBoxInput(box_no=2, group_key=None, items=[DraftItemInput(assignment_id, 7)]),
+        ],
+    )
+    for _ in range(2):
+        shipments.submit_draft(
+            actor_id="factory-notice-user",
+            factory_id="factory-notice-a",
+            shipment_id=draft.shipment_id,
+            idempotency_key="shipment-card",
+            now=submitted_at,
+        )
+    with sessions() as session, session.begin():
+        session.add_all(
+            User(
+                user_id=f"recipient-{index}",
+                role="admin",
+                is_enabled=True,
+                feishu_display_name=name,
+            )
+            for index, name in enumerate(
+                ["王心玲&煎饼", "张小薇&花卷", "陆小易&怡宝", "程月红&蜜桔"]
+            )
+        )
+    service = NotificationsAuditService(sessions)
+    assert service.consume_next_business_event(worker_id="shipment", now=submitted_at)
+    assert not service.consume_next_business_event(worker_id="shipment", now=submitted_at)
+    wechat = FakeWechatNotifier()
+    feishu = FakeFeishuBusinessNotifier()
+    while service.deliver_next(
+        worker_id="delivery", wechat_notifier=wechat, feishu_notifier=feishu, now=submitted_at
+    ):
+        pass
+    assert wechat.sent == []
+    assert {item.recipient_id for item in feishu.sent} == {
+        "recipient-0",
+        "recipient-1",
+        "recipient-2",
+        "recipient-3",
     }
+    assert len(feishu.sent) == 4
+    item = feishu.sent[0]
+    assert item.target_path == f"/shipments/{draft.shipment_id}"
+    assert item.card_rows == (
+        {
+            "orderNo": "S11-001",
+            "productName": "通知测试童帽",
+            "propertiesValue": "蓝色 / 120",
+            "quantity": "12",
+        },
+    )
+    assert item.template_data["totalQuantity"] == "12"
+    for user_id in ["admin-notice", "recipient-0", "recipient-1", "recipient-2", "recipient-3"]:
+        assert (
+            service.list_notifications(
+                user_id=user_id, unread_only=False, page=1, page_size=10
+            ).total
+            == 1
+        )
 
 
 def test_created_repair_uses_selected_product_repair_template_fields(
@@ -353,7 +364,7 @@ def test_created_repair_uses_selected_product_repair_template_fields(
     }
 
 
-def test_returned_repair_reuses_selected_product_repair_template_for_admin(
+def test_returned_repair_feishu_card_uses_current_batch_not_cumulative_totals(
     test_database_engine: Engine,
 ) -> None:
     sessions, _order_service, _draft = _publish_order(
@@ -381,10 +392,10 @@ def test_returned_repair_reuses_selected_product_repair_template_for_admin(
                 repair_no="FX20260827-002",
                 factory_id="factory-notice-a",
                 status="COMPLETED",
-                warehouse_return_quantity=5,
-                repaired_quantity=5,
-                scrapped_quantity=0,
-                returned_quantity=5,
+                warehouse_return_quantity=50,
+                repaired_quantity=40,
+                scrapped_quantity=10,
+                returned_quantity=50,
                 return_date=date(2026, 8, 27),
                 original_file_id=stored_file.file_id,
                 source_sha256="d" * 64,
@@ -408,7 +419,7 @@ def test_returned_repair_reuses_selected_product_repair_template_for_admin(
                 line_order=1,
                 variant_id="variant-notice",
                 repaired_quantity=5,
-                scrapped_quantity=0,
+                scrapped_quantity=2,
             )
         )
         session.add(
@@ -426,28 +437,29 @@ def test_returned_repair_reuses_selected_product_repair_template_for_admin(
             )
         )
 
+    with sessions() as session, session.begin():
+        session.get(User, "admin-notice").feishu_display_name = "王心玲&煎饼"
     service = NotificationsAuditService(sessions)
-    service.record_authorizations(
-        user_id="admin-notice",
-        results={"admin_repair": "accepted"},
-        authorized_at=datetime(2026, 8, 27, 6, 0),
-    )
-    assert service.consume_next_business_event(
-        worker_id="s11-repair-return-event", now=submitted_at
-    ) is True
-    notifier = FakeWechatNotifier()
+    assert service.consume_next_business_event(worker_id="repair", now=submitted_at)
+    wechat = FakeWechatNotifier()
+    feishu = FakeFeishuBusinessNotifier()
     assert service.deliver_next(
-        worker_id="s11-repair-return-delivery",
-        wechat_notifier=notifier,
-        now=submitted_at,
-    ) is True
-    assert notifier.sent[0].template_key == "admin_repair"
-    assert notifier.sent[0].template_data == {
-        "thing6": "通知工厂甲",
-        "thing2": "5",
-        "time4": "2026-08-27 14:05",
-        "thing5": "FX20260827-002已完成",
-    }
+        worker_id="delivery", wechat_notifier=wechat, feishu_notifier=feishu, now=submitted_at
+    )
+    assert wechat.sent == []
+    assert len(feishu.sent) == 1
+    assert feishu.sent[0].target_path == "/repairs/repair-return-notice"
+    assert feishu.sent[0].card_rows == (
+        {
+            "factoryName": "通知工厂甲",
+            "repairedQuantity": "5",
+            "scrappedQuantity": "2",
+            "returnedQuantity": "7",
+        },
+    )
+    assert not service.deliver_next(
+        worker_id="delivery", wechat_notifier=wechat, feishu_notifier=feishu, now=submitted_at
+    )
 
 
 def test_accepted_wechat_authorization_creates_and_sends_one_user_delivery(
@@ -1130,3 +1142,135 @@ def test_due_scan_stops_and_restores_for_fully_shipped_factory_and_completed_ord
         assert order is not None
         order.lifecycle = "PUBLISHED"
     assert service.scan_due_reminders(business_date=date(2026, 9, 7)) == 2
+
+
+def test_void_request_only_sends_to_unique_enabled_named_admins(
+    test_database_engine: Engine,
+) -> None:
+    from app.modules.shipments.service import ShipmentService
+
+    sessions, _, _ = _publish_order(test_database_engine, factory_user_ids=["factory-notice-user"])
+    now = datetime(2026, 8, 27, 9, 0)
+    with sessions() as session, session.begin():
+        session.query(OutboxMessage).update({"status": "completed"})
+        session.add_all(
+            [
+                User(
+                    user_id="chosen",
+                    role="admin",
+                    is_enabled=True,
+                    feishu_display_name="王心玲&煎饼",
+                ),
+                User(
+                    user_id="disabled",
+                    role="admin",
+                    is_enabled=False,
+                    feishu_display_name="张小薇&花卷",
+                ),
+                User(
+                    user_id="duplicate-1",
+                    role="admin",
+                    is_enabled=True,
+                    feishu_display_name="陆小易&怡宝",
+                ),
+                User(
+                    user_id="duplicate-2",
+                    role="admin",
+                    is_enabled=True,
+                    feishu_display_name="陆小易&怡宝",
+                ),
+                User(
+                    user_id="suffix",
+                    role="admin",
+                    is_enabled=True,
+                    feishu_display_name="其他人&蜜桔",
+                ),
+            ]
+        )
+        session.add(
+            Shipment(
+                shipment_id="void-card",
+                shipment_no="FH20260827-002",
+                factory_id="factory-notice-a",
+                status="SHIPPED",
+                business_date=date(2026, 8, 27),
+                created_by="factory-notice-user",
+                submitted_by="factory-notice-user",
+                submitted_at=now,
+            )
+        )
+    shipments = ShipmentService(sessions)
+    for _ in range(2):
+        shipments.request_void(
+            actor_id="factory-notice-user",
+            factory_id="factory-notice-a",
+            shipment_id="void-card",
+            reason="箱数填错，请撤回",
+            idempotency_key="void-card",
+            now=now,
+        )
+    service = NotificationsAuditService(sessions)
+    assert service.consume_next_business_event(worker_id="event", now=now)
+    assert not service.consume_next_business_event(worker_id="event", now=now)
+    wechat, feishu = FakeWechatNotifier(), FakeFeishuBusinessNotifier()
+    while service.deliver_next(
+        worker_id="delivery", wechat_notifier=wechat, feishu_notifier=feishu, now=now
+    ):
+        pass
+    assert wechat.sent == []
+    assert [item.recipient_id for item in feishu.sent] == ["chosen"]
+    assert feishu.sent[0].template_data == {
+        "factoryName": "通知工厂甲",
+        "shipmentNo": "FH20260827-002",
+        "applicant": "工厂用户1",
+        "requestedAt": "2026-08-27 17:00",
+        "reason": "箱数填错，请撤回",
+    }
+    assert feishu.sent[0].target_path == "/shipments/void-card"
+    for user_id in ["chosen", "admin-notice", "duplicate-1", "duplicate-2", "suffix"]:
+        assert (
+            service.list_notifications(
+                user_id=user_id, unread_only=False, page=1, page_size=10
+            ).total
+            == 1
+        )
+
+
+def test_existing_admin_wechat_delivery_is_still_sent(test_database_engine: Engine) -> None:
+    sessions, _, _ = _publish_order(test_database_engine, factory_user_ids=["factory-notice-user"])
+    now = datetime(2026, 8, 27, 9, 0)
+    with sessions() as session, session.begin():
+        session.add(
+            OutboxMessage(
+                event_type="shipment.submitted",
+                aggregate_type="shipment",
+                aggregate_id="historical-shipment",
+                dedupe_key="old-admin-wechat",
+                message_kind="delivery",
+                channel="wechat",
+                recipient_id="admin-notice",
+                status="pending",
+                available_at=now,
+                payload={
+                    "templateKey": "admin_shipment",
+                    "title": "历史发货",
+                    "summary": "历史任务",
+                    "targetType": "shipment",
+                    "targetId": "historical-shipment",
+                    "targetPath": (
+                        "/pages/admin-shipment-detail/admin-shipment-detail"
+                        "?shipmentId=historical-shipment"
+                    ),
+                    "templateData": {"number7": "12"},
+                },
+            )
+        )
+    wechat, feishu = FakeWechatNotifier(), FakeFeishuBusinessNotifier()
+    service = NotificationsAuditService(sessions)
+    assert service.deliver_next(
+        worker_id="old-task", wechat_notifier=wechat, feishu_notifier=feishu, now=now
+    )
+    assert len(wechat.sent) == 1
+    assert wechat.sent[0].template_key == "admin_shipment"
+    assert wechat.sent[0].template_data == {"number7": "12"}
+    assert feishu.sent == []

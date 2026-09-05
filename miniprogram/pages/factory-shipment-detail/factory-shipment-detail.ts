@@ -1,3 +1,4 @@
+import { returnFromShipmentDetail } from "../../modules/navigation";
 import { shipmentApi, type Shipment, type ShipmentBox, type ShipmentFile, type ShipmentLine } from "../../api/shipments";
 import { isDevPreview, PREVIEW_SHIPMENT } from "../../modules/dev-preview";
 import { notificationApi } from "../../api/notifications";
@@ -81,5 +82,5 @@ Page({
     try { await shipmentApi.requestVoid(shipment.shipmentId, this.data.withdrawReason); await this.load(shipment.shipmentId); this.setData({ withdrawStep: "", submitting: false }); wx.showToast({ title: "撤回申请已提交", icon: "success" }); }
     catch { this.setData({ submitting: false, withdrawError: "撤回申请提交失败" }); }
   },
-  goBack() { wx.navigateBack(); },
+  goBack() { returnFromShipmentDetail(); },
 });

@@ -170,3 +170,61 @@ def test_factory_api_creates_reviews_and_disables_factory_user(
         )
         assert disabled.status_code == 200
         assert disabled.json()["isEnabled"] is False
+
+
+def test_factory_api_allows_empty_codes_and_returns_specific_errors(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    sessions = sessionmaker(test_database_engine, class_=Session)
+    identity = IdentityAccessService(sessions)
+    admin = identity.resolve_feishu_identity(
+        scope="tenant-a/app-a",
+        profile=FeishuProfile(subject="code-admin", display_name="管理员", phone="13812345122"),
+        request_id="code-api-login",
+        auto_grant_admin=True,
+    )
+    credentials = identity.issue_session(user_id=admin.user_id, terminal="web")
+    app = create_app(
+        database_url=test_database_url,
+        identity_service=identity,
+        factory_service=FactoryAccessService(sessions),
+    )
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("ot_web_session", credentials.access_token)
+        client.cookies.set("ot_csrf", credentials.csrf_token or "")
+        headers = {"X-CSRF-Token": credentials.csrf_token or ""}
+        for index in range(2):
+            response = client.post(
+                "/api/v1/admin/factories",
+                headers=headers,
+                json={
+                    "supplierNumber": f"S{index}",
+                    "factoryName": f"工厂{index}",
+                    "factoryCode": "",
+                },
+            )
+            assert response.status_code == 201
+            assert response.json()["factoryCode"] == ""
+        factory_id = response.json()["factoryId"]
+        invalid = client.patch(
+            f"/api/v1/admin/factories/{factory_id}",
+            headers=headers,
+            json={"version": 1, "factoryName": "工厂1", "factoryCode": "X Z"},
+        )
+        assert invalid.status_code == 400
+        assert invalid.json()["message"] == "工厂代码仅支持 1–32 位英文字母"
+        valid = client.patch(
+            f"/api/v1/admin/factories/{factory_id}",
+            headers=headers,
+            json={"version": 1, "factoryName": "工厂1", "factoryCode": " xz-分厂 "},
+        )
+        assert valid.status_code == 200
+        assert valid.json()["factoryCode"] == "XZ"
+        duplicate = client.post(
+            "/api/v1/admin/factories",
+            headers=headers,
+            json={"supplierNumber": "OTHER", "factoryName": "另一家", "factoryCode": "xz"},
+        )
+        assert duplicate.status_code == 409
+        assert duplicate.json()["message"] == "工厂代码已存在"

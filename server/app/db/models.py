@@ -201,7 +201,7 @@ class Factory(Base):
     factory_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     supplier_number: Mapped[str] = mapped_column(String(32), nullable=False)
     factory_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    factory_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    factory_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     legal_name: Mapped[str | None] = mapped_column(String(200))
     address: Mapped[str | None] = mapped_column(String(500))
     legal_representative: Mapped[str | None] = mapped_column(String(100))

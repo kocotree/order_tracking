@@ -332,11 +332,13 @@ def test_repeat_export_reuses_first_snapshot_and_same_request_is_idempotent(
             product = session.get(Product, PRODUCT_ID)
             order = session.get(Order, ORDER_ID)
             assert factory is not None and product is not None and order is not None
+            factory.factory_code = None
             factory.legal_name = "修改后的工厂名称"
             product.source_i_id = "NEW-ITEM-NO"
             product.name = "修改后的产品名称"
             order.order_no = "CHANGED-ORDER-NO"
 
+        assert service.list_for_order(actor_id=ADMIN_ID, order_id=ORDER_ID)[0].eligible
         repeated = service.create_export(
             actor_id=ADMIN_ID,
             order_id=ORDER_ID,
@@ -363,8 +365,9 @@ def test_repeat_export_reuses_first_snapshot_and_same_request_is_idempotent(
         _clean(test_database_engine)
 
 
+@pytest.mark.parametrize("new_code", ["HT", "NEW"])
 def test_same_day_same_factory_contract_numbers_keep_stable_sequence(
-    test_database_engine: Engine,
+    test_database_engine: Engine, new_code: str,
 ) -> None:
     _clean(test_database_engine)
     _seed_published_order(test_database_engine)
@@ -387,6 +390,8 @@ def test_same_day_same_factory_contract_numbers_keep_stable_sequence(
             idempotency_key="contract-sequence-first",
             request_id="contract-sequence-request-1",
         )
+        with Session(test_database_engine) as session, session.begin():
+            session.get(Factory, FACTORY_ID).factory_code = new_code
         second = service.create_export(
             actor_id=ADMIN_ID,
             order_id=SECOND_ORDER_ID,
@@ -397,7 +402,7 @@ def test_same_day_same_factory_contract_numbers_keep_stable_sequence(
         )
 
         assert first.contract_no == "20260824-KK-HT"
-        assert second.contract_no == "20260824-KK-HT-1"
+        assert second.contract_no == f"20260824-KK-{new_code}-1"
         with Session(test_database_engine) as session:
             sequences = list(
                 session.scalars(
@@ -538,3 +543,75 @@ def test_concurrent_same_day_factory_exports_allocate_unique_sequence(
         }
     finally:
         _clean(test_database_engine)
+
+
+def test_empty_code_blocks_first_export_and_migration_preserves_existing_contract(
+    test_database_engine: Engine,
+    tmp_path: Path,
+) -> None:
+    from app.modules.contracts.service import ContractValidationError
+    from scripts.migrate_factory_codes import apply_plan, preview, rollback
+
+    _seed_published_order(test_database_engine)
+    _seed_second_published_order(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    template = Path(__file__).resolve().parents[2] / "app/templates/processing_contract_v1.xlsx"
+    service = ContractService(
+        sessions,
+        workbook_renderer=ContractWorkbookRenderer(template_path=template),
+        file_store=FakePrivateFileStore(bucket="contract-test"),
+    )
+    first = service.create_export(
+        actor_id=ADMIN_ID,
+        order_id=ORDER_ID,
+        factory_id=FACTORY_ID,
+        signing_date=date(2026, 8, 24),
+        idempotency_key="before-migration",
+        request_id="before-migration",
+    )
+    with sessions() as session, session.begin():
+        original_snapshot = dict(
+            session.get(ProcessingContract, first.contract_id).contract_snapshot
+        )
+        session.add(
+            Factory(
+                factory_id="duplicate-factory",
+                supplier_number="DUP",
+                factory_name="重复代码工厂",
+                factory_code="HT-分厂",
+            )
+        )
+    plan = preview(sessions)
+    backup = tmp_path / "backup.json"
+    apply_plan(sessions, plan, backup)
+    assert not service.list_for_order(actor_id=ADMIN_ID, order_id=SECOND_ORDER_ID)[0].eligible
+    with pytest.raises(ContractValidationError, match="factoryCode"):
+        service.create_export(
+            actor_id=ADMIN_ID,
+            order_id=SECOND_ORDER_ID,
+            factory_id=FACTORY_ID,
+            signing_date=date(2026, 8, 24),
+            idempotency_key="blocked",
+            request_id="blocked",
+        )
+    repeated = service.create_export(
+        actor_id=ADMIN_ID,
+        order_id=ORDER_ID,
+        factory_id=FACTORY_ID,
+        signing_date=None,
+        idempotency_key="after-migration",
+        request_id="after-migration",
+    )
+    assert repeated.contract_no == first.contract_no
+    with sessions() as session:
+        assert (
+            session.get(ProcessingContract, first.contract_id).contract_snapshot
+            == original_snapshot
+        )
+    rollback(sessions, backup)
+    with sessions() as session:
+        assert session.get(Factory, FACTORY_ID).factory_code == "HT"
+        assert (
+            session.get(ProcessingContract, first.contract_id).contract_snapshot
+            == original_snapshot
+        )

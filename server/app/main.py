@@ -59,6 +59,7 @@ from app.modules.contracts import (
 )
 from app.modules.contracts.workbook import ContractWorkbookRenderer
 from app.modules.factory_access import FactoryAccessService
+from app.modules.factory_access.service import FactoryCodeConflict, FactoryCodeInvalid
 from app.modules.identity_access import (
     ApplicationConflict,
     AvatarInvalid,
@@ -360,6 +361,9 @@ def create_app(
             status_code, code, message = 403, "permission_denied", "没有权限执行该操作"
         elif isinstance(error, ResourceNotFound):
             status_code, code, message = 404, "not_found", "资源不存在"
+        elif isinstance(error, (FactoryCodeInvalid, FactoryCodeConflict)):
+            status_code = 409 if isinstance(error, FactoryCodeConflict) else 400
+            code, message = "factory_code_invalid", str(error)
         elif isinstance(error, ApplicationConflict):
             status_code, code, message = 409, "conflict", "数据状态已变化，请刷新后重试"
         elif isinstance(error, SmsRateLimited):

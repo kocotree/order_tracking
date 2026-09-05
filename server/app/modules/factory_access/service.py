@@ -15,6 +15,7 @@ from app.db.models import (
     User,
     UserSession,
 )
+from app.modules.factory_access.codes import normalize_factory_code
 from app.modules.identity_access import (
     ApplicationConflict,
     PermissionDenied,
@@ -28,6 +29,14 @@ class FactoryConflict(ApplicationConflict):
 
 
 class FactoryValidation(VerificationInvalid):
+    pass
+
+
+class FactoryCodeInvalid(FactoryValidation):
+    pass
+
+
+class FactoryCodeConflict(FactoryConflict):
     pass
 
 
@@ -107,7 +116,7 @@ class FactoryAccessService:
     ) -> FactorySnapshot:
         normalized_number = self._required_upper(supplier_number, "supplier number")
         normalized_name = self._required(factory_name, "factory name")
-        normalized_code = self._required_upper(factory_code, "factory code")
+        normalized_code = self._normalize_factory_code(factory_code)
         normalized_contacts = self._normalize_contacts(contacts)
         factory = Factory(
             factory_id=str(uuid4()),
@@ -151,6 +160,8 @@ class FactoryAccessService:
                 session.flush()
                 return self._snapshot(session, factory)
         except IntegrityError as error:
+            if "uq_factories_code" in str(error.orig):
+                raise FactoryCodeConflict("工厂代码已存在") from error
             raise FactoryConflict("factory unique field already exists") from error
 
     def update_factory(
@@ -168,7 +179,7 @@ class FactoryAccessService:
         request_id: str,
     ) -> FactorySnapshot:
         normalized_name = self._required(factory_name, "factory name")
-        normalized_code = self._required_upper(factory_code, "factory code")
+        normalized_code = self._normalize_factory_code(factory_code)
         normalized_contacts = self._normalize_contacts(contacts)
         try:
             with self._session_factory() as session, session.begin():
@@ -224,6 +235,8 @@ class FactoryAccessService:
                 session.flush()
                 return self._snapshot(session, factory)
         except IntegrityError as error:
+            if "uq_factories_code" in str(error.orig):
+                raise FactoryCodeConflict("工厂代码已存在") from error
             raise FactoryConflict("factory unique field already exists") from error
 
     def get_factory(self, *, actor_id: str, factory_id: str) -> FactorySnapshot:
@@ -684,6 +697,13 @@ class FactoryAccessService:
         return normalized
 
     @staticmethod
+    def _normalize_factory_code(value: str) -> str | None:
+        try:
+            return normalize_factory_code(value)
+        except ValueError as error:
+            raise FactoryCodeInvalid(str(error)) from error
+
+    @staticmethod
     def _require_admin(session: Session, actor_id: str) -> User:
         actor = session.get(User, actor_id)
         if actor is None or actor.role != "admin" or not actor.is_enabled:
@@ -727,7 +747,7 @@ class FactoryAccessService:
             factory_id=factory.factory_id,
             supplier_number=factory.supplier_number,
             factory_name=factory.factory_name,
-            factory_code=factory.factory_code,
+            factory_code=factory.factory_code or "",
             legal_name=factory.legal_name,
             address=factory.address,
             legal_representative=factory.legal_representative,

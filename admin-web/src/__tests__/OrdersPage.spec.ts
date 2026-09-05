@@ -1,3 +1,4 @@
+import { createRouter, createMemoryHistory } from "vue-router";
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -41,4 +42,16 @@ describe("order list prototype alignment", () => {
 
     expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ category: "服装", factoryIds: ["factory-1"], sortBy: "categoryAsc" }));
   });
+});
+
+it("opens the overdue tab from the dashboard query", async () => {
+  vi.spyOn(identityApi, "listFactories").mockResolvedValue({ items: [], total: 0 } as never);
+  const list = vi.spyOn(orderApi, "list").mockResolvedValue({ items: [], total: 0 } as never);
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/orders", component: OrdersPage }] });
+  await router.push("/orders?status=已逾期");
+  const wrapper = mount(OrdersPage, { global: { plugins: [router], stubs: { AdminShell: { template: "<div><slot/></div>" } } } });
+  await flushPromises();
+  expect(list).toHaveBeenCalledWith(expect.objectContaining({ status: "已逾期" }));
+  expect(wrapper.get(".order-status-tab.is-active").text()).toBe("已逾期");
+  wrapper.unmount();
 });

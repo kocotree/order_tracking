@@ -127,6 +127,7 @@
 </template>
 
 <script setup lang="ts">
+import { useRoute } from "vue-router";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 import { ApiError, identityApi, orderApi, type Factory, type Order } from "@/api/client";
@@ -147,7 +148,8 @@ const total = ref(0);
 const page = ref(1);
 const pageSize = 10;
 const keyword = ref("");
-const status = ref("all");
+const route = useRoute();
+const status = ref(statuses.some((item) => item.value === route?.query.status) ? String(route.query.status) : "all");
 const category = ref("");
 const factoryIds = ref<string[]>([]);
 const selectedTrackers = ref<string[]>([]);

@@ -20,8 +20,8 @@
       <div class="dashboard-overview">
         <section class="dashboard-stat-grid" aria-label="订单统计">
           <RouterLink class="dashboard-stat-card" to="/orders/import"><span>待导入订单</span><strong>{{ dashboard?.pendingImportOrders ?? 0 }}</strong></RouterLink>
-          <article class="dashboard-stat-card"><span>今日发货记录</span><strong>{{ dashboard?.todayShipments ?? 0 }}</strong></article>
-          <article class="dashboard-stat-card"><span>逾期订单</span><strong>{{ dashboard?.overdueOrders ?? 0 }}</strong></article>
+          <RouterLink class="dashboard-stat-card" :to="{ path: '/shipments', query: { dateFrom: shanghaiToday(), dateTo: shanghaiToday() } }"><span>今日发货记录</span><strong>{{ dashboard?.todayShipments ?? 0 }}</strong></RouterLink>
+          <RouterLink class="dashboard-stat-card" :to="{ path: '/orders', query: { status: '已逾期' } }"><span>逾期订单</span><strong>{{ dashboard?.overdueOrders ?? 0 }}</strong></RouterLink>
         </section>
 
         <section class="section-card dashboard-notification-card" aria-labelledby="dashboard-notifications-title">
@@ -94,7 +94,8 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
-import { ApiError, notificationApi, orderApi, type DashboardOrders, type NotificationItem, type Order } from "@/api/client";
+import { ApiError, orderApi, type DashboardOrders, type NotificationItem, type Order } from "@/api/client";
+import { useNotificationsStore } from "@/stores/notifications";
 import AdminShell from "@/components/AdminShell.vue";
 
 type SortKey = "orderNo" | "productName" | "category" | "tracker" | "factory" | "contractShipDate" | "progressPercent" | "quantity" | "status";
@@ -112,7 +113,8 @@ const sortableColumns: { key: SortKey; label: string }[] = [
 ];
 
 const dashboard = ref<DashboardOrders | null>(null);
-const notifications = ref<NotificationItem[]>([]);
+const notificationStore = useNotificationsStore();
+const notifications = computed(() => notificationStore.recent);
 const route = useRoute(); const router = useRouter();
 const loading = ref(true);
 const errorMessage = ref("");
@@ -183,17 +185,22 @@ function toggleSort(key: SortKey) {
   sortDirection.value = "asc";
 }
 
+function shanghaiToday() {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  return ["year", "month", "day"].map((type) => parts.find((part) => part.type === type)?.value).join("-");
+}
 const notificationTime = (value:string) => new Date(value).toLocaleString("zh-CN", { timeZone:"Asia/Shanghai", hour12:false });
 async function openNotification(item:NotificationItem) {
-  if (!item.readAt) await notificationApi.markRead(item.notificationId);
+  try { await notificationStore.markRead(item); }
+  catch { errorMessage.value = "通知标记已读失败，请重试"; return; }
   await router.push({ path:item.targetPath, query:{ notificationReturnTo:route.fullPath } });
 }
 
 onMounted(async () => {
   try {
-    const [dashboardResult, notificationResult] = await Promise.all([orderApi.dashboard(), notificationApi.list("all", 1, 3)]);
+    const [dashboardResult] = await Promise.all([orderApi.dashboard(), notificationStore.refresh()]);
     dashboard.value = dashboardResult;
-    notifications.value = notificationResult.items;
+
   } catch (error) {
     errorMessage.value = error instanceof ApiError ? error.message : "订单看板加载失败";
   } finally {

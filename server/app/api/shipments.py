@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, Cookie, File, Header, Request, Response, UploadFile
+from fastapi import APIRouter, Cookie, File, Header, Query, Request, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from app.modules.identity_access import IdentityAccessService, PermissionDenied, SessionInvalid
@@ -47,6 +47,7 @@ class ShipmentVoidRequestResponse(ApiModel):
 
 
 class ShipmentDraftResponse(ApiModel):
+    version: int = 1
     shipment_id: str
     status: str
     factory_id: str
@@ -75,10 +76,11 @@ class DraftItemWrite(ApiModel):
 class DraftBoxWrite(ApiModel):
     box_no: StrictInt = Field(gt=0)
     group_key: str | None = None
-    items: list[DraftItemWrite] = Field(min_length=1)
+    items: list[DraftItemWrite] = []
 
 
 class DraftSave(ApiModel):
+    version: StrictInt = Field(default=1, ge=1)
     boxes: list[DraftBoxWrite] = Field(min_length=1)
     note: str = Field(default="", max_length=500)
 
@@ -330,6 +332,23 @@ def create_shipment_router(
         )
         return Response(status_code=204)
 
+    @router.delete(
+        "/factory/shipments/drafts/{shipment_id}",
+        status_code=204,
+        tags=["shipment-factory"],
+    )
+    def abandon_draft(
+        shipment_id: str,
+        version: Annotated[int, Query(ge=1)],
+        authorization: str | None = Header(default=None),
+    ) -> Response:
+        actor = factory_user(authorization)
+        service.abandon_draft(
+            actor_id=actor.user_id, factory_id=actor.factory_id or "",
+            shipment_id=shipment_id, expected_version=version,
+        )
+        return Response(status_code=204)
+
     @router.put(
         "/factory/shipments/drafts/{shipment_id}",
         response_model=ShipmentDraftResponse,
@@ -357,6 +376,7 @@ def create_shipment_router(
                 shipment_id=shipment_id,
                 boxes=boxes,
                 note=payload.note,
+                expected_version=payload.version,
             )
         )
 
@@ -367,6 +387,7 @@ def create_shipment_router(
     )
     def submit_draft(
         shipment_id: str,
+        version: Annotated[int | None, Query(ge=1)] = None,
         authorization: str | None = Header(default=None),
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> ShipmentDraftResponse:
@@ -379,6 +400,7 @@ def create_shipment_router(
                 factory_id=actor.factory_id or "",
                 shipment_id=shipment_id,
                 idempotency_key=idempotency_key,
+                expected_version=version,
             )
         )
 

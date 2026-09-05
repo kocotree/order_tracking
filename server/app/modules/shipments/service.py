@@ -185,6 +185,7 @@ class ShipmentDraftSnapshot:
     created_by: str
     preferred_order_id: str | None
     created_at: datetime
+    version: int = 1
     factory_name: str = ""
     submitted_at: datetime | None = None
     shipment_no: str | None = None
@@ -232,6 +233,7 @@ class ShipmentService:
         preferred_order_id: str | None,
     ) -> tuple[ShipmentDraftSnapshot, bool]:
         with self._sessions.begin() as session:
+            session.execute(select(User.user_id).where(User.user_id == actor_id).with_for_update())
             existing = session.scalar(
                 select(Shipment).where(
                     Shipment.active_draft_owner_id == actor_id,
@@ -240,7 +242,9 @@ class ShipmentService:
                 )
             )
             if existing is not None:
-                return self._snapshot(existing), False
+                if existing.factory_id != factory_id:
+                    raise ShipmentConflict("所属工厂已变化，请联系管理员处理原草稿")
+                return self._detail_snapshot(session, existing), False
 
             if preferred_order_id is not None and not session.scalar(
                 self._preferred_order_query(
@@ -316,14 +320,25 @@ class ShipmentService:
         shipment_id: str,
         boxes: list[DraftBoxInput],
         note: str,
+        expected_version: int = 1,
     ) -> ShipmentDraftSnapshot:
         with self._sessions.begin() as session:
             shipment = self._owned_shipment(session, shipment_id, actor_id, factory_id, lock=True)
             if shipment.status != "DRAFT":
                 raise ShipmentConflict("submitted shipment cannot be edited")
-            self._validate_boxes(boxes)
+            if shipment.version != expected_version:
+                if (
+                    expected_version < shipment.version
+                    and (shipment.note or "") == note.strip()
+                    and self._box_inputs(session, shipment_id)
+                    == sorted(boxes, key=lambda box: box.box_no)
+                ):
+                    return self._detail_snapshot(session, shipment)
+                raise ShipmentConflict("草稿已更新，请重新进入后继续填写")
+            self._validate_boxes(boxes, allow_empty=True)
             assignment_ids = {item.assignment_id for box in boxes for item in box.items}
-            self._load_assignments(session, assignment_ids, factory_id)
+            if assignment_ids:
+                self._load_assignments(session, assignment_ids, factory_id)
             box_ids = select(ShipmentBox.box_id).where(ShipmentBox.shipment_id == shipment_id)
             session.execute(delete(ShipmentBoxItem).where(ShipmentBoxItem.box_id.in_(box_ids)))
             session.execute(delete(ShipmentBox).where(ShipmentBox.shipment_id == shipment_id))
@@ -344,8 +359,20 @@ class ShipmentService:
                         )
                     )
             shipment.note = note.strip() or None
+            shipment.version += 1
             session.flush()
             return self._detail_snapshot(session, shipment)
+
+    def abandon_draft(
+        self, *, actor_id: str, factory_id: str, shipment_id: str, expected_version: int,
+    ) -> None:
+        with self._sessions.begin() as session:
+            shipment = self._owned_shipment(session, shipment_id, actor_id, factory_id, lock=True)
+            if shipment.status != "DRAFT" or shipment.version != expected_version:
+                raise ShipmentConflict("草稿已更新或已提交，请重新进入后操作")
+            shipment.deleted_at = datetime.now(UTC)
+            shipment.active_draft_owner_id = None
+            shipment.version += 1
 
     def get_current_draft(self, *, actor_id: str, factory_id: str) -> ShipmentDraftSnapshot:
         with self._sessions() as session:
@@ -523,6 +550,7 @@ class ShipmentService:
         shipment_id: str,
         idempotency_key: str,
         now: datetime | None = None,
+        expected_version: int | None = None,
     ) -> ShipmentDraftSnapshot:
         current = now or datetime.now(UTC)
         business_date = current.astimezone(BUSINESS_TIME_ZONE).date()
@@ -530,6 +558,10 @@ class ShipmentService:
             shipment = self._owned_shipment(session, shipment_id, actor_id, factory_id, lock=True)
             if shipment.status == "SHIPPED":
                 return self._detail_snapshot(session, shipment)
+            if shipment.status != "DRAFT":
+                raise ShipmentConflict("submitted shipment cannot be edited")
+            if expected_version is not None and shipment.version != expected_version:
+                raise ShipmentConflict("草稿已更新，请重新进入后核对再提交")
             boxes = self._box_inputs(session, shipment_id)
             self._validate_boxes(boxes)
             totals: dict[int, int] = defaultdict(int)
@@ -1146,6 +1178,7 @@ class ShipmentService:
     def _snapshot(shipment: Shipment) -> ShipmentDraftSnapshot:
         return ShipmentDraftSnapshot(
             shipment_id=shipment.shipment_id,
+            version=shipment.version,
             status=shipment.status,
             factory_id=shipment.factory_id,
             created_by=shipment.created_by,
@@ -1154,11 +1187,14 @@ class ShipmentService:
         )
 
     @staticmethod
-    def _validate_boxes(boxes: list[DraftBoxInput]) -> None:
+    def _validate_boxes(boxes: list[DraftBoxInput], *, allow_empty: bool = False) -> None:
         if not boxes or len({box.box_no for box in boxes}) != len(boxes):
             raise ShipmentValidationError("box numbers must be unique")
         for box in boxes:
-            if type(box.box_no) is not int or box.box_no <= 0 or not box.items:
+            if (
+                type(box.box_no) is not int or box.box_no <= 0
+                or (not allow_empty and not box.items)
+            ):
                 raise ShipmentValidationError("each box requires contents")
             if len({item.assignment_id for item in box.items}) != len(box.items):
                 raise ShipmentValidationError("duplicate assignment in box")
@@ -1357,6 +1393,7 @@ class ShipmentService:
         ).all()
         return ShipmentDraftSnapshot(
             shipment_id=shipment.shipment_id,
+            version=shipment.version,
             shipment_no=shipment.shipment_no,
             status=shipment.status,
             factory_id=shipment.factory_id,

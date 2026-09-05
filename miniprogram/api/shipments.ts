@@ -7,7 +7,7 @@ export interface ShipmentBox { boxNo:number; groupKey:string|null; items:Shipmen
 export interface ShipmentFile { fileId:number; filename:string; mimeType:string; sizeBytes:number; contentSha256:string; displayOrder:number; contentUrl:string }
 export interface ShipmentVoidRequest { requestId:string; shipmentId:string; status:"PENDING"|"APPROVED"|"REJECTED"; reason:string; requestedBy:string; requestedByName:string; requestedAt:string; reviewedBy:string|null; reviewedAt:string|null; reviewComment:string|null }
 export interface ShipmentReturnEvent { eventId:string; shipmentId:string; returnDate:string; reason:string; returnedBy:string; returnedAt:string; lines:{shipmentLineId:number;orderNo:string;quantity:number}[] }
-export interface Shipment { shipmentId:string; shipmentNo:string|null; status:string; factoryId:string; factoryName:string; createdBy:string; preferredOrderId:string|null; businessDate:string|null; note:string; totalBoxes:number; totalQuantity:number; lines:ShipmentLine[]; boxes:ShipmentBox[]; files:ShipmentFile[]; voidRequest?:ShipmentVoidRequest|null; returnEvents?:ShipmentReturnEvent[]; createdAt:string; submittedAt:string|null }
+export interface Shipment { version:number; shipmentId:string; shipmentNo:string|null; status:string; factoryId:string; factoryName:string; createdBy:string; preferredOrderId:string|null; businessDate:string|null; note:string; totalBoxes:number; totalQuantity:number; lines:ShipmentLine[]; boxes:ShipmentBox[]; files:ShipmentFile[]; voidRequest?:ShipmentVoidRequest|null; returnEvents?:ShipmentReturnEvent[]; createdAt:string; submittedAt:string|null }
 export interface CatalogItem { assignmentId:number; orderId:string; orderNo:string; contractShipDate:string; productName:string; propertiesValue:string; assignedQuantity:number; shippedQuantity:number; pendingQuantity:number }
 export interface DraftBoxWrite { boxNo:number; groupKey:string|null; items:{assignmentId:number;quantity:number}[] }
 
@@ -25,7 +25,9 @@ function contentUrl(path: string): string {
 export const shipmentApi = {
   catalog: () => authorizedRequest<{items:CatalogItem[];total:number}>({url:"/factory/shipment-catalog",method:"GET"}),
   createDraft: (preferredOrderId?:string) => authorizedRequest<Shipment>({url:"/factory/shipments/drafts",method:"POST",data:{preferredOrderId:preferredOrderId||null}}),
-  saveDraft: (shipmentId:string, boxes:DraftBoxWrite[], note:string) => authorizedRequest<Shipment>({url:`/factory/shipments/drafts/${encodeURIComponent(shipmentId)}`,method:"PUT",data:{boxes,note}}),
+  currentDraft: () => authorizedRequest<Shipment>({url:"/factory/shipments/drafts/current",method:"GET"}).catch(error => { if (error.statusCode === 404) return null; throw error; }),
+  abandonDraft: (shipmentId:string,version:number) => authorizedRequest<WechatMiniprogram.IAnyObject>({url:`/factory/shipments/drafts/${encodeURIComponent(shipmentId)}?version=${version}`,method:"DELETE"}),
+  saveDraft: (shipmentId:string, boxes:DraftBoxWrite[], note:string, version=1) => authorizedRequest<Shipment>({url:`/factory/shipments/drafts/${encodeURIComponent(shipmentId)}`,method:"PUT",data:{boxes,note,version}}),
   uploadFile: (shipmentId:string, filePath:string, idempotencyKey:string, onProgress:(progress:number)=>void) => new Promise<ShipmentFile>((resolve,reject) => {
     const task = wx.uploadFile({
       url:`${currentApiBaseUrl()}/factory/shipments/drafts/${encodeURIComponent(shipmentId)}/files`,
@@ -44,7 +46,7 @@ export const shipmentApi = {
     success(result) { if(result.statusCode===200)resolve(result.tempFilePath); else reject(new Error("发货凭证加载失败")); },
     fail:error => reject(new Error(error.errMsg)),
   })),
-  submitDraft: (shipmentId:string) => authorizedRequest<Shipment>({url:`/factory/shipments/drafts/${encodeURIComponent(shipmentId)}/submit`,method:"POST",header:{"Idempotency-Key":`shipment-${Date.now()}`}}),
+  submitDraft: (shipmentId:string,version?:number) => authorizedRequest<Shipment>({url:`/factory/shipments/drafts/${encodeURIComponent(shipmentId)}/submit${version === undefined ? "" : `?version=${version}`}`,method:"POST",header:{"Idempotency-Key":`shipment-${Date.now()}`}}),
   factoryList: () => authorizedRequest<{items:Shipment[];total:number}>({url:"/factory/shipments",method:"GET"}),
   factoryGet: (shipmentId:string) => authorizedRequest<Shipment>({url:`/factory/shipments/${encodeURIComponent(shipmentId)}`,method:"GET"}),
   requestVoid: (shipmentId:string, reason:string) => authorizedRequest<ShipmentVoidRequest>({url:`/factory/shipments/${encodeURIComponent(shipmentId)}/void-requests`,method:"POST",header:{"Idempotency-Key":`shipment-void-${Date.now()}`},data:{reason}}),

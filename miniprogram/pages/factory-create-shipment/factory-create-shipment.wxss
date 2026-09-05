@@ -73,3 +73,5 @@
 .ship-photo-progress.is-done { background: rgba(42,132,91,.86); }
 .ship-photo-progress.is-pending { background: rgba(83,96,110,.76); }
 .ship-upload-error { display: block; padding: 0 28rpx 24rpx; color: #c43131; font-size: 22rpx; }
+
+.ship-draft-status { padding: 12rpx 28rpx 0; color: #74808e; font-size: 22rpx; }

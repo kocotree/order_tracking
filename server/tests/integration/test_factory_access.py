@@ -115,8 +115,8 @@ def test_factory_creation_normalizes_unique_keys_and_reports_contract_completene
         assert [job.payload["factoryNames"] for job in jobs] == [["禹帆"], ["宇倩"]]
 
     for supplier_number, factory_name, factory_code in [
-        ("A10", "另一工厂", "Q1"),
-        ("C03", "禹帆", "Q2"),
+        ("A10", "另一工厂", "QA"),
+        ("C03", "禹帆", "QB"),
         ("C04", "其他工厂", "YF"),
     ]:
         with pytest.raises(FactoryConflict):
@@ -156,7 +156,7 @@ def test_factory_edit_uses_version_and_keeps_supplier_number_read_only(
         factory_id=created.factory_id,
         expected_version=created.version,
         factory_name="禹帆制帽",
-        factory_code="yf2",
+        factory_code="yfc",
         legal_name="温岭市新河禹帆制帽厂",
         address="浙江省温岭市",
         legal_representative="徐陈杰",
@@ -166,7 +166,7 @@ def test_factory_edit_uses_version_and_keeps_supplier_number_read_only(
 
     assert updated.supplier_number == "A10"
     assert updated.factory_name == "禹帆制帽"
-    assert updated.factory_code == "YF2"
+    assert updated.factory_code == "YFC"
     assert updated.version == 2
     assert updated.contract_complete is True
     assert [contact.name for contact in updated.contacts] == ["王超", "徐陈杰"]
@@ -439,3 +439,89 @@ def test_factory_application_rejection_requires_reason_and_allows_resubmission(
     assert second.position == "employee"
     history = access.list_factory_applications(actor_id=admin_id)
     assert [item.status for item in history] == ["pending", "rejected"]
+
+
+@pytest.mark.parametrize(
+    "code,expected",
+    [
+        ("", ""),
+        ("  ", ""),
+        (" xz（帽厂） ", "XZ"),
+        ("xz-分厂", "XZ"),
+        ("abc(note)", "ABC"),
+        ("A" * 32, "A" * 32),
+    ],
+)
+def test_factory_code_normalization_and_empty_recovery(
+    test_database_engine: Engine, code: str, expected: str
+) -> None:
+    actor_id = create_admin(test_database_engine)
+    service = FactoryAccessService(sessionmaker(test_database_engine, class_=Session))
+    common = dict(
+        actor_id=actor_id,
+        legal_name="公司",
+        address="地址",
+        legal_representative="法人",
+        contacts=[],
+        request_id="code-test-first",
+    )
+    first = service.create_factory(
+        **common, supplier_number="A", factory_name="第一家", factory_code=code
+    )
+    common["request_id"] = "code-test-second"
+    second = service.create_factory(
+        **common, supplier_number="B", factory_name="第二家", factory_code=""
+    )
+    assert first.factory_code == expected
+    assert second.factory_code == ""
+    assert second.missing_contract_fields == ("工厂代码",)
+    updated = service.update_factory(
+        **common,
+        factory_id=second.factory_id,
+        expected_version=second.version,
+        factory_name=second.factory_name,
+        factory_code=" new ",
+    )
+    assert updated.factory_code == "NEW"
+    assert updated.contract_complete
+    common["request_id"] = "code-test-cleared"
+    cleared = service.update_factory(
+        **common,
+        factory_id=updated.factory_id,
+        expected_version=updated.version,
+        factory_name=updated.factory_name,
+        factory_code="",
+    )
+    assert not cleared.contract_complete
+
+
+@pytest.mark.parametrize("code", ["希舟", "XZ1", "X Z", "A" * 33, "é", "ſ", "-分厂"])
+def test_factory_code_rejects_invalid_create_and_update(
+    test_database_engine: Engine, code: str
+) -> None:
+    actor_id = create_admin(test_database_engine)
+    service = FactoryAccessService(sessionmaker(test_database_engine, class_=Session))
+    common = dict(
+        actor_id=actor_id,
+        legal_name="",
+        address="",
+        legal_representative="",
+        contacts=[],
+        request_id="code-invalid",
+    )
+    with pytest.raises(FactoryValidation, match="工厂代码仅支持"):
+        service.create_factory(
+            **common, supplier_number="A", factory_name="工厂", factory_code=code
+        )
+    first = service.create_factory(
+        **common, supplier_number="A", factory_name="工厂", factory_code="OK"
+    )
+    with pytest.raises(FactoryValidation, match="工厂代码仅支持"):
+        service.update_factory(
+            **common,
+            factory_id=first.factory_id,
+            expected_version=first.version,
+            factory_name=first.factory_name,
+            factory_code=code,
+        )
+    assert service.get_factory(actor_id=actor_id, factory_id=first.factory_id).factory_code == "OK"

@@ -1,9 +1,10 @@
 import { notificationApi, type NotificationItem } from "../../api/notifications";
 import { notificationTarget } from "../../modules/notifications";
+import { formatShanghaiDateTime } from "../../utils/date-time";
 
 type NotificationView = NotificationItem & { categoryLabel:string; createdAtText:string };
 const labels:Record<string,string> = { NEW_ORDER:"新订单", DUE_REMINDER:"合同出货", SHIPMENT:"发货", REPAIR:"返修", BUSINESS_RESULT:"处理结果" };
-function view(item:NotificationItem):NotificationView { return { ...item, categoryLabel:labels[item.category] ?? "业务通知", createdAtText:new Date(item.createdAt).toLocaleString("zh-CN", { hour12:false }) }; }
+function view(item:NotificationItem):NotificationView { return { ...item, categoryLabel:labels[item.category] ?? "业务通知", createdAtText:formatShanghaiDateTime(item.createdAt) }; }
 
 Page({
   data: { status:"all" as "all"|"unread", page:1, items:[] as NotificationView[], total:0, hasMore:false, loading:true },

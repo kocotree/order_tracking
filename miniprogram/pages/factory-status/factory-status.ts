@@ -2,11 +2,13 @@ import { factoryApi, type FactoryApplication } from "../../api/factory";
 import { identityApi } from "../../api/identity";
 import { isDevPreview, PREVIEW_APPLICATION } from "../../modules/dev-preview";
 import { storedUser } from "../../modules/identity/session";
+import { formatShanghaiDateTime } from "../../utils/date-time";
 
 Page({
   data: {
     status: "pending",
     application: null as FactoryApplication | null,
+    submittedAtText: "—",
     factoryName: "",
     loading: false,
     previewMode: false,
@@ -29,6 +31,7 @@ Page({
               rejectionReason: status === "rejected" ? "申请信息与工厂登记信息不一致，请修改后重新提交。" : null,
               reviewedAt: status === "rejected" ? "2026-08-21 11:00" : null,
             },
+        submittedAtText: status === "disabled" ? "—" : formatShanghaiDateTime(PREVIEW_APPLICATION.submittedAt),
       });
       return;
     }
@@ -53,7 +56,11 @@ Page({
         wx.reLaunch({ url: "/pages/auth/auth" });
         return;
       }
-      this.setData({ status: application.status, application });
+      this.setData({
+        status: application.status,
+        application,
+        submittedAtText: formatShanghaiDateTime(application.submittedAt),
+      });
     } catch {
       wx.reLaunch({ url: "/pages/auth/auth" });
     } finally {

@@ -3,7 +3,7 @@
   <view class="notification-tabs"><button class="{{status === 'all' ? 'is-active' : ''}}" data-status="all" bindtap="changeStatus">全部</button><button class="{{status === 'unread' ? 'is-active' : ''}}" data-status="unread" bindtap="changeStatus">未读</button></view>
   <view wx:if="{{items.length}}" class="notification-list">
     <button wx:for="{{items}}" wx:key="notificationId" class="notification-item" data-index="{{index}}" bindtap="openNotification">
-      <view class="notification-head"><view><text wx:if="{{!item.readAt}}" class="notification-dot"></text><text class="notification-category">{{item.categoryLabel}}</text></view><text class="notification-time">{{item.createdAtText}}</text></view>
+      <view class="notification-head"><view class="notification-meta"><text wx:if="{{!item.readAt}}" class="notification-dot"></text><text class="notification-category">{{item.categoryLabel}}</text></view><text class="notification-time">{{item.createdAtText}}</text></view>
       <view class="notification-title-row"><text class="notification-title">{{item.title}}</text><text class="notification-arrow">›</text></view><text class="notification-summary">{{item.summary}}</text>
     </button>
   </view>

@@ -11,7 +11,7 @@
       <view><text>联系电话</text><text>{{application.phoneMasked}}</text></view>
       <view><text>职位</text><text>{{application.position === 'owner' ? '老板' : '工厂员工'}}</text></view>
       <view><text>申请工厂</text><text>{{application.requestedFactoryName}}</text></view>
-      <view class="application-fact--submitted"><text>提交时间</text><text>{{application.submittedAt}}</text></view>
+      <view class="application-fact--submitted"><text>提交时间</text><text>{{submittedAtText}}</text></view>
       <view wx:if="{{application.rejectionReason}}" class="reject-row"><text>拒绝原因</text><text>{{application.rejectionReason}}</text></view>
     </view>
   </view>

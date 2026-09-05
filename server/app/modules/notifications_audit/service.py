@@ -38,12 +38,13 @@ from app.modules.infrastructure import utc_now
 
 logger = logging.getLogger(__name__)
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
-# Confirmed recipients for Issue #8; match the full Feishu profile name, never a nickname suffix.
+# Confirmed recipients for Issue #26; match the full Feishu profile name, never a nickname suffix.
 ADMIN_BUSINESS_RECIPIENT_NAMES = (
     "王心玲&煎饼",
     "张小薇&花卷",
     "陆小易&怡宝",
     "程月红&蜜桔",
+    "杨嘉彬&核桃",
 )
 
 
@@ -877,6 +878,7 @@ class NotificationsAuditService:
         )
         total_quantity = sum(quantities.values())
         recipients = self._admin_business_recipient_ids(session)
+        recipients.update(self._shipment_tracker_recipient_ids(session, shipment.shipment_id))
         for user in self._enabled_admins(session):
             self._notify_user(
                 session,
@@ -904,6 +906,7 @@ class NotificationsAuditService:
         factory = session.get(Factory, shipment.factory_id)
         applicant = session.get(User, request.requested_by)
         recipients = self._admin_business_recipient_ids(session)
+        recipients.update(self._shipment_tracker_recipient_ids(session, shipment.shipment_id))
         for user in self._enabled_admins(session):
             self._notify_user(
                 session,
@@ -1067,6 +1070,40 @@ class NotificationsAuditService:
                     },
                 ),
             )
+
+    @staticmethod
+    def _shipment_tracker_recipient_ids(session: Session, shipment_id: str) -> set[str]:
+        trackers = session.scalars(
+            select(Order.tracker)
+            .join(OrderLine, OrderLine.order_id == Order.order_id)
+            .join(OrderAssignment, OrderAssignment.order_line_id == OrderLine.order_line_id)
+            .join(
+                ShipmentLine,
+                ShipmentLine.order_assignment_id == OrderAssignment.order_assignment_id,
+            )
+            .where(ShipmentLine.shipment_id == shipment_id)
+            .distinct()
+        ).all()
+        admins = session.scalars(select(User).where(User.role == "admin")).all()
+        recipients: set[str] = set()
+        for tracker in trackers:
+            matches = [
+                user
+                for user in admins
+                if tracker
+                and (
+                    user.feishu_display_name == tracker
+                    or user.feishu_display_name.endswith(f"&{tracker}")
+                )
+            ]
+            if len(matches) != 1 or not matches[0].is_enabled:
+                logger.warning(
+                    "admin_feishu_tracker_unavailable",
+                    extra={"shipment_id": shipment_id, "match_count": len(matches)},
+                )
+                continue
+            recipients.add(matches[0].user_id)
+        return recipients
 
     @staticmethod
     def _admin_business_recipient_ids(session: Session) -> set[str]:

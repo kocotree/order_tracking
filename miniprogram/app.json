@@ -30,6 +30,7 @@
     "mini-titlebar": "/components/mini-titlebar/mini-titlebar",
     "mini-tabbar": "/components/mini-tabbar/mini-tabbar"
   },
+  "lazyCodeLoading": "requiredComponents",
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }

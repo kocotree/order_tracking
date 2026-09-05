@@ -82,7 +82,7 @@ function renderEditor(factory = {}, mode = "edit") {
                 <label class="factory-form-label" for="supplier-number"><span>编号</span></label>
                 <div class="factory-form-control"><input id="supplier-number" type="text" name="supplierNumber" value="${fieldValue(factory.supplierNumber)}" placeholder="例如 A10" required${fixedFieldAttribute} /></div>
                 <label class="factory-form-label" for="factory-code"><span>工厂代码</span></label>
-                <div class="factory-form-control"><input id="factory-code" type="text" name="factoryCode" value="${fieldValue(factory.factoryCode)}" placeholder="例如 XZ" required${fixedFieldAttribute} /></div>
+                <div class="factory-form-control"><input id="factory-code" type="text" name="factoryCode" value="${fieldValue(factory.factoryCode)}" placeholder="例如 XZ，可留空" /></div>
 
                 <label class="factory-form-label" for="factory-name"><span>工厂名称</span></label>
                 <div class="factory-form-control"><input id="factory-name" type="text" name="factoryName" value="${fieldValue(factory.factoryName)}" placeholder="日常使用的工厂简称" required${fixedFieldAttribute} /></div>
@@ -367,21 +367,27 @@ export function bindFactoryListPage() {
     const values = Object.fromEntries(new FormData(editor).entries());
     const supplierNumber = String(values.supplierNumber ?? "").trim().toUpperCase();
     const factoryName = String(values.factoryName ?? "").trim();
-    const factoryCode = String(values.factoryCode ?? "").trim().toUpperCase();
+    const rawCode = String(values.factoryCode ?? "").trim();
+    const prefix = rawCode.split(/[（(-]/, 1)[0]?.trim() ?? "";
+    if (rawCode && !/^[A-Za-z]{1,32}$/.test(prefix)) {
+      showToast("无法保存", "工厂代码仅支持 1–32 位英文字母");
+      return;
+    }
+    const factoryCode = prefix.toUpperCase();
     const editingId = editor.dataset.factoryId;
-    if (!supplierNumber || !factoryName || !factoryCode) {
-      showToast("无法保存", "编号、工厂名称和工厂代码必须填写。");
+    if (!supplierNumber || !factoryName) {
+      showToast("无法保存", "编号和工厂名称必须填写。");
       return;
     }
     const duplicateNumber = factoryRecords.some((item) => item.id !== editingId && normalize(item.supplierNumber) === normalize(supplierNumber));
     const duplicateName = factoryRecords.some((item) => item.id !== editingId && normalize(item.factoryName) === normalize(factoryName));
-    const duplicateCode = factoryRecords.some((item) => item.id !== editingId && normalize(item.factoryCode) === normalize(factoryCode));
+    const duplicateCode = factoryCode && factoryRecords.some((item) => item.id !== editingId && normalize(item.factoryCode) === normalize(factoryCode));
     if (duplicateNumber || duplicateName || duplicateCode) {
       const message = duplicateNumber
         ? "编号已存在，请使用唯一编号。"
         : duplicateName
           ? "工厂名称已存在，请使用唯一名称。"
-          : "工厂代码已存在，请更换后保存。";
+          : "工厂代码已存在";
       showToast("无法保存", message);
       return;
     }

@@ -47,3 +47,20 @@ describe("factory editor", () => {
     expect(wrapper.get("#factory-address").element.parentElement?.classList).toContain("is-wide");
   });
 });
+
+it.each([["", ""], [" xz（帽厂） ", "XZ"], ["xz-分厂", "XZ"], ["X Z", null], ["A1", null], ["ſ", null]])("saves or rejects edited code %s", async (input, expected) => {
+  vi.spyOn(identityApi, "listFactories").mockResolvedValue({ items: [factory], total: 1 });
+  const update = vi.spyOn(identityApi, "updateFactory").mockResolvedValue(factory);
+  const wrapper = mount(FactoriesPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, TableSortButton: true } } });
+  await flushPromises();
+  await wrapper.get(".factory-row-actions button:last-child").trigger("click");
+  await wrapper.get("#factory-code").setValue(input);
+  await wrapper.get("form.factory-editor-panel").trigger("submit");
+  await flushPromises();
+  if (expected === null) {
+    expect(update).not.toHaveBeenCalled();
+    expect(wrapper.get("[role=dialog] [role=alert]").text()).toBe("工厂代码仅支持 1–32 位英文字母");
+  } else {
+    expect(update).toHaveBeenCalledWith(factory.factoryId, expect.objectContaining({ factoryCode: expected }));
+  }
+});

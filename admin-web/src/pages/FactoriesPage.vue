@@ -26,7 +26,7 @@
           <div class="order-list-heading"><h1 id="factory-list-title">工厂列表</h1></div>
           <button class="order-primary-button" type="button" @click="openCreate">新增工厂</button>
         </header>
-        <p v-if="errorMessage" class="page-error">{{ errorMessage }}</p>
+        <p v-if="errorMessage && !editorOpen" class="page-error">{{ errorMessage }}</p>
         <div class="table-scroll">
           <table class="factory-list-table data-grid-table">
             <thead><tr>
@@ -91,9 +91,10 @@
         <form class="factory-editor-panel" @submit.prevent="save">
           <header class="factory-editor-header"><h2 id="factory-editor-title">{{ editing ? '编辑' : '新增工厂' }}</h2><button class="factory-modal-close" type="button" aria-label="关闭编辑弹窗" @click="closeEditor">×</button></header>
           <div class="factory-editor-body">
+            <p v-if="errorMessage" class="page-error" role="alert">{{ errorMessage }}</p>
             <div class="factory-form-grid">
               <label class="factory-form-label" for="supplier-number"><span>编号</span></label><div class="factory-form-control"><input id="supplier-number" v-model="form.supplierNumber" :readonly="Boolean(editing)" maxlength="32" placeholder="例如 A10" /></div>
-              <label class="factory-form-label" for="factory-code"><span>工厂代码</span></label><div class="factory-form-control"><input id="factory-code" v-model="form.factoryCode" maxlength="32" placeholder="例如 XZ" /></div>
+              <label class="factory-form-label" for="factory-code"><span>工厂代码</span></label><div class="factory-form-control"><input id="factory-code" v-model="form.factoryCode" placeholder="例如 XZ，可留空" /></div>
               <label class="factory-form-label" for="factory-name"><span>工厂名称</span></label><div class="factory-form-control"><input id="factory-name" v-model="form.factoryName" maxlength="100" placeholder="日常使用的工厂简称" /></div>
               <label class="factory-form-label" for="factory-legal-representative"><span>法定代表人</span></label><div class="factory-form-control"><input id="factory-legal-representative" v-model="form.legalRepresentative" maxlength="100" /></div>
               <label class="factory-form-label" for="factory-legal-name"><span>单位全称</span></label><div class="factory-form-control is-wide"><input id="factory-legal-name" v-model="form.legalName" maxlength="200" placeholder="营业执照上的单位名称" /></div>
@@ -167,14 +168,18 @@ async function load() {
 async function applyFilters() { await load(); }
 async function resetFilters() { keyword.value = ""; contractStatus.value = "all"; accessStatus.value = "all"; sortBy.value = ""; sortOrder.value = "asc"; await load(); }
 function sortField(field: string) { if (sortBy.value === field) sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc"; else { sortBy.value = field; sortOrder.value = "asc"; } page.value = 1; }
-function openCreate() { editing.value = null; resetForm(emptyForm()); addContact(); editorOpen.value = true; }
-function openEdit(factory: Factory) { editing.value = factory; resetForm({ supplierNumber: factory.supplierNumber, factoryName: factory.factoryName, factoryCode: factory.factoryCode, legalName: factory.legalName ?? "", address: factory.address ?? "", legalRepresentative: factory.legalRepresentative ?? "", contacts: factory.contacts.map(({ name, phone }) => ({ name, phone })) }); if (form.contacts.length === 0) addContact(); editorOpen.value = true; }
+function openCreate() { errorMessage.value = ""; editing.value = null; resetForm(emptyForm()); addContact(); editorOpen.value = true; }
+function openEdit(factory: Factory) { errorMessage.value = ""; editing.value = factory; resetForm({ supplierNumber: factory.supplierNumber, factoryName: factory.factoryName, factoryCode: factory.factoryCode, legalName: factory.legalName ?? "", address: factory.address ?? "", legalRepresentative: factory.legalRepresentative ?? "", contacts: factory.contacts.map(({ name, phone }) => ({ name, phone })) }); if (form.contacts.length === 0) addContact(); editorOpen.value = true; }
 function closeEditor() { editorOpen.value = false; editing.value = null; }
 function addContact() { form.contacts.push({ name: "", phone: "" }); }
 async function viewFactoryUsers(factory: Factory) { await router.push({ path: "/people/users", query: { factory: factory.factoryId } }); }
 
 async function save() {
-  if (!form.supplierNumber.trim() || !form.factoryName.trim() || !form.factoryCode.trim()) { errorMessage.value = "请填写供应商编号、工厂名称和工厂代码"; return; }
+  if (!form.supplierNumber.trim() || !form.factoryName.trim()) { errorMessage.value = "请填写供应商编号和工厂名称"; return; }
+  const rawCode = form.factoryCode.trim();
+  const prefix = rawCode.split(/[（(-]/, 1)[0]?.trim() ?? "";
+  if (rawCode && !/^[A-Za-z]{1,32}$/.test(prefix)) { errorMessage.value = "工厂代码仅支持 1–32 位英文字母"; return; }
+  form.factoryCode = prefix.toUpperCase();
   saving.value = true; errorMessage.value = "";
   try {
     const payload = { factoryName: form.factoryName, factoryCode: form.factoryCode, legalName: form.legalName, address: form.address, legalRepresentative: form.legalRepresentative, contacts: form.contacts.filter((contact) => contact.name.trim() || contact.phone.trim()) };

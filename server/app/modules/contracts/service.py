@@ -135,6 +135,9 @@ class ContractService:
                         ProcessingContract.factory_id == factory_id,
                     )
                 )
+                # Existing contracts use their immutable factory snapshot.
+                if contract is not None:
+                    missing = []
                 reason = self._ineligible_reason(
                     order=order, missing=missing, has_shipments=has_shipments
                 )
@@ -210,11 +213,6 @@ class ContractService:
                     session, order_id=order_id, factory_id=factory_id
                 ):
                     raise ContractNotFound("factory assignment not found")
-                missing = self._missing_contract_fields(factory)
-                if missing:
-                    raise ContractValidationError(
-                        "factory contract fields are incomplete: " + ",".join(missing)
-                    )
                 contract = session.scalar(
                     select(ProcessingContract)
                     .where(
@@ -224,6 +222,12 @@ class ContractService:
                     .with_for_update()
                 )
                 if contract is None:
+                    missing = self._missing_contract_fields(factory)
+                    if missing:
+                        raise ContractValidationError(
+                            "factory contract fields are incomplete: " + ",".join(missing)
+                        )
+                    assert factory.factory_code is not None
                     if signing_date is None:
                         raise ContractValidationError("signing date is required")
                     sequence = self._allocate_sequence(

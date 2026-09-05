@@ -1,7 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { contractApi, orderApi, type Order } from "@/api/client";
+import { contractApi, orderApi, shipmentApi, type Shipment, type Order } from "@/api/client";
 import OrderDetailPage from "@/pages/OrderDetailPage.vue";
 
 vi.mock("vue-router", () => ({
@@ -20,6 +20,7 @@ const sampleOrder = {
 
 afterEach(() => vi.restoreAllMocks());
 beforeEach(() => {
+  vi.spyOn(shipmentApi, "list").mockResolvedValue({ items: [], total: 0 });
   vi.spyOn(orderApi, "auditLogs").mockResolvedValue({
     items: [{ action: "order.imported_from_feishu", changes: {}, actorId: "admin-1", operatorName: "松子", content: "从飞书导入订单：订单数量 400，初始已发数量 100，未发数量 300。", sourceTerminal: "web", createdAt: "2026-08-25T01:00:00Z" }],
     total: 1,
@@ -108,5 +109,24 @@ describe("order detail prototype alignment", () => {
     expect(exportSpy).toHaveBeenCalledWith("order-1", "factory-1", "2026-08-24");
     expect(downloadSpy).toHaveBeenCalledOnce();
     expect(wrapper.find(".contract-export-dialog").exists()).toBe(false);
+  });
+});
+
+
+describe("related shipments", () => {
+  it.each([false, true])("renders actual shipments or a query error (%s)", async (failed) => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    if (failed) vi.mocked(shipmentApi.list).mockRejectedValue(new Error("offline"));
+    else vi.mocked(shipmentApi.list).mockResolvedValue({ items: [{ shipmentId: "shipment-1", shipmentNo: "FH20260905-001", businessDate: "2026-09-05", totalQuantity: 23, status: "VOID_PENDING" } as Shipment], total: 1 });
+    const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { props: ["to"], template: '<a :href="to"><slot /></a>' } } } });
+    await flushPromises();
+    expect(shipmentApi.list).toHaveBeenCalledWith("order-1");
+    expect(wrapper.text()).not.toContain("当前订单暂无关联发货单");
+    if (failed) expect(wrapper.text()).toContain("关联发货单加载失败");
+    else {
+      expect(wrapper.find(".related-shipment-table").text()).toContain("FH20260905-001");
+      expect(wrapper.find(".related-shipment-table").text()).toContain("撤回处理中");
+      expect(wrapper.find('a[href="/shipments/shipment-1"]').exists()).toBe(true);
+    }
   });
 });

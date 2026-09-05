@@ -486,13 +486,14 @@ def create_shipment_router(
 
     @router.get("/admin/shipments", response_model=ShipmentListResponse, tags=["shipment-admin"])
     def admin_shipments(
+        order_id: Annotated[str | None, Query(alias="orderId", min_length=1)] = None,
         ot_web_session: str | None = Cookie(default=None),
         authorization: str | None = Header(default=None),
     ) -> ShipmentListResponse:
         actor, _terminal = query_user(ot_web_session, authorization)
         if actor.role != "admin":
             raise PermissionDenied("administrator role required")
-        items = [_draft_response(item) for item in service.list_shipments()]
+        items = [_draft_response(item) for item in service.list_shipments(order_id=order_id)]
         return ShipmentListResponse(items=items, total=len(items))
 
     @router.get(

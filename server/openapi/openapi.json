@@ -7331,6 +7331,23 @@
         "operationId": "admin_shipments_api_v1_admin_shipments_get",
         "parameters": [
           {
+            "in": "query",
+            "name": "orderId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orderid"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,

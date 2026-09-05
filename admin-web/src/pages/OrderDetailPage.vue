@@ -41,7 +41,19 @@
 
         <section class="section-card detail-section-card">
           <header class="detail-section-header"><h2>关联发货单</h2></header>
-          <div class="detail-table-scroll"><table class="data-grid-table detail-data-table related-shipment-table"><thead><tr><th>发货单号</th><th>发货日期</th><th>发货数量</th><th>物流单号</th><th>状态</th><th>操作</th></tr></thead><tbody><tr><td class="detail-empty-row" colspan="6">当前订单暂无关联发货单</td></tr></tbody></table></div>
+          <div class="detail-table-scroll"><table class="data-grid-table detail-data-table related-shipment-table"><thead><tr><th>发货单号</th><th>发货日期</th><th>发货数量</th><th>物流单号</th><th>状态</th><th>操作</th></tr></thead><tbody>
+            <tr v-if="shipmentsLoading"><td colspan="6" class="detail-empty-row">正在加载关联发货单…</td></tr>
+            <tr v-else-if="shipmentsError"><td colspan="6" class="detail-empty-row" role="alert">{{ shipmentsError }}</td></tr>
+            <template v-else>
+              <tr v-for="shipment in relatedShipments" :key="shipment.shipmentId">
+                <td><RouterLink class="row-link" :to="`/shipments/${shipment.shipmentId}`">{{ shipment.shipmentNo }}</RouterLink></td>
+                <td>{{ shipment.businessDate || "—" }}</td><td>{{ shipment.totalQuantity.toLocaleString() }}</td><td>—</td>
+                <td>{{ shipment.status === "VOIDED" ? "已作废" : shipment.status === "VOID_PENDING" ? "撤回处理中" : "已发货" }}</td>
+                <td><RouterLink class="row-link" :to="`/shipments/${shipment.shipmentId}`">详情</RouterLink></td>
+              </tr>
+              <tr v-if="!relatedShipments.length"><td class="detail-empty-row" colspan="6">当前订单暂无关联发货单</td></tr>
+            </template>
+          </tbody></table></div>
         </section>
 
         <section class="section-card detail-section-card order-audit-card" :class="{ 'is-expanded': auditExpanded }">
@@ -87,8 +99,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, contractApi, orderApi, type AuditLogList, type ContractFactoryStatus, type Order } from "@/api/client";
+import { ApiError, contractApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type ContractFactoryStatus, type Order } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
+
+const relatedShipments = ref<Shipment[]>([]);
+const shipmentsLoading = ref(false);
+const shipmentsError = ref("");
+async function loadShipments() { shipmentsLoading.value = true; shipmentsError.value = ""; try { relatedShipments.value = (await shipmentApi.list(orderId)).items; } catch { shipmentsError.value = "关联发货单加载失败，请刷新重试"; } finally { shipmentsLoading.value = false; } }
 
 type Action = "publish" | "withdraw" | "delete" | "complete" | "reopen";
 type DetailSortKey = "skuId" | "productName" | "propertiesValue" | "factoryName" | "orderQuantity" | "shippedQuantity" | "pendingQuantity" | "progressPercent";
@@ -118,7 +135,7 @@ function openAction(action: Action) { pendingAction.value = action; reopenReason
 function localDate() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`; }
 function contractReadyLabel(factory: ContractFactoryStatus) { const labels: Record<string, string> = { factoryCode: "工厂代码", legalName: "单位全称", address: "单位地址", legalRepresentative: "法定代表人" }; return factory.contractReady ? "完整" : `缺少：${factory.missingContractFields.map((field) => labels[field] || field).join("、")}`; }
 async function loadContracts() { if (order.value?.lifecycle !== "PUBLISHED") { contractFactories.value = []; return; } loadingContracts.value = true; try { contractFactories.value = (await contractApi.list(orderId)).items; } catch (error) { contractError.value = error instanceof ApiError ? error.message : "合同状态加载失败"; } finally { loadingContracts.value = false; } }
-async function load() { loading.value = true; try { order.value = await orderApi.get(orderId); auditLogs.value = (await orderApi.auditLogs(orderId)).items; await loadContracts(); } catch (error) { errorMessage.value = error instanceof ApiError && error.status === 404 && route.query.notificationReturnTo ? "内容已不可查看" : error instanceof ApiError ? error.message : "订单详情加载失败"; } finally { loading.value = false; } }
+async function load() { loading.value = true; try { order.value = await orderApi.get(orderId); await loadShipments(); auditLogs.value = (await orderApi.auditLogs(orderId)).items; await loadContracts(); } catch (error) { errorMessage.value = error instanceof ApiError && error.status === 404 && route.query.notificationReturnTo ? "内容已不可查看" : error instanceof ApiError ? error.message : "订单详情加载失败"; } finally { loading.value = false; } }
 function goBack() { return router.push(typeof route.query.notificationReturnTo === "string" ? route.query.notificationReturnTo : "/orders"); }
 function selectContractFactory(factory: ContractFactoryStatus) { selectedContractFactory.value = factory; contractSigningDate.value = factory.signingDate || localDate(); contractError.value = ""; }
 function openContractExport() { if (!order.value || order.value.shippedQuantity > 0) return; contractError.value = ""; contractDialogOpen.value = true; if (contractFactories.value.length === 1) selectContractFactory(contractFactories.value[0]); else selectedContractFactory.value = null; }

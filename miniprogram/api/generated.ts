@@ -4330,7 +4330,9 @@ export interface operations {
     };
     admin_shipments_api_v1_admin_shipments_get: {
         parameters: {
-            query?: never;
+            query?: {
+                orderId?: string | null;
+            };
             header?: {
                 authorization?: string | null;
             };

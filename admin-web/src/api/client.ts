@@ -352,7 +352,7 @@ export const contractApi = {
 };
 
 export const shipmentApi = {
-  list: () => request<ShipmentList>("/v1/admin/shipments"),
+  list: (orderId?: string) => request<ShipmentList>(`/v1/admin/shipments${orderId ? `?orderId=${encodeURIComponent(orderId)}` : ""}`),
   get: (shipmentId: string) =>
     request<Shipment>(`/v1/admin/shipments/${encodeURIComponent(shipmentId)}`),
   download: (shipment: Shipment) => download(

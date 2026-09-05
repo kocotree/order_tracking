@@ -1,3 +1,4 @@
+import { returnFromShipmentDetail } from "../../modules/navigation";
 import { shipmentApi, type Shipment, type ShipmentBox, type ShipmentFile, type ShipmentLine } from "../../api/shipments";
 import { isDevPreview, PREVIEW_SHIPMENT } from "../../modules/dev-preview";
 import { notificationApi } from "../../api/notifications";
@@ -58,5 +59,5 @@ Page({
     const boxNo = Number(event.currentTarget.dataset.boxNo);
     this.setData({ boxGroups: this.data.boxGroups.map((box) => box.boxNo === boxNo ? { ...box, expanded: !box.expanded } : box) });
   },
-  goBack() { wx.navigateBack(); },
+  goBack() { returnFromShipmentDetail(); },
 });

@@ -33,10 +33,17 @@ describe("order detail prototype alignment", () => {
     vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
     const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
     await flushPromises();
+    const productTable = wrapper.get(".product-detail-table");
+    expect(productTable.findAll("thead th")).toHaveLength(9);
+    expect(productTable.findAll("thead th").map((cell) => cell.text())).not.toContain("图片");
+    for (const row of productTable.findAll("tbody tr")) {
+      expect(row.findAll("td")).toHaveLength(9);
+    }
+
 
     expect(wrapper.attributes("data-title")).toBe("订单详情 · 092#");
     expect(wrapper.findAll(".detail-summary-grid > div")).toHaveLength(6);
-    expect(wrapper.findAll(".product-detail-table th")).toHaveLength(10);
+    expect(wrapper.findAll(".product-detail-table th")).toHaveLength(9);
     expect(wrapper.findAll(".product-detail-table .data-grid-sort-button")).toHaveLength(8);
     expect(wrapper.text()).not.toContain("编辑草稿");
     expect(wrapper.text()).not.toContain("删除订单");

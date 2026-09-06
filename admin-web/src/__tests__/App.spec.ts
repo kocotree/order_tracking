@@ -259,6 +259,7 @@ describe("administrator identity web", () => {
     expect(image.attributes("src")).toBe(
       "/api/v1/admin/products/product-1/image?v=version-1",
     );
+    await image.trigger("load");
     expect(wrapper.findAll('[aria-label="产品图片未上传"]')).toHaveLength(1);
     await image.trigger("error");
     expect(wrapper.find("img.product-list-image").exists()).toBe(false);

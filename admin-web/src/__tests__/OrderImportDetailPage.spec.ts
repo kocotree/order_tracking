@@ -46,6 +46,13 @@ describe("pending order import detail page", () => {
       global: { stubs: { AdminShell: { template: "<div><slot /></div>" } } },
     });
     await flushPromises();
+    const productTable = wrapper.get(".pending-import-detail-table");
+    expect(productTable.findAll("thead th")).toHaveLength(10);
+    expect(productTable.findAll("thead th").map((cell) => cell.text())).not.toContain("图片");
+    for (const row of productTable.findAll("tbody tr")) {
+      expect(row.findAll("td")).toHaveLength(10);
+    }
+
 
     expect(wrapper.get(".validation-callout").text()).toBe("工厂资料未匹配");
     expect(wrapper.get(".pending-import-detail-table tbody .status-badge").text()).toBe("未通过");
@@ -66,11 +73,11 @@ describe("pending order import detail page", () => {
     expect(wrapper.text()).toContain("测试童帽");
     expect(wrapper.text()).toContain("通过");
     expect(wrapper.findAll(".detail-summary-grid > div")).toHaveLength(6);
-    expect(wrapper.findAll(".pending-import-detail-table th")).toHaveLength(11);
+    expect(wrapper.findAll(".pending-import-detail-table th")).toHaveLength(10);
     expect(wrapper.findAll(".data-grid-sort-button")).toHaveLength(9);
     expect(wrapper.find(".category-tag").text()).toBe("帽子");
     expect(wrapper.find(".tracker-tag").text()).toBe("松子");
-    expect(wrapper.find(".product-thumb svg").exists()).toBe(true);
+    expect(wrapper.find(".product-thumb").exists()).toBe(false);
     expect(wrapper.find(".detail-progress").text()).toBe("0%");
 
     await wrapper.get(".detail-primary-button").trigger("click");

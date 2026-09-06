@@ -117,3 +117,18 @@ it("links statistics to Shanghai today and overdue filters, and requests unread 
   expect(router.currentRoute.value.query.status).toBe("已逾期");
   wrapper.unmount(); vi.useRealTimers();
 });
+
+it("limits the dashboard to ten rows and keeps the all-orders link without pagination", async () => {
+  vi.spyOn(orderApi, "dashboard").mockResolvedValue({ recentOrders: Array.from({ length: 15 }, (_, index) => order({ orderId: `order-${index}` })), overdueOrders: 0, pendingImportOrders: 0, todayShipments: 0, requestId: "test" });
+  vi.spyOn(notificationApi, "unreadCount").mockResolvedValue({ count: 0, requestId: "test" });
+  vi.spyOn(notificationApi, "list").mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 3, requestId: "test" });
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/", component: HomePage }, { path: "/:pathMatch(.*)*", component: { template: "<div/>" } }] });
+  await router.push("/");
+  const wrapper = mount(HomePage, { global: { plugins: [createPinia(), router], stubs: { AdminShell: { template: "<div><slot/></div>" } } } });
+  await flushPromises();
+  expect(wrapper.findAll(".dashboard-order-table tbody tr")).toHaveLength(10);
+  expect(wrapper.find(".order-pagination").exists()).toBe(false);
+  const link = wrapper.findAll("a").find(item => item.text().includes("查看全部订单"));
+  expect(link?.attributes("href")).toBe("/orders");
+  wrapper.unmount();
+});

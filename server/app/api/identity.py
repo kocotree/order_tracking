@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Cookie, File, Header, Query, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
@@ -332,20 +332,49 @@ def create_identity_router(
     )
     def list_admin_users(
         role: str = Query(default="admin"),
+        page: Annotated[int, Query(ge=1)] = 1,
+        page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 10,
+        factory_id: Annotated[str | None, Query(alias="factoryId")] = None,
+        sort_by: Annotated[
+            Literal[
+                "",
+                "displayName",
+                "role",
+                "phoneMasked",
+                "isEnabled",
+                "factoryName",
+                "factoryPosition",
+            ],
+            Query(alias="sortBy"),
+        ] = "",
+        sort_order: Annotated[Literal["asc", "desc"], Query(alias="sortOrder")] = "asc",
         ot_web_session: str | None = Cookie(default=None),
     ) -> AdminUserListResponse:
         actor = web_user(web_session=ot_web_session)
         if role == "factory":
             if factory_service is None:
                 return AdminUserListResponse(items=[], total=0)
-            factory_users = factory_service.list_factory_users(actor_id=actor.user_id)
-            factory_items = [_factory_user_response(user) for user in factory_users]
-            return AdminUserListResponse(items=factory_items, total=len(factory_items))
+            users, total = factory_service.page_factory_users(
+                actor_id=actor.user_id,
+                factory_id=factory_id,
+                page=page,
+                page_size=page_size,
+                sort_by=sort_by,
+                sort_order=sort_order,
+            )
+            return AdminUserListResponse(
+                items=[_factory_user_response(user) for user in users], total=total
+            )
         if role != "admin":
             return AdminUserListResponse(items=[], total=0)
-        admin_users = service.list_admin_users(actor_id=actor.user_id)
-        admin_items = [_user_response(user) for user in admin_users]
-        return AdminUserListResponse(items=admin_items, total=len(admin_items))
+        admins, total = service.page_admin_users(
+            actor_id=actor.user_id,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+        return AdminUserListResponse(items=[_user_response(user) for user in admins], total=total)
 
     def set_user_enabled(
         *,

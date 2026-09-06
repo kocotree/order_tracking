@@ -78,8 +78,8 @@ describe("administrator identity web", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/v1/me")) return response(superAdmin);
-      if (url.endsWith("/v1/admin/users?role=admin")) return response({ items: [superAdmin, ordinaryAdmin], total: 2 });
-      if (url.endsWith("/v1/admin/users?role=factory")) return response({ items: [], total: 0 });
+      if (url.includes("/v1/admin/users?role=admin")) return response({ items: [superAdmin, ordinaryAdmin], total: 2 });
+      if (url.includes("/v1/admin/users?role=factory")) return response({ items: [], total: 0 });
       if (url.includes("/v1/admin/factories")) return response({ items: [], total: 0 });
       throw new Error(`unexpected request: ${url}`);
     });
@@ -107,8 +107,8 @@ describe("administrator identity web", () => {
         return response(factoryUser);
       }
       if (url.endsWith("/v1/me")) return response(user({ isSuperAdmin }));
-      if (url.endsWith("/v1/admin/users?role=factory")) return response({ items: [factoryUser], total: 1 });
-      if (url.endsWith("/v1/admin/users?role=admin")) return response({ items: [user({ displayName: "管理员样例" })], total: 1 });
+      if (url.includes("/v1/admin/users?role=factory")) return response({ items: [factoryUser], total: 1 });
+      if (url.includes("/v1/admin/users?role=admin")) return response({ items: [user({ displayName: "管理员样例" })], total: 1 });
       if (url.includes("/v1/admin/factories")) return response({ items: [], total: 0 });
       throw new Error(`unexpected request: ${url}`);
     });
@@ -216,7 +216,7 @@ describe("administrator identity web", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/v1/me")) return response(user());
-      if (url.endsWith("/v1/admin/factory-applications")) return response({ items: [application], total: 1 });
+      if (new URL(url, "https://testserver").pathname.endsWith("/v1/admin/factory-applications")) return response({ items: [application], total: 1 });
       if (url.includes("/v1/admin/factories")) return response({ items: [factory], total: 1 });
       if (url.endsWith("/approve") && init?.method === "POST") {
         approvedBody = String(init.body);

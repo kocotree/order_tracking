@@ -198,10 +198,21 @@ async function download(path: string, filename: string): Promise<void> {
 export const feishuLoginUrl = (returnTo = "/") =>
   apiUrl(`/v1/auth/feishu/start?returnTo=${encodeURIComponent(returnTo)}`);
 
+export interface PeopleListQuery { page?: number; pageSize?: number; sortBy?: string; sortOrder?: "asc" | "desc"; factoryId?: string }
+function peopleQuery(params: PeopleListQuery = {}) {
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
+  if (params.sortBy) query.set("sortBy", params.sortBy);
+  if (params.sortOrder) query.set("sortOrder", params.sortOrder);
+  if (params.factoryId) query.set("factoryId", params.factoryId);
+  return query;
+}
+
 export const identityApi = {
   getMe: () => request<User>("/v1/me"),
   logout: () => request<void>("/v1/auth/logout", { method: "POST" }),
-  listAdminUsers: () => request<AdminUserList>("/v1/admin/users?role=admin"),
+  listAdminUsers: (params: PeopleListQuery = {}) => request<AdminUserList>(`/v1/admin/users?role=admin&${peopleQuery(params)}`),
   setAdminEnabled: (userId: string, version: number, enabled: boolean) =>
     request<User>(
       `/v1/admin/users/${encodeURIComponent(userId)}/${enabled ? "enable" : "disable"}`,
@@ -221,9 +232,9 @@ export const identityApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  listFactoryApplications: (status?: string) =>
+  listFactoryApplications: (status?: string, params: PeopleListQuery = {}) =>
     request<FactoryApplicationList>(
-      `/v1/admin/factory-applications${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+      `/v1/admin/factory-applications?${peopleQuery(params)}${status ? `&status=${encodeURIComponent(status)}` : ""}`,
     ),
   approveFactoryApplication: (applicationId: string, version: number, factoryId: string) =>
     request<FactoryApplication>(
@@ -235,7 +246,7 @@ export const identityApi = {
       `/v1/admin/factory-applications/${encodeURIComponent(applicationId)}/reject`,
       { method: "POST", body: JSON.stringify({ version, reason }) },
     ),
-  listFactoryUsers: () => request<AdminUserList>("/v1/admin/users?role=factory"),
+  listFactoryUsers: (params: PeopleListQuery = {}) => request<AdminUserList>(`/v1/admin/users?role=factory&${peopleQuery(params)}`),
   setFactoryUserEnabled: (userId: string, version: number, enabled: boolean) =>
     request<User>(
       `/v1/admin/users/${encodeURIComponent(userId)}/${enabled ? "enable" : "disable"}`,

@@ -3066,6 +3066,10 @@ export interface operations {
         parameters: {
             query?: {
                 status?: string | null;
+                page?: number;
+                pageSize?: number;
+                sortBy?: "" | "realName" | "position" | "requestedFactoryName" | "submittedAt" | "status";
+                sortOrder?: "asc" | "desc";
             };
             header?: never;
             path?: never;
@@ -4475,6 +4479,11 @@ export interface operations {
         parameters: {
             query?: {
                 role?: string;
+                page?: number;
+                pageSize?: number;
+                factoryId?: string | null;
+                sortBy?: "" | "displayName" | "role" | "phoneMasked" | "isEnabled" | "factoryName" | "factoryPosition";
+                sortOrder?: "asc" | "desc";
             };
             header?: never;
             path?: never;

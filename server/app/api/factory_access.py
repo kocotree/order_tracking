@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Cookie, Header, Query, Request
 from pydantic import BaseModel, ConfigDict
@@ -310,14 +310,27 @@ def create_factory_router(
     )
     def list_factory_applications(
         status: str | None = Query(default=None),
+        page: Annotated[int, Query(ge=1)] = 1,
+        page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 10,
+        sort_by: Annotated[
+            Literal["", "realName", "position", "requestedFactoryName", "submittedAt", "status"],
+            Query(alias="sortBy"),
+        ] = "",
+        sort_order: Annotated[Literal["asc", "desc"], Query(alias="sortOrder")] = "asc",
         ot_web_session: str | None = Cookie(default=None),
     ) -> FactoryApplicationListResponse:
         actor = web_user(ot_web_session)
-        applications = service.list_factory_applications(
-            actor_id=actor.user_id, status=status
+        applications, total = service.page_factory_applications(
+            actor_id=actor.user_id,
+            status=status,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
-        items = [_application_response(item) for item in applications]
-        return FactoryApplicationListResponse(items=items, total=len(items))
+        return FactoryApplicationListResponse(
+            items=[_application_response(item) for item in applications], total=total
+        )
 
     @router.get(
         "/admin/factory-applications/{application_id}",

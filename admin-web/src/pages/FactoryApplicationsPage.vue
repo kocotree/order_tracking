@@ -5,7 +5,7 @@
         <PeopleTabs />
         <div class="people-toolbar">
           <label class="people-user-filter" for="factory-application-status"><span>申请状态</span>
-          <select id="factory-application-status" v-model="statusFilter" @change="load">
+          <select id="factory-application-status" v-model="statusFilter">
             <option value="">全部状态</option>
             <option value="pending">待审核</option>
             <option value="approved">已通过</option>
@@ -20,8 +20,8 @@
           <table class="people-table data-grid-table people-factory-application-table">
           <thead><tr><th>序号</th><th><TableSortButton label="姓名" field="realName" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="职位" field="position" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="申请工厂" field="requestedFactoryName" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="申请时间" field="submittedAt" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="申请状态" field="status" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th>操作</th></tr></thead>
           <tbody>
-            <tr v-for="(application, index) in sortedApplications" :key="application.applicationId">
-              <td>{{ index + 1 }}</td><td>{{ application.realName }}</td><td>{{ positionLabel(application.position) }}</td>
+            <tr v-for="(application, index) in applications" :key="application.applicationId">
+              <td>{{ (page - 1) * 10 + index + 1 }}</td><td>{{ application.realName }}</td><td>{{ positionLabel(application.position) }}</td>
               <td>{{ application.requestedFactoryName }}</td><td>{{ formatDate(application.submittedAt) }}</td>
               <td><span class="status-badge" :class="`is-${application.status}`">{{ statusLabel(application.status) }}</span></td>
               <td><button class="text-button" type="button" @click="openDetail(application)">详情</button></td>
@@ -30,6 +30,7 @@
           </tbody>
           </table>
         </div>
+        <footer class="order-list-footer"><span>每页展示 10 条。</span><NumberPagination :page="page" :total="total" :loading="loading" @change="go" /></footer>
       </section>
     </article>
 
@@ -78,9 +79,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 
 import { ApiError, identityApi, type Factory, type FactoryApplication } from "@/api/client";
+import NumberPagination from "@/components/NumberPagination.vue";
 import AdminShell from "@/components/AdminShell.vue";
 import PeopleTabs from "@/components/PeopleTabs.vue";
 import TableSortButton from "@/components/TableSortButton.vue";
@@ -98,12 +100,11 @@ const rejectReason = ref("");
 const saving = ref(false);
 const sortBy = ref<SortField | "">("");
 const sortOrder = ref<"asc" | "desc">("asc");
-const sortedApplications = computed(() => {
-  const field = sortBy.value;
-  if (!field) return applications.value;
-  const direction = sortOrder.value === "asc" ? 1 : -1;
-  return [...applications.value].sort((left, right) => String(sortValue(left, field)).localeCompare(String(sortValue(right, field)), "zh-CN", { numeric: true }) * direction);
-});
+const page = ref(1), total = ref(0), loading = ref(false);
+let requestSequence = 0;
+async function go(value: number) { page.value = value; await load(); }
+watch([sortBy, sortOrder], () => { page.value = 1; void load(); });
+
 
 function positionLabel(position: string) {
   return position === "owner" ? "老板" : "工厂员工";
@@ -117,11 +118,6 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short", hour12: false }).format(new Date(value));
 }
 
-function sortValue(application: FactoryApplication, field: SortField) {
-  if (field === "position") return positionLabel(application.position);
-  if (field === "status") return statusLabel(application.status);
-  return application[field] ?? "";
-}
 
 function sortField(field: string) {
   const nextField = field as SortField;
@@ -130,12 +126,18 @@ function sortField(field: string) {
 }
 
 async function load() {
-  errorMessage.value = "";
+  const requestId = ++requestSequence;
+  loading.value = true; errorMessage.value = "";
   try {
-    applications.value = (await identityApi.listFactoryApplications(statusFilter.value || undefined)).items;
+    const result = await identityApi.listFactoryApplications(statusFilter.value || undefined, { page: page.value, pageSize: 10, sortBy: sortBy.value, sortOrder: sortOrder.value });
+    if (requestId !== requestSequence) return;
+    total.value = result.total;
+    const lastPage = Math.max(1, Math.ceil(result.total / 10));
+    if (page.value > lastPage) { page.value = lastPage; await load(); return; }
+    applications.value = result.items;
   } catch (error) {
-    errorMessage.value = error instanceof ApiError ? error.message : "工厂用户申请加载失败";
-  }
+    if (requestId === requestSequence) errorMessage.value = error instanceof ApiError ? error.message : "人员列表加载失败";
+  } finally { if (requestId === requestSequence) loading.value = false; }
 }
 
 function openDetail(application: FactoryApplication) {
@@ -187,5 +189,6 @@ async function confirmDecision() {
   }
 }
 
+watch(statusFilter, () => { page.value = 1; void load(); });
 onMounted(load);
 </script>

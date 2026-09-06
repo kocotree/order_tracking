@@ -22,7 +22,7 @@
           <tr v-for="(item, index) in pageItems" :key="item.shipmentId"><td class="shipment-sequence-cell">{{ (page - 1) * pageSize + index + 1 }}</td><td><RouterLink class="row-link" :to="`/shipments/${item.shipmentId}`">{{ item.shipmentNo }}</RouterLink></td><td class="shipment-order-cell">{{ orderNos(item) }}</td><td>{{ item.factoryName || item.factoryId }}</td><td class="shipment-product-summary" :title="productNames(item)">{{ productNames(item) }}</td><td class="shipment-number-cell">{{ number(item.totalQuantity) }}</td><td>{{ item.businessDate }}</td><td><RouterLink class="order-view-button" :to="`/shipments/${item.shipmentId}`">详情</RouterLink></td></tr>
           <tr v-if="!pageItems.length"><td colspan="8"><div class="empty-state"><div><span class="empty-state-mark">0</span><strong>没有符合当前条件的发货单</strong><p>可以调整搜索词、工厂或发货日期后重新查询。</p></div></div></td></tr>
         </tbody></table></div>
-        <footer class="order-list-footer"><span>每页展示 10 条发货单。</span><nav class="order-pagination" aria-label="发货单分页"><span class="order-page-total">共 {{ filtered.length }} 条</span><button class="order-page-button order-page-arrow" type="button" aria-label="上一页" :disabled="page === 1" @click="page--">‹</button><button v-for="value in totalPages" :key="value" class="order-page-button" :class="{ 'is-current': page === value }" type="button" @click="page = value">{{ value }}</button><button class="order-page-button order-page-arrow" type="button" aria-label="下一页" :disabled="page === totalPages" @click="page++">›</button></nav></footer>
+        <footer class="order-list-footer"><span>每页展示 10 条发货单。</span><NumberPagination :page="page" :total="filtered.length" :loading="loading" @change="page = $event" /></footer>
       </section>
     </article>
   </AdminShell>
@@ -30,8 +30,9 @@
 
 <script setup lang="ts">
 import { useRoute } from "vue-router";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { ApiError, shipmentApi, type Shipment } from "@/api/client";
+import NumberPagination from "@/components/NumberPagination.vue";
 import AdminShell from "@/components/AdminShell.vue";
 import TableSortButton from "@/components/TableSortButton.vue";
 type SortKey = "shipmentNo" | "orderNos" | "factory" | "productNames" | "totalQuantity" | "businessDate";
@@ -45,5 +46,7 @@ function sortValue(item: Shipment, key: SortKey): string | number { if (key === 
 const filtered = computed(() => { const value = keyword.value.trim().toLocaleLowerCase("zh-CN"); const result = items.value.filter((item) => (!value || [item.shipmentNo, orderNos(item)].join(" ").toLocaleLowerCase("zh-CN").includes(value)) && (!factoryName.value || (item.factoryName || item.factoryId) === factoryName.value) && (!dateFrom.value || (item.businessDate || "") >= dateFrom.value) && (!dateTo.value || (item.businessDate || "") <= dateTo.value)); if (!sortKey.value) return result.sort((a, b) => (b.businessDate || "").localeCompare(a.businessDate || "") || (b.shipmentNo || "").localeCompare(a.shipmentNo || "")); const key = sortKey.value; const direction = sortDirection.value === "asc" ? 1 : -1; return result.sort((a, b) => String(sortValue(a, key)).localeCompare(String(sortValue(b, key)), "zh-CN", { numeric: true }) * direction); });
 const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize))); const pageItems = computed(() => filtered.value.slice((page.value - 1) * pageSize, page.value * pageSize));
 function search() { page.value = 1; } function reset() { keyword.value = ""; factoryName.value = ""; dateFrom.value = ""; dateTo.value = ""; sortKey.value = null; sortDirection.value = "asc"; search(); } function toggleSort(field: string) { const key = field as SortKey; if (sortKey.value === key) sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc"; else { sortKey.value = key; sortDirection.value = "asc"; } page.value = 1; }
+watch([keyword, factoryName, dateFrom, dateTo], () => { page.value = 1; });
+watch(totalPages, value => { page.value = Math.min(page.value, value); });
 onMounted(async () => { try { items.value = (await shipmentApi.list()).items; } catch (reason) { error.value = reason instanceof ApiError ? reason.message : "发货单加载失败"; } finally { loading.value = false; } });
 </script>

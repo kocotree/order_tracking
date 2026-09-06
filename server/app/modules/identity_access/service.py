@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.avatar import AvatarStore
@@ -732,6 +732,39 @@ class IdentityAccessService:
                 .order_by(User.is_super_admin.desc(), User.feishu_display_name, User.user_id)
             ).all()
             return [self._user_snapshot(user) for user in users]
+
+    def page_admin_users(
+        self,
+        *,
+        actor_id: str,
+        page: int = 1,
+        page_size: int = 10,
+        sort_by: str = "",
+        sort_order: str = "asc",
+    ) -> tuple[list[UserSnapshot], int]:
+        with self._session_factory() as session:
+            self._require_super_admin(session, actor_id)
+            statement = select(User).where(User.role == "admin")
+            total = session.scalar(select(func.count()).select_from(statement.subquery())) or 0
+            fields = {
+                "displayName": User.feishu_display_name.collate("utf8mb4_zh_0900_as_cs"),
+                "role": User.role,
+                "phoneMasked": func.coalesce(User.phone_masked, ""),
+                "isEnabled": case((User.is_enabled.is_(True), "已启用"), else_="已停用").collate(
+                    "utf8mb4_zh_0900_as_cs"
+                ),
+            }
+            field = fields.get(sort_by)
+            if field is not None:
+                statement = statement.order_by(
+                    field.desc() if sort_order == "desc" else field.asc()
+                )
+            else:
+                statement = statement.order_by(User.is_super_admin.desc(), User.feishu_display_name)
+            rows = session.scalars(
+                statement.order_by(User.user_id).offset((page - 1) * page_size).limit(page_size)
+            ).all()
+            return [self._user_snapshot(row) for row in rows], total
 
     def approve_admin_application(
         self,

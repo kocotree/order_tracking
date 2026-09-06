@@ -11,8 +11,8 @@
           <table class="people-table data-grid-table people-user-table">
           <thead><tr><th>序号</th><th><TableSortButton label="姓名" field="displayName" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="角色" field="role" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="手机号" field="phoneMasked" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th><TableSortButton label="启用状态" field="isEnabled" :sort-by="sortBy" :sort-order="sortOrder" @sort="sortField" /></th><th>操作</th></tr></thead>
           <tbody>
-            <tr v-for="(user, index) in sortedUsers" :key="user.userId">
-              <td>{{ index + 1 }}</td><td>{{ user.displayName }}</td>
+            <tr v-for="(user, index) in users" :key="user.userId">
+              <td>{{ (page - 1) * 10 + index + 1 }}</td><td>{{ user.displayName }}</td>
               <td>管理员 <span v-if="user.isSuperAdmin" class="super-badge">最高权限</span></td>
               <td>{{ user.phoneMasked ?? '—' }}</td>
               <td><span class="status-badge" :class="user.isEnabled ? 'is-approved' : 'is-disabled'">{{ user.isEnabled ? '已启用' : '已停用' }}</span></td>
@@ -22,6 +22,7 @@
           </tbody>
           </table>
         </div>
+        <footer class="order-list-footer"><span>每页展示 10 条。</span><NumberPagination :page="page" :total="total" :loading="loading" @change="go" /></footer>
       </section>
     </article>
     <div v-if="target" class="modal-backdrop" @click.self="target = null">
@@ -35,9 +36,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 
 import { ApiError, identityApi, type User } from "@/api/client";
+import NumberPagination from "@/components/NumberPagination.vue";
 import AdminShell from "@/components/AdminShell.vue";
 import PeopleTabs from "@/components/PeopleTabs.vue";
 import TableSortButton from "@/components/TableSortButton.vue";
@@ -50,18 +52,12 @@ const saving = ref(false);
 const errorMessage = ref("");
 const sortBy = ref<SortField | "">("");
 const sortOrder = ref<"asc" | "desc">("asc");
-const sortedUsers = computed(() => {
-  const field = sortBy.value;
-  if (!field) return users.value;
-  const direction = sortOrder.value === "asc" ? 1 : -1;
-  return [...users.value].sort((left, right) => String(sortValue(left, field)).localeCompare(String(sortValue(right, field)), "zh-CN", { numeric: true }) * direction);
-});
+const page = ref(1), total = ref(0), loading = ref(false);
+let requestSequence = 0;
+async function go(value: number) { page.value = value; await load(); }
+watch([sortBy, sortOrder], () => { page.value = 1; void load(); });
 
-function sortValue(user: User, field: SortField) {
-  if (field === "role") return "管理员";
-  if (field === "isEnabled") return user.isEnabled ? "已启用" : "已停用";
-  return user[field] ?? "";
-}
+
 
 function sortField(field: string) {
   const nextField = field as SortField;
@@ -70,11 +66,18 @@ function sortField(field: string) {
 }
 
 async function load() {
+  const requestId = ++requestSequence;
+  loading.value = true; errorMessage.value = "";
   try {
-    users.value = (await identityApi.listAdminUsers()).items;
+    const result = await identityApi.listAdminUsers({ page: page.value, pageSize: 10, sortBy: sortBy.value, sortOrder: sortOrder.value });
+    if (requestId !== requestSequence) return;
+    total.value = result.total;
+    const lastPage = Math.max(1, Math.ceil(result.total / 10));
+    if (page.value > lastPage) { page.value = lastPage; await load(); return; }
+    users.value = result.items;
   } catch (error) {
-    errorMessage.value = error instanceof ApiError ? error.message : "管理员账号加载失败";
-  }
+    if (requestId === requestSequence) errorMessage.value = error instanceof ApiError ? error.message : "人员列表加载失败";
+  } finally { if (requestId === requestSequence) loading.value = false; }
 }
 
 async function confirmToggle() {

@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-import type { DraftBoxWrite, Shipment } from "../api/shipments";
+import type { CatalogItem, DraftBoxWrite, Shipment } from "../api/shipments";
 
 type TestPage = {
   data: {step:number; boxCount:string; boxes:DraftBoxWrite[]; note:string; photos:{fileId?:number;localPath:string;downloadFailed?:boolean}[]; draftId:string; saveMessage:string; loading:boolean; ready:boolean};
@@ -7,18 +7,30 @@ type TestPage = {
   onLoad(options:Record<string,string>):void;
   onUnload():void;
   photos?: unknown;
+  addItem():void;
+  closeBatchPacking():void;
+  openBatchPacking():void;
+  batchCountChanged(event:{detail:{value:string}}):void;
+  applyBatchPacking():void;
+  removeItem(event:{currentTarget:{dataset:{assignmentId:number}}}):void;
+  previous():Promise<void>;
+  submit():Promise<void>;
   next():Promise<void>;
   generateBoxes():Promise<void>;
   noteChanged(event:{detail:{value:string}}):void;
 };
 let page: TestPage;
 let stored: Shipment | null;
+let catalog: CatalogItem[];
+let submitted: boolean;
 let modalConfirm = true;
 let modalChoices: boolean[] = [];
 
 beforeEach(async () => {
   vi.resetModules();
   stored = null;
+  catalog = [];
+  submitted = false;
   modalConfirm = true;
   modalChoices = [];
   vi.stubGlobal("Page", (definition:TestPage) => {
@@ -28,14 +40,15 @@ beforeEach(async () => {
     getDeviceInfo: () => ({platform:"ios"}),
     getStorageSync: () => undefined,
     getAccountInfoSync: () => ({miniProgram:{envVersion:"develop"}}),
-    showToast:vi.fn(), navigateBack:vi.fn(),
+    showToast:vi.fn(), navigateBack:vi.fn(), redirectTo:vi.fn(),
     showModal:vi.fn((options) => options.success({confirm:modalChoices.shift() ?? modalConfirm,cancel:false})),
     downloadFile:vi.fn(options => options.success({statusCode:200,tempFilePath:"/cached-proof.png"})),
     request: (options:WechatMiniprogram.RequestOption) => {
       const url=options.url;
       let value:unknown; let statusCode=200;
-      if(url.endsWith("/shipment-catalog")) value={items:[],total:0};
+      if(url.endsWith("/shipment-catalog")) value={items:catalog,total:catalog.length};
       else if(url.endsWith("/drafts/current")) {value=stored;statusCode=stored?200:404;}
+      else if(options.method==="POST" && url.includes("/submit?")) {submitted=true;value={...stored,status:"SHIPPED"};}
       else if(options.method==="POST" && url.endsWith("/drafts")) {
         stored ||= {shipmentId:"draft-1",version:1,status:"DRAFT",boxes:[],files:[],note:"",totalBoxes:0} as unknown as Shipment;
         value=stored;
@@ -120,4 +133,80 @@ it("flushes pending edits when leaving before the autosave delay", async () => {
   page.noteChanged({detail:{value:"刚填完就返回"}});
   page.onUnload();
   await vi.waitFor(() => expect(stored?.note).toBe("刚填完就返回"));
+});
+
+
+it("copies 33 boxes, saves and restores the group, and detaches only the edited box", async () => {
+  page.onLoad({});
+  await vi.waitFor(() => expect(page.data.ready).toBe(true));
+  page.setData({boxCount:"33"});
+  await page.generateBoxes();
+  await page.next();
+  const boxes = structuredClone(page.data.boxes);
+  boxes[0].items=[{assignmentId:7,quantity:10}];
+  page.setData({boxes});
+  page.openBatchPacking();
+  page.batchCountChanged({detail:{value:"32"}});
+  page.applyBatchPacking();
+  await vi.waitFor(() => expect(stored?.boxes[32].items).toEqual([{assignmentId:7,quantity:10}]),{timeout:1500});
+  // A second attempt must not overwrite the already filled targets.
+  page.openBatchPacking();
+  page.batchCountChanged({detail:{value:"32"}});
+  page.applyBatchPacking();
+  expect(page.data.boxes[32].items).toEqual([{assignmentId:7,quantity:10}]);
+  page.closeBatchPacking();
+  const group = stored!.boxes[0].groupKey;
+  expect(group).toBeTruthy();
+  await page.previous();
+  page.onUnload();
+  page.onLoad({});
+  await vi.waitFor(() => expect(page.data.ready).toBe(true));
+  expect(page.data.boxes[32].groupKey).toBe(group);
+  page.setData({currentBox:1});
+  page.removeItem({currentTarget:{dataset:{assignmentId:7}}});
+  expect(page.data.boxes[1]).toEqual(expect.objectContaining({groupKey:null,items:[]}));
+  expect(page.data.boxes[0].items).toEqual([{assignmentId:7,quantity:10}]);
+  expect(page.data.boxes[32].groupKey).toBe(group);
+});
+
+
+it("allows batch over-shipment but requires confirmation naming its order before submitting", async () => {
+  catalog=[{assignmentId:7,orderId:"order-7",orderNo:"E81",productName:"风衣",propertiesValue:"蓝 / 120",pendingQuantity:15,assignedQuantity:15,shippedQuantity:0,contractShipDate:"2026-09-10"}];
+  page.onLoad({});
+  await vi.waitFor(() => expect(page.data.ready).toBe(true));
+  page.setData({boxCount:"2"});
+  await page.generateBoxes();
+  await page.next();
+  const boxes = structuredClone(page.data.boxes);
+  boxes[0].items=[{assignmentId:7,quantity:10}];
+  page.setData({boxes});
+  page.openBatchPacking();
+  page.batchCountChanged({detail:{value:"1"}});
+  page.applyBatchPacking();
+  expect(page.data.boxes[1].items).toEqual([{assignmentId:7,quantity:10}]);
+  modalConfirm=false;
+  await page.submit();
+  expect(submitted).toBe(false);
+  expect(wx.showModal).toHaveBeenCalledWith(expect.objectContaining({title:"确认多发",content:expect.stringContaining("E81")}));
+  expect(wx.showModal).toHaveBeenCalledWith(expect.objectContaining({content:expect.stringContaining("多发 5 件")}));
+  // Recheck on each submit: another shipment may have consumed the remainder.
+  catalog[0].pendingQuantity=10;
+  modalConfirm=false;
+  await page.submit();
+  expect(submitted).toBe(false);
+  expect(wx.showModal).toHaveBeenLastCalledWith(expect.objectContaining({content:expect.stringContaining("多发 10 件")}));
+  modalConfirm=true;
+  await page.submit();
+  expect(submitted).toBe(true);
+});
+
+
+it("detaches an individually added quantity from its packing group without changing peers", () => {
+  page.setData({ready:true,currentBox:1,quantity:"3",selectedCatalog:{assignmentId:7},boxes:[
+    {boxNo:1,groupKey:"g",items:[{assignmentId:7,quantity:10}],total:10},
+    {boxNo:2,groupKey:"g",items:[{assignmentId:7,quantity:10}],total:10}
+  ]});
+  page.addItem();
+  expect(page.data.boxes[1]).toEqual({boxNo:2,groupKey:null,items:[{assignmentId:7,quantity:13}],total:13});
+  expect(page.data.boxes[0]).toEqual({boxNo:1,groupKey:"g",items:[{assignmentId:7,quantity:10}],total:10});
 });

@@ -92,8 +92,46 @@ describe("administrator identity web", () => {
 
     expect(wrapper.text()).not.toContain("管理员申请");
     expect(wrapper.text()).toContain("工厂用户申请");
-    expect(wrapper.text()).toContain("用户列表");
+    expect(wrapper.text()).toContain("工厂用户列表");
+    expect(wrapper.get(".people-tabs a[href='/people/admin-users']").text()).toBe("管理员");
     expect(wrapper.text()).toContain("小树");
+  });
+
+  it.each([false, true])("shows only factory accounts in the factory list (super admin: %s)", async (isSuperAdmin) => {
+    const factoryUser = user({ userId: "factory-1", role: "factory", displayName: "张师傅", factoryPosition: "owner" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/v1/admin/users/factory-1/disable") && init?.method === "POST") {
+        expect(JSON.parse(String(init.body))).toEqual({ version: 1 });
+        factoryUser.isEnabled = false;
+        return response(factoryUser);
+      }
+      if (url.endsWith("/v1/me")) return response(user({ isSuperAdmin }));
+      if (url.endsWith("/v1/admin/users?role=factory")) return response({ items: [factoryUser], total: 1 });
+      if (url.endsWith("/v1/admin/users?role=admin")) return response({ items: [user({ displayName: "管理员样例" })], total: 1 });
+      if (url.includes("/v1/admin/factories")) return response({ items: [], total: 0 });
+      throw new Error(`unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const pinia = createPinia();
+    const router = createAppRouter(pinia, "/people/users");
+    await router.isReady();
+    const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+    await flushPromises();
+
+    expect(wrapper.findAll(".people-tabs a").map(link => link.text())).toEqual(
+      isSuperAdmin ? ["管理员", "工厂用户申请", "工厂用户列表"] : ["工厂用户申请", "工厂用户列表"],
+    );
+    expect(wrapper.get(".people-tabs .router-link-active").text()).toBe("工厂用户列表");
+    expect(wrapper.get(".people-table tbody").text()).toContain("张师傅");
+    expect(wrapper.get(".people-table tbody").text()).not.toContain("管理员样例");
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("role=admin"))).toBe(false);
+    await wrapper.get(".people-table .text-button").trigger("click");
+    await wrapper.get(".modal .primary-button").trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".people-table tbody").text()).toContain("已停用");
+    expect(wrapper.find(".modal").exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it("keeps ordinary administrators out of super-administrator pages", async () => {

@@ -20,12 +20,12 @@
           <tbody>
             <tr v-for="(account, index) in filteredUsers" :key="account.userId">
               <td>{{ index + 1 }}</td><td>{{ account.displayName }}</td>
-              <td>{{ account.role === 'factory' ? '工厂用户' : '管理员' }} <span v-if="account.isSuperAdmin" class="super-badge">最高权限</span></td>
+              <td>工厂用户</td>
               <td>{{ positionLabel(account.factoryPosition) }}</td><td>{{ factoryName(account.factoryId) }}</td>
               <td><span class="status-badge" :class="account.isEnabled ? 'is-approved' : 'is-disabled'">{{ account.isEnabled ? '已启用' : '已停用' }}</span></td>
-              <td><button v-if="canToggle(account)" class="text-button" :class="{ danger: account.isEnabled }" type="button" @click="target = account">{{ account.isEnabled ? '停用' : '启用' }}</button><span v-else>—</span></td>
+              <td><button class="text-button" :class="{ danger: account.isEnabled }" type="button" @click="target = account">{{ account.isEnabled ? '停用' : '启用' }}</button></td>
             </tr>
-            <tr v-if="filteredUsers.length === 0"><td colspan="7" class="empty-cell">暂无用户</td></tr>
+            <tr v-if="filteredUsers.length === 0"><td colspan="7" class="empty-cell">暂无工厂用户</td></tr>
           </tbody>
           </table>
         </div>
@@ -49,11 +49,9 @@ import { ApiError, identityApi, type Factory, type User } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 import PeopleTabs from "@/components/PeopleTabs.vue";
 import TableSortButton from "@/components/TableSortButton.vue";
-import { useIdentityStore } from "@/stores";
 
 type SortField = "displayName" | "role" | "factoryPosition" | "factoryName" | "isEnabled";
 
-const identity = useIdentityStore();
 const route = useRoute();
 const users = ref<User[]>([]);
 const factories = ref<Factory[]>([]);
@@ -82,7 +80,7 @@ function factoryName(factoryId: string | null) {
 }
 
 function sortValue(account: User, field: SortField) {
-  if (field === "role") return account.role === "factory" ? "工厂用户" : "管理员";
+  if (field === "role") return "工厂用户";
   if (field === "factoryPosition") return positionLabel(account.factoryPosition);
   if (field === "factoryName") return factoryName(account.factoryId);
   if (field === "isEnabled") return account.isEnabled ? "已启用" : "已停用";
@@ -95,22 +93,17 @@ function sortField(field: string) {
   else { sortBy.value = nextField; sortOrder.value = "asc"; }
 }
 
-function canToggle(account: User) {
-  return !account.isSuperAdmin && (account.role === "factory" || Boolean(identity.currentUser?.isSuperAdmin));
-}
-
 async function load() {
   errorMessage.value = "";
   try {
-    const [factoryUsers, factoryList, adminUsers] = await Promise.all([
+    const [factoryUsers, factoryList] = await Promise.all([
       identityApi.listFactoryUsers(),
       identityApi.listFactories(),
-      identity.currentUser?.isSuperAdmin ? identityApi.listAdminUsers() : Promise.resolve({ items: [], total: 0 }),
     ]);
     factories.value = factoryList.items;
-    users.value = [...adminUsers.items, ...factoryUsers.items];
+    users.value = factoryUsers.items;
   } catch (error) {
-    errorMessage.value = error instanceof ApiError ? error.message : "用户列表加载失败";
+    errorMessage.value = error instanceof ApiError ? error.message : "工厂用户列表加载失败";
   }
 }
 
@@ -118,11 +111,7 @@ async function confirmToggle() {
   if (!target.value) return;
   saving.value = true;
   try {
-    if (target.value.role === "factory") {
-      await identityApi.setFactoryUserEnabled(target.value.userId, target.value.version, !target.value.isEnabled);
-    } else {
-      await identityApi.setAdminEnabled(target.value.userId, target.value.version, !target.value.isEnabled);
-    }
+    await identityApi.setFactoryUserEnabled(target.value.userId, target.value.version, !target.value.isEnabled);
     target.value = null;
     await load();
   } catch (error) {

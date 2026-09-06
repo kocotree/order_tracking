@@ -4,6 +4,8 @@ import { newShipmentEvidencePhoto, submitShipmentWithEvidence, uploadShipmentEvi
 
 import { ShipmentDraftSession } from "../../modules/shipment-draft";
 
+import { copyToFollowingBoxes } from "../../modules/shipment-packing";
+
 type BoxView = DraftBoxWrite & { total: number };
 type CatalogChoice = CatalogItem & { orderLabel: string };
 type PackedItemView = { assignmentId: number; quantity: number; productName: string; propertiesValue: string; orderNo: string };
@@ -24,11 +26,14 @@ Page({
     catalog: [] as CatalogItem[], productNames: [] as string[], productIndex: 0,
     specOptions: [] as CatalogItem[], specIndex: 0, orderOptions: [] as CatalogChoice[], orderIndex: 0,
     selectedCatalog: null as CatalogItem | null, selectedPackedQuantity: 0, selectedRemainingQuantity: 0,
+    overShipments: [] as {assignmentId:number;orderNo:string;productName:string;propertiesValue:string;quantity:number}[],
+    selectedOverQuantity: 0,
     packedBoxCount: 0, currentItems: [] as PackedItemView[], previewBoxes: [] as PreviewBox[],
     productSummaries: [] as ProductSummary[], quantity: "", photos: [] as ShipmentEvidencePhoto[], note: "",
     previewMode: false, loading: false, totalQuantity: 0, draftId: "", uploadError: "",
     expandedProducts: [] as string[], expandedBoxes: [] as number[],
     ready: false, saveMessage: "",
+    batchOpen: false, batchCount: "", batchRange: "", batchError: "", batchValid: false,
   },
 
   onLoad(options: Record<string, string | undefined>) {
@@ -154,12 +159,52 @@ Page({
     const currentItems = previewBoxes[this.data.currentBox]?.items || [];
     const totalQuantity = this.data.boxes.reduce((sum, box) => sum + box.total, 0);
 
+    const packed = new Map<number,number>();
+    this.data.boxes.forEach(box => box.items.forEach(item => packed.set(item.assignmentId,(packed.get(item.assignmentId) || 0)+item.quantity)));
+    const overShipments = catalog.flatMap(item => {
+      const quantity = (packed.get(item.assignmentId) || 0) - item.pendingQuantity;
+      return quantity > 0 ? [{assignmentId:item.assignmentId,orderNo:item.orderNo,productName:item.productName,propertiesValue:item.propertiesValue,quantity}] : [];
+    });
+
     this.setData({
+      overShipments,
+      selectedOverQuantity: selectedCatalog ? Math.max(selectedPackedQuantity-selectedCatalog.pendingQuantity,0) : 0,
       productNames, productIndex, specOptions, specIndex, orderOptions, orderIndex, selectedCatalog,
-      selectedPackedQuantity, selectedRemainingQuantity: selectedCatalog ? selectedCatalog.pendingQuantity - selectedPackedQuantity : 0,
+      selectedPackedQuantity, selectedRemainingQuantity: selectedCatalog ? Math.max(selectedCatalog.pendingQuantity - selectedPackedQuantity,0) : 0,
       packedBoxCount: this.data.boxes.filter((box) => box.items.length > 0).length,
       currentItems, previewBoxes, productSummaries, totalQuantity,
     });
+  },
+
+  openBatchPacking() {
+    if (this.data.loading || !this.data.ready) return;
+    if (!this.data.boxes[this.data.currentBox]?.items.length) {
+      wx.showToast({title:"请先填写当前箱明细",icon:"none"}); return;
+    }
+    this.setData({batchOpen:true,batchCount:"",batchRange:"",batchError:"",batchValid:false});
+  },
+  closeBatchPacking() { this.setData({batchOpen:false}); },
+  preventBatchScroll() {},
+  batchCountChanged(event: WechatMiniprogram.Input) {
+    const batchCount = event.detail.value;
+    const count = Number(batchCount);
+    let batchError = "";
+    try { copyToFollowingBoxes(this.data.boxes,this.data.currentBox,count,"preview"); }
+    catch (error) { batchError = (error as Error).message; }
+    const batchRange = !batchError ? `箱 ${this.data.currentBox + 2}–${this.data.currentBox + count + 1}` : "";
+    this.setData({batchCount,batchRange,batchError:batchCount ? batchError : "",batchValid:!batchError});
+  },
+  applyBatchPacking() {
+    if (!this.data.batchOpen || this.data.loading || !this.data.ready) return;
+    try {
+      const source = this.data.boxes[this.data.currentBox];
+      const groupKey = source.groupKey || `packing-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;
+      const boxes = copyToFollowingBoxes(this.data.boxes,this.data.currentBox,Number(this.data.batchCount),groupKey)
+        .map(box => ({...box,total:box.items.reduce((sum,item) => sum+item.quantity,0)}));
+      this.setData({boxes,batchOpen:false});
+      this.refreshDerived();
+      this.scheduleSave();
+    } catch (error) { this.setData({batchError:(error as Error).message,batchValid:false}); }
   },
 
   boxCountChanged(event: WechatMiniprogram.Input) { this.setData({ boxCount: event.detail.value }); },
@@ -193,7 +238,7 @@ Page({
       const items = existing
         ? box.items.map((item) => item.assignmentId === catalogItem.assignmentId ? { ...item, quantity: item.quantity + quantity } : item)
         : [...box.items, { assignmentId: catalogItem.assignmentId, quantity }];
-      return { ...box, items, total: items.reduce((sum, item) => sum + item.quantity, 0) };
+      return { ...box, groupKey: null, items, total: items.reduce((sum, item) => sum + item.quantity, 0) };
     });
     this.setData({ boxes, quantity: "" });
     this.refreshDerived();
@@ -206,7 +251,7 @@ Page({
     const boxes = this.data.boxes.map((box, index) => {
       if (index !== this.data.currentBox) return box;
       const items = box.items.filter((item) => item.assignmentId !== assignmentId);
-      return { ...box, items, total: items.reduce((sum, item) => sum + item.quantity, 0) };
+      return { ...box, groupKey: null, items, total: items.reduce((sum, item) => sum + item.quantity, 0) };
     });
     this.setData({ boxes });
     this.refreshDerived();
@@ -295,9 +340,20 @@ Page({
   },
   async submit() {
     if(this.data.loading || !this.data.ready)return;
-    if (this.data.previewMode) { wx.showToast({ title: "预览提交成功", icon: "success" }); setTimeout(() => wx.redirectTo({ url: "/pages/factory-shipment-detail/factory-shipment-detail?shipmentId=preview-shipment&preview=1" }), 500); return; }
+
     this.setData({ loading: true });
     try {
+      if (!this.data.previewMode) this.setData({catalog:(await shipmentApi.catalog()).items});
+      this.refreshDerived();
+      if (this.data.overShipments.length) {
+        const details = this.data.overShipments.map(item => `订单 ${item.orderNo} · ${item.productName} · ${item.propertiesValue}：多发 ${item.quantity} 件`).join("\n");
+        if (!await confirmModal("确认多发",`${details}\n多发部分归属上述订单，是否继续提交？`,"确认提交")) return;
+      }
+      if (this.data.previewMode) {
+        wx.showToast({title:"预览提交成功",icon:"success"});
+        setTimeout(() => wx.redirectTo({url:"/pages/factory-shipment-detail/factory-shipment-detail?shipmentId=preview-shipment&preview=1"}),500);
+        return;
+      }
       if(!await this.savePhotos()) return;
       const result = await submitShipmentWithEvidence({
         photos: this.data.photos,

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -424,6 +424,50 @@ class FactoryAccessService:
                 for application in applications
             ]
 
+    def page_factory_applications(
+        self,
+        *,
+        actor_id: str,
+        status: str | None = None,
+        page: int = 1,
+        page_size: int = 10,
+        sort_by: str = "",
+        sort_order: str = "asc",
+    ) -> tuple[list[FactoryApplicationSnapshot], int]:
+        with self._session_factory() as session:
+            self._require_admin(session, actor_id)
+            statement = select(FactoryApplication).join(
+                Factory, Factory.factory_id == FactoryApplication.requested_factory_id
+            )
+            if status:
+                statement = statement.where(FactoryApplication.status == status)
+            total = session.scalar(select(func.count()).select_from(statement.subquery())) or 0
+            fields = {
+                "realName": FactoryApplication.real_name.collate("utf8mb4_zh_0900_as_cs"),
+                "position": case(
+                    (FactoryApplication.position == "owner", "老板"), else_="工厂员工"
+                ).collate("utf8mb4_zh_0900_as_cs"),
+                "requestedFactoryName": Factory.factory_name.collate("utf8mb4_zh_0900_as_cs"),
+                "submittedAt": FactoryApplication.submitted_at,
+                "status": case(
+                    (FactoryApplication.status == "pending", "待审核"),
+                    (FactoryApplication.status == "approved", "已通过"),
+                    else_="已拒绝",
+                ).collate("utf8mb4_zh_0900_as_cs"),
+            }
+            field = fields.get(sort_by)
+            order = (
+                (field.desc() if sort_order == "desc" else field.asc())
+                if field is not None
+                else FactoryApplication.submitted_at.desc()
+            )
+            rows = session.scalars(
+                statement.order_by(order, FactoryApplication.application_id)
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            ).all()
+            return [self._application_snapshot(session, row) for row in rows], total
+
     def get_factory_application(
         self, *, actor_id: str, application_id: str
     ) -> FactoryApplicationSnapshot:
@@ -582,6 +626,50 @@ class FactoryAccessService:
                 statement = statement.where(User.factory_id == factory_id)
             users = session.scalars(statement.order_by(User.feishu_display_name)).all()
             return [self._factory_user_snapshot(session, user) for user in users]
+
+    def page_factory_users(
+        self,
+        *,
+        actor_id: str,
+        factory_id: str | None = None,
+        page: int = 1,
+        page_size: int = 10,
+        sort_by: str = "",
+        sort_order: str = "asc",
+    ) -> tuple[list[FactoryUserSnapshot], int]:
+        with self._session_factory() as session:
+            self._require_admin(session, actor_id)
+            statement = (
+                select(User)
+                .outerjoin(Factory, Factory.factory_id == User.factory_id)
+                .where(User.role == "factory")
+            )
+            if factory_id:
+                statement = statement.where(User.factory_id == factory_id)
+            total = session.scalar(select(func.count()).select_from(statement.subquery())) or 0
+            fields = {
+                "displayName": User.feishu_display_name.collate("utf8mb4_zh_0900_as_cs"),
+                "role": User.role,
+                "factoryPosition": case(
+                    (User.factory_position == "owner", "老板"),
+                    (User.factory_position == "employee", "工厂员工"),
+                    else_="—",
+                ).collate("utf8mb4_zh_0900_as_cs"),
+                "factoryName": func.coalesce(Factory.factory_name, "—").collate(
+                    "utf8mb4_zh_0900_as_cs"
+                ),
+                "isEnabled": case((User.is_enabled.is_(True), "已启用"), else_="已停用").collate(
+                    "utf8mb4_zh_0900_as_cs"
+                ),
+            }
+            field = fields.get(sort_by, User.feishu_display_name.collate("utf8mb4_zh_0900_as_cs"))
+            order = field.desc() if sort_order == "desc" else field.asc()
+            rows = session.scalars(
+                statement.order_by(order, User.user_id)
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            ).all()
+            return [self._factory_user_snapshot(session, row) for row in rows], total
 
     def set_factory_user_enabled(
         self,

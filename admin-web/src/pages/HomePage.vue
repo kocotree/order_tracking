@@ -157,14 +157,14 @@ const displayedOrders = computed(() => {
     if (!normalizedKeyword) return true;
     return [item.orderNo, ...item.lines.map((line) => line.productName)].some((value) => value.toLocaleLowerCase("zh-CN").includes(normalizedKeyword));
   });
-  if (!sortKey.value) return orders;
+  if (!sortKey.value) return orders.slice(0, 10);
   const direction = sortDirection.value === "asc" ? 1 : -1;
   return orders.sort((left, right) => {
     const leftValue = sortValue(left, sortKey.value as SortKey);
     const rightValue = sortValue(right, sortKey.value as SortKey);
     if (typeof leftValue === "number" && typeof rightValue === "number") return (leftValue - rightValue) * direction;
     return String(leftValue).localeCompare(String(rightValue), "zh-CN", { numeric: true }) * direction;
-  });
+  }).slice(0, 10);
 });
 
 function applySearch() {

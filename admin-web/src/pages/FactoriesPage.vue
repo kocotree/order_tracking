@@ -58,12 +58,7 @@
         </div>
         <footer class="order-list-footer">
           <span>每页展示 10 条工厂资料。</span>
-          <nav class="order-pagination" aria-label="工厂资料分页">
-            <span class="order-page-total">共 {{ sortedFactories.length }} 条</span>
-            <button class="order-page-button order-page-arrow" type="button" aria-label="上一页" :disabled="page <= 1" @click="page -= 1">‹</button>
-            <button v-for="pageNumber in pageNumbers" :key="pageNumber" class="order-page-button" :class="{ 'is-current': pageNumber === page }" type="button" :aria-label="`第 ${pageNumber} 页`" :aria-current="pageNumber === page ? 'page' : undefined" @click="page = pageNumber">{{ pageNumber }}</button>
-            <button class="order-page-button order-page-arrow" type="button" aria-label="下一页" :disabled="page >= totalPages" @click="page += 1">›</button>
-          </nav>
+          <NumberPagination :page="page" :total="sortedFactories.length" @change="page = $event" />
         </footer>
       </section>
     </article>
@@ -117,6 +112,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import { ApiError, identityApi, type Factory } from "@/api/client";
+import NumberPagination from "@/components/NumberPagination.vue";
 import AdminShell from "@/components/AdminShell.vue";
 import TableSortButton from "@/components/TableSortButton.vue";
 
@@ -144,9 +140,7 @@ const sortedFactories = computed(() => {
   const direction = sortOrder.value === "asc" ? 1 : -1;
   return rows.sort((left, right) => String(sortValue(left, sortBy.value)).localeCompare(String(sortValue(right, sortBy.value)), "zh-CN", { numeric: true }) * direction);
 });
-const totalPages = computed(() => Math.max(1, Math.ceil(sortedFactories.value.length / pageSize)));
 const pageFactories = computed(() => sortedFactories.value.slice((page.value - 1) * pageSize, page.value * pageSize));
-const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, index) => index + 1));
 
 function emptyForm(): FactoryForm { return { supplierNumber: "", factoryName: "", factoryCode: "", legalName: "", address: "", legalRepresentative: "", contacts: [] }; }
 function resetForm(value: FactoryForm) { Object.assign(form, value); }

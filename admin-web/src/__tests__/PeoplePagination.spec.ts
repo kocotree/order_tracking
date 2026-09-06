@@ -1,0 +1,31 @@
+import { createPinia } from "pinia";
+import { createMemoryHistory, createRouter } from "vue-router";
+import { flushPromises, mount } from "@vue/test-utils";
+import { afterEach, expect, it, vi } from "vitest";
+import { identityApi, type User } from "@/api/client";
+import FactoryUsersPage from "@/pages/FactoryUsersPage.vue";
+
+afterEach(() => vi.restoreAllMocks());
+it("requests the selected page, preserves server order, and resets for filtering and sorting", async () => {
+  const list = vi.spyOn(identityApi, "listFactoryUsers").mockImplementation(async params => ({ items: [{ userId: `u${params?.page}`, displayName: `第${params?.page}页`, role: "factory", factoryId: "f1", isEnabled: true } as User], total: 200 }));
+  vi.spyOn(identityApi, "listFactories").mockResolvedValue({ items: [{ factoryId: "f1", factoryName: "测试工厂" }], total: 1 } as never);
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/people/users", component: FactoryUsersPage }] });
+  await router.push("/people/users");
+  const wrapper = mount(FactoryUsersPage, { global: { plugins: [createPinia(), router], stubs: { AdminShell: { template: "<div><slot/></div>" } } } });
+  await flushPromises();
+  await wrapper.get("button[aria-label='第 20 页']").trigger("click");
+  await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 20, pageSize: 10 }));
+  expect(wrapper.get("tbody td").text()).toBe("191");
+  await wrapper.get("select").setValue("f1");
+  await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, factoryId: "f1" }));
+  await wrapper.get("button[aria-label='按姓名升序排序']").trigger("click");
+  await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, sortBy: "displayName", sortOrder: "asc" }));
+  list.mockResolvedValueOnce({ items: [], total: 11 });
+  await wrapper.get("button[aria-label='第 20 页']").trigger("click");
+  await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
+  wrapper.unmount();
+});

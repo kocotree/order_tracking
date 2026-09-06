@@ -50,21 +50,7 @@
         </div>
         <footer class="order-list-footer">
           <span>每页展示 10 条产品资料。</span>
-          <nav class="order-pagination" aria-label="产品资料分页">
-            <span class="order-page-total">共 {{ total }} 条</span>
-            <button class="order-page-button order-page-arrow" type="button" aria-label="上一页" :disabled="page <= 1" @click="goTo(page - 1)">‹</button>
-            <button
-              v-for="pageNumber in pageNumbers"
-              :key="pageNumber"
-              class="order-page-button"
-              :class="{ 'is-current': pageNumber === page }"
-              type="button"
-              :aria-label="`第 ${pageNumber} 页`"
-              :aria-current="pageNumber === page ? 'page' : undefined"
-              @click="goTo(pageNumber)"
-            >{{ pageNumber }}</button>
-            <button class="order-page-button order-page-arrow" type="button" aria-label="下一页" :disabled="page >= totalPages" @click="goTo(page + 1)">›</button>
-          </nav>
+          <NumberPagination :page="page" :total="total" :loading="loading" @change="goTo" />
         </footer>
       </section>
     </article>
@@ -75,6 +61,7 @@
 import { computed, onMounted, ref } from "vue";
 
 import { ApiError, identityApi, type ProductListItem } from "@/api/client";
+import NumberPagination from "@/components/NumberPagination.vue";
 import AdminShell from "@/components/AdminShell.vue";
 import ProductImage from "@/components/ProductImage.vue";
 import TableSortButton from "@/components/TableSortButton.vue";
@@ -89,22 +76,22 @@ const total = ref(0);
 const sortBy = ref<SortField>("iId");
 const sortOrder = ref<"asc" | "desc">("asc");
 const errorMessage = ref("");
+const loading = ref(false);
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
-const pageNumbers = computed(() => {
-  if (totalPages.value <= 7) return Array.from({ length: totalPages.value }, (_, index) => index + 1);
-  const start = Math.max(1, Math.min(page.value - 2, totalPages.value - 4));
-  return Array.from({ length: 5 }, (_, index) => start + index);
-});
 
-async function load() {
-  errorMessage.value = "";
+let requestSequence = 0;
+async function load() { const requestId = ++requestSequence;
+  loading.value = true; errorMessage.value = "";
   try {
     const result = await identityApi.listProducts({ keyword: keyword.value, page: page.value, pageSize, sortBy: sortBy.value, sortOrder: sortOrder.value });
+    if (requestId !== requestSequence) return;
+    const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+    if (page.value > lastPage) { page.value = lastPage; await load(); return; }
     items.value = result.items;
     total.value = result.total;
   } catch (error) {
-    errorMessage.value = error instanceof ApiError ? error.message : "产品资料加载失败";
-  }
+    if (requestId === requestSequence) errorMessage.value = error instanceof ApiError ? error.message : "产品资料加载失败";
+  } finally { if (requestId === requestSequence) loading.value = false; }
 }
 
 async function search() {

@@ -53,3 +53,17 @@ describe("pending order import page", () => {
     expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ category: "帽子" }));
   });
 });
+
+it("returns to the last valid page after the result count shrinks and updates the URL", async () => {
+  vi.spyOn(orderImportApi, "latestRun").mockResolvedValue(null);
+  const list = vi.spyOn(orderImportApi, "list").mockResolvedValue({ items: [candidate], total: 200, page: 1, pageSize: 10, requestId: "test" });
+  const wrapper = mount(OrderImportPage, { global: { stubs: { AdminShell: { template: "<div><slot/></div>" }, RouterLink: { template: "<a><slot/></a>" } } } });
+  await flushPromises();
+  list.mockResolvedValueOnce({ items: [], total: 11, page: 20, pageSize: 10, requestId: "test" }).mockResolvedValue({ items: [candidate], total: 11, page: 2, pageSize: 10, requestId: "test" });
+  await wrapper.get("button[aria-label='第 20 页']").trigger("click");
+  await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
+  expect(router.replace).toHaveBeenLastCalledWith(expect.objectContaining({ query: expect.objectContaining({ page: "2" }) }));
+  expect(wrapper.get("tbody .import-sequence-column").text()).toBe("11");
+  wrapper.unmount();
+});

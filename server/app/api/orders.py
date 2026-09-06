@@ -457,7 +457,7 @@ def create_order_router(
                 else 0
             ),
             today_shipments=0,
-            recent_orders=[_order_response(item, request.state.request_id) for item in items[:5]],
+            recent_orders=[_order_response(item, request.state.request_id) for item in items[:10]],
             request_id=request.state.request_id,
         )
 

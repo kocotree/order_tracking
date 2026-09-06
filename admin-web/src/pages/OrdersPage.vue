@@ -106,12 +106,8 @@
           </table>
         </div>
         <footer class="order-list-footer">
-          <span class="order-page-total">共 {{ total }} 条</span>
-          <nav class="order-pagination" aria-label="订单分页">
-            <button class="order-page-button order-page-arrow" type="button" aria-label="上一页" :disabled="page <= 1" @click="go(page - 1)">‹</button>
-            <button v-for="value in pageNumbers" :key="value" class="order-page-button" :class="{ 'is-current': page === value }" type="button" @click="go(value)">{{ value }}</button>
-            <button class="order-page-button order-page-arrow" type="button" aria-label="下一页" :disabled="page >= totalPages" @click="go(page + 1)">›</button>
-          </nav>
+          <span>每页展示 10 条订单。</span>
+          <NumberPagination :page="page" :total="total" :loading="loading" @change="go" />
         </footer>
       </section>
 
@@ -131,6 +127,7 @@ import { useRoute } from "vue-router";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 import { ApiError, identityApi, orderApi, type Factory, type Order } from "@/api/client";
+import NumberPagination from "@/components/NumberPagination.vue";
 import AdminShell from "@/components/AdminShell.vue";
 
 type TableSortKey = "orderNo" | "productName" | "category" | "tracker" | "factory" | "contractShipDate" | "progressPercent" | "shippedQuantity" | "status";
@@ -165,7 +162,6 @@ const trackerOpen = ref(false);
 const deleteTarget = ref<Order | null>(null);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
-const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, index) => index + 1));
 const factoryLabel = computed(() => factoryIds.value.length === 0 ? "全部工厂" : factoryIds.value.length === 1 ? factories.value.find((item) => item.factoryId === factoryIds.value[0])?.factoryName ?? "已选 1 个工厂" : `已选 ${factoryIds.value.length} 个工厂`);
 const trackerLabel = computed(() => selectedTrackers.value.length === 0 ? "全部跟单人员" : selectedTrackers.value.length === 1 ? selectedTrackers.value[0] : `已选 ${selectedTrackers.value.length} 位跟单人员`);
 const number = (value: number) => value.toLocaleString("zh-CN");
@@ -188,17 +184,21 @@ function statusTone(order: Order) {
   return "is-info";
 }
 
-async function load() {
+let requestSequence = 0;
+async function load() { const requestId = ++requestSequence;
   loading.value = true;
   errorMessage.value = "";
   try {
     const result = await orderApi.list({ keyword: keyword.value, status: status.value, category: category.value || undefined, factoryIds: factoryIds.value, trackers: selectedTrackers.value, shipDateFrom: shipDateFrom.value || undefined, shipDateTo: shipDateTo.value || undefined, sortBy: sortBy.value, includeDrafts: true, page: page.value, pageSize });
+    if (requestId !== requestSequence) return;
+    const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+    if (page.value > lastPage) { page.value = lastPage; await load(); return; }
     items.value = result.items;
     total.value = result.total;
   } catch (error) {
-    errorMessage.value = error instanceof ApiError ? error.message : "订单列表加载失败";
+    if (requestId === requestSequence) errorMessage.value = error instanceof ApiError ? error.message : "订单列表加载失败";
   } finally {
-    loading.value = false;
+    if (requestId === requestSequence) loading.value = false;
   }
 }
 

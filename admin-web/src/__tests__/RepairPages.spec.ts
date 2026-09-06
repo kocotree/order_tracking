@@ -196,3 +196,24 @@ describe("repair web prototype alignment", () => {
     expect(wrapper.text()).not.toContain("补传");
   });
 });
+
+it("loads repairs beyond the first hundred and returns from an emptied last page", async () => {
+  const rows = Array.from({ length: 101 }, (_, index) => ({ ...repair, repairId: `r${index}`, repairNo: `FX${String(index).padStart(3, "0")}`, status: "COMPLETED" as const }));
+  const list = vi.spyOn(repairApi, "list").mockImplementation(async (params) => ({ items: rows.slice(((params?.page ?? 1) - 1) * 100, (params?.page ?? 1) * 100), total: rows.length, page: params?.page ?? 1, pageSize: 100 }));
+  vi.spyOn(repairApi, "archive").mockResolvedValue({} as never);
+  const wrapper = mount(RepairsPage, { global: { stubs: { AdminShell: shellStub } } });
+  await flushPromises();
+  expect(list).toHaveBeenCalledWith({ page: 2, pageSize: 100 });
+  await wrapper.get("button[aria-label='第 11 页']").trigger("click");
+  expect(wrapper.get(".repair-list-table tbody").text()).toContain("FX100");
+  expect(wrapper.get(".order-sequence-cell").text()).toBe("101");
+  await wrapper.get(".repair-archive-button").trigger("click");
+  await wrapper.get("[data-repair-archive-confirm]").trigger("click");
+  await flushPromises();
+  expect(wrapper.get("button[aria-current=page]").text()).toBe("10");
+  expect(wrapper.get(".order-page-total").text()).toBe("共 100 条");
+  await wrapper.get("input[type=search]").setValue("FX000");
+  expect(wrapper.get("button[aria-current=page]").text()).toBe("1");
+  expect(wrapper.findAll(".repair-list-table tbody tr")).toHaveLength(1);
+  wrapper.unmount();
+});

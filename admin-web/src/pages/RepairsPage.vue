@@ -65,12 +65,7 @@
         </div>
         <footer class="order-list-footer repair-list-footer">
           <span>每页展示 10 条返修单。</span>
-          <nav class="order-pagination" aria-label="返修单分页">
-            <span class="order-page-total">共 {{ sortedItems.length }} 条</span>
-            <button class="order-page-button order-page-arrow" type="button" :disabled="page===1" @click="page--">‹</button>
-            <button v-for="number in pages" :key="number" class="order-page-button" :class="{'is-current':number===page}" type="button" @click="page=number">{{ number }}</button>
-            <button class="order-page-button order-page-arrow" type="button" :disabled="page===pages" @click="page++">›</button>
-          </nav>
+          <NumberPagination :page="page" :total="sortedItems.length" :loading="loading" @change="page = $event" />
         </footer>
       </section>
       <div v-if="archiveTarget" class="detail-confirm-layer">
@@ -92,6 +87,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ApiError, repairApi, type Repair } from "@/api/client";
+import NumberPagination from "@/components/NumberPagination.vue";
 import AdminShell from "@/components/AdminShell.vue";
 import TableSortButton from "@/components/TableSortButton.vue";
 
@@ -114,16 +110,25 @@ const filtered=computed(()=>{const k=keyword.value.trim().toLocaleLowerCase("zh-
 const sortedItems=computed(()=>{const values=[...filtered.value];if(!sortBy.value)return values;return values.sort((a,b)=>{const av=a[sortBy.value as SortField],bv=b[sortBy.value as SortField];const result=typeof av==="number"&&typeof bv==="number"?av-bv:String(av).localeCompare(String(bv),"zh-CN",{numeric:true});return sortOrder.value==="asc"?result:-result;});});
 const pages=computed(()=>Math.max(1,Math.ceil(sortedItems.value.length/pageSize)));
 const pageItems=computed(()=>sortedItems.value.slice((page.value-1)*pageSize,page.value*pageSize));
+watch([keyword, status, factoryFilter, dateFrom, dateTo], () => { page.value = 1; }, { deep: true });
 watch(sortedItems,()=>{if(page.value>pages.value)page.value=pages.value});
 function sort(field:string){const next=field as SortField;if(sortBy.value===next)sortOrder.value=sortOrder.value==="asc"?"desc":"asc";else{sortBy.value=next;sortOrder.value="asc"}page.value=1}
 function reset(){keyword.value="";status.value="all";factoryFilter.value=[];dateFrom.value="";dateTo.value="";sortBy.value="";sortOrder.value="asc";page.value=1}
 const n=(v:number)=>v.toLocaleString("zh-CN");
 const open=(id:string)=>router.push(`/repairs/${id}`);
 async function confirmArchive(){if(!archiveTarget.value||archiving.value)return;const target=archiveTarget.value;archiving.value=true;error.value="";try{await repairApi.archive(target.repairId);items.value=items.value.filter(item=>item.repairId!==target.repairId);archiveTarget.value=null}catch(e){error.value=e instanceof ApiError?e.message:"返修单归档失败"}finally{archiving.value=false}}
-onMounted(async()=>{try{items.value=(await repairApi.list({pageSize:100})).items}catch(e){error.value=e instanceof ApiError?e.message:"返修单加载失败"}finally{loading.value=false}});
+onMounted(async()=>{try{const all: Repair[] = []; let nextPage = 1;
+    while (true) {
+      const result = await repairApi.list({ page: nextPage, pageSize: 100 });
+      all.push(...result.items);
+      if (all.length >= result.total) break;
+      if (!result.items.length) throw new Error("返修单分页数据不完整");
+      nextPage += 1;
+    }
+    items.value = all}catch(e){error.value=e instanceof ApiError?e.message:"返修单加载失败"}finally{loading.value=false}});
 </script>
 
 <style scoped>
 .repair-filter-card{padding:0;overflow:visible}
-.repair-filter-card .order-filter-form{padding-top:16px}.repair-filter-row .order-list-search-field{flex:1 1 auto}.repair-filter-row .repair-status-field{flex:0 0 116px}.repair-filter-row .repair-factory-field{flex:0 0 170px}.repair-filter-row .order-date-field{flex:0 0 142px}.repair-create-button{width:auto;min-width:106px}.repair-list-table{width:100%;min-width:1158px;table-layout:fixed}.repair-list-table th:nth-child(1){width:52px}.repair-list-table th:nth-child(2){width:178px}.repair-list-table th:nth-child(3){width:128px}.repair-list-table th:nth-child(4),.repair-list-table th:nth-child(5),.repair-list-table th:nth-child(6),.repair-list-table th:nth-child(7){width:126px}.repair-list-table th:nth-child(8){width:152px}.repair-list-table th:nth-child(9){width:104px}.repair-list-table th:nth-child(10){width:104px}.repair-list-table th,.repair-list-table td{padding:0 14px;font-size:13px;text-align:left}.repair-list-table td{height:40px;font-weight:700}.repair-list-table .order-sequence-column,.repair-list-table .order-sequence-cell{width:52px!important;padding-right:8px!important;padding-left:8px!important;text-align:center;white-space:nowrap}.repair-list-table tbody tr:hover td{background:#e7f3ff}.repair-list-table .row-link{padding:0;background:transparent;border:0}.repair-list-table .status-badge{justify-content:center;min-width:44px;height:22px;padding:0 10px;font-size:13px}.repair-list-table .status-badge::before{display:none!important;content:none!important}.repair-list-header{height:54px;padding:0 16px}.repair-list-header h1{margin:0;font-size:18px;font-weight:800}.repair-list-footer{min-height:42px;padding:8px 14px;background:var(--surface-soft)}.repair-number-cell{font-variant-numeric:tabular-nums}.repair-archive-button{color:#d84949}.order-row-actions{gap:12px;white-space:nowrap}
+.repair-filter-card .order-filter-form{padding-top:16px}.repair-filter-row .order-list-search-field{flex:1 1 auto}.repair-filter-row .repair-status-field{flex:0 0 116px}.repair-filter-row .repair-factory-field{flex:0 0 170px}.repair-filter-row .order-date-field{flex:0 0 142px}.repair-create-button{width:auto;min-width:106px}.repair-list-table{width:100%;min-width:1222px;table-layout:fixed}.repair-list-table th:nth-child(1){width:52px}.repair-list-table th:nth-child(2){width:178px}.repair-list-table th:nth-child(3){width:auto}.repair-list-table th:nth-child(4),.repair-list-table th:nth-child(5),.repair-list-table th:nth-child(6),.repair-list-table th:nth-child(7){width:126px}.repair-list-table th:nth-child(8){width:152px}.repair-list-table th:nth-child(9){width:104px}.repair-list-table th:nth-child(10){width:104px}.repair-list-table th,.repair-list-table td{padding:0 14px;font-size:13px;text-align:left}.repair-list-table td{height:40px;font-weight:700}.repair-list-table .order-sequence-column,.repair-list-table .order-sequence-cell{width:52px!important;padding-right:8px!important;padding-left:8px!important;text-align:center;white-space:nowrap}.repair-list-table tbody tr:hover td{background:#e7f3ff}.repair-list-table .row-link{padding:0;background:transparent;border:0}.repair-list-table .status-badge{justify-content:center;min-width:44px;height:22px;padding:0 10px;font-size:13px}.repair-list-table .status-badge::before{display:none!important;content:none!important}.repair-list-header{height:54px;padding:0 16px}.repair-list-header h1{margin:0;font-size:18px;font-weight:800}.repair-list-footer{min-height:42px;padding:8px 14px;background:var(--surface-soft)}.repair-number-cell{font-variant-numeric:tabular-nums}.repair-archive-button{color:#d84949}.order-row-actions{gap:12px;white-space:nowrap}
 </style>

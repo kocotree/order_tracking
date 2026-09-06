@@ -27,7 +27,7 @@ const shipment: Shipment = {
   note: "已拍照留档",
   totalBoxes: 1,
   totalQuantity: 2,
-  lines: [],
+  lines: [{ assignmentId: 1, orderId: "order-1", orderNo: "092#", skuId: "KQ26721", productName: "测试童帽", propertiesValue: "蓝色 / 52", quantity: 2, lineId: 1, returnedQuantity: 0, returnableQuantity: 2 }],
   boxes: [],
   files: [{
     fileId: 7,
@@ -63,6 +63,13 @@ describe("shipment evidence in the administrator detail", () => {
       },
     });
     await flushPromises();
+    const productTable = wrapper.get(".shipment-product-table");
+    expect(productTable.findAll("thead th")).toHaveLength(6);
+    expect(productTable.findAll("thead th").map((cell) => cell.text())).not.toContain("图片");
+    for (const row of productTable.findAll("tbody tr")) {
+      expect(row.findAll("td")).toHaveLength(6);
+    }
+
 
     expect(wrapper.text()).toContain("发货凭证（1 张）");
     expect(wrapper.text()).toContain("凭证加载中…");

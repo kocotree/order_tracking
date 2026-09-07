@@ -3,6 +3,10 @@ set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
 environment=${1:-}
+if [[ "$environment" == production ]]; then
+  echo "Production image rollback: follow the retained-version procedure in deploy/README.md" >&2
+  exit 2
+fi
 target_commit=${2:-}
 resolve_environment "${environment}"
 

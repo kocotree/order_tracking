@@ -27,6 +27,8 @@ jobs:
           git diff --check "${BASE_SHA}...HEAD"
       - name: Check deployment scripts
         run: bash -n deploy/scripts/*.sh
+      - name: Test production deployment failure boundaries
+        run: python3 -m unittest discover -s deploy/tests -v
       - name: Check shared-test Compose
         run: >-
           docker compose --env-file deploy/shared-test.env.example

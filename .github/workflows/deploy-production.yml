@@ -1,0 +1,84 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+concurrency:
+  group: order-tracking-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    if: github.ref_type == 'tag'
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release images were published successfully
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]
+          count=$(gh run list --workflow release.yml --commit "$GITHUB_SHA" --status success --limit 100 --json databaseId --jq 'length')
+          test "$count" -gt 0
+      - name: Deploy fixed version over verified SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.PROD_SSH_HOST }}
+          DEPLOY_PORT: ${{ secrets.PROD_SSH_PORT }}
+          DEPLOY_USER: ${{ secrets.PROD_SSH_USER }}
+          DEPLOY_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+          DEPLOY_DIR: ${{ secrets.PROD_DEPLOY_DIR }}
+          REGISTRY_TOKEN: ${{ github.token }}
+          REGISTRY_USER: ${{ github.actor }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?}" "${DEPLOY_USER:?}" "${DEPLOY_PORT:?}" "${DEPLOY_DIR:?}"
+          : "${DEPLOY_KEY:?}" "${DEPLOY_KNOWN_HOSTS:?}"
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]
+          [[ "$DEPLOY_USER" =~ ^[a-zA-Z0-9_-]+$ ]]
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]
+          [[ "$DEPLOY_DIR" =~ ^/[a-zA-Z0-9_./-]+$ ]]
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$REGISTRY_USER" =~ ^[a-zA-Z0-9_-]+$ ]]
+          umask 077
+          scratch=$(mktemp -d)
+          trap 'rm -rf "$scratch"' EXIT
+          printf '%s\n' "$DEPLOY_KEY" > "$scratch/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$scratch/known_hosts"
+          ssh_args=(-i "$scratch/key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$scratch/known_hosts")
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          release_dir="$DEPLOY_DIR/releases/$GITHUB_SHA"
+          ssh "${ssh_args[@]}" -p "$DEPLOY_PORT" "$remote" "test -f '$DEPLOY_DIR/deploy/.env.production' && mkdir -p '$release_dir'"
+          git archive HEAD deploy | gzip > "$scratch/deploy.tar.gz"
+          cat > "$scratch/run.sh" <<'REMOTE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          export PATH="$HOME/bin:$PATH"
+          root=$1 version=$2 revision=$3 registry_user=$4
+          release_dir="$root/releases/$revision"
+          tar -xzf "$release_dir/deploy.tar.gz" -C "$release_dir"
+          ln -sfn "$root/deploy/.env.production" "$release_dir/deploy/.env.production"
+          umask 077
+          export DOCKER_CONFIG
+          DOCKER_CONFIG=$(mktemp -d)
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          IFS= read -r token
+          printf '%s' "$token" | docker login ghcr.io -u "$registry_user" --password-stdin
+          unset token
+          bash "$release_dir/deploy/scripts/release-images.sh" "$version" "$revision"
+          REMOTE
+          scp "${ssh_args[@]}" -P "$DEPLOY_PORT" "$scratch/deploy.tar.gz" "$scratch/run.sh" "$remote:$release_dir/"
+          printf '%s\n' "$REGISTRY_TOKEN" | ssh "${ssh_args[@]}" -p "$DEPLOY_PORT" "$remote" "bash '$release_dir/run.sh' '$DEPLOY_DIR' '$VERSION' '$GITHUB_SHA' '$REGISTRY_USER'"

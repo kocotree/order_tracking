@@ -74,16 +74,21 @@ function download(fileId: number): Promise<string> {
   });
 }
 
+export interface RepairDraftEntry { variantId: string; selected: boolean; repaired: string; scrapped: string }
+export interface RepairDraft { version: number; entries: RepairDraftEntry[]; submissionKey: string }
+
 export const repairApi = {
+  getReturnDraft: (id: string) => authorizedRequest<RepairDraft>({ url: `/factory/repairs/${encodeURIComponent(id)}/return-draft`, method: "GET" }),
+  saveReturnDraft: (id: string, version: number, entries: RepairDraftEntry[]) => authorizedRequest<RepairDraft>({ url: `/factory/repairs/${encodeURIComponent(id)}/return-draft`, method: "PUT", data: { version, entries } }),
   adminList: () => authorizedRequest<RepairList>({ url: "/admin/repairs?pageSize=100", method: "GET" }),
   adminGet: (repairId: string) => authorizedRequest<Repair>({ url: `/admin/repairs/${encodeURIComponent(repairId)}`, method: "GET" }),
   factoryList: () => authorizedRequest<RepairList>({ url: "/factory/repairs?pageSize=100", method: "GET" }),
   factoryGet: (repairId: string) => authorizedRequest<Repair>({ url: `/factory/repairs/${encodeURIComponent(repairId)}`, method: "GET" }),
-  factorySubmitReturn: (repairId: string, lines: Array<{ variantId: string; repairedQuantity: number; scrappedQuantity: number }>, idempotencyKey: string) => authorizedRequest<Repair>({
+  factorySubmitReturn: (repairId: string, lines: Array<{ variantId: string; repairedQuantity: number; scrappedQuantity: number }>, idempotencyKey: string, draftVersion?: number) => authorizedRequest<Repair>({
     url: `/factory/repairs/${encodeURIComponent(repairId)}/return-batches`,
     method: "POST",
     header: { "Idempotency-Key": idempotencyKey },
-    data: { lines },
+    data: { lines, draftVersion },
   }),
   download,
 };

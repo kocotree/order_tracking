@@ -3,6 +3,7 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -15,6 +16,7 @@ from app.db.models import (
     RepairInspectionLine,
     RepairOrder,
     RepairReturnBatch,
+    RepairReturnDraft,
     RepairReturnLine,
     User,
 )
@@ -51,6 +53,13 @@ class RepairArchiveView:
     archived_by: str
 
 
+@dataclass(frozen=True)
+class RepairDraftView:
+    version: int
+    entries: list[dict[str, Any]]
+    submission_key: str
+
+
 class RepairReturnService:
     def __init__(
         self,
@@ -72,6 +81,94 @@ class RepairReturnService:
 
     def list_all(self, *, factory_id: str | None = None) -> tuple[RepairOrderView, ...]:
         return self._reader.list_all(factory_id=factory_id)
+
+    def _draft_repair(
+        self, session: Session, repair_id: str, factory_id: str, user_id: str
+    ) -> RepairOrder:
+        repair = session.scalar(
+            select(RepairOrder).where(RepairOrder.repair_id == repair_id).with_for_update()
+        )
+        actor = session.get(User, user_id)
+        if (
+            repair is None
+            or repair.archived_at is not None
+            or repair.factory_id != factory_id
+            or actor is None
+            or not actor.is_enabled
+            or actor.role != "factory"
+            or actor.factory_id != factory_id
+        ):
+            raise RepairReturnNotFound("返修单不存在")
+        if repair.status != "INCOMPLETE":
+            raise RepairReturnConflict("已完成返修单不能继续填写")
+        return repair
+
+    def get_draft(self, *, repair_id: str, factory_id: str, user_id: str) -> RepairDraftView:
+        with self._session_factory() as session, session.begin():
+            self._draft_repair(session, repair_id, factory_id, user_id)
+            draft = session.get(RepairReturnDraft, (repair_id, user_id))
+            return (
+                RepairDraftView(draft.version, draft.entries, draft.submission_key)
+                if draft
+                else RepairDraftView(0, [], "")
+            )
+
+    def save_draft(
+        self,
+        *,
+        repair_id: str,
+        factory_id: str,
+        user_id: str,
+        version: int,
+        entries: list[dict[str, Any]],
+    ) -> RepairDraftView:
+        if type(version) is not int or version < 0 or len(entries) > 1000:
+            raise RepairReturnValidationError("无效草稿")
+        seen: set[str] = set()
+        for entry in entries:
+            if (
+                set(entry) != {"variantId", "selected", "repaired", "scrapped"}
+                or not isinstance(entry["variantId"], str)
+                or entry["variantId"] in seen
+                or type(entry["selected"]) is not bool
+                or any(
+                    not isinstance(entry[field], str) or len(entry[field]) > 32
+                    for field in ("repaired", "scrapped")
+                )
+            ):
+                raise RepairReturnValidationError("无效草稿规格")
+            seen.add(entry["variantId"])
+        with self._session_factory() as session, session.begin():
+            self._draft_repair(session, repair_id, factory_id, user_id)
+            variants = set(
+                session.scalars(
+                    select(RepairInspectionLine.variant_id).where(
+                        RepairInspectionLine.repair_id == repair_id
+                    )
+                )
+            )
+            if not seen.issubset(variants):
+                raise RepairReturnValidationError("返修规格不存在")
+            draft = session.get(RepairReturnDraft, (repair_id, user_id))
+            current_version = draft.version if draft else 0
+            if version != current_version:
+                # Retry after a lost successful response is safe only for the same content.
+                if draft and entries and version + 1 == draft.version and entries == draft.entries:
+                    return RepairDraftView(draft.version, draft.entries, draft.submission_key)
+                raise RepairReturnConflict("草稿已在其他页面更新，请重新进入核对")
+            if draft is None:
+                draft = RepairReturnDraft(
+                    repair_id=repair_id,
+                    user_id=user_id,
+                    version=0,
+                    entries=[],
+                    submission_key=str(uuid4()),
+                )
+                session.add(draft)
+            draft.entries = entries
+            draft.version += 1
+            session.flush()
+            return RepairDraftView(draft.version, draft.entries, draft.submission_key)
 
     def archive(
         self,
@@ -147,6 +244,7 @@ class RepairReturnService:
         submitted_by: str,
         idempotency_key: str,
         lines: Sequence[RepairReturnLineInput],
+        draft_version: int | None = None,
     ) -> RepairOrderView:
         normalized_key = idempotency_key.strip()
         if not normalized_key or len(normalized_key) > 191:
@@ -184,6 +282,13 @@ class RepairReturnService:
                     raise RepairReturnNotFound("返修单不存在")
                 if repair.status != "INCOMPLETE":
                     raise RepairReturnConflict("已完成返修单不能继续发回")
+                draft = session.get(RepairReturnDraft, (repair_id, submitted_by))
+                if draft_version is not None and (
+                    draft is None
+                    or draft.version != draft_version
+                    or draft.submission_key != normalized_key
+                ):
+                    raise RepairReturnConflict("草稿已变化，请重新进入核对")
                 inspection_lines = session.scalars(
                     select(RepairInspectionLine)
                     .where(RepairInspectionLine.repair_id == repair_id)
@@ -225,6 +330,10 @@ class RepairReturnService:
                     ):
                         raise RepairReturnConflict("返修进度已变化，请重新核对")
 
+                if draft is not None:
+                    draft.entries = []
+                    draft.version += 1
+                    draft.submission_key = str(uuid4())
                 batch_id = self._id_factory()
                 session.add(
                     RepairReturnBatch(

@@ -89,3 +89,5 @@
 .repair-return-chevron { flex: 0 0 24rpx; font-size: 34rpx !important; text-align: center; transform: rotate(0); }
 .repair-return-chevron.is-expanded { transform: rotate(90deg); }
 .repair-return-spec.is-collapsed { display: none; }
+
+.repair-return-save-status { padding: 16rpx 28rpx; color: #000; font-size: 24rpx; font-weight: 700; }

@@ -1535,3 +1535,17 @@ class AuditLog(Base):
         nullable=False,
         server_default=text("CURRENT_TIMESTAMP(6)"),
     )
+
+
+class RepairReturnDraft(Base):
+    __tablename__ = "repair_return_drafts"
+
+    repair_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("repair_orders.repair_id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    entries: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    submission_key: Mapped[str] = mapped_column(String(36), nullable=False)

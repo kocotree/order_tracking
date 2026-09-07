@@ -1,0 +1,27 @@
+/* Vanilla-JS visibility and wrapper adapters; page dimensions come from frontend-baseline.css. */
+:root { --font-body: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+[hidden] { display: none !important; }
+.has-dialog-open { overflow: hidden; }
+.notification-popover:not(.is-open), .account-popover:not(.is-open) { display: none; }
+.notification-popover.is-open { display: block; }
+.notification-popover-item { width: 100%; }
+.notification-popover-list > p { padding: 28px; margin: 0; color: var(--subtle); font-size: 10px; text-align: center; }
+.notification-bell .topbar-icon, .notification-bell .topbar-icon svg { display: block; width: 22px; height: 22px; }
+.dashboard-search-summary:not(.is-visible), .dashboard-search-clear:not(.is-visible) { display: none; }
+.dashboard-section-header .text-button { font-size: 11px; font-weight: 700; }
+.dashboard-product-cell strong { font: inherit; }
+.dashboard-order-table .dashboard-order-link,
+.order-list-table .row-link,
+.pending-import-table .row-link,
+.shipment-list-table .row-link { padding: 0; background: transparent; border: 0; }
+.factory-contact-row { display: contents; }
+.contract-export-dialog-root { position: relative; width: fit-content; max-width: 100%; }
+.order-detail-page .detail-confirm-layer > .modal { position: relative; }
+.order-delete-confirm-button { min-height: 34px; padding: 0 14px; color: #fff; font-size: 12px; font-weight: 700; background: var(--danger); border: 1px solid var(--danger); border-radius: 4px; }
+.order-reopen-error { color: var(--danger); }
+.toast { position: fixed; right: 24px; bottom: 24px; z-index: 120; display: flex; gap: 10px; align-items: flex-start; width: min(360px, calc(100vw - 32px)); padding: 13px 15px; visibility: hidden; color: #fff; background: #2f3946; border-radius: 6px; box-shadow: var(--shadow-float); }
+.toast.is-visible { visibility: visible; }
+.toast-mark { display: grid; flex: none; width: 22px; height: 22px; place-items: center; color: var(--erp-blue-dark); font-size: 12px; font-weight: 800; background: #dcebf4; border-radius: 4px; }
+.toast-copy strong, .toast-copy span { display: block; }
+.toast-copy strong { font-size: 12px; }
+.toast-copy span { margin-top: 2px; color: rgb(255 255 255 / 74%); font-size: 11px; }

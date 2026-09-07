@@ -1,3 +1,4 @@
+import { renderNumberPagination } from "../components/pagination.js";
 import { factoryListData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
@@ -85,12 +86,12 @@ function renderEditor(factory = {}, mode = "edit") {
                 <div class="factory-form-control"><input id="factory-code" type="text" name="factoryCode" value="${fieldValue(factory.factoryCode)}" placeholder="例如 XZ，可留空" /></div>
 
                 <label class="factory-form-label" for="factory-name"><span>工厂名称</span></label>
-                <div class="factory-form-control"><input id="factory-name" type="text" name="factoryName" value="${fieldValue(factory.factoryName)}" placeholder="日常使用的工厂简称" required${fixedFieldAttribute} /></div>
+                <div class="factory-form-control"><input id="factory-name" type="text" name="factoryName" value="${fieldValue(factory.factoryName)}" placeholder="日常使用的工厂简称" required /></div>
                 <label class="factory-form-label" for="factory-legal-representative"><span>法定代表人</span></label>
-                <div class="factory-form-control"><input id="factory-legal-representative" type="text" name="legalRepresentative" value="${fieldValue(factory.legalRepresentative)}"${fixedFieldAttribute} /></div>
+                <div class="factory-form-control"><input id="factory-legal-representative" type="text" name="legalRepresentative" value="${fieldValue(factory.legalRepresentative)}" /></div>
 
                 <label class="factory-form-label" for="factory-legal-name"><span>单位全称</span></label>
-                <div class="factory-form-control is-wide"><input id="factory-legal-name" type="text" name="legalName" value="${fieldValue(factory.legalName)}" placeholder="营业执照上的单位名称"${fixedFieldAttribute} /></div>
+                <div class="factory-form-control is-wide"><input id="factory-legal-name" type="text" name="legalName" value="${fieldValue(factory.legalName)}" placeholder="营业执照上的单位名称" /></div>
 
                 ${renderContactEditorRows(factory.contacts)}
 
@@ -179,12 +180,7 @@ function renderRows(factories, rowStart) {
 }
 
 function renderPagination(currentPage, totalPages, totalItems) {
-  if (totalItems === 0) return `<span class="order-page-total">共 0 条</span>`;
-  const pages = Array.from({ length: totalPages }, (_, index) => {
-    const page = index + 1;
-    return `<button class="order-page-button${page === currentPage ? " is-current" : ""}" type="button" aria-label="第 ${page} 页" aria-current="${page === currentPage ? "page" : "false"}" data-factory-page="${page}">${page}</button>`;
-  }).join("");
-  return `<span class="order-page-total">共 ${totalItems} 条</span><button class="order-page-button order-page-arrow" type="button" aria-label="上一页" data-factory-page-action="prev" ${currentPage === 1 ? "disabled" : ""}>‹</button>${pages}<button class="order-page-button order-page-arrow" type="button" aria-label="下一页" data-factory-page-action="next" ${currentPage === totalPages ? "disabled" : ""}>›</button>`;
+  return renderNumberPagination(currentPage, totalItems, "data-factory-page");
 }
 
 export function renderFactoryListPage() {

@@ -1,319 +1,98 @@
 import { factoryListData, peopleManagementData } from "../mock-data.js";
-import { escapeHTML, showToast } from "../components/app-shell.js";
+import { escapeHTML } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
+import { renderNumberPagination } from "../components/pagination.js";
 
-const statusMeta = {
-  pending: { label: "待审核", className: "is-warning" },
-  approved: { label: "已通过", className: "is-success" },
-  rejected: { label: "已拒绝", className: "is-danger" },
-};
-
-let factoryApplications = peopleManagementData.factoryApplications.map((item) => ({ ...item }));
-let users = peopleManagementData.users.map((item) => ({ ...item }));
-
-function renderStatus(status) {
-  const meta = statusMeta[status] ?? statusMeta.pending;
-  return `<span class="status-badge ${meta.className}">${meta.label}</span>`;
-}
-
-function renderEmptyRow(colspan, message) {
-  return `<tr><td colspan="${colspan}"><div class="people-empty-state">${escapeHTML(message)}</div></td></tr>`;
-}
-
-function renderFactoryApplicationRows(rows) {
-  if (rows.length === 0) return renderEmptyRow(7, "暂无工厂用户申请");
-  return rows.map((item, index) => `
-    <tr>
-      <td class="people-sequence">${index + 1}</td>
-      <td>${escapeHTML(item.name)}</td>
-      <td>${escapeHTML(item.position)}</td>
-      <td>${escapeHTML(item.requestedFactoryName)}</td>
-      <td>${escapeHTML(item.appliedAt)}</td>
-      <td>${renderStatus(item.status)}</td>
-      <td><button class="text-button" type="button" data-people-action="view-factory" data-record-id="${escapeHTML(item.id)}">详情</button></td>
-    </tr>
-  `).join("");
-}
-
-function renderRole(user) {
-  const roleLabel = user.role === "admin" ? "管理员" : "工厂用户";
-  return `${escapeHTML(roleLabel)}${user.isSuperAdmin ? `<span class="people-super-badge">最高权限</span>` : ""}`;
-}
-
-function canToggleUser(user) {
-  return !user.isSuperAdmin && (peopleManagementData.currentUser.isSuperAdmin || user.role === "factory");
-}
-
-function renderUserRows(rows) {
-  if (rows.length === 0) return renderEmptyRow(7, "该工厂暂无用户");
-  return rows.map((user, index) => `
-    <tr>
-      <td class="people-sequence">${index + 1}</td>
-      <td>${escapeHTML(user.name)}</td>
-      <td><div class="people-role-cell">${renderRole(user)}</div></td>
-      <td>${escapeHTML(user.position || "—")}</td>
-      <td>${escapeHTML(user.factoryName || "—")}</td>
-      <td><span class="status-badge ${user.enabled ? "is-success" : "is-neutral"}">${user.enabled ? "已启用" : "已停用"}</span></td>
-      <td>${canToggleUser(user) ? `<button class="text-button${user.enabled ? " people-danger-action" : ""}" type="button" data-people-action="toggle-user" data-record-id="${escapeHTML(user.id)}">${user.enabled ? "停用" : "启用"}</button>` : "—"}</td>
-    </tr>
-  `).join("");
-}
-
-function applicationSortValue(item, key) {
-  if (key === "status") return statusMeta[item.status]?.label ?? item.status;
-  return item[key];
-}
-
-function userSortValue(user, key) {
-  if (key === "role") return user.role === "admin" ? "管理员" : "工厂用户";
-  if (key === "enabled") return user.enabled ? 1 : 0;
-  return user[key];
-}
-
-function readFactoryFilter() {
-  const query = window.location.hash.split("?")[1] ?? "";
-  return new URLSearchParams(query).get("factory") ?? "";
-}
-
-function renderTabs(activeTab) {
-  const tabs = [
-    { id: "factory-applications", label: "工厂用户申请" },
-    { id: "users", label: "用户列表" },
-  ];
-  return tabs.map((tab) => `<button class="people-tab${activeTab === tab.id ? " is-active" : ""}" type="button" role="tab" aria-selected="${String(activeTab === tab.id)}" data-people-tab="${tab.id}">${tab.label}</button>`).join("");
-}
-
-function renderUserToolbar(factoryFilter) {
-  return `
-    <div class="people-user-filter">
-      <label for="people-factory-filter">所属工厂</label>
-      <select id="people-factory-filter" data-people-factory-filter>
-        <option value="">全部工厂</option>
-        ${factoryListData.factories.map((factory) => `<option value="${escapeHTML(factory.id)}"${factory.id === factoryFilter ? " selected" : ""}>${escapeHTML(factory.factoryName)}</option>`).join("")}
-      </select>
-    </div>
-  `;
-}
-
-function renderTable(activeTab, sortState, factoryFilter) {
-  if (activeTab === "factory-applications") {
-    const rows = sortRows(factoryApplications, sortState, applicationSortValue);
-    return `<table class="people-table people-factory-application-table data-grid-table"><thead><tr><th scope="col">序号</th>${renderSortableHeader("姓名", "name")}${renderSortableHeader("职位", "position")}${renderSortableHeader("申请工厂", "requestedFactoryName")}${renderSortableHeader("申请时间", "appliedAt")}${renderSortableHeader("申请状态", "status")}<th scope="col">操作</th></tr></thead><tbody>${renderFactoryApplicationRows(rows)}</tbody></table>`;
-  }
-
-  const filteredUsers = factoryFilter ? users.filter((user) => user.factoryId === factoryFilter) : users;
-  const rows = sortRows(filteredUsers, sortState, userSortValue);
-  return `<table class="people-table people-user-table data-grid-table"><thead><tr><th scope="col">序号</th>${renderSortableHeader("姓名", "name")}${renderSortableHeader("角色", "role")}${renderSortableHeader("职位", "position")}${renderSortableHeader("所属工厂", "factoryName")}${renderSortableHeader("启用状态", "enabled")}<th scope="col">操作</th></tr></thead><tbody>${renderUserRows(rows)}</tbody></table>`;
-}
-
-function renderFactoryApplicationDetailModal(record) {
-  if (!record) return "";
-  const factory = factoryListData.factories.find((item) => item.id === record.requestedFactoryId);
-  const contacts = factory?.contacts ?? [];
-  const contactNames = contacts.map((contact) => contact.name).filter(Boolean).join("、") || "—";
-  const contactPhones = contacts.map((contact) => contact.phone).filter(Boolean).join("、") || "—";
-  const reviewed = record.status !== "pending";
-
-  return `
-    <div class="people-modal-backdrop" data-people-modal-backdrop>
-      <section class="people-modal people-application-detail-modal" role="dialog" aria-modal="true" aria-labelledby="people-modal-title">
-        <header class="people-modal-header"><h2 id="people-modal-title">工厂用户申请详情</h2><button type="button" aria-label="关闭" data-close-people-modal>×</button></header>
-        <div class="people-modal-body people-application-detail-body">
-          <dl class="people-application-detail-grid">
-            <div><dt>真实姓名</dt><dd>${escapeHTML(record.name)}</dd></div>
-            <div><dt>联系电话</dt><dd><span class="people-phone-value">${escapeHTML(record.phone || "—")}${record.phoneVerified ? '<span class="people-verified-badge">已验证</span>' : ""}</span></dd></div>
-            <div><dt>职位</dt><dd>${escapeHTML(record.position)}</dd></div>
-            <div><dt>申请工厂</dt><dd>${escapeHTML(record.requestedFactoryName)}</dd></div>
-            <div><dt>工厂联系人</dt><dd>${escapeHTML(contactNames)}</dd></div>
-            <div><dt>工厂联系电话</dt><dd>${escapeHTML(contactPhones)}</dd></div>
-            <div><dt>申请时间</dt><dd>${escapeHTML(record.appliedAt)}</dd></div>
-            <div><dt>申请状态</dt><dd>${renderStatus(record.status)}</dd></div>
-            ${reviewed ? `<div><dt>审核人</dt><dd>${escapeHTML(record.reviewedBy || "—")}</dd></div><div><dt>审核时间</dt><dd>${escapeHTML(record.reviewedAt || "—")}</dd></div>` : ""}
-            ${record.status === "rejected" ? `<div class="people-detail-wide"><dt>拒绝原因</dt><dd>${escapeHTML(record.rejectReason || "—")}</dd></div>` : ""}
-          </dl>
-        </div>
-        <footer class="people-modal-actions">
-          <button class="order-secondary-button" type="button" data-close-people-modal>关闭</button>
-          ${record.status === "pending" ? `<button class="order-secondary-button people-reject-button" type="button" data-detail-decision="reject-factory" data-record-id="${escapeHTML(record.id)}">拒绝</button><button class="order-primary-button" type="button" data-detail-decision="approve-factory" data-record-id="${escapeHTML(record.id)}">通过</button>` : ""}
-        </footer>
-      </section>
-    </div>
-  `;
-}
-
-function renderActionModal(modal) {
-  if (!modal) return "";
-  if (modal.action === "view-factory") {
-    return renderFactoryApplicationDetailModal(factoryApplications.find((item) => item.id === modal.id));
-  }
-  const isFactoryApproval = modal.action === "approve-factory";
-  const isToggle = modal.action === "toggle-user";
-  const record = modal.action.includes("factory")
-    ? factoryApplications.find((item) => item.id === modal.id)
-    : users.find((item) => item.id === modal.id);
-  const isReject = modal.action.startsWith("reject");
-  const title = isToggle
-    ? `${record?.enabled ? "停用" : "启用"}用户`
-    : `${isReject ? "拒绝" : "通过"}工厂用户申请`;
-  const description = isToggle
-    ? `确认${record?.enabled ? "停用" : "启用"}“${record?.name ?? "该用户"}”吗？`
-    : isReject
-      ? `确认拒绝“${record?.name ?? "该申请人"}”的申请吗？拒绝记录将继续保留。`
-      : `通过后，“${record?.name ?? "该申请人"}”将绑定到所选工厂并进入用户列表。`;
-
-  return `
-    <div class="people-modal-backdrop" data-people-modal-backdrop>
-      <section class="people-modal" role="dialog" aria-modal="true" aria-labelledby="people-modal-title">
-        <form data-people-action-form data-action="${escapeHTML(modal.action)}" data-record-id="${escapeHTML(modal.id)}">
-          <header class="people-modal-header"><h2 id="people-modal-title">${escapeHTML(title)}</h2><button type="button" aria-label="关闭" data-close-people-modal>×</button></header>
-          <div class="people-modal-body">
-            <p>${escapeHTML(description)}</p>
-            ${isFactoryApproval ? `<label class="people-bind-field"><span>绑定工厂</span><select name="factoryId">${factoryListData.factories.map((factory) => `<option value="${escapeHTML(factory.id)}"${factory.id === record?.requestedFactoryId ? " selected" : ""}>${escapeHTML(factory.factoryName)}</option>`).join("")}</select></label>` : ""}
-            ${modal.action === "reject-factory" ? `<label class="people-reject-field"><span>拒绝原因</span><textarea name="rejectReason" rows="3" placeholder="请输入拒绝原因" required></textarea></label>` : ""}
-          </div>
-          <footer class="people-modal-actions"><button class="order-secondary-button" type="button" data-close-people-modal>取消</button><button class="order-primary-button${isReject || (isToggle && record?.enabled) ? " is-danger" : ""}" type="submit">确认${isToggle ? (record?.enabled ? "停用" : "启用") : isReject ? "拒绝" : "通过"}</button></footer>
-        </form>
-      </section>
-    </div>
-  `;
-}
+const applications = peopleManagementData.factoryApplications;
+const users = peopleManagementData.users;
+const statusLabels = { pending: "待审核", approved: "已通过", rejected: "已拒绝" };
+const phone = value => String(value || "—").replace(/^(\d{3})\d{4}(\d{4})$/, "$1****$2");
+const enabledBadge = user => `<span class="status-badge ${user.enabled ? "is-approved" : "is-disabled"}">${user.enabled ? "已启用" : "已停用"}</span>`;
+const action = user => user.isSuperAdmin ? "—" : `<button class="text-button ${user.enabled ? "danger" : ""}" type="button" data-toggle-user="${escapeHTML(user.id)}">${user.enabled ? "停用" : "启用"}</button>`;
 
 export function renderPeopleManagementPage() {
-  return `
-    <article class="people-management-page" data-people-management-page>
-      <section class="section-card people-management-card" aria-labelledby="people-management-title">
-        <header class="people-management-header"><h1 id="people-management-title">人员管理</h1></header>
-        <nav class="people-tabs" role="tablist" aria-label="人员管理分类" data-people-tabs></nav>
-        <div class="people-toolbar" data-people-toolbar></div>
-        <div class="table-scroll people-table-scroll" data-people-table-root></div>
-      </section>
-      <div data-people-modal-root></div>
-    </article>
-  `;
+  return `<article class="people-management-page" data-people-management-page>
+    <section class="section-card people-management-filter-card"><nav class="people-tabs" aria-label="人员管理分类" data-people-tabs></nav><div class="people-toolbar" data-people-toolbar></div></section>
+    <section class="section-card people-management-card"><header class="people-management-header"><h1>人员管理</h1></header><div class="people-table-scroll" data-people-table-root></div><footer class="order-list-footer"><span>每页展示 10 条。</span><nav class="order-pagination" aria-label="人员列表分页" data-people-pagination></nav></footer></section>
+    <div data-people-modal-root></div>
+  </article>`;
 }
 
 export function bindPeopleManagementPage() {
-  const page = document.querySelector("[data-people-management-page]");
-  if (!page) return;
-
-  const tabsRoot = page.querySelector("[data-people-tabs]");
-  const toolbarRoot = page.querySelector("[data-people-toolbar]");
-  const tableRoot = page.querySelector("[data-people-table-root]");
-  const modalRoot = page.querySelector("[data-people-modal-root]");
-  let factoryFilter = readFactoryFilter();
-  let activeTab = factoryFilter ? "users" : "factory-applications";
-  let modal = null;
-  const sortStates = {
-    "factory-applications": { key: null, direction: "asc" },
-    users: { key: null, direction: "asc" },
+  const root = document.querySelector("[data-people-management-page]");
+  const query = new URLSearchParams(window.location.hash.split("?")[1] || "");
+  let factory = query.get("factory") || "";
+  let tab = query.get("tab") || (factory ? "users" : "factory-applications");
+  if (tab === "admin-users" && !peopleManagementData.currentUser.isSuperAdmin) tab = "factory-applications";
+  let status = "", page = 1, sort = { key: null, direction: "asc" };
+  let selected = null, target = null, decision = "", boundFactory = "", reason = "", error = "";
+  const modalRoot = root.querySelector("[data-people-modal-root]");
+  const renderModal = () => {
+    if (target) {
+      modalRoot.innerHTML = `<div class="modal-backdrop" data-people-backdrop><section class="modal" role="dialog" aria-modal="true"><header><h2>${target.enabled ? "停用" : "启用"}${target.role === "admin" ? "管理员" : "用户"}</h2><button type="button" aria-label="关闭" data-close-people-modal>×</button></header><div class="modal-body"><p>确认${target.enabled ? "停用" : "启用"}“${escapeHTML(target.name)}”吗？</p></div><footer><button class="secondary-button" type="button" data-close-people-modal>取消</button><button class="primary-button" type="button" data-toggle-confirm>确认</button></footer></section></div>`;
+      return;
+    }
+    if (!selected) { modalRoot.innerHTML = ""; return; }
+    const contacts = factoryListData.factories.find(item => item.id === selected.requestedFactoryId)?.contacts || [];
+    const fields = [["真实姓名", selected.name], ["验证联系电话", phone(selected.phone)], ["职位", selected.position], ["申请工厂", selected.requestedFactoryName], ["申请时间", selected.appliedAt], ["申请状态", statusLabels[selected.status]]];
+    if (selected.reviewedAt) fields.push(["审核时间", selected.reviewedAt]);
+    if (selected.rejectReason) fields.push(["拒绝原因", selected.rejectReason]);
+    modalRoot.innerHTML = `<div class="modal-backdrop" data-people-backdrop><section class="modal application-detail" role="dialog" aria-modal="true"><header><h2>工厂用户申请详情</h2><button type="button" aria-label="关闭" data-close-people-modal>×</button></header><div class="modal-body"><dl class="detail-grid">${fields.map(([label,value]) => `<div><dt>${label}</dt><dd>${escapeHTML(value)}</dd></div>`).join("")}</dl><section class="contact-summary"><h3>工厂联系人</h3>${contacts.length ? contacts.map(item => `<p>${escapeHTML(item.name)}　${escapeHTML(item.phone)}</p>`).join("") : "<p>暂无联系人</p>"}</section>
+    ${decision === "approve" ? `<label class="decision-field">绑定工厂<select data-binding-factory>${factoryListData.factories.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === boundFactory ? "selected" : ""}>${escapeHTML(item.supplierNumber)}　${escapeHTML(item.factoryName)}</option>`).join("")}</select></label>` : ""}
+    ${decision === "reject" ? `<label class="decision-field">拒绝原因<textarea data-rejection-reason maxlength="500" placeholder="请填写拒绝原因">${escapeHTML(reason)}</textarea></label>` : ""}
+    ${error ? `<p class="page-error">${escapeHTML(error)}</p>` : ""}</div><footer>${decision ? '<button class="secondary-button" type="button" data-decision-back>返回</button><button class="primary-button" type="button" data-decision-confirm>确认</button>' : selected.status === "pending" ? '<button class="secondary-button danger-outline" type="button" data-decision="reject">拒绝</button><button class="primary-button" type="button" data-decision="approve">通过</button>' : '<button class="secondary-button" type="button" data-close-people-modal>关闭</button>'}</footer></section></div>`;
   };
-
-  const renderPage = () => {
-    tabsRoot.innerHTML = renderTabs(activeTab);
-    toolbarRoot.innerHTML = activeTab === "users" ? renderUserToolbar(factoryFilter) : "";
-    toolbarRoot.hidden = activeTab !== "users";
-    tableRoot.innerHTML = renderTable(activeTab, sortStates[activeTab], factoryFilter);
-    updateSortHeaders(tableRoot, sortStates[activeTab]);
-    modalRoot.innerHTML = renderActionModal(modal);
+  const render = () => {
+    const tabs = [...(peopleManagementData.currentUser.isSuperAdmin ? [["admin-users", "管理员"]] : []), ["factory-applications", "工厂用户申请"], ["users", "工厂用户列表"]];
+    root.querySelector("[data-people-tabs]").innerHTML = tabs.map(([key, label]) => `<a href="#/people?tab=${key}" class="${tab === key ? "router-link-active" : ""}" data-people-tab="${key}">${label}</a>`).join("");
+    const toolbar = root.querySelector("[data-people-toolbar]");
+    toolbar.hidden = tab === "admin-users";
+    toolbar.innerHTML = tab === "users" ? `<label class="people-user-filter"><span>所属工厂</span><select data-factory-filter><option value="">全部工厂</option>${factoryListData.factories.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === factory ? "selected" : ""}>${escapeHTML(item.factoryName)}</option>`).join("")}</select></label>` : `<label class="people-user-filter"><span>申请状态</span><select data-application-filter><option value="">全部状态</option>${Object.entries(statusLabels).map(([key,label]) => `<option value="${key}" ${key === status ? "selected" : ""}>${label}</option>`).join("")}</select></label>`;
+    const isApplication = tab === "factory-applications", isAdmin = tab === "admin-users";
+    const filtered = isApplication ? applications.filter(item => !status || item.status === status) : users.filter(item => item.role === (isAdmin ? "admin" : "factory") && (isAdmin || !factory || item.factoryId === factory));
+    const rows = sortRows(filtered, sort, (item,key) => key === "phone" ? phone(item.phone) : key === "status" ? statusLabels[item.status] : item[key]);
+    page = Math.min(page, Math.max(1, Math.ceil(rows.length / 10)));
+    const columns = isApplication ? [["姓名","name"],["职位","position"],["申请工厂","requestedFactoryName"],["申请时间","appliedAt"],["申请状态","status"]] : isAdmin ? [["姓名","name"],["角色","role"],["手机号","phone"],["启用状态","enabled"]] : [["姓名","name"],["角色","role"],["职位","position"],["所属工厂","factoryName"],["启用状态","enabled"]];
+    const body = rows.slice((page - 1) * 10, page * 10).map((item,index) => `<tr><td>${(page - 1) * 10 + index + 1}</td><td>${escapeHTML(item.name)}</td>${isApplication ? `<td>${escapeHTML(item.position)}</td><td>${escapeHTML(item.requestedFactoryName)}</td><td>${escapeHTML(item.appliedAt)}</td><td><span class="status-badge is-${item.status}">${statusLabels[item.status]}</span></td><td><button class="text-button" data-application-detail="${escapeHTML(item.id)}" type="button">详情</button></td>` : isAdmin ? `<td>管理员 ${item.isSuperAdmin ? '<span class="super-badge">最高权限</span>' : ""}</td><td>${phone(item.phone)}</td><td>${enabledBadge(item)}</td><td>${action(item)}</td>` : `<td>工厂用户</td><td>${escapeHTML(item.position || "—")}</td><td>${escapeHTML(item.factoryName || "—")}</td><td>${enabledBadge(item)}</td><td>${action(item)}</td>`}</tr>`).join("");
+    const tableRoot = root.querySelector("[data-people-table-root]");
+    tableRoot.innerHTML = `<table class="people-table data-grid-table ${isApplication ? "people-factory-application-table" : "people-user-table"}"><thead><tr><th>序号</th>${columns.map(([label,key]) => renderSortableHeader(label,key)).join("")}<th>操作</th></tr></thead><tbody>${body || `<tr><td class="empty-cell" colspan="${columns.length + 2}">${isApplication ? "暂无工厂用户申请" : isAdmin ? "暂无管理员账号" : "暂无工厂用户"}</td></tr>`}</tbody></table>`;
+    updateSortHeaders(tableRoot, sort);
+    root.querySelector("[data-people-pagination]").innerHTML = renderNumberPagination(page, rows.length, "data-people-page");
+    renderModal();
   };
-
-  const closeModal = () => {
-    modal = null;
-    renderPage();
-  };
-
-  page.addEventListener("click", (event) => {
-    const nextSortState = getNextSortState(event, sortStates[activeTab]);
-    if (nextSortState) {
-      sortStates[activeTab] = nextSortState;
-      renderPage();
-      return;
+  const close = () => { selected = target = null; decision = reason = error = ""; renderModal(); };
+  root.addEventListener("click", event => {
+    const nextSort = getNextSortState(event, sort);
+    if (nextSort) { sort = nextSort; page = 1; render(); return; }
+    const tabButton = event.target.closest("[data-people-tab]");
+    if (tabButton) { event.preventDefault(); tab = tabButton.dataset.peopleTab; page = 1; sort = { key: null, direction: "asc" }; close(); window.history.replaceState(null, "", `#/people?tab=${tab}`); render(); return; }
+    const pager = event.target.closest("[data-people-page], [data-people-page-action]");
+    if (pager && !pager.disabled) { page = pager.dataset.peoplePage ? Number(pager.dataset.peoplePage) : page + (pager.dataset.peoplePageAction === "next" ? 1 : -1); render(); return; }
+    const applicationId = event.target.closest("[data-application-detail]")?.dataset.applicationDetail;
+    if (applicationId) { selected = applications.find(item => item.id === applicationId); boundFactory = selected.requestedFactoryId; decision = reason = error = ""; renderModal(); return; }
+    const userId = event.target.closest("[data-toggle-user]")?.dataset.toggleUser;
+    if (userId) { target = users.find(item => item.id === userId); renderModal(); return; }
+    if (event.target.closest("[data-toggle-confirm]")) { if (target && !target.isSuperAdmin) target.enabled = !target.enabled; close(); render(); return; }
+    const choice = event.target.closest("[data-decision]")?.dataset.decision;
+    if (choice) { decision = choice; renderModal(); return; }
+    if (event.target.closest("[data-decision-back]")) { decision = error = ""; renderModal(); return; }
+    if (event.target.closest("[data-decision-confirm]")) {
+      if (decision === "reject" && !reason.trim()) { error = "请填写拒绝原因"; renderModal(); return; }
+      const binding = factoryListData.factories.find(item => item.id === boundFactory);
+      if (decision === "approve" && !binding) { error = "请选择绑定工厂"; renderModal(); return; }
+      selected.status = decision === "approve" ? "approved" : "rejected";
+      selected.rejectReason = decision === "reject" ? reason.trim() : "";
+      selected.reviewedAt = new Date().toLocaleString("zh-CN", { hour12: false });
+      if (binding && decision === "approve") users.push({ id: `demo-${selected.id}`, name: selected.name, role: "factory", position: selected.position, phone: selected.phone, factoryId: binding.id, factoryName: binding.factoryName, enabled: true, isSuperAdmin: false });
+      close(); render(); return;
     }
-
-    const tab = event.target.closest("[data-people-tab]")?.dataset.peopleTab;
-    if (tab) {
-      activeTab = tab;
-      modal = null;
-      renderPage();
-      return;
-    }
-
-    const actionButton = event.target.closest("[data-people-action]");
-    if (actionButton) {
-      modal = { action: actionButton.dataset.peopleAction, id: actionButton.dataset.recordId };
-      renderPage();
-      return;
-    }
-
-    const detailDecisionButton = event.target.closest("[data-detail-decision]");
-    if (detailDecisionButton) {
-      modal = { action: detailDecisionButton.dataset.detailDecision, id: detailDecisionButton.dataset.recordId };
-      renderPage();
-      return;
-    }
-
-    if (event.target.closest("[data-close-people-modal]") || event.target.matches("[data-people-modal-backdrop]")) {
-      closeModal();
-    }
+    if (event.target.closest("[data-close-people-modal]") || event.target.matches("[data-people-backdrop]")) close();
   });
-
-  page.addEventListener("change", (event) => {
-    if (!event.target.matches("[data-people-factory-filter]")) return;
-    factoryFilter = event.target.value;
-    const nextHash = factoryFilter ? `#/people?factory=${encodeURIComponent(factoryFilter)}` : "#/people";
-    window.history.replaceState(null, "", nextHash);
-    renderPage();
+  root.addEventListener("change", event => {
+    if (event.target.matches("[data-factory-filter]")) { factory = event.target.value; page = 1; render(); }
+    if (event.target.matches("[data-application-filter]")) { status = event.target.value; page = 1; render(); }
+    if (event.target.matches("[data-binding-factory]")) boundFactory = event.target.value;
   });
-
-  page.addEventListener("submit", (event) => {
-    const form = event.target.closest("[data-people-action-form]");
-    if (!form) return;
-    event.preventDefault();
-    const action = form.dataset.action;
-    const id = form.dataset.recordId;
-    let toastMessage = "人员状态已更新。";
-
-    if (action === "approve-factory" || action === "reject-factory") {
-      const approved = action === "approve-factory";
-      const application = factoryApplications.find((item) => item.id === id);
-      const formData = new FormData(form);
-      const rejectReason = String(formData.get("rejectReason") ?? "").trim();
-      if (!approved && !rejectReason) {
-        showToast("无法拒绝", "请填写拒绝原因。");
-        return;
-      }
-      const factoryId = approved ? String(formData.get("factoryId") ?? "") : application?.requestedFactoryId ?? "";
-      const factory = factoryListData.factories.find((item) => item.id === factoryId);
-      const reviewedAt = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()).replaceAll("/", "-");
-      factoryApplications = factoryApplications.map((item) => item.id === id ? {
-        ...item,
-        status: approved ? "approved" : "rejected",
-        requestedFactoryId: factoryId || item.requestedFactoryId,
-        requestedFactoryName: factory?.factoryName ?? item.requestedFactoryName,
-        reviewedBy: peopleManagementData.currentUser.name,
-        reviewedAt,
-        rejectReason: approved ? "" : rejectReason,
-      } : item);
-      if (approved && application && factory && !users.some((user) => user.name === application.name && user.role === "factory")) {
-        users = [...users, { id: `user-factory-${Date.now()}`, name: application.name, phone: application.phone, phoneVerified: application.phoneVerified, role: "factory", position: application.position, factoryId: factory.id, factoryName: factory.factoryName, enabled: true, isSuperAdmin: false }];
-      }
-      toastMessage = approved ? `${application?.name ?? "申请人"}已绑定${factory?.factoryName ?? "所选工厂"}。` : `${application?.name ?? "申请人"}的工厂用户申请已拒绝。`;
-    }
-
-    if (action === "toggle-user") {
-      const user = users.find((item) => item.id === id);
-      users = users.map((item) => item.id === id ? { ...item, enabled: !item.enabled } : item);
-      toastMessage = `${user?.name ?? "该用户"}已${user?.enabled ? "停用" : "启用"}。`;
-    }
-
-    modal = null;
-    renderPage();
-    showToast("操作成功", toastMessage);
-  });
-
-  page.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && modal) closeModal();
-  });
-
-  renderPage();
+  root.addEventListener("input", event => { if (event.target.matches("[data-rejection-reason]")) reason = event.target.value; });
+  render();
 }

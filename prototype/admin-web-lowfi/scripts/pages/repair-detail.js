@@ -85,6 +85,7 @@ function renderReturnRows(rows) {
 }
 
 export function renderRepairDetailPage(repairNo) {
+  if (!(repairListData.repairs.some(item => item.repairNo === repairNo && !item.archived))) return `<article class="section-card notification-target-error"><button class="detail-back-button" type="button" data-route="/repairs">‹ 返回</button><p class="page-error">内容已不可查看</p></article>`;
   const repair = getRepair(repairNo);
   const returnedTotal = Number(repair.repairedQuantity) + Number(repair.scrappedQuantity);
   return `
@@ -124,7 +125,7 @@ export function renderRepairDetailPage(repairNo) {
         <div class="detail-table-scroll">
           <table class="detail-data-table repair-return-table data-grid-table" data-sort-table="repair-returns">
             <thead><tr>${renderSortableHeader("发货日期", "shippedDate")}${renderSortableHeader("产品编码", "code")}${renderSortableHeader("产品名称", "name")}${renderSortableHeader("颜色/规格", "colorSpec")}${renderSortableHeader("返修数量", "repairedQuantity")}${renderSortableHeader("报废数量", "scrappedQuantity")}${renderSortableHeader("返回数量", "returnedQuantity")}${renderSortableHeader("仓库退回数量", "warehouseReturnQuantity")}</tr></thead>
-            <tbody data-repair-return-body>${renderReturnRows(flattenReturnLines(repair))}</tbody>
+            <tbody data-repair-return-body>${renderReturnRows(sortRows(flattenReturnLines(repair), { key: "shippedDate", direction: "desc" }, (line, key) => line[key]))}</tbody>
           </table>
         </div>
       </section>
@@ -134,10 +135,11 @@ export function renderRepairDetailPage(repairNo) {
 
 export function bindRepairDetailPage(repairNo) {
   const page = document.querySelector("[data-repair-detail-page]");
+  if (!page) return;
   const repair = getRepair(repairNo);
   const sortStates = {
     "repair-quality": { key: null, direction: "asc" },
-    "repair-returns": { key: null, direction: "asc" },
+    "repair-returns": { key: "shippedDate", direction: "desc" },
   };
   page?.querySelector("[data-repair-detail-back]")?.addEventListener("click", () => { window.location.hash = getReturnRoute("/repairs"); });
   page?.querySelector("[data-repair-file-download]")?.addEventListener("click", () => showToast("质检单附件", `${repair.sourceFile} 将在正式开发时提供在线查看或下载。`));

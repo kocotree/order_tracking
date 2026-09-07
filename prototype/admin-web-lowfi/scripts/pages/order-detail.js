@@ -4,7 +4,6 @@ import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } f
 import { buildRouteWithReturn, getCurrentLocation, getReturnRoute } from "../router.js";
 
 const backIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const productIcon = `<svg viewBox="0 0 28 34" fill="none" aria-hidden="true"><path d="m9 5 5-2 5 2 5 6-4 3v15H8V14l-4-3 5-6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M11 5c.6 2 1.6 3 3 3s2.4-1 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 
 function getOrderDisplayStatus(order) {
   if (order.statusKey === "draft") return { label: "草稿", tone: "draft" };
@@ -95,10 +94,7 @@ function renderProductRows(rows) {
     .map(
       (product, index) => `
         <tr>
-          <td class="detail-sequence">${index + 1}</td>
-          <td>
-            <span class="product-thumb" aria-label="产品图片未上传">${productIcon}</span>
-          </td>
+          <td class="detail-sequence-cell">${index + 1}</td>
           <td class="detail-code">${escapeHTML(product.code)}</td>
           <td><strong class="detail-product-name">${escapeHTML(product.name)}</strong></td>
           <td>${escapeHTML(product.colorSpec)}</td>
@@ -107,12 +103,7 @@ function renderProductRows(rows) {
           <td class="detail-number">${escapeHTML(formatNumber(product.shippedQuantity))}</td>
           <td class="detail-number">${escapeHTML(formatNumber(product.pendingQuantity))}</td>
           <td>
-            <div class="detail-shipping-progress">
-              <span class="progress-track" aria-label="发货进度 ${escapeHTML(product.quantity ? Math.round((product.shippedQuantity / product.quantity) * 100) : 0)}%">
-                <span class="progress-bar" style="width: ${escapeHTML(product.quantity ? Math.round((product.shippedQuantity / product.quantity) * 100) : 0)}%"></span>
-              </span>
-              <span>${escapeHTML(product.quantity ? Math.round((product.shippedQuantity / product.quantity) * 100) : 0)}%</span>
-            </div>
+            <span class="detail-progress"><span><i style="width: ${product.quantity ? Math.round(product.shippedQuantity / product.quantity * 100) : 0}%"></i></span><em>${product.quantity ? Math.round(product.shippedQuantity / product.quantity * 100) : 0}%</em></span>
           </td>
         </tr>
       `,
@@ -121,24 +112,8 @@ function renderProductRows(rows) {
 }
 
 function renderShipmentRows(shipments) {
-  if (shipments.length === 0) {
-    return `<tr><td colspan="6"><div class="detail-empty-row">当前订单暂无关联发货单</div></td></tr>`;
-  }
-
-  return shipments
-    .map(
-      (shipment, index) => `
-        <tr>
-          <td class="detail-sequence">${index + 1}</td>
-          <td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(shipment.no)}">${escapeHTML(shipment.no)}</button></td>
-          <td>${escapeHTML(shipment.factory)}</td>
-          <td>${escapeHTML(shipment.shipDate)}</td>
-          <td class="detail-number">${escapeHTML(formatNumber(shipment.declared))}</td>
-          <td><span class="status-badge is-${escapeHTML(shipment.tone)}">${escapeHTML(shipment.statusLabel)}</span></td>
-        </tr>
-      `,
-    )
-    .join("");
+  if (!shipments.length) return '<tr><td colspan="6" class="detail-empty-row">当前订单暂无关联发货单</td></tr>';
+  return shipments.map(item => `<tr><td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(item.no)}">${escapeHTML(item.no)}</button></td><td>${escapeHTML(item.shipDate)}</td><td>${formatNumber(item.declared)}</td><td>—</td><td>${escapeHTML(item.statusLabel)}</td><td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(item.no)}">详情</button></td></tr>`).join("");
 }
 
 function productSortValue(product, key) {
@@ -152,39 +127,34 @@ function shipmentSortValue(shipment, key) {
 
 function renderPublishDialog(order) {
   return `
-    <div class="detail-confirm-layer" hidden data-publish-confirm-layer>
-      <button class="detail-confirm-backdrop" type="button" aria-label="取消发布订单" data-publish-confirm-cancel></button>
-      <section class="detail-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="publish-confirm-title" aria-describedby="publish-confirm-description">
-        <h2 id="publish-confirm-title">确认发布订单</h2>
+    <div class="modal-backdrop" hidden data-publish-confirm-layer>
+      <section class="modal action-modal" role="dialog" aria-modal="true" aria-labelledby="publish-confirm-title" aria-describedby="publish-confirm-description">
+        <header><h2 id="publish-confirm-title">发布订单</h2><button type="button" data-publish-confirm-cancel>×</button></header><div class="modal-body">
         <p id="publish-confirm-description">确认发布订单 <strong>${escapeHTML(order.orderNo)}</strong>？发布后相关工厂将在小程序收到任务，订单状态将变为未完成。</p>
-        <div class="detail-confirm-actions">
-          <button class="detail-outline-button" type="button" data-publish-confirm-cancel>取消</button>
-          <button class="detail-primary-button" type="button" data-publish-confirm-submit>确认发布</button>
-        </div>
+        </div><footer>
+          <button class="order-secondary-button" type="button" data-publish-confirm-cancel>取消</button>
+          <button class="order-primary-button" type="button" data-publish-confirm-submit>确认</button>
+        </footer>
       </section>
     </div>
   `;
 }
 
 function renderCompleteDialog(order) {
-  const overQuantity = Math.max(Number(order.shippedQuantity) - Number(order.totalQuantity), 0);
-  const shortQuantity = Math.max(Number(order.totalQuantity) - Number(order.shippedQuantity), 0);
   return `
-    <div class="detail-confirm-layer" hidden data-complete-confirm-layer>
-      <button class="detail-confirm-backdrop" type="button" aria-label="取消确认订单完成" data-complete-confirm-cancel></button>
-      <section class="detail-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="complete-confirm-title" aria-describedby="complete-confirm-description">
-        <h2 id="complete-confirm-title">确认订单完成</h2>
-        <p id="complete-confirm-description">确认订单 <strong>${escapeHTML(order.orderNo)}</strong> 不再继续发货并标记为已完成？</p>
-        <dl class="order-completion-summary">
+    <div class="modal-backdrop" hidden data-complete-confirm-layer>
+      <section class="modal action-modal" role="dialog" aria-modal="true" aria-labelledby="complete-confirm-title" aria-describedby="complete-confirm-description">
+        <header><h2 id="complete-confirm-title">确认订单完成</h2><button type="button" data-complete-confirm-cancel>×</button></header><div class="modal-body">
+        <p id="complete-confirm-description">请核对数量摘要。完成状态不会根据发货数量自动产生。</p>
+        <dl class="completion-summary">
           <div><dt>订单数量</dt><dd>${escapeHTML(formatNumber(order.totalQuantity))}</dd></div>
           <div><dt>已发数量</dt><dd>${escapeHTML(formatNumber(order.shippedQuantity))}</dd></div>
-          <div><dt>多发数量</dt><dd>${escapeHTML(formatNumber(overQuantity))}</dd></div>
-          <div><dt>少发数量</dt><dd>${escapeHTML(formatNumber(shortQuantity))}</dd></div>
+          <div><dt>未发数量</dt><dd>${escapeHTML(formatNumber(order.pendingQuantity))}</dd></div>
         </dl>
-        <div class="detail-confirm-actions">
-          <button class="detail-outline-button" type="button" data-complete-confirm-cancel>取消</button>
-          <button class="detail-primary-button" type="button" data-complete-confirm-submit>确认完成</button>
-        </div>
+        </div><footer>
+          <button class="order-secondary-button" type="button" data-complete-confirm-cancel>取消</button>
+          <button class="order-primary-button" type="button" data-complete-confirm-submit>确认</button>
+        </footer>
       </section>
     </div>
   `;
@@ -192,20 +162,19 @@ function renderCompleteDialog(order) {
 
 function renderReopenDialog(order) {
   return `
-    <div class="detail-confirm-layer" hidden data-reopen-confirm-layer>
-      <button class="detail-confirm-backdrop" type="button" aria-label="取消撤销订单完成" data-reopen-confirm-cancel></button>
-      <section class="detail-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reopen-confirm-title" aria-describedby="reopen-confirm-description">
-        <h2 id="reopen-confirm-title">撤销完成</h2>
+    <div class="modal-backdrop" hidden data-reopen-confirm-layer>
+      <section class="modal action-modal" role="dialog" aria-modal="true" aria-labelledby="reopen-confirm-title" aria-describedby="reopen-confirm-description">
+        <header><h2 id="reopen-confirm-title">撤销完成</h2><button type="button" data-reopen-confirm-cancel>×</button></header><div class="modal-body">
         <p id="reopen-confirm-description">订单 <strong>${escapeHTML(order.orderNo)}</strong> 将恢复为未完成；若已超过合同出货时间，则显示为已逾期。</p>
-        <label class="order-reopen-reason">
+        <label class="reopen-field">
           <span>撤销原因</span>
-          <textarea maxlength="200" placeholder="请输入撤销原因" data-reopen-reason></textarea>
+          <textarea maxlength="500" placeholder="请输入撤销原因" data-reopen-reason></textarea>
         </label>
         <p class="order-reopen-error" hidden data-reopen-error>请填写撤销原因。</p>
-        <div class="detail-confirm-actions">
-          <button class="detail-outline-button" type="button" data-reopen-confirm-cancel>取消</button>
-          <button class="detail-primary-button" type="button" data-reopen-confirm-submit>确认撤销</button>
-        </div>
+        </div><footer>
+          <button class="order-secondary-button" type="button" data-reopen-confirm-cancel>取消</button>
+          <button class="order-primary-button" type="button" data-reopen-confirm-submit>确认</button>
+        </footer>
       </section>
     </div>
   `;
@@ -230,7 +199,7 @@ function renderContractConfirmDialog(order, factory) {
   const exported = hasExportedContract(factory);
   const signingDate = getContractSigningDate(factory);
   return `
-    <section class="detail-confirm-dialog contract-export-dialog" role="dialog" aria-modal="true" aria-labelledby="contract-export-title">
+    <section class="modal contract-export-dialog" role="dialog" aria-modal="true" aria-labelledby="contract-export-title">
       <header class="contract-export-header">
         <h2 id="contract-export-title">导出加工合同</h2>
         <button class="contract-export-close" type="button" aria-label="关闭导出加工合同弹窗" data-contract-export-close>×</button>
@@ -246,12 +215,13 @@ function renderContractConfirmDialog(order, factory) {
           <span>签订日期</span>
           <input type="date" value="${escapeHTML(signingDate)}" data-contract-signing-date ${exported ? "readonly" : ""} />
         </label>
+        ${exported ? '<p class="contract-repeat-hint">将按首次合同快照重新生成，合同编号和签订日期不变。</p>' : ""}
         ${factory.contractReady ? "" : `<p class="contract-export-warning">该工厂的合同资料不完整，暂不能导出。请先在工厂资料中补全工厂代码、单位全称、单位地址和法定代表人。</p>`}
       </div>
-      <div class="detail-confirm-actions contract-export-actions">
-        <button class="detail-outline-button" type="button" data-contract-export-close>取消</button>
-        <button class="detail-primary-button" type="button" data-contract-export-submit="${escapeHTML(factory.name)}" ${factory.contractReady ? "" : "disabled"}>确认导出</button>
-      </div>
+      <footer>
+        <button class="order-secondary-button" type="button" data-contract-export-close>取消</button>
+        <button class="order-primary-button" type="button" data-contract-export-submit="${escapeHTML(factory.name)}" ${factory.contractReady ? "" : "disabled"}>确认导出</button>
+      </footer>
     </section>
   `;
 }
@@ -263,15 +233,15 @@ function renderContractFactoryListDialog(order) {
       <tr>
         <td><strong>${escapeHTML(factory.name)}</strong></td>
         <td><span class="contract-ready-badge is-${factory.contractReady ? "ready" : "missing"}">${factory.contractReady ? "完整" : "待补充"}</span></td>
-        <td>${exported ? escapeHTML(factory.contractNo) : "—"}</td>
-        <td>${exported ? escapeHTML(getContractSigningDate(factory)) : "—"}</td>
+        <td>${exported ? escapeHTML(factory.contractNo) : "首次导出后生成"}</td>
+        <td>${escapeHTML(getContractSigningDate(factory))}</td>
         <td><button class="detail-text-button" type="button" data-contract-select-factory="${escapeHTML(factory.name)}" ${factory.contractReady ? "" : "disabled"}>导出</button></td>
       </tr>
     `;
   }).join("");
 
   return `
-    <section class="detail-confirm-dialog contract-export-dialog is-factory-list" role="dialog" aria-modal="true" aria-labelledby="contract-export-title">
+    <section class="modal contract-export-dialog is-factory-list" role="dialog" aria-modal="true" aria-labelledby="contract-export-title">
       <header class="contract-export-header">
         <h2 id="contract-export-title">导出加工合同</h2>
         <button class="contract-export-close" type="button" aria-label="关闭导出加工合同弹窗" data-contract-export-close>×</button>
@@ -302,22 +272,24 @@ function renderContractExportLayer(order) {
 }
 
 export function renderOrderDetailPage(orderNo) {
+  if (!(orderListData.orders.some(item => item.orderNo === orderNo))) return `<article class="section-card notification-target-error"><button class="detail-back-button" type="button" data-route="/orders">‹ 返回</button><p class="page-error">内容已不可查看</p></article>`;
   const order = getOrderDetail(orderNo);
   const productFactoryRows = buildProductFactoryRows(order);
   const isDraft = order.statusKey === "draft";
   const isCompleted = order.statusKey === "completed";
   const canComplete = !isDraft && !isCompleted;
-  const canExportContract = order.factories.length > 0 && Number(order.shippedQuantity) === 0;
+  const canExportContract = !isDraft && !isCompleted && order.factories.length > 0 && Number(order.shippedQuantity) === 0;
 
   return `
-    <article class="order-detail-page" data-order-detail-page data-order-no="${escapeHTML(order.orderNo)}">
+    <article class="order-workspace order-detail-page" data-order-detail-page data-order-no="${escapeHTML(order.orderNo)}">
       <section class="section-card detail-overview-card">
         <header class="detail-page-header">
           <button class="detail-back-button" type="button" data-order-back>${backIcon}<span>返回</span></button>
           <div class="detail-title-row order-detail-actions">
-            <span class="status-badge is-${escapeHTML(order.tone)}">${escapeHTML(order.statusLabel)}</span>
-            <button class="detail-outline-button" type="button" data-contract-export-open ${canExportContract ? "" : "disabled"} title="${canExportContract ? "导出加工合同" : "只有已发数量为0的订单才能导出加工合同"}">导出加工合同</button>
+            <span class="status-badge is-${escapeHTML(order.tone)}"><i aria-hidden="true"></i>${escapeHTML(order.statusLabel)}</span>
             ${isDraft ? `<button class="detail-primary-button" type="button" data-publish-confirm-open>发布订单</button>` : ""}
+            <button class="detail-outline-button" type="button" data-contract-export-open ${canExportContract ? "" : "disabled"} title="${canExportContract ? "导出加工合同" : isDraft ? "请先发布订单后再导出加工合同" : "只有已发布且已发数量为0的订单才能导出加工合同"}">导出加工合同</button>
+            ${canComplete ? `<button class="detail-outline-button" type="button" data-withdraw-open>撤回订单</button>` : ""}
             ${canComplete ? `<button class="detail-primary-button" type="button" data-complete-confirm-open>确认订单完成</button>` : ""}
             ${isCompleted ? `<button class="detail-outline-button" type="button" data-reopen-confirm-open>撤销完成</button>` : ""}
           </div>
@@ -329,8 +301,8 @@ export function renderOrderDetailPage(orderNo) {
             <div><dt>跟单人员</dt><dd><span class="tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></dd></div>
             <div><dt>合同出货时间</dt><dd class="detail-due-date">${escapeHTML(order.nearestDue)}</dd></div>
             <div><dt>订单数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.totalQuantity))}</dd></div>
-            <div><dt>已出数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.shippedQuantity))}</dd></div>
-            <div><dt>未出数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.pendingQuantity))}</dd></div>
+            <div><dt>已发数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.shippedQuantity))}</dd></div>
+            <div><dt>未发数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.pendingQuantity))}</dd></div>
           </dl>
         </div>
       </section>
@@ -343,15 +315,14 @@ export function renderOrderDetailPage(orderNo) {
           <table class="detail-data-table product-detail-table data-grid-table" data-sort-table="order-products">
             <thead>
               <tr>
-                <th scope="col">序号</th>
-                <th scope="col">图片</th>
+                <th class="detail-sequence-column" scope="col">序号</th>
                 ${renderSortableHeader("产品编码", "code")}
                 ${renderSortableHeader("产品名称", "name")}
                 ${renderSortableHeader("颜色/规格", "colorSpec")}
                 ${renderSortableHeader("工厂", "factory")}
                 ${renderSortableHeader("下单数量", "quantity")}
-                ${renderSortableHeader("已出数量", "shippedQuantity")}
-                ${renderSortableHeader("未出数量", "pendingQuantity")}
+                ${renderSortableHeader("已发数量", "shippedQuantity")}
+                ${renderSortableHeader("未发数量", "pendingQuantity")}
                 ${renderSortableHeader("发货进度", "progress")}
               </tr>
             </thead>
@@ -365,21 +336,15 @@ export function renderOrderDetailPage(orderNo) {
           <h2>关联发货单</h2>
         </header>
         <div class="detail-table-scroll">
-          <table class="detail-data-table shipment-detail-table data-grid-table" data-sort-table="order-shipments">
-            <thead>
-              <tr>
-                <th scope="col">序号</th>
-                ${renderSortableHeader("发货单号", "no")}
-                ${renderSortableHeader("工厂", "factory")}
-                ${renderSortableHeader("发货日期", "shipDate")}
-                ${renderSortableHeader("发货数量", "declared")}
-                ${renderSortableHeader("状态", "statusLabel")}
-              </tr>
-            </thead>
-            <tbody data-order-shipments-body>${renderShipmentRows(order.shipments)}</tbody>
+          <table class="detail-data-table related-shipment-table data-grid-table"><thead><tr><th>发货单号</th><th>发货日期</th><th>发货数量</th><th>物流单号</th><th>状态</th><th>操作</th></tr></thead><tbody data-order-shipments-body>${renderShipmentRows(order.shipments)}</tbody>
           </table>
         </div>
       </section>
+      <section class="section-card detail-section-card order-audit-card">
+        <button class="order-audit-toggle" type="button" aria-expanded="false" data-order-audit-toggle ${order.logs?.length ? "" : "disabled"}><span class="order-audit-toggle-title">操作记录<em>（${order.logs?.length || 0}）</em></span><span class="order-audit-toggle-action" data-audit-label>${order.logs?.length ? "展开" : "暂无记录"}</span></button>
+        <ol class="order-audit-list shipment-log-list" hidden data-order-audit-list>${(order.logs || []).map(log => `<li class="shipment-log-item"><span class="shipment-log-dot"></span><div><strong>${escapeHTML(log.action)}</strong><span>${escapeHTML(log.time)} · ${escapeHTML(log.operator)} · ${escapeHTML(log.source || "系统")}</span></div></li>`).join("")}</ol>
+      </section>
+      ${canComplete ? `<div class="modal-backdrop" hidden data-withdraw-layer><section class="modal action-modal" role="dialog" aria-modal="true"><header><h2>撤回订单</h2><button type="button" data-withdraw-cancel>×</button></header><div class="modal-body"><p>撤回后订单恢复为草稿，工厂任务将不可见。</p><p class="page-error" hidden data-withdraw-error></p></div><footer><button class="order-secondary-button" data-withdraw-cancel type="button">取消</button><button class="order-primary-button" data-withdraw-confirm type="button">确认</button></footer></section></div>` : ""}
       ${isDraft ? renderPublishDialog(order) : ""}
       ${canComplete ? renderCompleteDialog(order) : ""}
       ${isCompleted ? renderReopenDialog(order) : ""}
@@ -390,6 +355,7 @@ export function renderOrderDetailPage(orderNo) {
 
 export function bindOrderDetailPage(orderNo) {
   const page = document.querySelector("[data-order-detail-page]");
+  if (!page) return;
   const publishLayer = page?.querySelector("[data-publish-confirm-layer]");
   const publishButton = page?.querySelector("[data-publish-confirm-open]");
   const completeLayer = page?.querySelector("[data-complete-confirm-layer]");
@@ -434,6 +400,22 @@ export function bindOrderDetailPage(orderNo) {
     window.dispatchEvent(new Event("hashchange"));
   };
 
+  page?.querySelector("[data-order-audit-toggle]")?.addEventListener("click", event => {
+    const list = page.querySelector("[data-order-audit-list]");
+    list.hidden = !list.hidden;
+    event.currentTarget.setAttribute("aria-expanded", String(!list.hidden));
+    page.querySelector("[data-audit-label]").textContent = list.hidden ? "展开" : "收起";
+  });
+  const withdrawLayer = page?.querySelector("[data-withdraw-layer]");
+  page?.querySelector("[data-withdraw-open]")?.addEventListener("click", () => { withdrawLayer.hidden = false; });
+  page?.querySelectorAll("[data-withdraw-cancel]").forEach(button => button.addEventListener("click", () => { withdrawLayer.hidden = true; }));
+  page?.querySelector("[data-withdraw-confirm]")?.addEventListener("click", () => {
+    if (order.shipments?.length || order.shippedQuantity > 0) { const error = page.querySelector("[data-withdraw-error]"); error.hidden = false; error.textContent = "订单已产生发货记录，不能撤回"; return; }
+    const source = orderListData.orders.find(item => item.orderNo === orderNo);
+    if (source) Object.assign(source, { statusKey: "draft", statusLabel: "草稿", tone: "draft" });
+    if (orderDetailData[orderNo]) { Object.assign(orderDetailData[orderNo], { statusKey: "draft", statusLabel: "草稿", tone: "draft" }); orderDetailData[orderNo].logs.unshift({ time: new Date().toLocaleString("zh-CN"), operator: "煎饼", action: "撤回订单", source: "管理员网页" }); }
+    refreshOrderDetail();
+  });
   page?.querySelector("[data-order-back]")?.addEventListener("click", () => {
     window.location.hash = getReturnRoute("/orders");
   });
@@ -511,6 +493,7 @@ export function bindOrderDetailPage(orderNo) {
       statusBadge.textContent = "未完成";
     }
     publishButton?.remove();
+    refreshOrderDetail();
     showToast("订单发布成功", `${orderNo} 已变为未完成，相关工厂将收到任务。`);
   });
 

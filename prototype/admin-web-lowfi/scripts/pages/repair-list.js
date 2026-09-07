@@ -1,3 +1,4 @@
+import { renderNumberPagination } from "../components/pagination.js";
 import { repairListData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
@@ -55,12 +56,7 @@ function renderRows(repairs, rowStart = 0) {
 }
 
 function renderPagination(currentPage, totalPages, totalItems) {
-  if (!totalItems) return `<span class="order-page-total">共 0 条</span>`;
-  const pages = Array.from({ length: totalPages }, (_, index) => {
-    const page = index + 1;
-    return `<button class="order-page-button${page === currentPage ? " is-current" : ""}" type="button" aria-label="第 ${page} 页" aria-current="${page === currentPage ? "page" : "false"}" data-repair-page="${page}">${page}</button>`;
-  }).join("");
-  return `<span class="order-page-total">共 ${totalItems} 条</span><button class="order-page-button order-page-arrow" type="button" aria-label="上一页" data-repair-page-action="prev" ${currentPage === 1 ? "disabled" : ""}>‹</button>${pages}<button class="order-page-button order-page-arrow" type="button" aria-label="下一页" data-repair-page-action="next" ${currentPage === totalPages ? "disabled" : ""}>›</button>`;
+  return renderNumberPagination(currentPage, totalItems, "data-repair-page");
 }
 
 function normalize(value) {

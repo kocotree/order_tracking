@@ -1,3 +1,4 @@
+import { renderNumberPagination } from "../components/pagination.js";
 import { orderDetailData, orderListData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
@@ -67,7 +68,7 @@ function renderOrderRows(orders, rowStart = 0) {
             <div>
               <span class="empty-state-mark">0</span>
               <strong>没有符合当前条件的订单</strong>
-              <p>可以调整搜索词、状态或高级筛选条件后重新查询。</p>
+              <p>可以调整搜索词、状态或筛选条件后重新查询。</p>
             </div>
           </div>
         </td>
@@ -125,28 +126,7 @@ function renderDeleteOrderDialog() {
 }
 
 function renderPagination(currentPage, totalPages, totalItems) {
-  if (totalItems === 0) return `<span class="order-page-total">共 0 条</span>`;
-
-  const pageButtons = Array.from({ length: totalPages }, (_, index) => {
-    const pageNumber = index + 1;
-    const isCurrent = pageNumber === currentPage;
-    return `
-      <button
-        class="order-page-button${isCurrent ? " is-current" : ""}"
-        type="button"
-        aria-label="第 ${pageNumber} 页"
-        aria-current="${isCurrent ? "page" : "false"}"
-        data-list-page="${pageNumber}"
-      >${pageNumber}</button>
-    `;
-  }).join("");
-
-  return `
-    <span class="order-page-total">共 ${totalItems} 条</span>
-    <button class="order-page-button order-page-arrow" type="button" aria-label="上一页" data-list-page-action="prev" ${currentPage === 1 ? "disabled" : ""}>‹</button>
-    ${pageButtons}
-    <button class="order-page-button order-page-arrow" type="button" aria-label="下一页" data-list-page-action="next" ${currentPage === totalPages ? "disabled" : ""}>›</button>
-  `;
+  return renderNumberPagination(currentPage, totalItems, "data-list-page");
 }
 
 export function renderOrderListPage() {
@@ -245,7 +225,7 @@ export function renderOrderListPage() {
           </table>
         </div>
         <div class="order-list-footer">
-          <span>原型数据仅用于验证字段、筛选和操作顺序。</span>
+          <span>每页展示 10 条订单。</span>
           <nav class="order-pagination" aria-label="订单分页" data-list-pagination></nav>
         </div>
       </section>
@@ -315,12 +295,14 @@ export function bindOrderListPage() {
   const pagination = page?.querySelector("[data-list-pagination]");
   const deleteLayer = page?.querySelector("[data-order-delete-layer]");
   const deleteOrderLabel = page?.querySelector("[data-order-delete-label]");
-  let activeStatus = "all";
+  const routeStatus = new URLSearchParams(window.location.hash.split("?")[1] || "").get("status");
+  let activeStatus = routeStatus === "已逾期" ? "overdue" : "all";
   let currentPage = 1;
   let currentOrders = [];
   let tableSortState = { key: null, direction: "asc" };
   let pendingDeleteOrderNo = "";
   const pageSize = 10;
+  page?.querySelectorAll("[data-status-filter]").forEach(tab => { const active = tab.dataset.statusFilter === activeStatus; tab.classList.toggle("is-active", active); tab.setAttribute("aria-pressed", String(active)); });
 
   const closeDeleteDialog = () => {
     if (deleteLayer) deleteLayer.hidden = true;

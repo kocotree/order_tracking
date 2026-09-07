@@ -1,3 +1,4 @@
+import { renderNumberPagination } from "../components/pagination.js";
 import { productListData } from "../mock-data.js";
 import { escapeHTML } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
@@ -18,7 +19,7 @@ function renderRows(products, rowStart = 0) {
     <tr>
       <td class="product-sequence">${rowStart + index + 1}</td>
       <td class="product-item-no">${escapeHTML(product.itemNo)}</td>
-      <td><span class="product-list-thumb" aria-label="${product.hasImage ? "产品图片" : "产品图片未上传"}">${productIcon}</span></td>
+      <td><button class="product-list-thumb product-image-trigger" type="button" disabled data-product-image="${escapeHTML(product.productCode)}" aria-label="${product.hasImage ? `放大查看${escapeHTML(product.productName)}` : "产品图片未上传"}">${product.hasImage ? `<img class="product-list-image" src="./assets/product-sample.svg" alt="" />` : productIcon}</button></td>
       <td class="product-code-cell">${escapeHTML(product.productCode)}</td>
       <td><strong class="product-name-cell">${escapeHTML(product.productName)}</strong></td>
       <td>${escapeHTML(product.colorSpec)}</td>
@@ -27,12 +28,7 @@ function renderRows(products, rowStart = 0) {
 }
 
 function renderPagination(currentPage, totalPages, totalItems) {
-  if (totalItems === 0) return `<span class="order-page-total">共 0 条</span>`;
-  const pages = Array.from({ length: totalPages }, (_, index) => {
-    const page = index + 1;
-    return `<button class="order-page-button${page === currentPage ? " is-current" : ""}" type="button" aria-label="第 ${page} 页" aria-current="${page === currentPage ? "page" : "false"}" data-product-page="${page}">${page}</button>`;
-  }).join("");
-  return `<span class="order-page-total">共 ${totalItems} 条</span><button class="order-page-button order-page-arrow" type="button" aria-label="上一页" data-product-page-action="prev" ${currentPage === 1 ? "disabled" : ""}>‹</button>${pages}<button class="order-page-button order-page-arrow" type="button" aria-label="下一页" data-product-page-action="next" ${currentPage === totalPages ? "disabled" : ""}>›</button>`;
+  return renderNumberPagination(currentPage, totalItems, "data-product-page");
 }
 
 export function renderProductListPage() {
@@ -60,6 +56,7 @@ export function renderProductListPage() {
         </div>
         <div class="order-list-footer"><span>每页展示 10 条产品资料。</span><nav class="order-pagination" aria-label="产品资料分页" data-product-pagination></nav></div>
       </section>
+      <dialog class="product-image-preview" data-image-dialog><button class="product-image-close" type="button" aria-label="关闭图片预览" autofocus data-image-close>×</button><img src="./assets/product-sample.svg" alt="产品示意图" /></dialog>
     </article>
   `;
 }
@@ -74,7 +71,7 @@ export function bindProductListPage() {
   let currentPage = 1;
   let filteredProducts = [...productListData.products];
   let currentProducts = [...productListData.products];
-  let sortState = { key: null, direction: "asc" };
+  let sortState = { key: "itemNo", direction: "asc" };
 
   const applySort = () => {
     currentProducts = sortRows(filteredProducts, sortState, (product, key) => product[key]);
@@ -99,7 +96,19 @@ export function bindProductListPage() {
     renderPage();
   });
 
+  const dialog = page?.querySelector("[data-image-dialog]");
+  let imageTrigger;
+  let previousOverflow;
+  const closeImage = () => { if (dialog.open) dialog.close(); if (previousOverflow !== undefined) document.body.style.overflow = previousOverflow; previousOverflow = undefined; imageTrigger?.focus({ preventScroll: true }); };
+  page?.addEventListener("load", event => { if (event.target.matches(".product-list-image")) event.target.closest("button").disabled = false; }, true);
+  page?.addEventListener("error", event => { if (event.target.matches(".product-list-image")) { const trigger = event.target.closest("button"); trigger.disabled = true; trigger.innerHTML = productIcon; } }, true);
+  dialog?.addEventListener("cancel", event => { event.preventDefault(); closeImage(); });
+  dialog?.addEventListener("keydown", event => { if (event.key === "Tab") event.preventDefault(); });
+  dialog?.addEventListener("click", event => { if (event.target === dialog || event.target.closest("[data-image-close]")) closeImage(); });
   page?.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-product-image]");
+    if (trigger && !trigger.disabled) { imageTrigger = trigger; previousOverflow = document.body.style.overflow; document.body.style.overflow = "hidden"; dialog.setAttribute("aria-label", trigger.getAttribute("aria-label")); dialog.showModal(); return; }
+
     const nextSortState = getNextSortState(event, sortState);
     if (nextSortState) {
       sortState = nextSortState;
@@ -123,5 +132,7 @@ export function bindProductListPage() {
     }
   });
 
+  applySort();
+  updateSortHeaders(page, sortState);
   renderPage();
 }

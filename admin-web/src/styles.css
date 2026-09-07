@@ -297,16 +297,16 @@ h1, h2, p { margin-top: 0; }
 .dashboard-order-table th, .dashboard-order-table td { height: 40px; padding: 0 14px; text-align: left; vertical-align: middle; }
 .dashboard-order-table th { color: #37404b; font-size: 13px; font-weight: 800; white-space: nowrap; background: #f1f3f6; }
 .dashboard-order-table td { overflow: hidden; font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-/* Explicit column widths keep table layout predictable; product names take the remainder. */
-.dashboard-order-table th:nth-child(2) { width: 120px; }
-.dashboard-order-table th:nth-child(3) { width: auto; }
-.dashboard-order-table th:nth-child(4) { width: 90px; }
-.dashboard-order-table th:nth-child(5) { width: 90px; }
-.dashboard-order-table th:nth-child(6) { width: 100px; }
-.dashboard-order-table th:nth-child(7) { width: 142px; }
-.dashboard-order-table th:nth-child(8) { width: 150px; }
-.dashboard-order-table th:nth-child(9) { width: 150px; }
-.dashboard-order-table th:nth-child(10) { width: 98px; }
+/* Plain percentages bound product names; the status column balances fixed auxiliary columns. */
+.dashboard-order-table th:nth-child(2) { width: 8%; }
+.dashboard-order-table th:nth-child(3) { width: 30%; }
+.dashboard-order-table th:nth-child(4) { width: 6%; }
+.dashboard-order-table th:nth-child(5) { width: 6%; }
+.dashboard-order-table th:nth-child(6) { width: 7%; }
+.dashboard-order-table th:nth-child(7) { width: 11%; }
+.dashboard-order-table th:nth-child(8) { width: 11%; }
+.dashboard-order-table th:nth-child(9) { width: 11%; }
+.dashboard-order-table th:nth-child(10) { width: auto; }
 .dashboard-order-link { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-order-table tbody tr:hover td { background: #e7f3ff; }
 .dashboard-order-table .dashboard-sequence-column, .dashboard-order-table .dashboard-sequence-cell { width: 52px; padding-right: 8px; padding-left: 8px; text-align: center; white-space: nowrap; }
@@ -702,7 +702,7 @@ h1, h2, p { margin-top: 0; }
 .order-list-page .order-list-card-header { height: 54px; padding: 0 16px; }
 .order-list-page .order-list-card-header h1 { margin: 0; color: var(--ink-strong); font-size: 18px; font-weight: 800; }
 .order-list-table { width: 100%; min-width: 1516px; table-layout: fixed; }
-.order-list-table th:nth-child(1) { width: 52px; }.order-list-table th:nth-child(2) { width: 120px; }.order-list-table th:nth-child(3) { width: auto; }.order-list-table th:nth-child(4) { width: 90px; }.order-list-table th:nth-child(5) { width: 90px; }.order-list-table th:nth-child(6) { width: 100px; }.order-list-table th:nth-child(7) { width: 142px; }.order-list-table th:nth-child(8) { width: 150px; }.order-list-table th:nth-child(9) { width: 150px; }.order-list-table th:nth-child(10) { width: 98px; }.order-list-table th:nth-child(11) { width: 104px; }
+.order-list-table th:nth-child(1) { width: 52px; }.order-list-table th:nth-child(2) { width: 8%; }.order-list-table th:nth-child(3) { width: 30%; }.order-list-table th:nth-child(4) { width: 5%; }.order-list-table th:nth-child(5) { width: 5%; }.order-list-table th:nth-child(6) { width: 6%; }.order-list-table th:nth-child(7) { width: 10%; }.order-list-table th:nth-child(8) { width: 10%; }.order-list-table th:nth-child(9) { width: 10%; }.order-list-table th:nth-child(10) { width: auto; }.order-list-table th:nth-child(11) { width: 104px; }
 .order-list-table th, .order-list-table td { padding: 0 14px; font-size: 13px; text-align: left; }
 .order-list-table th { font-weight: 800; }
 .order-list-table td { height: 40px; font-weight: 700; vertical-align: middle; }

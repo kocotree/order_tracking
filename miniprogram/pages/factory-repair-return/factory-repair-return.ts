@@ -2,13 +2,13 @@ import { repairApi, type Repair } from "../../api/repairs";
 import { isDevPreview, previewRepair } from "../../modules/dev-preview";
 import { buildReturnEntries, prepareReturnSubmission, type ReturnEntry } from "../../modules/repair-return";
 
-type ReturnGroup = { productName: string; pendingQuantity: number; entries: ReturnEntry[] };
+type ReturnGroup = { expanded: boolean; productName: string; pendingQuantity: number; entries: ReturnEntry[] };
 type PreviewLine = ReturnEntry & { returnQuantity: number };
 
 function groupsFor(repair: Repair): ReturnGroup[] {
   const groups = new Map<string, ReturnEntry[]>();
   buildReturnEntries(repair.specs).forEach((entry) => groups.set(entry.productName, [...(groups.get(entry.productName) ?? []), entry]));
-  return Array.from(groups.entries()).map(([productName, entries]) => ({ productName, entries, pendingQuantity: entries.reduce((sum, entry) => sum + entry.pendingQuantity, 0) }));
+  return Array.from(groups.entries()).map(([productName, entries]) => ({ expanded: false, productName, entries, pendingQuantity: entries.reduce((sum, entry) => sum + entry.pendingQuantity, 0) }));
 }
 
 function allEntries(groups: ReturnGroup[]): ReturnEntry[] { return groups.flatMap((group) => group.entries); }
@@ -38,6 +38,11 @@ Page({
   onLoad(options: Record<string, string | undefined>) { const repairId = options.repairId ?? ""; const previewMode = isDevPreview(options); this.setData({ repairId, previewMode, idempotencyKey: `repair-return-${repairId}-${Date.now()}-${Math.random().toString(36).slice(2)}` }); if (repairId) void this.load(repairId, previewMode); },
   async load(repairId: string, previewMode: boolean) { try { const repair = previewMode ? previewRepair(repairId) : await repairApi.factoryGet(repairId); if (!repair || repair.status === "COMPLETED") { wx.navigateBack(); return; } const progress = repair.warehouseReturnQuantity ? Math.round(repair.returnedQuantity * 100 / repair.warehouseReturnQuantity) : 0; this.setData({ repair, progress, pending: Math.max(0, repair.warehouseReturnQuantity - repair.returnedQuantity), groups: groupsFor(repair) }); } catch { wx.showToast({ title: "返修任务加载失败", icon: "none" }); } finally { this.setData({ loading: false }); } },
   updateTotals() { const value = totals(this.data.groups); this.setData({ repairedTotal: value.repaired, scrappedTotal: value.scrapped, returnTotal: value.total }); },
+  toggleGroup(event: WechatMiniprogram.TouchEvent) {
+    const index = Number(event.currentTarget.dataset.group);
+    const group = this.data.groups[index];
+    if (group) this.setData({ [`groups[${index}].expanded`]: !group.expanded });
+  },
   toggleEntry(event: WechatMiniprogram.TouchEvent) { const groupIndex = Number(event.currentTarget.dataset.group); const entryIndex = Number(event.currentTarget.dataset.entry); const selected = !this.data.groups[groupIndex]?.entries[entryIndex]?.selected; const changes: Record<string, boolean | string> = { [`groups[${groupIndex}].entries[${entryIndex}].selected`]: selected }; if (!selected) { changes[`groups[${groupIndex}].entries[${entryIndex}].repaired`] = ""; changes[`groups[${groupIndex}].entries[${entryIndex}].scrapped`] = ""; } this.setData(changes, () => this.updateTotals()); },
   changeQuantity(event: WechatMiniprogram.Input) { const groupIndex = Number(event.currentTarget.dataset.group); const entryIndex = Number(event.currentTarget.dataset.entry); const field = String(event.currentTarget.dataset.field); this.setData({ [`groups[${groupIndex}].entries[${entryIndex}].${field}`]: event.detail.value }, () => this.updateTotals()); },
   openPreview() { const prepared = prepareReturnSubmission(allEntries(this.data.groups)); if (!prepared.ok) { wx.showToast({ title: prepared.message, icon: "none" }); return; } this.setData({ step: "preview", previewLines: previewLines(this.data.groups) }); },

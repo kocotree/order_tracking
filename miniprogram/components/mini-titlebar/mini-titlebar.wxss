@@ -41,3 +41,6 @@
 .titlebar-back.is-left {
   transform: translateX(-28rpx);
 }
+
+.titlebar-shell.is-monochrome .titlebar-title,
+.titlebar-shell.is-monochrome .titlebar-back { color: #000; font-weight: 800; }

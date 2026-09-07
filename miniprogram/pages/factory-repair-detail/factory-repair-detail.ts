@@ -1,3 +1,4 @@
+import { returnFromNotificationDetail } from "../../modules/navigation";
 import { repairApi, type Repair, type RepairReturnBatch, type RepairReturnLine, type RepairSpec } from "../../api/repairs";
 import { isDevPreview, previewRepair } from "../../modules/dev-preview";
 import { notificationApi } from "../../api/notifications";
@@ -44,5 +45,5 @@ Page({
   toggleProduct(event: WechatMiniprogram.TouchEvent) { const index = Number(event.currentTarget.dataset.index); this.setData({ [`productGroups[${index}].expanded`]: !this.data.productGroups[index]?.expanded }); },
   toggleBatch(event: WechatMiniprogram.TouchEvent) { const index = Number(event.currentTarget.dataset.index); this.setData({ [`returnBatches[${index}].expanded`]: !this.data.returnBatches[index]?.expanded }); },
   openReturn() { if (!this.data.repair) return; const preview = this.data.previewMode ? "&preview=1" : ""; wx.navigateTo({ url: `/pages/factory-repair-return/factory-repair-return?repairId=${encodeURIComponent(this.data.repair.repairId)}${preview}` }); },
-  goBack() { wx.navigateBack(); },
+  goBack() { returnFromNotificationDetail("repair"); },
 });

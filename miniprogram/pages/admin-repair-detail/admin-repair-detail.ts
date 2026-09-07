@@ -1,3 +1,4 @@
+import { returnFromNotificationDetail } from "../../modules/navigation";
 import { repairApi, type Repair, type RepairReturnBatch, type RepairReturnLine } from "../../api/repairs";
 import { isDevPreview, previewAdminRepair } from "../../modules/dev-preview";
 import { notificationApi } from "../../api/notifications";
@@ -62,5 +63,5 @@ Page({
     const index = Number(event.currentTarget.dataset.index);
     this.setData({ [`returnBatches[${index}].expanded`]: !this.data.returnBatches[index]?.expanded });
   },
-  goBack() { wx.navigateBack(); },
+  goBack() { returnFromNotificationDetail("repair"); },
 });

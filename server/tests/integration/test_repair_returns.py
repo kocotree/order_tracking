@@ -628,3 +628,170 @@ def test_admin_archive_api_hides_completed_repair_details_and_attachment(
         assert factory_client.get("/api/v1/factory/repairs").json()["items"] == []
         assert factory_client.get("/api/v1/factory/repairs/return-repair").status_code == 404
         assert factory_client.get("/api/v1/files/9501/download").status_code == 404
+
+
+def test_return_draft_persists_partial_input_and_rejects_stale_save(test_database_engine: Engine):
+    seed_return_repair(test_database_engine)
+    service = RepairReturnService(sessionmaker(test_database_engine))
+    args = dict(
+        repair_id="return-repair", factory_id="return-factory", user_id="return-factory-user"
+    )
+    initial = service.get_draft(**args)
+    assert initial.version == 0
+    entries = [{"variantId": "return-variant", "selected": True, "repaired": "", "scrapped": "2"}]
+    saved = service.save_draft(**args, version=0, entries=entries)
+    assert saved.version == 1
+    assert service.get_draft(**args).entries == entries
+    assert service.get("return-repair").returned_quantity == 0
+    with pytest.raises(RepairReturnConflict):
+        service.save_draft(**args, version=0, entries=[])
+    with pytest.raises(RepairReturnNotFound):
+        service.get_draft(**{**args, "factory_id": "other"})
+
+
+def test_return_draft_submit_clears_atomically_and_replay_preserves_new_draft(
+    test_database_engine: Engine,
+) -> None:
+    seed_return_repair(test_database_engine)
+    service = RepairReturnService(sessionmaker(test_database_engine))
+    args = dict(
+        repair_id="return-repair", factory_id="return-factory", user_id="return-factory-user"
+    )
+    entries = [{"variantId": "return-variant", "selected": True, "repaired": "2", "scrapped": ""}]
+    saved = service.save_draft(**args, version=0, entries=entries)
+    assert service.save_draft(**args, version=0, entries=entries) == saved
+    submit = dict(
+        repair_id="return-repair",
+        factory_id="return-factory",
+        submitted_by="return-factory-user",
+        idempotency_key=saved.submission_key,
+        draft_version=saved.version,
+        lines=[RepairReturnLineInput("return-variant", 2, 0)],
+    )
+    with pytest.raises(RepairReturnConflict):
+        service.submit(**{**submit, "draft_version": 0})
+    assert service.get_draft(**args).entries == entries
+    with pytest.raises(RepairReturnConflict):
+        service.submit(**{**submit, "lines": [RepairReturnLineInput("return-variant", 13, 0)]})
+    assert service.get_draft(**args).entries == entries
+    service.submit(**submit)
+    cleared = service.get_draft(**args)
+    assert cleared.entries == []
+    assert cleared.version == 2
+    with pytest.raises(RepairReturnConflict):
+        service.save_draft(**args, version=1, entries=entries)
+    new = service.save_draft(**args, version=2, entries=entries)
+    service.submit(**submit)
+    assert service.get_draft(**args) == new
+    assert service.get("return-repair").returned_quantity == 2
+
+
+def test_return_draft_permissions_validation_and_completion(test_database_engine: Engine) -> None:
+    seed_return_repair(test_database_engine)
+    service = RepairReturnService(sessionmaker(test_database_engine))
+    args = dict(
+        repair_id="return-repair", factory_id="return-factory", user_id="return-factory-user"
+    )
+    with pytest.raises(RepairReturnNotFound):
+        service.get_draft(**{**args, "user_id": "return-admin"})
+    with pytest.raises(RepairReturnValidationError):
+        service.save_draft(
+            **args,
+            version=0,
+            entries=[{"variantId": "unknown", "selected": True, "repaired": "1", "scrapped": ""}],
+        )
+    service.save_draft(**args, version=0, entries=[])
+    with Session(test_database_engine) as session, session.begin():
+        user = session.get(User, "return-factory-user")
+        user.is_enabled = False
+    with pytest.raises(RepairReturnNotFound):
+        service.save_draft(**args, version=1, entries=[])
+    with Session(test_database_engine) as session, session.begin():
+        session.get(User, "return-factory-user").is_enabled = True
+        session.get(RepairOrder, "return-repair").status = "COMPLETED"
+    with pytest.raises(RepairReturnConflict):
+        service.save_draft(**args, version=1, entries=[])
+
+
+def test_return_draft_api_requires_factory_and_roundtrips_partial_input(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    seed_return_repair(test_database_engine)
+    identity = IdentityAccessService(
+        sessionmaker(test_database_engine),
+        token_secret=b"draft-test-token",
+        phone_encryption_secret=b"draft-test-encryption",
+        phone_digest_secret=b"draft-test-digest",
+    )
+    login = identity.issue_session(user_id="return-factory-user", terminal="mini")
+    app = create_app(database_url=test_database_url, identity_service=identity)
+    url = "/api/v1/factory/repairs/return-repair/return-draft"
+    with TestClient(app, base_url="https://testserver") as client:
+        assert client.get(url).status_code == 401
+        client.headers["Authorization"] = f"Bearer {login.access_token}"
+        assert client.get(url).json()["version"] == 0
+        payload = {
+            "version": 0,
+            "entries": [
+                {"variantId": "return-variant", "selected": True, "repaired": "", "scrapped": "2"}
+            ],
+        }
+        result = client.put(url, json=payload)
+        assert result.status_code == 200
+        assert result.json()["entries"] == payload["entries"]
+        assert client.get(url).json() == result.json()
+        assert client.put(url, json={"version": 0, "entries": []}).status_code == 409
+
+
+def test_return_drafts_are_isolated_between_users_in_same_factory(
+    test_database_engine: Engine,
+) -> None:
+    seed_return_repair(test_database_engine)
+    with Session(test_database_engine) as session, session.begin():
+        other = session.get(User, "return-admin")
+        other.role = "factory"
+        other.is_super_admin = False
+        other.factory_id = "return-factory"
+    service = RepairReturnService(sessionmaker(test_database_engine))
+    args = dict(
+        repair_id="return-repair", factory_id="return-factory", user_id="return-factory-user"
+    )
+    entries = [{"variantId": "return-variant", "selected": True, "repaired": "3", "scrapped": ""}]
+    saved = service.save_draft(**args, version=0, entries=entries)
+    other_args = {**args, "user_id": "return-admin"}
+    assert service.get_draft(**other_args).version == 0
+    service.save_draft(**other_args, version=0, entries=[])
+    assert service.get_draft(**args) == saved
+
+
+def test_concurrent_return_draft_saves_do_not_overwrite(test_database_engine: Engine) -> None:
+    seed_return_repair(test_database_engine)
+    barrier = Barrier(2)
+    service = RepairReturnService(sessionmaker(test_database_engine))
+    args = dict(
+        repair_id="return-repair", factory_id="return-factory", user_id="return-factory-user"
+    )
+
+    def save(value: str) -> str:
+        barrier.wait()
+        try:
+            service.save_draft(
+                **args,
+                version=0,
+                entries=[
+                    {
+                        "variantId": "return-variant",
+                        "selected": True,
+                        "repaired": value,
+                        "scrapped": "",
+                    }
+                ],
+            )
+            return "saved"
+        except RepairReturnConflict:
+            return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        assert sorted(executor.map(save, ["3", "4"])) == ["conflict", "saved"]
+    assert service.get_draft(**args).version == 1

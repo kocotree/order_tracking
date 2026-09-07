@@ -2437,6 +2437,55 @@
         "title": "RepairArchiveResponse",
         "type": "object"
       },
+      "RepairDraftRequest": {
+        "properties": {
+          "entries": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "entries"
+        ],
+        "title": "RepairDraftRequest",
+        "type": "object"
+      },
+      "RepairDraftResponse": {
+        "properties": {
+          "entries": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "submissionKey": {
+            "title": "Submissionkey",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "entries",
+          "submissionKey"
+        ],
+        "title": "RepairDraftResponse",
+        "type": "object"
+      },
       "RepairLineResponse": {
         "properties": {
           "boxNumber": {
@@ -2944,6 +2993,17 @@
       },
       "RepairReturnRequest": {
         "properties": {
+          "draftVersion": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draftversion"
+          },
           "lines": {
             "items": {
               "$ref": "#/components/schemas/RepairReturnLineRequest"
@@ -8955,6 +9015,130 @@
           }
         },
         "summary": "Submit Factory Repair Return",
+        "tags": [
+          "repair-factory"
+        ]
+      }
+    },
+    "/api/v1/factory/repairs/{repair_id}/return-draft": {
+      "get": {
+        "operationId": "get_return_draft_api_v1_factory_repairs__repair_id__return_draft_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repair_id",
+            "required": true,
+            "schema": {
+              "title": "Repair Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Return Draft",
+        "tags": [
+          "repair-factory"
+        ]
+      },
+      "put": {
+        "operationId": "save_return_draft_api_v1_factory_repairs__repair_id__return_draft_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repair_id",
+            "required": true,
+            "schema": {
+              "title": "Repair Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepairDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Return Draft",
         "tags": [
           "repair-factory"
         ]

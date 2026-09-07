@@ -1,12 +1,4 @@
 .repair-return-page { min-height: 100vh; padding-bottom: calc(40rpx + env(safe-area-inset-bottom)); background: #f3f5f8; }
-.repair-return-steps { display: grid; grid-template-columns: 1fr 144rpx 1fr; align-items: center; padding: 26rpx 96rpx 22rpx; background: #fff; border-bottom: 1rpx solid #e2e7ed; }
-.repair-return-steps > i { height: 4rpx; margin-bottom: 38rpx; background: #e4e9ef; }
-.repair-return-steps > i.is-active { background: #1677ff; }
-.repair-return-step { display: grid; justify-items: center; gap: 10rpx; color: #000; }
-.repair-return-step text { display: grid; width: 54rpx; height: 54rpx; place-items: center; box-sizing: border-box; background: #fff; border: 4rpx solid #e4e9ef; border-radius: 50%; font-size: 22rpx; font-weight: 750; }
-.repair-return-step b { font-size: 20rpx; white-space: nowrap; }
-.repair-return-step.is-active { color: #000; }
-.repair-return-step.is-active text { color: #000; background: #1677ff; border-color: #1677ff; }
 .repair-return-content { display: grid; gap: 18rpx; padding: 20rpx 28rpx 28rpx; }
 .repair-return-summary,.repair-return-product,.repair-return-totals,.repair-return-preview-totals,.repair-return-preview-list { overflow: hidden; background: #fff; border: 1rpx solid #e2e7ed; border-radius: 30rpx; box-shadow: 0 10rpx 28rpx rgba(34,50,70,.06); }
 .repair-return-summary { padding: 22rpx; }
@@ -89,3 +81,11 @@
 .repair-return-chevron { flex: 0 0 24rpx; font-size: 34rpx !important; text-align: center; transform: rotate(0); }
 .repair-return-chevron.is-expanded { transform: rotate(90deg); }
 .repair-return-spec.is-collapsed { display: none; }
+
+/* Follow-up confirmation: match shipment steps and retain explicit color exceptions. */
+.repair-return-page .ship-step text { color: #8c96a3; }
+.repair-return-page .ship-step.is-active text { color: #1677ff; }
+.repair-return-page .ship-step.is-active text:first-child { color: #fff; }
+.repair-return-page .repair-return-product-head strong { color: #1677ff; }
+.repair-return-page .repair-return-primary,
+.repair-return-page .repair-return-actions button.is-primary { color: #fff; }

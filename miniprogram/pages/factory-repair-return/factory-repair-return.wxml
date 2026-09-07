@@ -1,5 +1,6 @@
 <view class="repair-return-page">
   <mini-titlebar title="发回返修品" monochrome="{{true}}" showBack="{{true}}" backLeft="{{true}}" bind:back="goBack"/>
+  <view class="ship-steps repair-return-steps"><view class="ship-step is-active"><text>{{step === 'preview' ? '✓' : '1'}}</text><text>填写数量</text></view><view class="ship-step {{step === 'preview' ? 'is-active' : ''}}"><text>2</text><text>预览提交</text></view></view>
   <view class="repair-return-steps"><view class="repair-return-step is-active"><text>{{step === 'preview' ? '✓' : '1'}}</text><b>填写数量</b></view><i class="{{step === 'preview' ? 'is-active' : ''}}"/><view class="repair-return-step {{step === 'preview' ? 'is-active' : ''}}"><text>2</text><b>预览提交</b></view></view>
   <view wx:if="{{saveMessage}}" class="repair-return-save-status">{{saveMessage}}</view>
   <view wx:if="{{loading}}" class="mini-empty">正在加载返修任务…</view>
@@ -13,7 +14,15 @@
     </block>
     <block wx:else>
       <view class="repair-return-preview-totals"><view><text>返修数量</text><b>{{repairedTotal}}</b></view><view><text>报废数量</text><b>{{scrappedTotal}}</b></view><view><text>返回总数量</text><b>{{returnTotal}}</b></view></view>
-      <view class="repair-return-preview-list"><view class="repair-return-preview-head"><b>本次发回明细</b><text>{{previewLines.length}} 个规格</text></view><view wx:for="{{previewLines}}" wx:key="variantId" class="repair-return-preview-line"><text class="repair-return-index">{{index + 1}}</text><view><b>{{item.productName}}</b><text>{{item.propertiesValue}}</text></view><view class="repair-return-preview-values"><view><text>返修</text><b>{{item.repaired}}</b></view><view><text>报废</text><b>{{item.scrapped}}</b></view><view><text>返回</text><b>{{item.returnQuantity}}</b></view></view></view></view>
+      <view class="repair-return-preview-list">
+        <view class="repair-return-preview-head"><b>本次发回明细</b><text>{{previewLines.length}} 个规格</text></view>
+        <view wx:for="{{previewGroups}}" wx:key="productName">
+          <view class="repair-return-product-head" role="button" aria-expanded="{{item.expanded}}" data-group="{{index}}" bindtap="togglePreviewGroup"><view><b>{{item.productName}}</b><text>{{item.lines.length}} 个规格</text></view><text class="repair-return-chevron {{item.expanded ? 'is-expanded' : ''}}">›</text></view>
+          <block wx:if="{{item.expanded}}">
+            <view wx:for="{{item.lines}}" wx:for-item="line" wx:for-index="lineIndex" wx:key="variantId" class="repair-return-preview-line"><text class="repair-return-index">{{lineIndex + 1}}</text><view><b>{{line.propertiesValue}}</b></view><view class="repair-return-preview-values"><view><text>返修</text><b>{{line.repaired}}</b></view><view><text>报废</text><b>{{line.scrapped}}</b></view><view><text>返回</text><b>{{line.returnQuantity}}</b></view></view></view>
+          </block>
+        </view>
+      </view>
       <view class="repair-return-actions"><button bindtap="edit">返回修改</button><button class="is-primary" disabled="{{submitting}}" bindtap="submit">{{submitting ? '提交中…' : '确认提交'}}</button></view>
     </block>
   </view>

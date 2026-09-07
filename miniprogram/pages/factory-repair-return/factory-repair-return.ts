@@ -4,6 +4,7 @@ import { isDevPreview, previewRepair } from "../../modules/dev-preview";
 import { prepareReturnSubmission, type ReturnEntry } from "../../modules/repair-return";
 
 type ReturnGroup = { expanded: boolean; productName: string; pendingQuantity: number; entries: ReturnEntry[] };
+type PreviewGroup = { productName: string; expanded: boolean; lines: PreviewLine[] };
 type PreviewLine = ReturnEntry & { returnQuantity: number };
 
 function groupsFor(repair: Repair, draft: RepairDraftEntry[] = []): ReturnGroup[] {
@@ -44,7 +45,7 @@ Page({
   saveTimer: null as ReturnType<typeof setTimeout> | null,
   pageClosed: false,
   submitted: false,
-  data: { ready: false, saveMessage: "", repair: null as Repair | null, repairId: "", loading: true, previewMode: false, step: "edit" as "edit" | "preview", progress: 0, pending: 0, groups: [] as ReturnGroup[], previewLines: [] as PreviewLine[], repairedTotal: 0, scrappedTotal: 0, returnTotal: 0, submitting: false, idempotencyKey: "" },
+  data: { ready: false, saveMessage: "", repair: null as Repair | null, repairId: "", loading: true, previewMode: false, step: "edit" as "edit" | "preview", progress: 0, pending: 0, groups: [] as ReturnGroup[], previewLines: [] as PreviewLine[], previewGroups: [] as PreviewGroup[], repairedTotal: 0, scrappedTotal: 0, returnTotal: 0, submitting: false, idempotencyKey: "" },
   onLoad(options: Record<string, string | undefined>) { const repairId = options.repairId ?? ""; const previewMode = isDevPreview(options); this.setData({ repairId, previewMode, idempotencyKey: `repair-return-${repairId}-${Date.now()}-${Math.random().toString(36).slice(2)}` }); if (repairId) void this.load(repairId, previewMode); },
   async load(repairId: string, previewMode: boolean) {
     this.setData({ ready: false });
@@ -88,9 +89,14 @@ Page({
     const group = this.data.groups[index];
     if (group) this.setData({ [`groups[${index}].expanded`]: !group.expanded });
   },
+  togglePreviewGroup(event: WechatMiniprogram.TouchEvent) {
+    const index = Number(event.currentTarget.dataset.group);
+    const group = this.data.previewGroups[index];
+    if (group) this.setData({ [`previewGroups[${index}].expanded`]: !group.expanded });
+  },
+  openPreview() { if (!this.data.ready || this.data.submitting) return; const prepared = prepareReturnSubmission(allEntries(this.data.groups)); if (!prepared.ok) { wx.showToast({ title: prepared.message, icon: "none" }); return; } const lines = previewLines(this.data.groups); const groups = new Map<string, PreviewLine[]>(); lines.forEach((line) => groups.set(line.productName, [...(groups.get(line.productName) ?? []), line])); this.setData({ step: "preview", previewLines: lines, previewGroups: Array.from(groups, ([productName, groupLines]) => ({ productName, expanded: false, lines: groupLines })) }); },
   toggleEntry(event: WechatMiniprogram.TouchEvent) { if (!this.data.ready || this.data.submitting) return; const groupIndex = Number(event.currentTarget.dataset.group); const entryIndex = Number(event.currentTarget.dataset.entry); const selected = !this.data.groups[groupIndex]?.entries[entryIndex]?.selected; const changes: Record<string, boolean | string> = { [`groups[${groupIndex}].entries[${entryIndex}].selected`]: selected }; if (!selected) { changes[`groups[${groupIndex}].entries[${entryIndex}].repaired`] = ""; changes[`groups[${groupIndex}].entries[${entryIndex}].scrapped`] = ""; } this.setData(changes, () => { this.updateTotals(); this.scheduleSave(); }); },
   changeQuantity(event: WechatMiniprogram.Input) { if (!this.data.ready || this.data.submitting) return; const groupIndex = Number(event.currentTarget.dataset.group); const entryIndex = Number(event.currentTarget.dataset.entry); const field = String(event.currentTarget.dataset.field); this.setData({ [`groups[${groupIndex}].entries[${entryIndex}].${field}`]: event.detail.value }, () => { this.updateTotals(); this.scheduleSave(); }); },
-  openPreview() { if (!this.data.ready || this.data.submitting) return; const prepared = prepareReturnSubmission(allEntries(this.data.groups)); if (!prepared.ok) { wx.showToast({ title: prepared.message, icon: "none" }); return; } this.setData({ step: "preview", previewLines: previewLines(this.data.groups) }); },
   edit() { this.setData({ step: "edit" }); },
   async submit() { if (!this.data.repair || !this.data.ready || this.data.submitting) return; const prepared = prepareReturnSubmission(allEntries(this.data.groups)); if (!prepared.ok) { wx.showToast({ title: prepared.message, icon: "none" }); return; } this.setData({ submitting: true }); try { if (!await this.saveDraftNow()) return; if (this.data.previewMode) applyPreviewSubmission(this.data.repair, prepared.lines); else await repairApi.factorySubmitReturn(this.data.repairId, prepared.lines, this.draftSession!.current.submissionKey, this.draftSession!.current.version); this.submitted = true; wx.showToast({ title: "返修品发回记录已提交", icon: "success" }); setTimeout(() => wx.navigateBack(), 700); } catch (error) { const statusCode = (error as { statusCode?: number }).statusCode; wx.showToast({ title: statusCode === 409 ? "返修进度已变化，请重新核对" : "返修品发回失败", icon: "none" }); if (statusCode === 409) { this.setData({ step: "edit" }); this.setData({ saveMessage: "返修进度或草稿已变化，请退出后重新进入核对" }); } } finally { this.setData({ submitting: false }); } },
   async goBack() { if (this.data.submitting) return; if (this.data.step === "preview") { this.edit(); return; } if (!this.data.ready || await this.saveDraftNow()) wx.navigateBack(); },

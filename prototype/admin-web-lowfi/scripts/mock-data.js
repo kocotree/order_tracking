@@ -2,8 +2,8 @@ export const notificationData = [
   {
     id: "notification-1",
     category: "正常发货",
-    title: "宇情工厂已提交发货",
-    description: "发货单 FH20260812-004，涉及订单 369#",
+    title: "宇情工厂提交发货",
+    description: "宇情工厂发货：小热皮绒绒裤，总计420件",
     time: "2026-08-12 15:30",
     tone: "info",
     route: "/shipments/FH20260812-004",

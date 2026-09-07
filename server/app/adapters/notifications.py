@@ -318,9 +318,11 @@ class AppCredentialFeishuBusinessNotifier:
         )
 
     def _send_admin_card(self, request: DeliveryRequest) -> None:
-        elements: list[dict[str, object]] = [
-            {"tag": "div", "text": {"tag": "plain_text", "content": request.summary}}
-        ]
+        elements: list[dict[str, object]] = []
+        if request.template_key not in {"admin_shipment", "admin_repair"}:
+            elements.append(
+                {"tag": "div", "text": {"tag": "plain_text", "content": request.summary}}
+            )
         columns: tuple[tuple[str, str], ...] = ()
         if request.template_key == "admin_shipment":
             columns = (
@@ -337,7 +339,6 @@ class AppCredentialFeishuBusinessNotifier:
                 ("scrappedQuantity", "报废数量"),
                 ("returnedQuantity", "返回总数量"),
             )
-            elements.append({"tag": "div", "text": {"tag": "plain_text", "content": "本次发回"}})
             button = "查看返修详情"
         else:
             button = "查看并处理"

@@ -9,7 +9,7 @@ import { useIdentityStore } from "@/stores";
 afterEach(() => vi.restoreAllMocks());
 it("only requests unread summaries and removes the selected item and badge after reading", async () => {
   let read = false;
-  const item = { notificationId: 12, readAt: null, title: "新发货", summary: "明细", targetPath: "/shipments/test" };
+  const item = { notificationId: 12, readAt: null, title: "希望工厂提交发货", summary: "希望工厂发货：童帽等，总计560件", targetPath: "/shipments/test" };
   vi.spyOn(notificationApi, "list").mockImplementation(async () => ({ items: read ? [] : [{ ...item }], total: read ? 0 : 1 } as never));
   vi.spyOn(notificationApi, "unreadCount").mockImplementation(async () => ({ count: read ? 0 : 1 } as never));
   vi.spyOn(notificationApi, "markRead").mockImplementation(async () => { read = true; });
@@ -21,6 +21,8 @@ it("only requests unread summaries and removes the selected item and badge after
   expect(wrapper.get(".notification-badge").text()).toBe("1");
   await wrapper.get(".notification-bell").trigger("click"); await flushPromises();
   expect(notificationApi.list).toHaveBeenLastCalledWith("unread", 1, 3);
+  expect(wrapper.get(".notification-popover-item strong").text()).toBe(item.title);
+  expect(wrapper.get(".notification-popover-item small").text()).toBe(item.summary);
   await wrapper.get(".notification-popover-item").trigger("click"); await flushPromises();
   expect(router.currentRoute.value.path).toBe("/shipments/test");
   expect(wrapper.find(".notification-badge").exists()).toBe(false);

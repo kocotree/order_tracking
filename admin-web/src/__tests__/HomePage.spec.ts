@@ -84,6 +84,7 @@ describe("order dashboard prototype alignment", () => {
     });
     await flushPromises();
 
+    expect(wrapper.findAll(".dashboard-order-link").map((link) => link.attributes("title"))).toEqual(["090#", "078#"]);
     expect(wrapper.findAll('[data-category="服装"]')).toHaveLength(2);
     expect(wrapper.findAll('[data-category="帽子"]')).toHaveLength(1);
 
@@ -104,13 +105,18 @@ it("links statistics to Shanghai today and overdue filters, and requests unread 
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-09-05T18:00:00Z"));
   vi.spyOn(orderApi, "dashboard").mockResolvedValue({ recentOrders: [], overdueOrders: 2, todayShipments: 1, pendingImportOrders: 0 } as never);
-  vi.spyOn(notificationApi, "list").mockResolvedValue({ items: [], total: 0 } as never);
+  vi.spyOn(notificationApi, "list").mockResolvedValue({ items: [{
+    notificationId: 1, title: "希望工厂提交发货", summary: "希望工厂发货：童帽等，总计560件",
+    targetPath: "/shipments/test", readAt: null, createdAt: "2026-09-05T10:00:00Z",
+  }], total: 1 } as never);
   vi.spyOn(notificationApi, "unreadCount").mockResolvedValue({ count: 0 } as never);
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/:pathMatch(.*)*", component: { template: "<div/>" } }] });
   await router.push("/");
   const wrapper = mount(HomePage, { global: { plugins: [createPinia(), router], stubs: { AdminShell: { template: "<div><slot/></div>" } } } });
   await flushPromises();
   expect(notificationApi.list).toHaveBeenCalledWith("unread", 1, 3);
+  expect(wrapper.get(".dashboard-notification-list strong").text()).toBe("希望工厂提交发货");
+  expect(wrapper.get(".dashboard-notification-list small").text()).toBe("希望工厂发货：童帽等，总计560件");
   const links = wrapper.findAll(".dashboard-stat-card");
   expect(links[1].attributes("href")).toBe("/shipments?dateFrom=2026-09-06&dateTo=2026-09-06");
   await links[2].trigger("click"); await flushPromises();

@@ -30,8 +30,8 @@ describe("administrator notifications", () => {
         eventType: "shipment.submitted",
         targetType: "shipment",
         targetId: "shipment-1",
-        title: "工厂已提交发货",
-        summary: "发货单已形成正式记录",
+        title: "希望工厂提交发货",
+        summary: "希望工厂发货：童帽等，总计560件",
         targetPath: "/shipments/shipment-1",
         readAt: null,
         createdAt: "2026-08-27T10:00:00",
@@ -47,6 +47,8 @@ describe("administrator notifications", () => {
       global: { plugins: [createPinia()], stubs: { AdminShell: { template: "<div><slot /></div>" } } },
     });
     await flushPromises();
+    expect(wrapper.get(".notification-copy strong").text()).toBe("希望工厂提交发货");
+    expect(wrapper.get(".notification-copy span").text()).toBe("希望工厂发货：童帽等，总计560件");
     expect(notificationApi.list).toHaveBeenCalledWith("unread", 2, 10);
 
     await wrapper.get(".notification-list-item").trigger("click");

@@ -284,6 +284,13 @@ def test_submitted_shipment_sends_feishu_to_five_admins_and_order_tracker(
         },
     )
     assert item.template_data["totalQuantity"] == "12"
+    assert item.title == "通知工厂甲提交发货"
+    assert item.summary == "通知工厂甲发货：通知测试童帽，总计12件"
+    notice = service.list_notifications(
+        user_id="admin-notice", unread_only=False, page=1, page_size=10
+    ).items[0]
+    assert notice.title == item.title
+    assert notice.summary == item.summary
     for user_id in ["admin-notice", "recipient-0", "recipient-1", "recipient-2", "recipient-3"]:
         assert (
             service.list_notifications(
@@ -470,6 +477,10 @@ def test_returned_repair_feishu_card_uses_current_batch_not_cumulative_totals(
     }
     assert len(feishu.sent) == 5
     assert feishu.sent[0].target_path == "/repairs/repair-return-notice"
+    assert feishu.sent[0].title == "通知工厂甲提交返修结果"
+    assert feishu.sent[0].summary == (
+        "通知工厂甲返回：通知测试童帽，总计7件（返修5件，报废2件）"
+    )
     assert feishu.sent[0].card_rows == (
         {
             "factoryName": "通知工厂甲",
@@ -1432,6 +1443,9 @@ def test_shipment_and_withdrawal_notify_only_involved_order_trackers(
         assert {item.recipient_id for item in feishu.sent} == expected
         assert len(feishu.sent) == len(expected)
         assert {item.template_key for item in feishu.sent} == {template}
+        if template == "admin_void_request":
+            assert feishu.sent[0].title == "通知工厂甲申请撤回发货"
+            assert feishu.sent[0].summary == "通知工厂甲申请撤回：通知测试童帽，总计15件，等待审核"
         assert wechat.sent == []
         # The unrelated tracker retains station notifications but receives no Feishu.
         assert service.list_notifications(

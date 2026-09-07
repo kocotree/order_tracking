@@ -25,6 +25,8 @@ from app.db.models import (
     OrderAssignment,
     OrderLine,
     OutboxMessage,
+    Product,
+    ProductVariant,
     QuantityLedger,
     RepairOrder,
     RepairReturnBatch,
@@ -32,12 +34,24 @@ from app.db.models import (
     Shipment,
     ShipmentLine,
     ShipmentReceipt,
+    ShipmentReceiptItem,
     ShipmentVoidRequest,
     User,
 )
 from app.modules.infrastructure import utc_now
 
 logger = logging.getLogger(__name__)
+
+def _notification_products(names: list[str]) -> str:
+    """Keep one readable product name while distinguishing multiple products."""
+    unique = list(dict.fromkeys(name for name in names if name))
+    if not unique:
+        return "产品"
+    first = unique[0]
+    if len(first) > 120:
+        first = first[:119] + "…"
+    return first + ("等" if len(unique) > 1 else "")
+
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
 # Confirmed recipients for Issue #26; match the full Feishu profile name, never a nickname suffix.
 ADMIN_BUSINESS_RECIPIENT_NAMES = (
@@ -887,6 +901,10 @@ class NotificationsAuditService:
             for key, quantity in sorted(quantities.items())
         )
         total_quantity = sum(quantities.values())
+        factory_name = session.scalar(
+            select(Factory.factory_name).where(Factory.factory_id == shipment.factory_id)
+        ) or "工厂"
+        product_summary = _notification_products([line.product_name_snapshot for line in lines])
         recipients = self._admin_business_recipient_ids(session)
         recipients.update(self._shipment_tracker_recipient_ids(session, shipment.shipment_id))
         for user in self._enabled_admins(session):
@@ -897,8 +915,8 @@ class NotificationsAuditService:
                 category="SHIPMENT",
                 target_type="shipment",
                 target_id=shipment.shipment_id,
-                title="工厂已提交发货",
-                summary=f"发货单 {shipment.shipment_no or shipment.shipment_id} 已形成正式记录",
+                title=f"{factory_name}提交发货",
+                summary=f"{factory_name}发货：{product_summary}，总计{total_quantity}件",
                 target_path=f"/shipments/{shipment.shipment_id}",
                 channel="feishu" if user.user_id in recipients else None,
                 template_key="admin_shipment",
@@ -914,6 +932,20 @@ class NotificationsAuditService:
         if request is None or request.shipment_id != shipment.shipment_id:
             raise ValueError("withdrawal event has no matching request")
         factory = session.get(Factory, shipment.factory_id)
+        factory_name = factory.factory_name if factory else "工厂"
+        lines = session.scalars(
+            select(ShipmentLine)
+            .where(ShipmentLine.shipment_id == shipment.shipment_id)
+            .order_by(ShipmentLine.line_id)
+        ).all()
+        product_summary = _notification_products([line.product_name_snapshot for line in lines])
+        total_quantity = sum(line.quantity for line in lines)
+        receipt = session.get(ShipmentReceipt, shipment.shipment_id)
+        if receipt is not None and receipt.status == "CONFIRMED":
+            total_quantity = int(session.scalar(
+                select(func.coalesce(func.sum(ShipmentReceiptItem.quantity), 0))
+                .where(ShipmentReceiptItem.shipment_id == shipment.shipment_id)
+            ) or 0)
         applicant = session.get(User, request.requested_by)
         recipients = self._admin_business_recipient_ids(session)
         recipients.update(self._shipment_tracker_recipient_ids(session, shipment.shipment_id))
@@ -925,8 +957,8 @@ class NotificationsAuditService:
                 category="SHIPMENT",
                 target_type="shipment",
                 target_id=shipment.shipment_id,
-                title="收到撤回发货申请",
-                summary=f"发货单 {shipment.shipment_no or shipment.shipment_id} 等待审核",
+                title=f"{factory_name}申请撤回发货",
+                summary=f"{factory_name}申请撤回：{product_summary}，总计{total_quantity}件，等待审核",
                 target_path=f"/shipments/{shipment.shipment_id}",
                 channel="feishu" if user.user_id in recipients else None,
                 template_key="admin_void_request",
@@ -1082,7 +1114,15 @@ class NotificationsAuditService:
             ).where(RepairReturnLine.batch_id == batch.batch_id)
         ).one()
         repaired_quantity, scrapped_quantity = int(quantities[0]), int(quantities[1])
-        status_text = "，返修已完成" if repair.status == "COMPLETED" else ""
+        product_names = session.scalars(
+            select(Product.name)
+            .join(ProductVariant, ProductVariant.product_id == Product.product_id)
+            .join(RepairReturnLine, RepairReturnLine.variant_id == ProductVariant.variant_id)
+            .where(RepairReturnLine.batch_id == batch.batch_id)
+            .order_by(RepairReturnLine.line_order)
+        ).all()
+        product_summary = _notification_products(list(product_names))
+        factory_name = factory_name or "工厂"
         recipients = self._admin_business_recipient_ids(session)
         for user in self._enabled_admins(session):
             self._notify_user(
@@ -1092,8 +1132,12 @@ class NotificationsAuditService:
                 category="REPAIR",
                 target_type="repair",
                 target_id=repair.repair_id,
-                title="工厂已提交返修结果",
-                summary=f"返修单 {repair.repair_no} 已提交一批发回记录{status_text}",
+                title=f"{factory_name}提交返修结果",
+                summary=(
+                    f"{factory_name}返回：{product_summary}，"
+                    f"总计{repaired_quantity + scrapped_quantity}件"
+                    f"（返修{repaired_quantity}件，报废{scrapped_quantity}件）"
+                ),
                 target_path=f"/repairs/{repair.repair_id}",
                 channel="feishu" if user.user_id in recipients else None,
                 template_key="admin_repair",

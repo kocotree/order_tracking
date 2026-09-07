@@ -12,7 +12,7 @@ type NotificationPage = {
   data: {
     status: "all" | "unread";
     page: number;
-    items: Array<{ categoryLabel: string; createdAtText: string }>;
+    items: Array<{ categoryLabel: string; createdAtText: string; title: string; summary: string }>;
     total: number;
     hasMore: boolean;
     loading: boolean;
@@ -44,13 +44,13 @@ describe("notification page presentation", () => {
     mocks.list.mockResolvedValue({
       items: [{
         notificationId: 1,
-        category: "DUE_REMINDER",
-        eventType: "due",
-        targetType: "order",
-        targetId: "order-1",
-        title: "合同出货提醒",
-        summary: "订单即将到达合同出货时间",
-        targetPath: "/pages/admin-order-detail/admin-order-detail?orderId=order-1",
+        category: "SHIPMENT",
+        eventType: "shipment.submitted",
+        targetType: "shipment",
+        targetId: "shipment-1",
+        title: "希望工厂提交发货",
+        summary: "希望工厂发货：童帽等，总计560件",
+        targetPath: "/shipments/shipment-1",
         readAt: null,
         createdAt: "2026-09-05T08:30:00.123456",
       }],
@@ -63,7 +63,9 @@ describe("notification page presentation", () => {
     await page.load(true);
 
     expect(page.data.items[0]).toMatchObject({
-      categoryLabel: "合同出货",
+      categoryLabel: "发货",
+      title: "希望工厂提交发货",
+      summary: "希望工厂发货：童帽等，总计560件",
       createdAtText: "2026-09-05 16:30",
     });
     expect(page.data.page).toBe(1);

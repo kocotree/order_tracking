@@ -3,6 +3,10 @@ set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
 environment=${1:-}
+if [[ "$environment" == production ]]; then
+  echo "Production uses the Deploy production workflow and release-images.sh" >&2
+  exit 2
+fi
 target_commit=${2:-}
 ci_run_id=${3:-}
 resolve_environment "${environment}"

@@ -1,9 +1,7 @@
 name: order-tracking-production
 
 x-server: &server
-  image: order-tracking-server:${ORDER_TRACKING_DEPLOY_VERSION:?set ORDER_TRACKING_DEPLOY_VERSION}
-  build:
-    context: ../server
+  image: ghcr.io/kocotree/order-tracking-server:${ORDER_TRACKING_DEPLOY_VERSION:?set ORDER_TRACKING_DEPLOY_VERSION}
   env_file:
     - .env.production
   networks:
@@ -19,7 +17,20 @@ services:
   migrate:
     <<: *server
     profiles: [operations]
-    command: ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+    # Escape URL percent encoding for Alembic's ConfigParser interpolation.
+    command:
+      - uv
+      - run
+      - --no-sync
+      - python
+      - -c
+      - >-
+        import os;
+        from alembic.config import Config;
+        from alembic import command;
+        c = Config('alembic.ini');
+        c.set_main_option('sqlalchemy.url', os.environ['ORDER_TRACKING_DATABASE_URL'].replace('%', '%%'));
+        command.upgrade(c, 'head')
     restart: "no"
 
   api:
@@ -44,9 +55,7 @@ services:
       - jst-token:/var/lib/order-tracking/jst
 
   admin-web:
-    image: order-tracking-admin-web:${ORDER_TRACKING_DEPLOY_VERSION:?set ORDER_TRACKING_DEPLOY_VERSION}
-    build:
-      context: ../admin-web
+    image: ghcr.io/kocotree/order-tracking-admin-web:${ORDER_TRACKING_DEPLOY_VERSION:?set ORDER_TRACKING_DEPLOY_VERSION}
     depends_on:
       api:
         condition: service_healthy

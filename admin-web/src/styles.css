@@ -296,17 +296,17 @@ h1, h2, p { margin-top: 0; }
 .dashboard-order-table { width: 100%; min-width: 1412px; table-layout: fixed; color: var(--ink); border-collapse: collapse; }
 .dashboard-order-table th, .dashboard-order-table td { height: 40px; padding: 0 14px; text-align: left; vertical-align: middle; }
 .dashboard-order-table th { color: #37404b; font-size: 13px; font-weight: 800; white-space: nowrap; background: #f1f3f6; }
-.dashboard-order-table td { max-width: 260px; overflow: hidden; font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-/* Business columns share the width remaining after the fixed 52px sequence column. */
-.dashboard-order-table th:nth-child(2) { width: calc(8.823529% - 4.588235px); }
-.dashboard-order-table th:nth-child(3) { width: calc(30.882353% - 16.058824px); }
-.dashboard-order-table th:nth-child(4) { width: calc(6.617647% - 3.441176px); }
-.dashboard-order-table th:nth-child(5) { width: calc(6.617647% - 3.441176px); }
-.dashboard-order-table th:nth-child(6) { width: calc(7.352941% - 3.823529px); }
-.dashboard-order-table th:nth-child(7) { width: calc(10.441176% - 5.429412px); }
-.dashboard-order-table th:nth-child(8) { width: calc(11.029412% - 5.735294px); }
-.dashboard-order-table th:nth-child(9) { width: calc(11.029412% - 5.735294px); }
-.dashboard-order-table th:nth-child(10) { width: calc(7.205882% - 3.747059px); }
+.dashboard-order-table td { overflow: hidden; font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+/* Explicit column widths keep table layout predictable; product names take the remainder. */
+.dashboard-order-table th:nth-child(2) { width: 120px; }
+.dashboard-order-table th:nth-child(3) { width: auto; }
+.dashboard-order-table th:nth-child(4) { width: 90px; }
+.dashboard-order-table th:nth-child(5) { width: 90px; }
+.dashboard-order-table th:nth-child(6) { width: 100px; }
+.dashboard-order-table th:nth-child(7) { width: 142px; }
+.dashboard-order-table th:nth-child(8) { width: 150px; }
+.dashboard-order-table th:nth-child(9) { width: 150px; }
+.dashboard-order-table th:nth-child(10) { width: 98px; }
 .dashboard-order-link { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-order-table tbody tr:hover td { background: #e7f3ff; }
 .dashboard-order-table .dashboard-sequence-column, .dashboard-order-table .dashboard-sequence-cell { width: 52px; padding-right: 8px; padding-left: 8px; text-align: center; white-space: nowrap; }
@@ -702,7 +702,7 @@ h1, h2, p { margin-top: 0; }
 .order-list-page .order-list-card-header { height: 54px; padding: 0 16px; }
 .order-list-page .order-list-card-header h1 { margin: 0; color: var(--ink-strong); font-size: 18px; font-weight: 800; }
 .order-list-table { width: 100%; min-width: 1516px; table-layout: fixed; }
-.order-list-table th:nth-child(1) { width: 52px; }.order-list-table th:nth-child(2) { width: calc(8.823529% - 13.764706px); }.order-list-table th:nth-child(3) { width: calc(30.882353% - 48.176471px); }.order-list-table th:nth-child(4) { width: calc(6.617647% - 10.323529px); }.order-list-table th:nth-child(5) { width: calc(6.617647% - 10.323529px); }.order-list-table th:nth-child(6) { width: calc(7.352941% - 11.470588px); }.order-list-table th:nth-child(7) { width: calc(10.441176% - 16.288235px); }.order-list-table th:nth-child(8) { width: calc(11.029412% - 17.205882px); }.order-list-table th:nth-child(9) { width: calc(11.029412% - 17.205882px); }.order-list-table th:nth-child(10) { width: calc(7.205882% - 11.241176px); }.order-list-table th:nth-child(11) { width: 104px; }
+.order-list-table th:nth-child(1) { width: 52px; }.order-list-table th:nth-child(2) { width: 120px; }.order-list-table th:nth-child(3) { width: auto; }.order-list-table th:nth-child(4) { width: 90px; }.order-list-table th:nth-child(5) { width: 90px; }.order-list-table th:nth-child(6) { width: 100px; }.order-list-table th:nth-child(7) { width: 142px; }.order-list-table th:nth-child(8) { width: 150px; }.order-list-table th:nth-child(9) { width: 150px; }.order-list-table th:nth-child(10) { width: 98px; }.order-list-table th:nth-child(11) { width: 104px; }
 .order-list-table th, .order-list-table td { padding: 0 14px; font-size: 13px; text-align: left; }
 .order-list-table th { font-weight: 800; }
 .order-list-table td { height: 40px; font-weight: 700; vertical-align: middle; }

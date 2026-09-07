@@ -615,7 +615,10 @@ h1, h2, p { margin-top: 0; }
 .order-detail-page .detail-progress i { display: block; height: 100%; background: var(--erp-blue); border-radius: inherit; }
 .order-detail-page .detail-progress em { font-size: 12px; font-style: normal; font-weight: 700; text-align: right; }
 .order-detail-page .related-shipment-table { min-width: 900px; }
-.order-detail-page .related-shipment-table th { width: calc(100% / 6); }
+.order-detail-page .related-shipment-table th:first-child { width: auto; }
+.order-detail-page .related-shipment-table th:nth-child(2) { width: 160px; }
+.order-detail-page .related-shipment-table th:nth-child(3) { width: 140px; }
+.order-detail-page .related-shipment-table th:nth-child(4) { width: 100px; }
 .order-audit-card { overflow: hidden; }
 .order-audit-toggle { display: flex; width: 100%; min-height: 56px; align-items: center; justify-content: space-between; padding: 0 20px; color: var(--ink-strong); background: #fff; border: 0; cursor: pointer; }
 .order-audit-toggle:hover { background: #fafbfd; }

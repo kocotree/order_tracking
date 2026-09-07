@@ -1,4 +1,4 @@
-import { dashboardData, notificationData } from "../mock-data.js?v=20260827-s11-notifications";
+import { dashboardData, notificationData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
 import { buildRouteWithReturn } from "../router.js";
@@ -6,37 +6,19 @@ import { buildRouteWithReturn } from "../router.js";
 const searchIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 
 function renderStats() {
-  return dashboardData.stats
-    .map(
-      (stat) => `
-        <button class="stat-card" type="button" data-tone="${escapeHTML(stat.tone)}" data-destination="${escapeHTML(stat.destination)}">
-          <span class="stat-card-top">
-            <span>${escapeHTML(stat.label)}</span>
-          </span>
-          <span class="stat-value">${escapeHTML(stat.value)}</span>
-        </button>
-      `,
-    )
-    .join("");
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+  const entries = [
+    { label: "待导入订单", route: "/pending-imports" },
+    { label: "今日发货记录", route: `/shipments?dateFrom=${today}&dateTo=${today}` },
+    { label: "逾期订单", route: "/orders?status=已逾期" },
+  ];
+  return entries.map((entry, index) => `<a class="dashboard-stat-card" href="#${entry.route}"><span>${entry.label}</span><strong>${dashboardData.stats[index]?.value ?? 0}</strong></a>`).join("");
 }
 
 function renderNotifications() {
-  return dashboardData.notifications
-    .map(
-      (item) => `
-        <button class="notification-item" type="button" data-notification-id="${escapeHTML(item.id)}" data-route="${escapeHTML(buildRouteWithReturn(item.route, "/dashboard"))}">
-          <span class="notification-marker is-${escapeHTML(item.tone)}" aria-hidden="true"></span>
-          <span class="notification-copy">
-            <span class="notification-mainline">
-              <strong>${escapeHTML(item.title)}</strong>
-              <span>${escapeHTML(item.description)}</span>
-            </span>
-            <time>${escapeHTML(item.time)}</time>
-          </span>
-        </button>
-      `,
-    )
-    .join("");
+  const items = [...notificationData].filter(item => !item.read).sort((a, b) => b.time.localeCompare(a.time)).slice(0, 3);
+  if (!items.length) return '<div class="dashboard-notification-empty"><strong>暂无通知</strong></div>';
+  return items.map(item => `<button type="button" data-notification-id="${escapeHTML(item.id)}" data-route="${escapeHTML(buildRouteWithReturn(item.route, "/dashboard"))}"><i aria-hidden="true"></i><span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.description)}</small></span><time>${escapeHTML(item.time)}</time></button>`).join("");
 }
 
 function renderOrderRows(orders) {
@@ -56,31 +38,26 @@ function renderOrderRows(orders) {
     `;
   }
 
-  return orders
+  return orders.slice(0, 10)
     .map(
       (order, index) => `
         <tr>
-          <td class="order-sequence-cell">${index + 1}</td>
+          <td class="dashboard-sequence-cell">${index + 1}</td>
           <td>
-            <button class="row-link" type="button" title="${escapeHTML(order.orderNo)}" data-destination="订单 ${escapeHTML(order.orderNo)}">${escapeHTML(order.orderNo)}</button>
+            <button class="dashboard-order-link" type="button" title="${escapeHTML(order.orderNo)}" data-dashboard-order="${escapeHTML(order.orderNo)}">${escapeHTML(order.orderNo)}</button>
           </td>
-          <td class="product-cell">
+          <td class="dashboard-product-cell">
             <strong>${escapeHTML(order.productName)}</strong>
           </td>
-          <td><span class="category-tag is-${order.category === "帽子" ? "hat" : "clothing"}">${escapeHTML(order.category)}</span></td>
-          <td class="tracker-cell"><span class="tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></td>
+          <td><span class="dashboard-category-tag" data-category="${escapeHTML(order.category)}">${escapeHTML(order.category)}</span></td>
+          <td class="tracker-cell"><span class="dashboard-tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></td>
           <td>${escapeHTML(order.factory)}</td>
           <td>${escapeHTML(order.nearestDue)}</td>
           <td>
-            <div class="progress-cell">
-              <span class="progress-track" aria-label="发货进度 ${escapeHTML(order.progress)}%">
-                <span class="progress-bar" style="width: ${escapeHTML(order.progress)}%"></span>
-              </span>
-              <span>${escapeHTML(order.progress)}%</span>
-            </div>
+            <div class="dashboard-progress-cell"><span><i style="width: ${escapeHTML(order.progress)}%"></i></span><em>${escapeHTML(order.progress)}%</em></div>
           </td>
           <td>${escapeHTML(order.progressText)}</td>
-          <td><span class="status-badge is-${escapeHTML(order.tone)}">${escapeHTML(order.status)}</span></td>
+          <td><span class="order-status" data-status="${escapeHTML(order.status)}">${escapeHTML(order.status)}</span></td>
         </tr>
       `,
     )
@@ -106,49 +83,49 @@ export function renderDashboardPage() {
   return `
     <article class="dashboard-page" data-dashboard-page>
       <section class="dashboard-search-panel" aria-label="订单快速搜索">
-        <form class="order-search-form" role="search" data-order-search-form>
-          <label class="search-field">
+        <form class="dashboard-search-form" role="search" data-order-search-form>
+          <label class="dashboard-search-field">
             <span class="sr-only">搜索订单编号或产品名称</span>
             ${searchIcon}
-            <input class="search-input" type="search" placeholder="输入订单编号或产品名称" autocomplete="off" data-order-search-input />
-            <button class="search-clear-button" type="button" aria-label="清除搜索" data-search-clear>×</button>
+            <input class="dashboard-search-input" type="search" placeholder="输入订单编号或产品名称" autocomplete="off" data-order-search-input />
+            <button class="dashboard-search-clear" type="button" aria-label="清除搜索" data-search-clear>×</button>
           </label>
-          <button class="search-submit-button" type="submit">搜索</button>
+          <button class="dashboard-search-submit" type="submit">搜索</button>
         </form>
       </section>
 
-      <div class="search-result-summary" role="status" data-search-summary></div>
+      <div class="dashboard-search-summary" role="status" data-search-summary></div>
 
       <div class="dashboard-overview">
-        <section class="stats-grid" aria-label="订单统计">
+        <section class="dashboard-stat-grid" aria-label="订单统计">
           ${renderStats()}
         </section>
 
-        <section class="section-card notification-card" aria-labelledby="notifications-title">
-          <header class="section-header">
+        <section class="section-card dashboard-notification-card" aria-labelledby="notifications-title">
+          <header class="dashboard-section-header">
             <div>
               <h2 class="section-title" id="notifications-title">最近通知</h2>
             </div>
             <button class="text-button" type="button" data-route="/notifications">全部通知</button>
           </header>
-          <div class="notification-list">
+          <div class="dashboard-notification-list">
             ${renderNotifications()}
           </div>
         </section>
       </div>
 
-      <section class="section-card orders-card" aria-labelledby="orders-title">
-        <header class="section-header">
+      <section class="section-card dashboard-orders-card" aria-labelledby="orders-title">
+        <header class="dashboard-section-header">
           <div class="orders-heading">
             <h2 class="section-title" id="orders-title">订单</h2>
           </div>
           <button class="text-button" type="button" data-route="/orders">查看全部订单</button>
         </header>
         <div class="table-scroll">
-          <table class="orders-table data-grid-table">
+          <table class="dashboard-order-table data-grid-table">
             <thead>
               <tr>
-                <th class="order-sequence-column" scope="col">序号</th>
+                <th class="dashboard-sequence-column" scope="col">序号</th>
                 ${renderSortableHeader("订单编号", "orderNo")}
                 ${renderSortableHeader("产品名称", "productName")}
                 ${renderSortableHeader("分类", "category")}
@@ -161,7 +138,7 @@ export function renderDashboardPage() {
               </tr>
             </thead>
             <tbody data-order-table-body>
-              ${renderOrderRows(dashboardData.orders)}
+              ${renderOrderRows(dashboardData.orders.slice(0, 10))}
             </tbody>
           </table>
         </div>
@@ -192,7 +169,7 @@ export function bindDashboardPage() {
   let sortState = { key: null, direction: "asc" };
 
   const renderOrders = () => {
-    if (orderTableBody) orderTableBody.innerHTML = renderOrderRows(sortRows(currentOrders, sortState, orderSortValue));
+    if (orderTableBody) orderTableBody.innerHTML = renderOrderRows(sortRows(currentOrders, sortState, orderSortValue).slice(0, 10));
   };
 
   const applySearch = () => {
@@ -246,6 +223,8 @@ export function bindDashboardPage() {
       return;
     }
 
+    const orderNo = event.target.closest("[data-dashboard-order]")?.dataset.dashboardOrder;
+    if (orderNo) { window.location.hash = `/orders/${encodeURIComponent(orderNo)}`; return; }
     const destination = event.target.closest("[data-destination]")?.dataset.destination;
     if (destination) {
       showToast("目标页面待设计", `${destination}将在对应页面完成后开放。`);

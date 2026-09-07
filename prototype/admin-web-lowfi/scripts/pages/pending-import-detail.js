@@ -30,27 +30,31 @@ function getPendingImportDetail(orderNo) {
 
 function renderProductRows(products) {
   return products.map((product, index) => {
+    const shipped = Number(product.shippedQuantity || 0);
+    const pending = Math.max(Number(product.quantity) - shipped, 0);
+    const progress = product.quantity ? Math.round(shipped * 100 / product.quantity) : 0;
     const validationTone = product.validationKey === "ready" ? "success" : "warning";
     return `
       <tr>
-        <td class="detail-sequence">${index + 1}</td>
+        <td class="detail-sequence-cell">${index + 1}</td>
         <td class="detail-code" title="${escapeHTML(product.code)}">${escapeHTML(product.code)}</td>
         <td><strong class="detail-product-name" title="${escapeHTML(product.name)}">${escapeHTML(product.name)}</strong></td>
         <td>${escapeHTML(product.colorSpec)}</td>
         <td>${escapeHTML(product.factory)}</td>
         <td class="detail-number">${escapeHTML(formatNumber(product.quantity))}</td>
-        <td class="detail-number">0</td>
-        <td class="detail-number">${escapeHTML(formatNumber(product.quantity))}</td>
-        <td><div class="detail-shipping-progress"><span class="progress-track" aria-label="发货进度 0%"><span class="progress-bar" style="width: 0%"></span></span><span>0%</span></div></td>
-        <td><span class="status-badge is-${validationTone}">${escapeHTML(product.validationLabel)}</span></td>
+        <td class="detail-number">${formatNumber(shipped)}</td>
+        <td class="detail-number">${formatNumber(pending)}</td>
+        <td><span class="detail-progress"><span><i style="width: ${progress}%"></i></span><em>${progress}%</em></span></td>
+        <td><span class="status-badge is-${validationTone}">${product.validationKey === "ready" ? "通过" : "未通过"}</span></td>
       </tr>
     `;
   }).join("");
 }
 
 function productSortValue(product, key) {
-  if (key === "shippedQuantity" || key === "progress") return 0;
-  if (key === "pendingQuantity") return product.quantity;
+  if (key === "shippedQuantity") return Number(product.shippedQuantity || 0);
+  if (key === "progress") return product.quantity ? Number(product.shippedQuantity || 0) / product.quantity : 0;
+  if (key === "pendingQuantity") return Math.max(product.quantity - Number(product.shippedQuantity || 0), 0);
   return product[key];
 }
 
@@ -71,6 +75,7 @@ function renderConfirmDialog(order) {
 }
 
 export function renderPendingImportDetailPage(orderNo) {
+  if (!(pendingImportData.orders.some(item => item.orderNo === orderNo))) return `<article class="section-card notification-target-error"><button class="detail-back-button" type="button" data-route="/pending-imports">‹ 返回</button><p class="page-error">内容已不可查看</p></article>`;
   const order = getPendingImportDetail(orderNo);
   const isImported = order.statusKey === "imported";
   const canImport = order.statusKey === "pending" && order.validationKey === "ready";
@@ -102,7 +107,7 @@ export function renderPendingImportDetailPage(orderNo) {
         <header class="detail-section-header"><h2>订单明细</h2></header>
         <div class="detail-table-scroll">
           <table class="detail-data-table product-detail-table pending-import-detail-table data-grid-table" data-sort-table="pending-products">
-            <thead><tr><th scope="col">序号</th>${renderSortableHeader("产品编码", "code")}${renderSortableHeader("产品名称", "name")}${renderSortableHeader("颜色/规格", "colorSpec")}${renderSortableHeader("工厂", "factory")}${renderSortableHeader("下单数量", "quantity")}${renderSortableHeader("已发数量", "shippedQuantity")}${renderSortableHeader("未发数量", "pendingQuantity")}${renderSortableHeader("发货进度", "progress")}${renderSortableHeader("校验结果", "validationLabel")}</tr></thead>
+            <thead><tr><th class="detail-sequence-column" scope="col">序号</th>${renderSortableHeader("产品编码", "code")}${renderSortableHeader("产品名称", "name")}${renderSortableHeader("颜色/规格", "colorSpec")}${renderSortableHeader("工厂", "factory")}${renderSortableHeader("下单数量", "quantity")}${renderSortableHeader("已发数量", "shippedQuantity")}${renderSortableHeader("未发数量", "pendingQuantity")}${renderSortableHeader("发货进度", "progress")}${renderSortableHeader("校验结果", "validationLabel")}</tr></thead>
             <tbody data-pending-products-body>${renderProductRows(order.products)}</tbody>
           </table>
         </div>
@@ -114,10 +119,11 @@ export function renderPendingImportDetailPage(orderNo) {
 
 export function bindPendingImportDetailPage(orderNo) {
   const page = document.querySelector("[data-pending-import-detail-page]");
+  if (!page) return;
   const layer = page?.querySelector("[data-import-confirm-layer]");
   const openButton = page?.querySelector("[data-import-confirm-open]");
   const order = getPendingImportDetail(orderNo);
-  let sortState = { key: null, direction: "asc" };
+  let sortState = { key: "code", direction: "asc" };
 
   const closeDialog = () => {
     if (layer) layer.hidden = true;
@@ -152,6 +158,9 @@ export function bindPendingImportDetailPage(orderNo) {
     const body = page.querySelector("[data-pending-products-body]");
     if (body) body.innerHTML = renderProductRows(sortRows(order.products, sortState, productSortValue));
   });
+  updateSortHeaders(page, sortState);
+  const initialBody = page?.querySelector("[data-pending-products-body]");
+  if (initialBody) initialBody.innerHTML = renderProductRows(sortRows(order.products, sortState, productSortValue));
   page?.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && layer && !layer.hidden) closeDialog();
   });

@@ -1,3 +1,4 @@
+import { renderNumberPagination } from "../components/pagination.js";
 import { orderListData, shipmentDetailData, shipmentListData } from "../mock-data.js";
 import { escapeHTML } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
@@ -37,12 +38,7 @@ function renderRows(shipments, rowStart = 0) {
 }
 
 function renderPagination(currentPage, totalPages, totalItems) {
-  if (totalItems === 0) return `<span class="order-page-total">共 0 条</span>`;
-  const pages = Array.from({ length: totalPages }, (_, index) => {
-    const page = index + 1;
-    return `<button class="order-page-button${page === currentPage ? " is-current" : ""}" type="button" aria-label="第 ${page} 页" aria-current="${page === currentPage ? "page" : "false"}" data-shipment-page="${page}">${page}</button>`;
-  }).join("");
-  return `<span class="order-page-total">共 ${totalItems} 条</span><button class="order-page-button order-page-arrow" type="button" aria-label="上一页" data-shipment-page-action="prev" ${currentPage === 1 ? "disabled" : ""}>‹</button>${pages}<button class="order-page-button order-page-arrow" type="button" aria-label="下一页" data-shipment-page-action="next" ${currentPage === totalPages ? "disabled" : ""}>›</button>`;
+  return renderNumberPagination(currentPage, totalItems, "data-shipment-page");
 }
 
 export function renderShipmentListPage() {
@@ -72,7 +68,7 @@ export function renderShipmentListPage() {
       <section class="section-card order-list-card" aria-labelledby="shipment-list-title">
         <header class="order-list-card-header"><div class="order-list-heading"><h1 id="shipment-list-title">发货单列表</h1></div></header>
         <div class="table-scroll">
-          <table class="orders-table shipment-list-table data-grid-table">
+          <table class="orders-table shipment-list-table data-grid-table"><colgroup><col class="shipment-sequence-col" /><col class="shipment-number-col" /><col class="shipment-order-col" /><col class="shipment-factory-col" /><col class="shipment-product-col" /><col class="shipment-quantity-col" /><col class="shipment-date-col" /><col class="shipment-action-col" /></colgroup>
             <thead><tr><th scope="col">序号</th>${renderSortableHeader("发货单号", "shipmentNo")}${renderSortableHeader("关联订单", "orderNos")}${renderSortableHeader("工厂", "factory")}${renderSortableHeader("产品名称", "productNames")}${renderSortableHeader("发货数量", "shippedQuantity")}${renderSortableHeader("发货日期", "shipDate")}<th scope="col">操作</th></tr></thead>
             <tbody data-shipment-body>${renderRows(shipmentListData.shipments)}</tbody>
           </table>
@@ -164,5 +160,8 @@ export function bindShipmentListPage() {
     if (action) { currentPage += action === "next" ? 1 : -1; renderPage(); }
   });
 
+  const query = new URLSearchParams(window.location.hash.split("?")[1] || "");
+  if (dateFromInput) dateFromInput.value = query.get("dateFrom") || "";
+  if (dateToInput) dateToInput.value = query.get("dateTo") || "";
   applyFilters();
 }

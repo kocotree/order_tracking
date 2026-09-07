@@ -756,12 +756,13 @@ export function importPendingOrdersAsDrafts(orderNos) {
       name: product.name,
       colorSpec: product.colorSpec,
       quantity: product.quantity,
-      shippedQuantity: 0,
-      pendingQuantity: product.quantity,
+      shippedQuantity: Number(product.shippedQuantity || 0),
+      pendingQuantity: Math.max(product.quantity - Number(product.shippedQuantity || 0), 0),
     }));
     const factoryNames = [...new Set(detail.products.flatMap((product) => product.factory.split(/[、,，]/).map((value) => value.trim())))];
     const totalQuantity = Number(detail.totalQuantity) || detail.products.reduce((sum, product) => sum + Number(product.quantity || 0), 0);
 
+    const shippedQuantity = products.reduce((sum, product) => sum + product.shippedQuantity, 0);
     order.statusKey = "imported";
 
     if (!orderListData.orders.some((item) => item.orderNo === order.orderNo)) {
@@ -774,8 +775,8 @@ export function importPendingOrdersAsDrafts(orderNos) {
         tracker: order.tracker,
         factory: order.factory,
         nearestDue: detail.nearestDue,
-        shippedPercent: 0,
-        shippedText: `0 / ${totalQuantity.toLocaleString("zh-CN")}`,
+        shippedPercent: totalQuantity ? Math.round(shippedQuantity * 100 / totalQuantity) : 0,
+        shippedText: `${shippedQuantity.toLocaleString("zh-CN")} / ${totalQuantity.toLocaleString("zh-CN")}`,
         statusKey: "draft",
         statusLabel: "草稿",
         tone: "draft",
@@ -796,8 +797,8 @@ export function importPendingOrdersAsDrafts(orderNos) {
       statusLabel: "草稿",
       tone: "draft",
       totalQuantity,
-      shippedQuantity: 0,
-      pendingQuantity: totalQuantity,
+      shippedQuantity,
+      pendingQuantity: Math.max(totalQuantity - shippedQuantity, 0),
       nearestDue: detail.nearestDue,
       remark: "—",
       products,
@@ -810,13 +811,13 @@ export function importPendingOrdersAsDrafts(orderNos) {
             dueDate: detail.nearestDue,
             quantity: product.quantity,
             price: "",
-            shipped: 0,
+            shipped: Number(product.shippedQuantity || 0),
           }));
         return {
           name: factory,
           contractNo: "—",
           allocated: lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0),
-          shipped: 0,
+          shipped: lines.reduce((sum, line) => sum + line.shipped, 0),
           statusLabel: "草稿",
           tone: "draft",
           contractReady: false,
@@ -977,3 +978,11 @@ export const repairImportPreview = {
     { boxNo: "3", code: "KQ26368", name: "探索家渔夫帽", colorSpec: "沙岩米 / 56cm", quantity: 6, reason: "扣具松动", photoCount: 1 },
   ],
 };
+
+
+// Web-only review samples for the 2026-09-07 source baseline (all in memory).
+pendingImportDetailData.E81.products[0].shippedQuantity = 120;
+pendingImportDetailData.E81.shippedQuantity = 120;
+pendingImportDetailData.E81.pendingQuantity = pendingImportDetailData.E81.totalQuantity - 120;
+const withdrawalSample = shipmentListData.shipments.find(item => item.shipmentNo === "FH20260814-002");
+if (withdrawalSample) Object.assign(withdrawalSample, { statusKey: "void-pending", statusLabel: "撤回处理中", tone: "warning" });

@@ -1,3 +1,4 @@
+import { formatShanghaiDateTime } from "../../utils/date-time";
 import { returnFromShipmentDetail } from "../../modules/navigation";
 import { shipmentApi, type Shipment, type ShipmentBox, type ShipmentFile, type ShipmentLine } from "../../api/shipments";
 import { isDevPreview, PREVIEW_SHIPMENT } from "../../modules/dev-preview";
@@ -8,18 +9,6 @@ type LineGroup = { orderNo: string; total: number; items: ShipmentLine[]; expand
 type BoxGroup = ShipmentBox & { total: number; expanded: boolean };
 type ProofView = ShipmentFile & { localPath: string; status: "loading" | "ready" | "failed" };
 
-function formatShanghaiDateTime(value: string | null): string {
-  if (!value) return "—";
-  const normalized = value
-    .replace(/(\.\d{3})\d+/, "$1")
-    .replace(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)(?!Z|[+-]\d{2}:\d{2})$/, "$1Z");
-  const timestamp = Date.parse(normalized);
-  if (Number.isNaN(timestamp)) return value.replace("T", " ").slice(0, 16);
-  const shanghai = new Date(timestamp + 8 * 60 * 60 * 1000);
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${shanghai.getUTCFullYear()}-${pad(shanghai.getUTCMonth() + 1)}-${pad(shanghai.getUTCDate())} ${pad(shanghai.getUTCHours())}:${pad(shanghai.getUTCMinutes())}`;
-}
-
 function buildLineGroups(lines: ShipmentLine[]): LineGroup[] {
   const groups = new Map<string, ShipmentLine[]>();
   lines.forEach((line) => groups.set(line.orderNo, [...(groups.get(line.orderNo) || []), line]));
@@ -27,13 +16,13 @@ function buildLineGroups(lines: ShipmentLine[]): LineGroup[] {
 }
 
 Page({
-  data: { shipment: null as Shipment | null, submittedAtText: "", lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], proofs: [] as ProofView[], loading: true, withdrawStep: "" as ""|"form"|"confirm", withdrawReason: "", withdrawError: "", submitting: false, notificationId:null as number|null },
+  data: { receiptAtText: "", shipment: null as Shipment | null, submittedAtText: "", lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], proofs: [] as ProofView[], loading: true, withdrawStep: "" as ""|"form"|"confirm", withdrawReason: "", withdrawError: "", submitting: false, notificationId:null as number|null },
   onLoad(options: Record<string, string | undefined>) {
     if (isDevPreview(options)) { this.showShipment(PREVIEW_SHIPMENT); return; }
     this.setData({notificationId:notificationIdFrom(options)}); if (options.shipmentId) void this.load(options.shipmentId);
   },
   showShipment(shipment: Shipment) {
-    this.setData({ shipment, submittedAtText: formatShanghaiDateTime(shipment.submittedAt), lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), proofs: shipment.files.map(file => ({ ...file, localPath: "", status: "loading" })), loading: false });
+    this.setData({ shipment, receiptAtText: formatShanghaiDateTime(shipment.receipt?.confirmedAt), submittedAtText: formatShanghaiDateTime(shipment.submittedAt), lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), proofs: shipment.files.map(file => ({ ...file, localPath: "", status: "loading" })), loading: false });
     if (shipment.files.length) void this.loadProofs(shipment.files);
   },
   async loadProofs(files: ShipmentFile[]) {

@@ -1,3 +1,4 @@
+import { formatShanghaiDateTime } from "../../utils/date-time";
 import { returnFromShipmentDetail } from "../../modules/navigation";
 import { shipmentApi, type Shipment, type ShipmentBox, type ShipmentFile, type ShipmentLine } from "../../api/shipments";
 import { isDevPreview, PREVIEW_SHIPMENT } from "../../modules/dev-preview";
@@ -15,13 +16,13 @@ function buildLineGroups(lines: ShipmentLine[]): LineGroup[] {
 }
 
 Page({
-  data: { shipment: null as Shipment | null, lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], proofs: [] as ProofView[], loading: true, notificationId:null as number|null },
+  data: { receiptAtText: "", shipment: null as Shipment | null, lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], proofs: [] as ProofView[], loading: true, notificationId:null as number|null },
   onLoad(options: Record<string, string | undefined>) {
     if (isDevPreview(options)) { this.showShipment(PREVIEW_SHIPMENT); return; }
     this.setData({notificationId:notificationIdFrom(options)}); if (options.shipmentId) void this.load(options.shipmentId);
   },
   showShipment(shipment: Shipment) {
-    this.setData({ shipment, lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), proofs: shipment.files.map(file => ({ ...file, localPath: "", status: "loading" })), loading: false });
+    this.setData({ shipment, receiptAtText: formatShanghaiDateTime(shipment.receipt?.confirmedAt), lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), proofs: shipment.files.map(file => ({ ...file, localPath: "", status: "loading" })), loading: false });
     if (shipment.files.length) void this.loadProofs(shipment.files);
   },
   async loadProofs(files: ShipmentFile[]) {

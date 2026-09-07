@@ -860,6 +860,37 @@ class ShipmentBoxItem(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class ShipmentReceipt(Base):
+    __tablename__ = "shipment_receipts"
+    __table_args__ = (
+        CheckConstraint("status IN ('DRAFT', 'CONFIRMED')", name="ck_shipment_receipts_status"),
+        CheckConstraint("version >= 0", name="ck_shipment_receipts_version"),
+    )
+
+    shipment_id: Mapped[str] = mapped_column(
+        ForeignKey("shipments.shipment_id", ondelete="RESTRICT"), primary_key=True
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    saved_by: Mapped[str] = mapped_column(ForeignKey("users.user_id"), nullable=False)
+    saved_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    confirmed_by: Mapped[str | None] = mapped_column(ForeignKey("users.user_id"))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+
+
+class ShipmentReceiptItem(Base):
+    __tablename__ = "shipment_receipt_items"
+    __table_args__ = (CheckConstraint("quantity >= 0", name="ck_shipment_receipt_items_quantity"),)
+
+    box_item_id: Mapped[int] = mapped_column(
+        ForeignKey("shipment_box_items.item_id", ondelete="RESTRICT"), primary_key=True
+    )
+    shipment_id: Mapped[str] = mapped_column(
+        ForeignKey("shipment_receipts.shipment_id", ondelete="RESTRICT"), nullable=False
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class ShipmentLine(Base):
     __tablename__ = "shipment_lines"
     __table_args__ = (

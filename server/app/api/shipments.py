@@ -17,7 +17,7 @@ from app.modules.shipments import (
     ShipmentValidationError,
     ShipmentVoidRequestSnapshot,
 )
-from app.modules.shipments.service import SHIPMENT_FILE_MAX_BYTES
+from app.modules.shipments.service import SHIPMENT_FILE_MAX_BYTES, ReceiptItemInput, ReceiptSnapshot
 
 
 def to_camel(value: str) -> str:
@@ -27,6 +27,32 @@ def to_camel(value: str) -> str:
 
 class ApiModel(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+class ReceiptItemWrite(ApiModel):
+    box_item_id: StrictInt = Field(gt=0)
+    quantity: StrictInt = Field(ge=0, le=2147483647)
+
+
+class ReceiptConfirm(ApiModel):
+    version: StrictInt = Field(ge=0)
+
+
+class ReceiptSave(ApiModel):
+    version: StrictInt = Field(ge=0)
+    items: list[ReceiptItemWrite] = Field(min_length=1)
+
+
+class ReceiptResponse(ApiModel):
+    version: int
+    status: str
+    items: list[ReceiptItemWrite]
+    confirmed_by_name: str | None = None
+    confirmed_at: datetime | None = None
+
+
+def _receipt_response(value: ReceiptSnapshot) -> ReceiptResponse:
+    return ReceiptResponse.model_validate(value, from_attributes=True)
 
 
 class DraftCreate(ApiModel):
@@ -66,6 +92,8 @@ class ShipmentDraftResponse(ApiModel):
     files: list["ShipmentFileResponse"] = []
     void_request: ShipmentVoidRequestResponse | None = None
     return_events: list["ShipmentReturnEventResponse"] = []
+    receipt: ReceiptResponse | None = None
+    receipt_differences: list["ShipmentLineResponse"] = []
 
 
 class DraftItemWrite(ApiModel):
@@ -111,6 +139,7 @@ class ShipmentLineResponse(ApiModel):
     product_name: str
     properties_value: str
     quantity: int
+    box_item_id: int | None = None
     line_id: int | None = None
     returned_quantity: int = 0
     returnable_quantity: int = 0
@@ -510,6 +539,62 @@ def create_shipment_router(
         if actor.role != "admin":
             raise PermissionDenied("administrator role required")
         return _draft_response(service.get_shipment(shipment_id=shipment_id))
+
+    @router.post(
+        "/admin/shipments/{shipment_id}/receipt/confirm",
+        response_model=ShipmentDraftResponse,
+        tags=["shipment-admin"],
+    )
+    def confirm_receipt(
+        shipment_id: str,
+        payload: ReceiptConfirm,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> ShipmentDraftResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        if not idempotency_key:
+            raise ShipmentValidationError("Idempotency-Key is required")
+        return _draft_response(
+            service.confirm_receipt(
+                shipment_id=shipment_id,
+                actor_id=actor.user_id,
+                expected_version=payload.version,
+                idempotency_key=idempotency_key,
+            )
+        )
+
+    @router.get(
+        "/admin/shipments/{shipment_id}/receipt",
+        response_model=ReceiptResponse,
+        tags=["shipment-admin"],
+    )
+    def get_receipt(
+        shipment_id: str, ot_web_session: str | None = Cookie(default=None)
+    ) -> ReceiptResponse:
+        web_admin(ot_web_session, None, require_csrf=False)
+        return _receipt_response(service.get_receipt(shipment_id=shipment_id))
+
+    @router.put(
+        "/admin/shipments/{shipment_id}/receipt",
+        response_model=ReceiptResponse,
+        tags=["shipment-admin"],
+    )
+    def save_receipt(
+        shipment_id: str,
+        payload: ReceiptSave,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> ReceiptResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        return _receipt_response(
+            service.save_receipt(
+                shipment_id=shipment_id,
+                actor_id=actor.user_id,
+                expected_version=payload.version,
+                items=[ReceiptItemInput(i.box_item_id, i.quantity) for i in payload.items],
+            )
+        )
 
     @router.get(
         "/admin/shipments/{shipment_id}/export",

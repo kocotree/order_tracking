@@ -121,19 +121,45 @@ describe("order detail prototype alignment", () => {
 
 
 describe("related shipments", () => {
-  it.each([false, true])("renders actual shipments or a query error (%s)", async (failed) => {
+  function mountPage() {
+    return mount(OrderDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { props: ["to"], template: '<a :href="to"><slot /></a>' } } } });
+  }
+
+  it.each(["SHIPPED", "VOID_PENDING", "VOIDED"])("keeps %s records and both detail links in the four-column list", async (status) => {
     vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
-    if (failed) vi.mocked(shipmentApi.list).mockRejectedValue(new Error("offline"));
-    else vi.mocked(shipmentApi.list).mockResolvedValue({ items: [{ shipmentId: "shipment-1", shipmentNo: "FH20260905-001", businessDate: "2026-09-05", totalQuantity: 23, status: "VOID_PENDING" } as Shipment], total: 1 });
-    const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { props: ["to"], template: '<a :href="to"><slot /></a>' } } } });
+    vi.mocked(shipmentApi.list).mockResolvedValue({ items: [{ shipmentId: "shipment-1", shipmentNo: "FH20260905-001", businessDate: "2026-09-05", totalQuantity: 23, status } as Shipment], total: 1 });
+    const wrapper = mountPage();
     await flushPromises();
     expect(shipmentApi.list).toHaveBeenCalledWith("order-1");
-    expect(wrapper.text()).not.toContain("当前订单暂无关联发货单");
-    if (failed) expect(wrapper.text()).toContain("关联发货单加载失败");
-    else {
-      expect(wrapper.find(".related-shipment-table").text()).toContain("FH20260905-001");
-      expect(wrapper.find(".related-shipment-table").text()).toContain("撤回处理中");
-      expect(wrapper.find('a[href="/shipments/shipment-1"]').exists()).toBe(true);
-    }
+    const table = wrapper.get(".related-shipment-table");
+    expect(table.findAll("th").map((cell) => cell.text())).toEqual(["发货单号", "发货日期", "发货数量", "操作"]);
+    expect(table.findAll("tbody td").map((cell) => cell.text())).toEqual(["FH20260905-001", "2026-09-05", "23", "详情"]);
+    expect(table.findAll('a[href="/shipments/shipment-1"]')).toHaveLength(2);
+  });
+
+  it.each([false, true])("spans all four columns for empty/error feedback (%s)", async (failed) => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    if (failed) vi.mocked(shipmentApi.list).mockRejectedValue(new Error("offline"));
+    const wrapper = mountPage();
+    await flushPromises();
+    const cell = wrapper.get(".related-shipment-table tbody td");
+    expect(cell.attributes("colspan")).toBe("4");
+    expect(cell.text()).toContain(failed ? "关联发货单加载失败" : "当前订单暂无关联发货单");
+    if (failed) expect(cell.attributes("role")).toBe("alert");
+  });
+
+  it("keeps the page loading until related shipments resolve, then shows the four-column empty state", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    let resolveList!: (value: Awaited<ReturnType<typeof shipmentApi.list>>) => void;
+    vi.mocked(shipmentApi.list).mockReturnValue(new Promise((resolve) => { resolveList = resolve; }));
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.get(".page-state").text()).toBe("正在加载订单详情…");
+    expect(wrapper.find(".related-shipment-table").exists()).toBe(false);
+    resolveList({ items: [], total: 0 });
+    await flushPromises();
+    expect(wrapper.find(".page-state").exists()).toBe(false);
+    expect(wrapper.get(".related-shipment-table tbody td").attributes("colspan")).toBe("4");
+    expect(wrapper.get(".related-shipment-table tbody").text()).toBe("当前订单暂无关联发货单");
   });
 });

@@ -122,6 +122,8 @@ describe("receipt verification", () => {
     expect(confirm).toHaveBeenCalledWith("shipment-1", 1);
     expect(wrapper.text()).toContain("已收货");
     expect(wrapper.text()).toContain("核对员");
+    expect(wrapper.text()).not.toContain("收货已确认");
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
     expect(wrapper.find('input[type="number"]').exists()).toBe(false);
   });
 });

@@ -31,6 +31,7 @@ from app.db.models import (
     RepairReturnLine,
     Shipment,
     ShipmentLine,
+    ShipmentReceipt,
     ShipmentVoidRequest,
     User,
 )
@@ -132,9 +133,7 @@ class NotificationsAuditService:
                 for template_key, result in sorted(results.items())
             )
 
-    def consume_next_business_event(
-        self, *, worker_id: str, now: datetime | None = None
-    ) -> bool:
+    def consume_next_business_event(self, *, worker_id: str, now: datetime | None = None) -> bool:
         current = now or utc_now()
         with self._session_factory() as session, session.begin():
             message = session.scalar(
@@ -164,6 +163,8 @@ class NotificationsAuditService:
                 self._consume_void_requested(session, message)
             elif message.event_type in {"shipment.void_approved", "shipment.void_rejected"}:
                 self._consume_void_result(session, message)
+            elif message.event_type == "shipment.receipt_confirmed":
+                self._consume_receipt_confirmed(session, message)
             elif message.event_type == "shipment.returned":
                 self._consume_shipment_returned(session, message)
             elif message.event_type == "repair.created":
@@ -198,10 +199,7 @@ class NotificationsAuditService:
                     return False
                 query = query.where(OutboxMessage.channel.in_(enabled_channels))
             message = session.scalar(
-                query
-                .order_by(OutboxMessage.id)
-                .with_for_update(skip_locked=True)
-                .limit(1)
+                query.order_by(OutboxMessage.id).with_for_update(skip_locked=True).limit(1)
             )
             if message is None:
                 return False
@@ -212,6 +210,18 @@ class NotificationsAuditService:
                 message.last_error_code = "recipient_disabled"
                 message.last_error_summary = "接收账号不存在或已停用，已跳过外部通知"
                 return True
+            if message.event_type == "shipment.receipt_confirmed":
+                shipment = session.get(Shipment, message.aggregate_id)
+                if (
+                    shipment is None
+                    or recipient.role != "factory"
+                    or recipient.factory_id != shipment.factory_id
+                ):
+                    message.status = "completed"
+                    message.completed_at = current
+                    message.last_error_code = "recipient_factory_changed"
+                    message.last_error_summary = "接收账号工厂归属已变化，已跳过收货通知"
+                    return True
             message.status = "processing"
             message.locked_by = worker_id
             message.locked_at = current
@@ -957,6 +967,32 @@ class NotificationsAuditService:
                 "time4": _wechat_time(message.locked_at or utc_now()),
             },
         )
+
+    def _consume_receipt_confirmed(self, session: Session, message: OutboxMessage) -> None:
+        shipment = session.get(Shipment, message.aggregate_id)
+        receipt = session.get(ShipmentReceipt, message.aggregate_id)
+        if shipment is None or receipt is None or receipt.confirmed_at is None:
+            return
+        for user in self._enabled_factory_users(session, shipment.factory_id):
+            self._notify_user(
+                session,
+                message=message,
+                user_id=user.user_id,
+                category="BUSINESS_RESULT",
+                target_type="shipment",
+                target_id=shipment.shipment_id,
+                title="发货单已确认收货",
+                summary=f"发货单 {shipment.shipment_no} 已收货，请查看详情",
+                target_path=f"/pages/factory-shipment-detail/factory-shipment-detail?shipmentId={shipment.shipment_id}",
+                channel="wechat",
+                template_key="factory_status",
+                template_data={
+                    "thing1": "跟单管理系统",
+                    "character_string2": shipment.shipment_no or shipment.shipment_id,
+                    "phrase3": "已收货",
+                    "time4": _wechat_time(receipt.confirmed_at),
+                },
+            )
 
     def _consume_shipment_returned(self, session: Session, message: OutboxMessage) -> None:
         shipment = session.get(Shipment, message.aggregate_id)

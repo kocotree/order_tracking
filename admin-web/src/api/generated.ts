@@ -705,6 +705,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/shipments/{shipment_id}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Receipt */
+        get: operations["get_receipt_api_v1_admin_shipments__shipment_id__receipt_get"];
+        /** Save Receipt */
+        put: operations["save_receipt_api_v1_admin_shipments__shipment_id__receipt_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/shipments/{shipment_id}/receipt/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Receipt */
+        post: operations["confirm_receipt_api_v1_admin_shipments__shipment_id__receipt_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/shipments/{shipment_id}/returns": {
         parameters: {
             query?: never;
@@ -2194,6 +2229,38 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** ReceiptConfirm */
+        ReceiptConfirm: {
+            /** Version */
+            version: number;
+        };
+        /** ReceiptItemWrite */
+        ReceiptItemWrite: {
+            /** Boxitemid */
+            boxItemId: number;
+            /** Quantity */
+            quantity: number;
+        };
+        /** ReceiptResponse */
+        ReceiptResponse: {
+            /** Confirmedat */
+            confirmedAt?: string | null;
+            /** Confirmedbyname */
+            confirmedByName?: string | null;
+            /** Items */
+            items: components["schemas"]["ReceiptItemWrite"][];
+            /** Status */
+            status: string;
+            /** Version */
+            version: number;
+        };
+        /** ReceiptSave */
+        ReceiptSave: {
+            /** Items */
+            items: components["schemas"]["ReceiptItemWrite"][];
+            /** Version */
+            version: number;
+        };
         /** RejectFactoryApplication */
         RejectFactoryApplication: {
             /** Reason */
@@ -2527,6 +2594,12 @@ export interface components {
             note: string;
             /** Preferredorderid */
             preferredOrderId: string | null;
+            receipt?: components["schemas"]["ReceiptResponse"] | null;
+            /**
+             * Receiptdifferences
+             * @default []
+             */
+            receiptDifferences: components["schemas"]["ShipmentLineResponse"][];
             /**
              * Returnevents
              * @default []
@@ -2578,6 +2651,8 @@ export interface components {
         ShipmentLineResponse: {
             /** Assignmentid */
             assignmentId: number;
+            /** Boxitemid */
+            boxItemId?: number | null;
             /** Lineid */
             lineId?: number | null;
             /** Orderid */
@@ -4422,6 +4497,118 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_receipt_api_v1_admin_shipments__shipment_id__receipt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_receipt_api_v1_admin_shipments__shipment_id__receipt_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiptSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_receipt_api_v1_admin_shipments__shipment_id__receipt_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiptConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDraftResponse"];
                 };
             };
             /** @description Validation Error */

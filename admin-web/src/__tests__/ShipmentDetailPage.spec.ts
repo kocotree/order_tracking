@@ -1,5 +1,5 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { shipmentApi, type Shipment } from "@/api/client";
 import ShipmentDetailPage from "@/pages/ShipmentDetailPage.vue";
@@ -45,6 +45,10 @@ const shipment: Shipment = {
 };
 
 const shellStub = { template: "<div><slot /></div>" };
+
+beforeEach(() => {
+  vi.spyOn(shipmentApi, "getReceipt").mockResolvedValue({ version: 0, status: "DRAFT", items: [], confirmedAt: null, confirmedByName: null });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -92,5 +96,32 @@ describe("shipment evidence in the administrator detail", () => {
 
     expect(wrapper.text()).toContain("发货凭证（0 张）");
     expect(wrapper.text()).toContain("工厂未上传发货凭证");
+  });
+});
+
+
+describe("receipt verification", () => {
+  it("saves by box, derives totals, requires save before confirm and locks confirmed values", async () => {
+    const value = { ...shipment, boxes: [{ boxNo: 1, groupKey: null, items: [{ ...shipment.lines[0]!, boxItemId: 7 }] }] };
+    vi.spyOn(shipmentApi, "get").mockResolvedValue(value);
+    vi.mocked(shipmentApi.getReceipt).mockResolvedValue({ version: 0, status: "DRAFT", items: [{ boxItemId: 7, quantity: 2 }], confirmedAt: null, confirmedByName: null });
+    const save = vi.spyOn(shipmentApi, "saveReceipt").mockResolvedValue({ version: 1, status: "DRAFT", items: [{ boxItemId: 7, quantity: 0 }], confirmedAt: null, confirmedByName: null });
+    const confirm = vi.spyOn(shipmentApi, "confirmReceipt").mockResolvedValue({ ...value, totalQuantity: 0, receipt: { version: 1, status: "CONFIRMED", items: [{ boxItemId: 7, quantity: 0 }], confirmedAt: "2026-09-07T02:00:00", confirmedByName: "核对员" }, lines: [{ ...value.lines[0]!, quantity: 0 }], boxes: [{ ...value.boxes[0]!, items: [{ ...value.boxes[0]!.items[0]!, quantity: 0 }] }] });
+    const wrapper = mount(ShipmentDetailPage, { global: { stubs: { AdminShell: shellStub, TableSortButton: true } } });
+    await flushPromises();
+    await wrapper.get('input[aria-label="箱号 1 KQ26721 核对数量"]').setValue("0");
+    expect(wrapper.get(".shipment-product-table tbody tr td:last-child").text()).toBe("0");
+    await wrapper.get('[data-action="confirm-receipt"]').trigger("click");
+    expect(wrapper.text()).toContain("请先保存");
+    expect(confirm).not.toHaveBeenCalled();
+    await wrapper.get('[data-action="save-receipt"]').trigger("click");
+    await flushPromises();
+    expect(save).toHaveBeenCalledWith("shipment-1", 0, [{ boxItemId: 7, quantity: 0 }]);
+    await wrapper.get('[data-action="confirm-receipt"]').trigger("click");
+    await flushPromises();
+    expect(confirm).toHaveBeenCalledWith("shipment-1", 1);
+    expect(wrapper.text()).toContain("已收货");
+    expect(wrapper.text()).toContain("核对员");
+    expect(wrapper.find('input[type="number"]').exists()).toBe(false);
   });
 });

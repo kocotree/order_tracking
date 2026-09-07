@@ -59,6 +59,8 @@ export function updateSortHeaders(root, sortState) {
     header.setAttribute("aria-sort", direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none");
     header.classList.toggle("is-sorted", isActive);
     header.classList.toggle("is-sort-desc", isActive && direction === "desc");
+    button?.classList.toggle("is-sorted", isActive);
+    button?.classList.toggle("is-sort-desc", isActive && direction === "desc");
     if (button) button.setAttribute("aria-label", `按${label}${direction === "asc" ? "降序" : "升序"}排序`);
   });
 }

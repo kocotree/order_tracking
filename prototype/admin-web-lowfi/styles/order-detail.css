@@ -816,3 +816,10 @@ body.has-dialog-open {
     grid-template-columns: 132px minmax(0, 1fr);
   }
 }
+
+/* Issue #45：订单详情关联发货单四列，与正式页保持一致。 */
+.order-detail-page .related-shipment-table { min-width: 900px; table-layout: fixed; }
+.order-detail-page .related-shipment-table th:first-child { width: auto; }
+.order-detail-page .related-shipment-table th:nth-child(2) { width: 160px; }
+.order-detail-page .related-shipment-table th:nth-child(3) { width: 140px; }
+.order-detail-page .related-shipment-table th:nth-child(4) { width: 100px; }

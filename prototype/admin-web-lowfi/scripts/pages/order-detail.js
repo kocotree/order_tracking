@@ -114,6 +114,22 @@ function renderProductRows(rows) {
 function renderShipmentRows(shipments) {
   if (!shipments.length) return '<tr><td colspan="6" class="detail-empty-row">当前订单暂无关联发货单</td></tr>';
   return shipments.map(item => `<tr><td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(item.no)}">${escapeHTML(item.no)}</button></td><td>${escapeHTML(item.shipDate)}</td><td>${formatNumber(item.declared)}</td><td>—</td><td>${escapeHTML(item.statusLabel)}</td><td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(item.no)}">详情</button></td></tr>`).join("");
+  if (shipments.length === 0) {
+    return `<tr><td colspan="4"><div class="detail-empty-row">当前订单暂无关联发货单</div></td></tr>`;
+  }
+
+  return shipments
+    .map(
+      (shipment) => `
+        <tr>
+          <td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(shipment.no)}">${escapeHTML(shipment.no)}</button></td>
+          <td>${escapeHTML(shipment.shipDate)}</td>
+          <td class="detail-number">${escapeHTML(formatNumber(shipment.declared))}</td>
+          <td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(shipment.no)}">详情</button></td>
+        </tr>
+      `,
+    )
+    .join("");
 }
 
 function productSortValue(product, key) {
@@ -337,6 +353,16 @@ export function renderOrderDetailPage(orderNo) {
         </header>
         <div class="detail-table-scroll">
           <table class="detail-data-table related-shipment-table data-grid-table"><thead><tr><th>发货单号</th><th>发货日期</th><th>发货数量</th><th>物流单号</th><th>状态</th><th>操作</th></tr></thead><tbody data-order-shipments-body>${renderShipmentRows(order.shipments)}</tbody>
+          <table class="detail-data-table related-shipment-table data-grid-table">
+            <thead>
+              <tr>
+                <th scope="col">发货单号</th>
+                <th scope="col">发货日期</th>
+                <th scope="col">发货数量</th>
+                <th scope="col">操作</th>
+              </tr>
+            </thead>
+            <tbody data-order-shipments-body>${renderShipmentRows(order.shipments)}</tbody>
           </table>
         </div>
       </section>

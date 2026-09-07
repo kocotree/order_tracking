@@ -15,7 +15,7 @@
       </section>
 
       <p v-if="receiptError" class="page-error" role="alert">{{ receiptError }} <button type="button" class="detail-outline-button" :disabled="acting" @click="reloadReceipt">重新读取</button></p>
-      <p v-if="receiptMessage" class="page-state" role="status">{{ receiptMessage }}</p>
+      <p v-if="receiptMessage" :class="receiptDraft ? 'validation-callout' : 'page-state'" role="status">{{ receiptMessage }}</p>
       <section v-if="shipment.voidRequest" class="section-card shipment-void-card">
         <header class="detail-section-header"><h2>撤回申请</h2><span class="status-badge" :class="`is-${voidTone}`">{{ voidLabel }}</span></header>
         <div class="shipment-void-content"><dl><div><dt>申请人</dt><dd>{{ shipment.voidRequest.requestedByName }}</dd></div><div><dt>申请时间</dt><dd>{{ dateTime(shipment.voidRequest.requestedAt) }}</dd></div><div class="is-wide"><dt>撤回原因</dt><dd>{{ shipment.voidRequest.reason }}</dd></div><div v-if="shipment.voidRequest.reviewedAt"><dt>审核时间</dt><dd>{{ dateTime(shipment.voidRequest.reviewedAt) }}</dd></div><div v-if="shipment.voidRequest.reviewComment" class="is-wide"><dt>审核意见</dt><dd>{{ shipment.voidRequest.reviewComment }}</dd></div></dl><div v-if="shipment.voidRequest.status === 'PENDING'" class="shipment-void-actions"><button class="detail-outline-button" type="button" @click="reviewMode = 'reject'">拒绝</button><button class="detail-primary-button" type="button" :disabled="!canApproveVoid" :title="canApproveVoid ? '' : '该发货单已有退回记录，只能拒绝'" @click="reviewMode = 'approve'">通过</button></div></div>

@@ -34,18 +34,9 @@ export function escapeHTML(value) {
 }
 
 function renderTopbarNotifications(notifications) {
-  return notifications.slice(0, 3).map((item) => `
-    <button class="notification-item popover-notification" type="button" data-popover-notification="${escapeHTML(item.id)}">
-      <span class="notification-marker is-${escapeHTML(item.tone)}" aria-hidden="true"></span>
-      <span class="notification-copy">
-        <span class="notification-mainline">
-          <strong>${escapeHTML(item.title)}</strong>
-          <span>${escapeHTML(item.description)}</span>
-        </span>
-        <time>${escapeHTML(item.time)}</time>
-      </span>
-    </button>
-  `).join("");
+  const items = notifications.filter(item => !item.read).sort((a, b) => b.time.localeCompare(a.time)).slice(0, 3);
+  if (!items.length) return "<p>暂无通知</p>";
+  return items.map(item => `<button class="notification-popover-item" type="button" data-popover-notification="${escapeHTML(item.id)}"><i aria-hidden="true"></i><span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.description)}</small></span></button>`).join("");
 }
 
 function renderRailModules(activeModule, savedSidebarState) {
@@ -77,7 +68,7 @@ function renderSideNavigation(items) {
       const icon = icons[item.icon] ?? icons.orders;
 
       return `
-        <button class="side-nav-button${item.isActive ? " is-active" : ""}" type="button" ${item.isActive ? 'aria-current="page"' : ""} title="${escapeHTML(item.label)}" ${action}>
+        <button class="side-nav-button${item.isActive ? " router-link-active" : ""}" type="button" ${item.isActive ? 'aria-current="page"' : ""} title="${escapeHTML(item.label)}" ${action}>
           <span class="nav-icon">${icon}</span>
           <span class="nav-label">${escapeHTML(item.label)}</span>
         </button>
@@ -103,7 +94,7 @@ export function renderAppShell({
       <aside class="sidebar" aria-label="主导航">
         <div class="app-rail">
           <div class="rail-brand">
-            <img src="./assets/logos/logo-compact-ktk.jpg" alt="KOCOTREE" />
+            <img src="./assets/logos/logo-compact-ktk.svg" alt="KOCOTREE" />
           </div>
           ${renderRailModules(activeModule, savedSidebarState)}
         </div>
@@ -128,13 +119,12 @@ export function renderAppShell({
               <span class="topbar-icon">${icons.menu}</span>
             </button>
             <span class="topbar-title">${escapeHTML(topbarTitle)}</span>
-            <span class="prototype-chip">低保真原型</span>
           </div>
 
           <div class="topbar-right">
-            <button class="icon-button" type="button" aria-label="查看最近通知" aria-expanded="false" data-notification-toggle>
+            <button class="notification-bell" type="button" aria-label="查看通知" aria-expanded="false" data-notification-toggle>
               <span class="topbar-icon">${icons.bell}</span>
-              ${unreadNotificationCount > 0 ? `<span class="notification-dot">${unreadNotificationCount}</span>` : ""}
+              ${unreadNotificationCount > 0 ? `<span class="notification-badge">${unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}</span>` : ""}
             </button>
             <button class="user-chip" type="button" aria-label="查看当前账号信息" aria-expanded="false" data-account-toggle>
               <span class="user-avatar">煎</span>
@@ -146,13 +136,13 @@ export function renderAppShell({
             </button>
 
             <section class="notification-popover" aria-label="最近通知" data-notification-popover>
-              <div class="popover-header">
+              <header class="popover-header">
                 <strong>最近通知</strong>
                 <button class="popover-all-link" type="button" data-notification-all>
                   <span>全部通知</span>
                   <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9m-3.5-3.5L12 8l-3.5 3.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
-              </div>
+              </header>
               <div class="notification-popover-list">
                 ${renderTopbarNotifications(notifications)}
               </div>

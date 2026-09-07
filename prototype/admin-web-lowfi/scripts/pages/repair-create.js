@@ -32,7 +32,7 @@ export function renderRepairCreatePage() {
           <div class="detail-title-row repair-create-title"><strong>新建返修单</strong></div>
         </header>
         <div class="repair-upload-content">
-          <input class="sr-only" type="file" accept=".xlsx,.xls" data-repair-file />
+          <input class="sr-only" type="file" accept=".xlsx" data-repair-file />
           <button class="repair-upload-zone" type="button" data-repair-upload>
             ${uploadIcon}
             <strong>上传质检 Excel</strong>
@@ -54,7 +54,7 @@ export function renderRepairCreatePage() {
           <span class="repair-validation-badge">已读取 ${repairImportPreview.lineCount} 条明细</span>
         </header>
         <div class="repair-preview-summary">
-          <label><span>工厂</span><select data-repair-factory><option value="旭之梦">旭之梦</option><option value="龙腾">龙腾</option><option value="红燕">红燕</option><option value="众乐鑫">众乐鑫</option></select></label>
+          <div><span>工厂</span><strong>${escapeHTML(repairImportPreview.factory)}</strong></div>
           <div><span>仓库退回总数量</span><strong>${escapeHTML(formatNumber(repairImportPreview.warehouseReturnQuantity))}</strong></div>
           <div><span>箱数</span><strong>${escapeHTML(formatNumber(repairImportPreview.boxCount))}</strong></div>
           <div><span>明细条数</span><strong>${escapeHTML(formatNumber(repairImportPreview.lineCount))}</strong></div>
@@ -120,6 +120,7 @@ export function bindRepairCreatePage() {
   fileInput?.addEventListener("change", () => {
     const selectedFile = fileInput.files?.[0];
     if (!selectedFile) return;
+    if (!selectedFile.name.toLowerCase().endsWith(".xlsx")) { showToast("无法读取", "仅支持 .xlsx 文件"); return; }
     showPreview(selectedFile.name);
     showToast("质检单读取完成", `已读取 ${repairImportPreview.lineCount} 条明细，请核对后创建。`);
   });
@@ -142,7 +143,7 @@ export function bindRepairCreatePage() {
       return;
     }
     const repairNo = makeRepairNumber();
-    const factory = page.querySelector("[data-repair-factory]")?.value || repairImportPreview.factory;
+    const factory = repairImportPreview.factory;
     repairListData.repairs.unshift({
       repairNo,
       factory,

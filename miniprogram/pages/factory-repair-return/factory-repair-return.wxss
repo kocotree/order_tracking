@@ -89,3 +89,4 @@
 .repair-return-page .repair-return-product-head strong { color: #1677ff; }
 .repair-return-page .repair-return-primary,
 .repair-return-page .repair-return-actions button.is-primary { color: #fff; }
+.repair-return-save-status { padding: 16rpx 28rpx; color: #000; font-size: 24rpx; font-weight: 700; }

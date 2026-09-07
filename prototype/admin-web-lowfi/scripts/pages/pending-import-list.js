@@ -1,3 +1,4 @@
+import { renderNumberPagination } from "../components/pagination.js";
 import { deletePendingImportOrder, fetchNewFeishuOrders, importPendingOrdersAsDrafts, pendingImportData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
@@ -25,7 +26,7 @@ function renderRows(orders, rowStart = 0, selectedOrderNos = new Set()) {
     return `
     <tr${isSelected ? " class=\"is-selected\"" : ""}>
       <td class="pending-import-select-cell"><input type="checkbox" aria-label="选择订单 ${escapeHTML(order.orderNo)}" data-import-select="${escapeHTML(order.orderNo)}" ${canSelect ? "" : "disabled"} ${isSelected ? "checked" : ""} /></td>
-      <td class="order-sequence-cell">${rowStart + index + 1}</td>
+      <td class="import-sequence-column">${rowStart + index + 1}</td>
       <td><button class="row-link" type="button" data-import-detail="${escapeHTML(order.orderNo)}">${escapeHTML(order.orderNo)}</button></td>
       <td class="order-product-summary"><strong>${escapeHTML(order.productName)}</strong></td>
       <td><span class="category-tag is-${order.category === "帽子" ? "hat" : "clothing"}">${escapeHTML(order.category)}</span></td>
@@ -39,12 +40,7 @@ function renderRows(orders, rowStart = 0, selectedOrderNos = new Set()) {
 }
 
 function renderPagination(currentPage, totalPages, totalItems) {
-  if (totalItems === 0) return `<span class="order-page-total">共 0 条</span>`;
-  const pages = Array.from({ length: totalPages }, (_, index) => {
-    const page = index + 1;
-    return `<button class="order-page-button${page === currentPage ? " is-current" : ""}" type="button" aria-label="第 ${page} 页" aria-current="${page === currentPage ? "page" : "false"}" data-import-page="${page}">${page}</button>`;
-  }).join("");
-  return `<span class="order-page-total">共 ${totalItems} 条</span><button class="order-page-button order-page-arrow" type="button" aria-label="上一页" data-import-page-action="prev" ${currentPage === 1 ? "disabled" : ""}>‹</button>${pages}<button class="order-page-button order-page-arrow" type="button" aria-label="下一页" data-import-page-action="next" ${currentPage === totalPages ? "disabled" : ""}>›</button>`;
+  return renderNumberPagination(currentPage, totalItems, "data-import-page");
 }
 
 function renderBatchImportDialog() {
@@ -123,8 +119,8 @@ export function renderPendingImportListPage() {
           </div>
         </header>
         <div class="table-scroll">
-          <table class="orders-table pending-import-table data-grid-table">
-            <thead><tr><th class="pending-import-select-column" scope="col"><input type="checkbox" aria-label="全选当前页可导入订单" data-import-select-page /></th><th scope="col">序号</th>${renderSortableHeader("订单编号", "orderNo")}${renderSortableHeader("产品名称", "productName")}${renderSortableHeader("分类", "category")}${renderSortableHeader("跟单人员", "tracker")}${renderSortableHeader("工厂", "factory")}${renderSortableHeader("校验状态", "validationLabel")}<th scope="col">操作</th></tr></thead>
+          <table class="pending-import-table import-candidate-table data-grid-table">
+            <thead><tr><th class="pending-import-select-column" scope="col"><input type="checkbox" aria-label="全选当前页可导入订单" data-import-select-page /></th><th class="import-sequence-column" scope="col">序号</th>${renderSortableHeader("订单编号", "orderNo")}${renderSortableHeader("产品名称", "productName")}${renderSortableHeader("分类", "category")}${renderSortableHeader("跟单人员", "tracker")}${renderSortableHeader("工厂", "factory")}${renderSortableHeader("校验状态", "validationLabel")}<th scope="col">操作</th></tr></thead>
             <tbody data-import-body>${renderRows(pendingImportData.orders.filter((item) => item.statusKey === "pending"))}</tbody>
           </table>
         </div>

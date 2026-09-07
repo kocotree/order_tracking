@@ -978,6 +978,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/factory/repairs/{repair_id}/return-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Return Draft */
+        get: operations["get_return_draft_api_v1_factory_repairs__repair_id__return_draft_get"];
+        /** Save Return Draft */
+        put: operations["save_return_draft_api_v1_factory_repairs__repair_id__return_draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/factory/shipment-catalog": {
         parameters: {
             query?: never;
@@ -2285,6 +2303,26 @@ export interface components {
             /** Repairid */
             repairId: string;
         };
+        /** RepairDraftRequest */
+        RepairDraftRequest: {
+            /** Entries */
+            entries: {
+                [key: string]: unknown;
+            }[];
+            /** Version */
+            version: number;
+        };
+        /** RepairDraftResponse */
+        RepairDraftResponse: {
+            /** Entries */
+            entries: {
+                [key: string]: unknown;
+            }[];
+            /** Submissionkey */
+            submissionKey: string;
+            /** Version */
+            version: number;
+        };
         /** RepairLineResponse */
         RepairLineResponse: {
             /** Boxnumber */
@@ -2476,6 +2514,8 @@ export interface components {
         };
         /** RepairReturnRequest */
         RepairReturnRequest: {
+            /** Draftversion */
+            draftVersion?: number | null;
             /** Lines */
             lines: components["schemas"]["RepairReturnLineRequest"][];
         };
@@ -5094,6 +5134,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RepairResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_return_draft_api_v1_factory_repairs__repair_id__return_draft_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                repair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_return_draft_api_v1_factory_repairs__repair_id__return_draft_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                repair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepairDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairDraftResponse"];
                 };
             };
             /** @description Validation Error */

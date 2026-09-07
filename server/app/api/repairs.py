@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import quote
 
 from fastapi import (
@@ -166,6 +166,16 @@ class RepairReturnLineRequest(ApiModel):
 
 class RepairReturnRequest(ApiModel):
     lines: list[RepairReturnLineRequest]
+    draft_version: StrictInt | None = None
+
+
+class RepairDraftRequest(ApiModel):
+    version: StrictInt
+    entries: list[dict[str, Any]]
+
+
+class RepairDraftResponse(RepairDraftRequest):
+    submission_key: str
 
 
 class RepairArchiveResponse(ApiModel):
@@ -443,6 +453,54 @@ def create_repair_router(
             raise HTTPException(status_code=404, detail="返修单不存在")
         return _repair_response(repair)
 
+    @router.get(
+        "/factory/repairs/{repair_id}/return-draft",
+        response_model=RepairDraftResponse,
+        tags=["repair-factory"],
+    )
+    def get_return_draft(
+        repair_id: str, authorization: str | None = Header(default=None)
+    ) -> RepairDraftResponse:
+        user, terminal = actor(None, authorization)
+        if terminal != "mini" or user.role != "factory" or user.factory_id is None:
+            raise PermissionDenied("factory role required")
+        try:
+            return RepairDraftResponse.model_validate(
+                returns.get_draft(
+                    repair_id=repair_id, factory_id=user.factory_id, user_id=user.user_id
+                ),
+                from_attributes=True,
+            )
+        except Exception as error:
+            raise translate(error) from error
+
+    @router.put(
+        "/factory/repairs/{repair_id}/return-draft",
+        response_model=RepairDraftResponse,
+        tags=["repair-factory"],
+    )
+    def save_return_draft(
+        repair_id: str,
+        payload: RepairDraftRequest,
+        authorization: str | None = Header(default=None),
+    ) -> RepairDraftResponse:
+        user, terminal = actor(None, authorization)
+        if terminal != "mini" or user.role != "factory" or user.factory_id is None:
+            raise PermissionDenied("factory role required")
+        try:
+            return RepairDraftResponse.model_validate(
+                returns.save_draft(
+                    repair_id=repair_id,
+                    factory_id=user.factory_id,
+                    user_id=user.user_id,
+                    version=payload.version,
+                    entries=payload.entries,
+                ),
+                from_attributes=True,
+            )
+        except Exception as error:
+            raise translate(error) from error
+
     @router.post(
         "/factory/repairs/{repair_id}/return-batches",
         response_model=RepairResponse,
@@ -464,6 +522,7 @@ def create_repair_router(
                     repair_id=repair_id,
                     factory_id=user.factory_id,
                     submitted_by=user.user_id,
+                    draft_version=payload.draft_version,
                     idempotency_key=idempotency_key,
                     lines=tuple(
                         RepairReturnLineInput(

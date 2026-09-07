@@ -7,7 +7,7 @@ function renderAuthFrame(content, modifier = "") {
     <main class="auth-page ${modifier}">
       <section class="auth-shell" aria-label="跟单管理系统账号访问">
         <header class="auth-brand">
-          <img src="./assets/logos/logo-compact-ktk.jpg" alt="KOCOTREE" />
+          <img src="./assets/logos/logo-compact-ktk.svg" alt="KOCOTREE" />
           <div>
             <strong>跟单管理系统</strong>
             <span>订单与发货协同管理</span>
@@ -29,7 +29,7 @@ export function renderLoginPage() {
       <button class="auth-primary-button auth-primary-button--feishu" type="button" data-feishu-login>
         <span data-login-label>通过飞书登录</span>
       </button>
-      <p class="auth-feedback" aria-live="polite" data-login-feedback></p>
+      <p class="auth-feedback" hidden aria-live="polite" data-login-feedback></p>
     </div>
   `, "auth-page--login");
 }
@@ -45,6 +45,7 @@ export function bindLoginPage() {
     button.disabled = true;
     panel.setAttribute("aria-busy", "true");
     label.textContent = "正在识别飞书身份…";
+    feedback.hidden = false;
     feedback.textContent = "正在读取当前飞书用户信息";
     window.setTimeout(() => {
       window.location.hash = "/dashboard";
@@ -67,7 +68,7 @@ export function renderAccessStatusPage(status) {
   const content = statusContent[status] ?? statusContent.disabled;
   return renderAuthFrame(`
     <div class="auth-card auth-card--status is-${status}" data-status-panel>
-      <span class="auth-status-icon">${statusIcons[status] ?? statusIcons.disabled}</span>
+      <span class="auth-status-icon">!</span>
       <div class="auth-card__heading auth-card__heading--status">
         <p class="auth-eyebrow">${content.eyebrow}</p>
         <h1>${content.title}</h1>
@@ -78,7 +79,7 @@ export function renderAccessStatusPage(status) {
         <div><dt>${content.detailLabel}</dt><dd>${content.detailValue}</dd></div>
       </dl>
       ${content.action ? `<button class="auth-primary-button" type="button" data-status-action>${content.action}</button>` : ""}
-      <p class="auth-feedback" aria-live="polite" data-status-feedback></p>
+
     </div>
   `, `auth-page--status auth-page--${status}`);
 }

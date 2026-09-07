@@ -1,26 +1,26 @@
-import { dashboardData, notificationData } from "./mock-data.js?v=20260827-s11-notifications";
-import { ensureInitialRoute, startRouter } from "./router.js?v=20260827-s11-return-context";
-import { bindAppShell, renderAppShell, showToast } from "./components/app-shell.js?v=20260827-s11-return-context";
-import { bindDashboardPage, renderDashboardPage } from "./pages/dashboard.js?v=20260827-s11-return-context";
-import { bindNotificationListPage, renderNotificationListPage } from "./pages/notification-list.js?v=20260827-s11-return-context";
-import { bindOrderListPage, renderOrderListPage } from "./pages/order-list.js?v=20260827-s09";
-import { bindOrderDetailPage, renderOrderDetailPage } from "./pages/order-detail.js?v=20260827-s11-return-context";
-import { bindPendingImportListPage, renderPendingImportListPage } from "./pages/pending-import-list.js?v=20260827-s09";
-import { bindPendingImportDetailPage, renderPendingImportDetailPage } from "./pages/pending-import-detail.js?v=20260827-s09";
-import { bindShipmentListPage, renderShipmentListPage } from "./pages/shipment-list.js?v=20260827-s09";
-import { bindShipmentDetailPage, renderShipmentDetailPage } from "./pages/shipment-detail.js?v=20260827-s11-return-context";
-import { bindRepairListPage, renderRepairListPage } from "./pages/repair-list.js?v=20260827-s09";
-import { bindRepairCreatePage, renderRepairCreatePage } from "./pages/repair-create.js?v=20260827-s09";
-import { bindRepairDetailPage, renderRepairDetailPage } from "./pages/repair-detail.js?v=20260827-s11-return-context";
-import { bindProductListPage, renderProductListPage } from "./pages/product-list.js?v=20260827-s09";
-import { bindFactoryListPage, renderFactoryListPage } from "./pages/factory-list.js?v=20260827-s09";
-import { bindPeopleManagementPage, renderPeopleManagementPage } from "./pages/people-management.js?v=20260903-issue18";
+import { dashboardData, notificationData } from "./mock-data.js";
+import { ensureInitialRoute, startRouter } from "./router.js";
+import { bindAppShell, renderAppShell, showToast } from "./components/app-shell.js";
+import { bindDashboardPage, renderDashboardPage } from "./pages/dashboard.js";
+import { bindNotificationListPage, renderNotificationListPage } from "./pages/notification-list.js";
+import { bindOrderListPage, renderOrderListPage } from "./pages/order-list.js";
+import { bindOrderDetailPage, renderOrderDetailPage } from "./pages/order-detail.js";
+import { bindPendingImportListPage, renderPendingImportListPage } from "./pages/pending-import-list.js";
+import { bindPendingImportDetailPage, renderPendingImportDetailPage } from "./pages/pending-import-detail.js";
+import { bindShipmentListPage, renderShipmentListPage } from "./pages/shipment-list.js";
+import { bindShipmentDetailPage, renderShipmentDetailPage } from "./pages/shipment-detail.js";
+import { bindRepairListPage, renderRepairListPage } from "./pages/repair-list.js";
+import { bindRepairCreatePage, renderRepairCreatePage } from "./pages/repair-create.js";
+import { bindRepairDetailPage, renderRepairDetailPage } from "./pages/repair-detail.js";
+import { bindProductListPage, renderProductListPage } from "./pages/product-list.js";
+import { bindFactoryListPage, renderFactoryListPage } from "./pages/factory-list.js";
+import { bindPeopleManagementPage, renderPeopleManagementPage } from "./pages/people-management.js";
 import {
   bindAccessStatusPage,
   bindLoginPage,
   renderAccessStatusPage,
   renderLoginPage,
-} from "./pages/auth.js?v=20260903-issue18";
+} from "./pages/auth.js";
 
 const appRoot = document.querySelector("#app");
 

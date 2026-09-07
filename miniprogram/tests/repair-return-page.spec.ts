@@ -6,10 +6,11 @@ vi.mock("../api/repairs", () => ({ repairApi: api }));
 
 type Event = { currentTarget: { dataset: { group: number; entry?: number; field?: string } }; detail: { value: string } };
 type TestPage = {
-  data: { groups: { expanded: boolean; entries: ReturnEntry[] }[]; step: string; repairedTotal: number; returnTotal: number; previewLines: ReturnEntry[]; ready: boolean; saveMessage: string };
+  data: { groups: { expanded: boolean; entries: ReturnEntry[] }[]; step: string; repairedTotal: number; returnTotal: number; previewGroups: { productName: string; expanded: boolean; lines: ReturnEntry[] }[]; previewLines: ReturnEntry[]; ready: boolean; saveMessage: string };
   setData(values: Record<string, unknown>, callback?: () => void): void;
   load(id: string, preview: boolean): Promise<void>;
   toggleGroup(event: Event): void;
+  togglePreviewGroup(event: Event): void;
   toggleEntry(event: Event): void;
   changeQuantity(event: Event): void;
   openPreview(): void;
@@ -144,4 +145,25 @@ it("waits for edits made during a save before navigating back", async () => {
   await leaving;
   expect(api.saveReturnDraft).toHaveBeenCalledTimes(2);
   expect(wx.navigateBack).toHaveBeenCalledTimes(1);
+});
+
+it("combines draft persistence with grouped preview and resets preview folding on reentry", async () => {
+  page.toggleEntry(event(0, 0));
+  page.changeQuantity(event(0, 0, "2"));
+  page.toggleEntry(event(0, 1));
+  page.changeQuantity(event(0, 1, "3"));
+  page.openPreview();
+  expect(page.data.previewGroups).toEqual([expect.objectContaining({productName: "甲", expanded: false})]);
+  expect(page.data.previewGroups[0].lines).toHaveLength(2);
+  page.togglePreviewGroup(event(0));
+  expect(page.data.previewGroups[0].expanded).toBe(true);
+  page.edit();
+  api.saveReturnDraft.mockResolvedValue({version: 1, submissionKey: "key", entries: [
+    {variantId: "sku-0", selected: true, repaired: "2", scrapped: ""},
+    {variantId: "sku-1", selected: true, repaired: "3", scrapped: ""},
+  ]});
+  expect(await page.saveDraftNow()).toBe(true);
+  page.openPreview();
+  expect(page.data.previewGroups[0].expanded).toBe(false);
+  expect(page.data.returnTotal).toBe(5);
 });

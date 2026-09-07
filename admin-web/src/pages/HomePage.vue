@@ -66,8 +66,8 @@
             <tbody>
               <tr v-for="(item, index) in displayedOrders" :key="item.orderId">
                 <td class="dashboard-sequence-cell">{{ index + 1 }}</td>
-                <td><RouterLink class="dashboard-order-link" :to="`/orders/${item.orderId}`">{{ item.orderNo }}</RouterLink></td>
-                <td class="dashboard-product-cell">{{ productSummary(item) }}</td>
+                <td><RouterLink class="dashboard-order-link" :title="item.orderNo" :to="`/orders/${item.orderId}`">{{ item.orderNo }}</RouterLink></td>
+                <td class="dashboard-product-cell" :title="productSummary(item)">{{ productSummary(item) }}</td>
                 <td>
                   <span v-for="category in displayCategories(item)" :key="category" class="dashboard-category-tag" :data-category="category">{{ category }}</span>
                   <span v-if="displayCategories(item).length === 0">—</span>

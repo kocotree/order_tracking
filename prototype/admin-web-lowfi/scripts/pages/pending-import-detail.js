@@ -3,7 +3,6 @@ import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
 
 const backIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const productIcon = `<svg viewBox="0 0 28 34" fill="none" aria-hidden="true"><path d="m9 5 5-2 5 2 5 6-4 3v15H8V14l-4-3 5-6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M11 5c.6 2 1.6 3 3 3s2.4-1 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 
 function formatNumber(value) {
   return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
@@ -35,9 +34,8 @@ function renderProductRows(products) {
     return `
       <tr>
         <td class="detail-sequence">${index + 1}</td>
-        <td><span class="product-thumb" aria-label="产品图片未上传">${productIcon}</span></td>
-        <td class="detail-code">${escapeHTML(product.code)}</td>
-        <td><strong class="detail-product-name">${escapeHTML(product.name)}</strong></td>
+        <td class="detail-code" title="${escapeHTML(product.code)}">${escapeHTML(product.code)}</td>
+        <td><strong class="detail-product-name" title="${escapeHTML(product.name)}">${escapeHTML(product.name)}</strong></td>
         <td>${escapeHTML(product.colorSpec)}</td>
         <td>${escapeHTML(product.factory)}</td>
         <td class="detail-number">${escapeHTML(formatNumber(product.quantity))}</td>
@@ -94,8 +92,8 @@ export function renderPendingImportDetailPage(orderNo) {
             <div><dt>跟单人员</dt><dd><span class="tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></dd></div>
             <div><dt>合同出货时间</dt><dd class="detail-due-date">${escapeHTML(order.nearestDue)}</dd></div>
             <div><dt>订单数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.totalQuantity))}</dd></div>
-            <div><dt>已出数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.shippedQuantity))}</dd></div>
-            <div><dt>未出数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.pendingQuantity))}</dd></div>
+            <div><dt>已发数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.shippedQuantity))}</dd></div>
+            <div><dt>未发数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.pendingQuantity))}</dd></div>
           </dl>
         </div>
       </section>
@@ -104,7 +102,7 @@ export function renderPendingImportDetailPage(orderNo) {
         <header class="detail-section-header"><h2>订单明细</h2></header>
         <div class="detail-table-scroll">
           <table class="detail-data-table product-detail-table pending-import-detail-table data-grid-table" data-sort-table="pending-products">
-            <thead><tr><th scope="col">序号</th><th scope="col">图片</th>${renderSortableHeader("产品编码", "code")}${renderSortableHeader("产品名称", "name")}${renderSortableHeader("颜色/规格", "colorSpec")}${renderSortableHeader("工厂", "factory")}${renderSortableHeader("下单数量", "quantity")}${renderSortableHeader("已出数量", "shippedQuantity")}${renderSortableHeader("未出数量", "pendingQuantity")}${renderSortableHeader("发货进度", "progress")}${renderSortableHeader("校验结果", "validationLabel")}</tr></thead>
+            <thead><tr><th scope="col">序号</th>${renderSortableHeader("产品编码", "code")}${renderSortableHeader("产品名称", "name")}${renderSortableHeader("颜色/规格", "colorSpec")}${renderSortableHeader("工厂", "factory")}${renderSortableHeader("下单数量", "quantity")}${renderSortableHeader("已发数量", "shippedQuantity")}${renderSortableHeader("未发数量", "pendingQuantity")}${renderSortableHeader("发货进度", "progress")}${renderSortableHeader("校验结果", "validationLabel")}</tr></thead>
             <tbody data-pending-products-body>${renderProductRows(order.products)}</tbody>
           </table>
         </div>

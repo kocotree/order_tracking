@@ -449,3 +449,17 @@
   }
 
 }
+
+/* Issue #47：订单看板列宽 */
+.dashboard-page .orders-table { min-width: 1192px; table-layout: fixed; }
+.dashboard-page .orders-table th:nth-child(1) { width: 52px; }
+.dashboard-page .orders-table th:nth-child(2) { width: 120px; }
+.dashboard-page .orders-table th:nth-child(3) { width: auto; }
+.dashboard-page .orders-table th:nth-child(4) { width: 68px; }
+.dashboard-page .orders-table th:nth-child(5) { width: 84px; }
+.dashboard-page .orders-table th:nth-child(6) { width: 110px; }
+.dashboard-page .orders-table th:nth-child(7) { width: 142px; }
+.dashboard-page .orders-table th:nth-child(8) { width: 160px; }
+.dashboard-page .orders-table th:nth-child(9) { width: 110px; }
+.dashboard-page .orders-table th:nth-child(10) { width: 96px; }
+.dashboard-page .orders-table .row-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

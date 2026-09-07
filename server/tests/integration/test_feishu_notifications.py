@@ -315,8 +315,12 @@ def test_admin_business_cards_have_event_fields_and_web_detail_links(
         assert elements[-1]["behaviors"][0]["default_url"] == "https://admin.example.test" + path
         if key == "admin_shipment":
             assert "发货总数量：12" in json.dumps(elements, ensure_ascii=False)
-        if key == "admin_repair":
-            assert "本次发回" in json.dumps(elements, ensure_ascii=False)
+        if key in ("admin_shipment", "admin_repair"):
+            assert elements[0]["tag"] == "table"
+            assert "说明" not in json.dumps(elements, ensure_ascii=False)
+            assert "本次发回" not in json.dumps(elements, ensure_ascii=False)
+        else:
+            assert elements[0]["text"]["content"] == "说明"
 
 
 def test_business_card_missing_app_identity_fails_without_using_other_app_open_id(

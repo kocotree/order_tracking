@@ -313,21 +313,19 @@
 .product-detail-table th:nth-child(9) { width: 96px; }
 .product-detail-table th:nth-child(10) { width: 160px; }
 
-.pending-import-detail-table {
-  min-width: 1040px;
-}
-
-.pending-import-detail-table th:nth-child(1) { width: 48px; }
-.pending-import-detail-table th:nth-child(2) { width: 62px; }
-.pending-import-detail-table th:nth-child(3) { width: 94px; }
-.pending-import-detail-table th:nth-child(4) { width: 170px; }
-.pending-import-detail-table th:nth-child(5) { width: 120px; }
-.pending-import-detail-table th:nth-child(6) { width: 68px; }
+.pending-import-detail-table { min-width: 1142px; table-layout: fixed; }
+.pending-import-detail-table th:nth-child(1) { width: 52px; }
+.pending-import-detail-table th:nth-child(2) { width: 160px; }
+.pending-import-detail-table th:nth-child(3) { width: auto; }
+.pending-import-detail-table th:nth-child(4) { width: 120px; }
+.pending-import-detail-table th:nth-child(5) { width: 68px; }
+.pending-import-detail-table th:nth-child(6),
 .pending-import-detail-table th:nth-child(7),
-.pending-import-detail-table th:nth-child(8),
-.pending-import-detail-table th:nth-child(9) { width: 80px; }
-.pending-import-detail-table th:nth-child(10) { width: 124px; }
-.pending-import-detail-table th:nth-child(11) { width: 110px; }
+.pending-import-detail-table th:nth-child(8) { width: 96px; }
+.pending-import-detail-table th:nth-child(9) { width: 144px; }
+.pending-import-detail-table th:nth-child(10) { width: 110px; }
+.pending-import-detail-table th:first-child,
+.pending-import-detail-table td:first-child { padding-left: 8px; padding-right: 8px; text-align: center; white-space: nowrap; }
 
 .pending-import-detail-table td:last-child .status-badge {
   min-width: 76px;

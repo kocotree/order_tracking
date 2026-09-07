@@ -78,6 +78,8 @@ describe("pending order import detail page", () => {
     expect(wrapper.find(".category-tag").text()).toBe("帽子");
     expect(wrapper.find(".tracker-tag").text()).toBe("松子");
     expect(wrapper.find(".product-thumb").exists()).toBe(false);
+    expect(wrapper.get(".detail-code").attributes("title")).toBe("6970000000001");
+    expect(wrapper.get(".detail-product-name").attributes("title")).toBe("测试童帽");
     expect(wrapper.find(".detail-progress").text()).toBe("0%");
 
     await wrapper.get(".detail-primary-button").trigger("click");

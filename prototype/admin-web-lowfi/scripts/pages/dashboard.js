@@ -62,7 +62,7 @@ function renderOrderRows(orders) {
         <tr>
           <td class="order-sequence-cell">${index + 1}</td>
           <td>
-            <button class="row-link" type="button" data-destination="订单 ${escapeHTML(order.orderNo)}">${escapeHTML(order.orderNo)}</button>
+            <button class="row-link" type="button" title="${escapeHTML(order.orderNo)}" data-destination="订单 ${escapeHTML(order.orderNo)}">${escapeHTML(order.orderNo)}</button>
           </td>
           <td class="product-cell">
             <strong>${escapeHTML(order.productName)}</strong>

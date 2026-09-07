@@ -229,3 +229,13 @@
     gap: 8px;
   }
 }
+
+/* Issue #47：通知记录文字统一黑色，类别字号加大。 */
+.notification-record-category { font-size: 14px; }
+.notification-record-category,
+.notification-record-category.is-warning,
+.notification-record-category.is-success,
+.notification-record-category.is-info,
+.notification-record-copy strong,
+.notification-record-copy span,
+.notification-record-item time { color: #000; }

@@ -11,8 +11,8 @@
       <view wx:for="{{items}}" wx:key="orderId" class="mini-order-card" data-id="{{item.orderId}}" bindtap="openDetail">
         <view class="mini-card-head">
           <view class="mini-card-heading-copy">
-            <text class="mini-card-number">{{item.orderNo}}</text>
             <text class="mini-product-summary">{{item.productSummary}}</text>
+            <text class="mini-card-number">{{item.orderNo}}</text>
           </view>
           <text class="mini-status mini-status--{{item.statusTone}}">{{item.displayStatus}}</text>
         </view>

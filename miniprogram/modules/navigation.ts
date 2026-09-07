@@ -35,13 +35,19 @@ export function adminNavigationItems(): NavigationItem[] {
 }
 
 /** Return to the previous page, or safely leave a notification's single-page entry. */
-export function returnFromShipmentDetail(): void {
+export function returnFromNotificationDetail(kind: "order" | "shipment" | "repair"): void {
   const fallback = async () => {
     let url = "/pages/auth/auth";
     try {
       const user = await identityApi.getMe();
       if (user.isEnabled && (user.role === "admin" || user.role === "factory")) {
-        url = `/pages/${user.role}-shipments/${user.role}-shipments`;
+        if (kind === "shipment") {
+          url = `/pages/${user.role}-shipments/${user.role}-shipments`;
+        } else if (user.role === "factory") {
+          url = "/pages/factory-tasks/factory-tasks";
+        } else {
+          url = kind === "order" ? "/pages/admin-orders/admin-orders" : "/pages/admin-shipments/admin-shipments";
+        }
       }
     } catch {
       // The existing authentication entry handles expired or unavailable identities.
@@ -53,4 +59,8 @@ export function returnFromShipmentDetail(): void {
   } else {
     void fallback();
   }
+}
+
+export function returnFromShipmentDetail(): void {
+  returnFromNotificationDetail("shipment");
 }

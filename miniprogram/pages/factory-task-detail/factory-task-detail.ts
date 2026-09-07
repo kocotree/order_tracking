@@ -1,3 +1,4 @@
+import { returnFromNotificationDetail } from "../../modules/navigation";
 import { orderApi, type Order } from "../../api/orders";
 import { formatContractShipDate, formatQuantity, orderProductSummary, statusTone } from "../../modules/orders/format";
 import { isDevPreview, previewOrder } from "../../modules/dev-preview";
@@ -52,5 +53,5 @@ Page({
     });
   },
   async load(orderId: string) { try { this.show(await orderApi.get(orderId)); if(this.data.notificationId)await notificationApi.markRead(this.data.notificationId); } catch { this.setData({ error:this.data.notificationId?"内容已不可查看":"任务详情加载失败" }); } finally { this.setData({ loading: false }); } },
-  goBack() { wx.navigateBack(); },
+  goBack() { returnFromNotificationDetail("order"); },
 });

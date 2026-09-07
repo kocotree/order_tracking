@@ -178,40 +178,53 @@
   box-shadow: 0 16rpx 36rpx rgba(22, 119, 255, .24);
 }
 
-.mini-order-list { gap: 24rpx; }
+.mini-order-list { gap: 16rpx; }
 
 .mini-order-card {
   position: relative;
-  padding: 36rpx 32rpx 32rpx;
+  padding: 22rpx 24rpx;
   overflow: hidden;
-  border-radius: 32rpx;
+  border-radius: 24rpx;
 }
 
 .mini-card-head {
   align-items: flex-start;
-  gap: 24rpx;
+  gap: 12rpx;
 }
 
 .mini-card-heading-copy {
   display: flex;
   min-width: 0;
   flex: 1;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 12rpx;
+  overflow: hidden;
 }
 
 .mini-card-number {
+  min-width: 0;
+  max-width: 45%;
+  flex: 0 0 auto;
+  overflow: hidden;
   color: #1c2430;
-  font-size: 34rpx;
+  font-size: 28rpx;
   font-weight: 800;
-  letter-spacing: 1rpx;
-  line-height: 1;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mini-product-summary {
-  margin-top: 16rpx;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  margin-top: 0;
   color: #1c2430;
-  font-size: 34rpx;
+  font-size: 28rpx;
   line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mini-order-card .mini-status {
@@ -226,8 +239,8 @@
 .mini-card-facts {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-  gap: 20rpx;
-  margin-top: 32rpx;
+  gap: 12rpx;
+  margin-top: 18rpx;
 }
 
 .mini-card-fact,
@@ -240,7 +253,7 @@
 
 .mini-fact-label {
   flex: 0 0 auto;
-  margin: 0 14rpx 0 12rpx;
+  margin: 0 8rpx;
   color: #6d7785;
   white-space: nowrap;
 }
@@ -289,8 +302,8 @@
 
 .mini-card-due {
   gap: 12rpx;
-  margin-top: 26rpx;
-  padding-top: 24rpx;
+  margin-top: 16rpx;
+  padding-top: 14rpx;
   color: #6d7785;
   border-top: 1rpx solid #e4e8ed;
 }
@@ -327,8 +340,8 @@
 .mini-card-quantities {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 22rpx;
-  padding: 20rpx 0;
+  margin-top: 14rpx;
+  padding: 12rpx 0;
   border-top: 1rpx solid #e4e8ed;
   border-bottom: 1rpx solid #e4e8ed;
 }
@@ -354,7 +367,7 @@
 
 .mini-quantity-value {
   color: #1c2430;
-  font-size: 36rpx;
+  font-size: 30rpx;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
@@ -367,7 +380,7 @@
   grid-template-columns: minmax(0, 1fr) 72rpx;
   align-items: center;
   gap: 18rpx;
-  margin-top: 20rpx;
+  margin-top: 12rpx;
 }
 
 .mini-progress-track {

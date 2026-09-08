@@ -2,11 +2,13 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, false, func, literal_column, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.models import (
     AuditLog,
@@ -36,6 +38,15 @@ LOCAL_DEPENDENCY_ISSUES = frozenset(
         "FACTORY_NOT_MATCHED",
         "FACTORY_HAS_NO_ENABLED_USER",
     }
+)
+
+
+# Python casefold is broader than MySQL LOWER (for example ß -> ss and ς -> σ).
+# Fold only characters that can contribute to the search term, inside SQL.
+_CASEFOLD_CHANGES = tuple(
+    (character, character.casefold())
+    for character in map(chr, range(0x110000))
+    if character != character.casefold()
 )
 
 
@@ -538,68 +549,132 @@ class OrderImportService:
             raise ValueError("invalid candidate status")
         with self._session_factory() as session:
             self._require_admin(session, actor_id)
-            candidates = list(
-                session.scalars(
-                    select(OrderImportCandidate)
-                    .where(OrderImportCandidate.status == status)
-                    .order_by(OrderImportCandidate.updated_at.desc())
-                )
-            )
+            candidate = OrderImportCandidate
+            line = OrderImportCandidateLine
+            query = select(candidate).where(candidate.status == status)
             normalized_keyword = keyword.strip().casefold()
-            filtered: list[OrderImportCandidate] = []
-            for candidate in candidates:
-                lines = self._candidate_lines(session, candidate.candidate_id)
-                if normalized_keyword and not any(
-                    normalized_keyword in (value or "").casefold()
-                    for value in [
-                        candidate.order_no,
-                        *[line.product_name for line in lines],
-                        *[line.properties_value for line in lines],
-                    ]
-                ):
-                    continue
-                if category and category not in (candidate.category or "").split("、"):
-                    continue
-                if trackers and candidate.tracker not in trackers:
-                    continue
-                if validation_state and candidate.validation_state != validation_state:
-                    continue
-                if factory_names and not set(factory_names).intersection(
-                    {line.factory_name for line in lines}
-                ):
-                    continue
-                filtered.append(candidate)
+            if normalized_keyword:
+                keyword_characters = set(normalized_keyword)
+                changes = [
+                    (original, replacement)
+                    for original, replacement in _CASEFOLD_CHANGES
+                    if not keyword_characters.isdisjoint(replacement)
+                ]
+
+                # LOCATE treats %, _ and backslashes literally, unlike LIKE.
+                def contains(column: Any) -> ColumnElement[bool]:
+                    folded: ColumnElement[Any] = func.coalesce(column, "").collate(
+                        "utf8mb4_0900_bin"
+                    )
+                    for original, replacement in changes:
+                        folded = func.replace(folded, original, replacement)
+                    return func.locate(normalized_keyword, folded) > 0
+
+                query = query.where(
+                    or_(
+                        contains(candidate.order_no),
+                        select(line.candidate_line_id)
+                        .where(
+                            line.candidate_id == candidate.candidate_id,
+                            or_(contains(line.product_name), contains(line.properties_value)),
+                        )
+                        .exists(),
+                    )
+                )
+            if category and "、" in category:
+                query = query.where(false())
+            elif category:
+                query = query.where(
+                    func.locate(
+                        f"、{category}、",
+                        func.concat("、", func.coalesce(candidate.category, ""), "、").collate(
+                            "utf8mb4_0900_bin"
+                        ),
+                    )
+                    > 0
+                )
+            if trackers:
+                query = query.where(candidate.tracker.collate("utf8mb4_0900_bin").in_(trackers))
+            if validation_state:
+                query = query.where(
+                    candidate.validation_state.collate("utf8mb4_0900_bin") == validation_state
+                )
+            if factory_names:
+                query = query.where(
+                    select(line.candidate_line_id)
+                    .where(
+                        line.candidate_id == candidate.candidate_id,
+                        line.factory_name.collate("utf8mb4_0900_bin").in_(factory_names),
+                    )
+                    .exists()
+                )
             if sort_order not in {"asc", "desc"}:
                 raise ValueError("invalid sort order")
-            allowed_sorts = {
-                "default": lambda item: (
-                    item.validation_state != "READY",
-                    -(item.order_date.toordinal() if item.order_date else 0),
-                    item.order_no,
-                ),
-                "orderNo": lambda item: item.order_no,
-                "productName": lambda item: "、".join(
-                    line.product_name or ""
-                    for line in self._candidate_lines(session, item.candidate_id)
-                ),
-                "category": lambda item: item.category or "",
-                "tracker": lambda item: item.tracker or "",
-                "factory": lambda item: "、".join(
-                    line.factory_name or ""
-                    for line in self._candidate_lines(session, item.candidate_id)
-                ),
-                "validationState": lambda item: item.validation_state,
-                "updatedAt": lambda item: item.updated_at,
+
+            # Binary NO PAD collation preserves Python's case, accent and trailing-space order.
+            def string_key(column: Any) -> ColumnElement[str]:
+                return func.coalesce(column, "").collate("utf8mb4_0900_bin")
+
+            keys: dict[str, list[ColumnElement[Any]]] = {
+                "default": [
+                    candidate.validation_state != "READY",
+                    -func.coalesce(func.to_days(candidate.order_date), 0),
+                    string_key(candidate.order_no),
+                ],
+                "orderNo": [string_key(candidate.order_no)],
+                "category": [string_key(candidate.category)],
+                "tracker": [string_key(candidate.tracker)],
+                "validationState": [string_key(candidate.validation_state)],
+                "updatedAt": [candidate.updated_at.__clause_element__()],
             }
-            sort_key = allowed_sorts.get(sort_by)
-            if sort_key is None:
+            sort_keys: list[ColumnElement[Any]]
+            if sort_by in {"productName", "factory"}:
+                # Fixed whitelist SQL: preserve every line, its ID order and empty values.
+                field = "product_name" if sort_by == "productName" else "factory_name"
+                combined = (
+                    select(
+                        func.group_concat(
+                            literal_column(
+                                f"COALESCE(order_import_candidate_lines.{field}, '') "
+                                "ORDER BY order_import_candidate_lines.candidate_line_id "
+                                "SEPARATOR '、'"
+                            )
+                        )
+                    )
+                    .where(line.candidate_id == candidate.candidate_id)
+                    .scalar_subquery()
+                )
+                sort_keys = [string_key(combined)]
+            elif sort_by in keys:
+                sort_keys = keys[sort_by]
+            else:
                 raise ValueError("invalid candidate sort")
-            filtered.sort(key=sort_key, reverse=sort_order == "desc")
-            total = len(filtered)
-            start = (page - 1) * page_size
+            sort_keys = [key.desc() if sort_order == "desc" else key.asc() for key in sort_keys]
+            total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+            candidates = list(
+                session.scalars(
+                    query.prefix_with(
+                        "/*+ SET_VAR(group_concat_max_len=4294967295) "
+                        "SET_VAR(max_sort_length=8388608) */"
+                    )
+                    .order_by(*sort_keys, candidate.updated_at.desc())
+                    .offset((page - 1) * page_size)
+                    .limit(page_size)
+                )
+            )
+            lines_by_candidate: dict[str, list[OrderImportCandidateLine]] = {
+                item.candidate_id: [] for item in candidates
+            }
+            if candidates:
+                for item_line in session.scalars(
+                    select(line)
+                    .where(line.candidate_id.in_(lines_by_candidate))
+                    .order_by(line.candidate_line_id)
+                ):
+                    lines_by_candidate[item_line.candidate_id].append(item_line)
             return [
-                self._candidate_snapshot(session, item)
-                for item in filtered[start : start + page_size]
+                self._candidate_snapshot(session, item, lines=lines_by_candidate[item.candidate_id])
+                for item in candidates
             ], total
 
     def get_candidate(self, *, actor_id: str, candidate_id: str) -> CandidateSnapshot:
@@ -1207,9 +1282,14 @@ class OrderImportService:
 
     @classmethod
     def _candidate_snapshot(
-        cls, session: Session, candidate: OrderImportCandidate
+        cls,
+        session: Session,
+        candidate: OrderImportCandidate,
+        *,
+        lines: list[OrderImportCandidateLine] | None = None,
     ) -> CandidateSnapshot:
-        lines = cls._candidate_lines(session, candidate.candidate_id)
+        if lines is None:
+            lines = cls._candidate_lines(session, candidate.candidate_id)
         return CandidateSnapshot(
             candidate_id=candidate.candidate_id,
             version=candidate.version,

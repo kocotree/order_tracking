@@ -1,7 +1,8 @@
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, event, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.order_source import FakeFeishuOrderSource
@@ -1362,3 +1363,277 @@ def test_contract_date_conversion_crosses_year_month_and_weekend(
     assert [item.lines[0].source_contract_ship_date for item in candidates] == [
         original for original, _ in cases
     ]
+
+
+@pytest.mark.parametrize("size", [20, 100])
+@pytest.mark.parametrize("sort_by", ["default", "productName", "factory"])
+def test_candidate_page_query_count_is_bounded(
+    test_database_engine: Engine, size: int, sort_by: str
+) -> None:
+    _seed_import_dependencies(test_database_engine)
+    service = OrderImportService(sessionmaker(test_database_engine, expire_on_commit=False))
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="performance")
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[
+            SourceOrderRow(
+                f"perf-{index}",
+                f"PERF-{index:03}",
+                "6970000000001",
+                f"测试童帽{index:03}",
+                "蓝色 / 120",
+                "童帽春夏",
+                f"测试工厂{index:03}",
+                100,
+                0,
+                100,
+                "松子",
+                None,
+                date(2026, 9, 20),
+                {},
+            )
+            for index in range(size)
+        ],
+    )
+    statements: list[str] = []
+
+    def record_sql(*args: object) -> None:
+        statements.append(str(args[2]))
+
+    event.listen(test_database_engine, "before_cursor_execute", record_sql)
+    try:
+        items, total = service.list_candidates(
+            actor_id="admin-order-import", page=2, page_size=10, sort_by=sort_by
+        )
+    finally:
+        event.remove(test_database_engine, "before_cursor_execute", record_sql)
+    assert total == size
+    assert [item.order_no for item in items] == [f"PERF-{index:03}" for index in range(10, 20)]
+    assert all(len(item.lines) == 1 for item in items)
+    print(f"sort={sort_by}, candidate count={size}, SQL statements={len(statements)}")
+    assert len(statements) <= 4
+
+
+def test_candidate_filters_and_all_sorts_match_legacy_pages(test_database_engine: Engine) -> None:
+    """Use the unchanged detail API plus the legacy Python rules as a migration oracle."""
+    _seed_import_dependencies(test_database_engine)
+    service = OrderImportService(sessionmaker(test_database_engine, expire_on_commit=False))
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="page-equivalence")
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[
+            SourceOrderRow(
+                f"equivalence-{index}-{part}",
+                f"EQ-{index:03}",
+                "6970000000001",
+                ["Alpha", "alpha", "Álpha", "童帽", None][index % 5],
+                "蓝色 100%_\\ / 120" if part == 0 else "红色",
+                "童帽春夏",
+                ["甲厂", "乙厂", None][(index + part) % 3],
+                100,
+                0,
+                100,
+                "松子",
+                None,
+                date(2026, 9, 20),
+                {},
+            )
+            for index in range(36)
+            for part in range(2)
+        ],
+    )
+    with Session(test_database_engine) as session, session.begin():
+        rows = list(
+            session.scalars(select(OrderImportCandidate).order_by(OrderImportCandidate.order_no))
+        )
+        for index, row in enumerate(rows):
+            row.status = "PENDING" if index < 24 else "IMPORTED"
+            row.category = ["服装", "帽子", "服装、帽子", None][index % 4]
+            row.tracker = ["松子", "烧麦", None][index % 3]
+            row.validation_state = "READY" if index % 2 else "INVALID"
+            row.order_date = date(2026, 9, index % 6 + 1) if index % 3 else None
+            row.updated_at = datetime(2026, 9, 8) + timedelta(seconds=index)
+        rows[-1].status = "EXCLUDED"
+        session.execute(
+            delete(OrderImportCandidateLine).where(
+                OrderImportCandidateLine.candidate_id == rows[0].candidate_id
+            )
+        )
+        ids = [row.candidate_id for row in rows if row.status != "EXCLUDED"]
+    snapshots = [
+        service.get_candidate(actor_id="admin-order-import", candidate_id=id_) for id_ in ids
+    ]
+    snapshots.sort(key=lambda item: item.updated_at, reverse=True)
+    sort_keys = {
+        "default": lambda item: (
+            item.validation_state != "READY",
+            -(item.order_date.toordinal() if item.order_date else 0),
+            item.order_no,
+        ),
+        "orderNo": lambda item: item.order_no,
+        "productName": lambda item: "、".join(line.product_name or "" for line in item.lines),
+        "category": lambda item: item.category or "",
+        "tracker": lambda item: item.tracker or "",
+        "factory": lambda item: "、".join(line.factory_name or "" for line in item.lines),
+        "validationState": lambda item: item.validation_state,
+        "updatedAt": lambda item: item.updated_at,
+    }
+    for status in ["PENDING", "IMPORTED"]:
+        for field, key in sort_keys.items():
+            for direction in ["asc", "desc"]:
+                expected = sorted(
+                    [item for item in snapshots if item.status == status],
+                    key=key,
+                    reverse=direction == "desc",
+                )
+                for page in [1, 2, 4]:
+                    actual, total = service.list_candidates(
+                        actor_id="admin-order-import",
+                        status=status,
+                        sort_by=field,
+                        sort_order=direction,
+                        page=page,
+                        page_size=10,
+                    )
+                    assert total == len(expected)
+                    assert actual == expected[(page - 1) * 10 : page * 10], (
+                        status,
+                        field,
+                        direction,
+                        page,
+                    )
+    cases = [
+        {"keyword": "  ALPHA  "},
+        {"keyword": "100%_\\"},
+        {"keyword": "EQ-02"},
+        {"keyword": "álpha"},
+        {"keyword": "not-found"},
+        {"category": "帽子"},
+        {"category": "服"},
+        {"category": "服装、帽子"},
+        {"validation_state": "ready"},
+        {"trackers": ["松子", "烧麦"]},
+        {"factory_names": ["甲厂", "乙厂"]},
+        {"validation_state": "READY"},
+        {
+            "category": "帽子",
+            "factory_names": ["甲厂", "乙厂"],
+            "trackers": ["松子", "烧麦"],
+            "validation_state": "READY",
+        },
+    ]
+    for filters in cases:
+        expected = [item for item in snapshots if item.status == "PENDING"]
+        if "keyword" in filters:
+            keyword = filters["keyword"].strip().casefold()
+            expected = [
+                item
+                for item in expected
+                if any(
+                    keyword in (value or "").casefold()
+                    for value in [
+                        item.order_no,
+                        *[line.product_name for line in item.lines],
+                        *[line.properties_value for line in item.lines],
+                    ]
+                )
+            ]
+        if "category" in filters:
+            expected = [
+                item
+                for item in expected
+                if filters["category"] in (item.category or "").split("、")
+            ]
+        if "trackers" in filters:
+            expected = [item for item in expected if item.tracker in filters["trackers"]]
+        if "factory_names" in filters:
+            expected = [
+                item
+                for item in expected
+                if any(line.factory_name in filters["factory_names"] for line in item.lines)
+            ]
+        if "validation_state" in filters:
+            expected = [
+                item for item in expected if item.validation_state == filters["validation_state"]
+            ]
+        expected.sort(key=sort_keys["default"])
+        for page in [1, 2]:
+            actual, total = service.list_candidates(
+                actor_id="admin-order-import", page=page, page_size=10, **filters
+            )
+            assert total == len(expected), filters
+            assert actual == expected[(page - 1) * 10 : page * 10], filters
+
+
+def test_candidate_search_preserves_unicode_casefold(test_database_engine: Engine) -> None:
+    _seed_import_dependencies(test_database_engine)
+    service = OrderImportService(sessionmaker(test_database_engine, expire_on_commit=False))
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="casefold")
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[
+            SourceOrderRow(
+                "unicode",
+                "UNICODE",
+                "6970000000001",
+                "Straße ﬃ ς İ",
+                "蓝色",
+                "童帽春夏",
+                "测试工厂",
+                100,
+                0,
+                100,
+                "松子",
+                None,
+                date(2026, 9, 20),
+                {},
+            ),
+        ],
+    )
+    for keyword in ["STRASSE", "s", "ffi", "fi", "Σ", "i\u0307"]:
+        items, total = service.list_candidates(actor_id="admin-order-import", keyword=keyword)
+        assert total == 1, keyword
+        assert items[0].order_no == "UNICODE"
+
+
+@pytest.mark.parametrize("sort_by", ["productName", "factory"])
+def test_candidate_sort_uses_full_ordered_line_string(
+    test_database_engine: Engine, sort_by: str
+) -> None:
+    _seed_import_dependencies(test_database_engine)
+    service = OrderImportService(sessionmaker(test_database_engine, expire_on_commit=False))
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="long-sort")
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[
+            SourceOrderRow(
+                f"long-{suffix}-{index:03}",
+                f"LONG-{suffix}",
+                "6970000000001",
+                "x" * 90 if index < 49 else suffix,
+                "蓝色",
+                "童帽春夏",
+                "x" * 90 if index < 49 else suffix,
+                100,
+                0,
+                100,
+                "松子",
+                None,
+                date(2026, 9, 20),
+                {},
+            )
+            for suffix in ["Z", "A"]
+            for index in range(50)
+        ],
+    )
+    for direction, expected in [("asc", "LONG-A"), ("desc", "LONG-Z")]:
+        items, total = service.list_candidates(
+            actor_id="admin-order-import", sort_by=sort_by, sort_order=direction, page_size=1
+        )
+        assert total == 2
+        assert items[0].order_no == expected
+        assert len(items[0].lines) == 50

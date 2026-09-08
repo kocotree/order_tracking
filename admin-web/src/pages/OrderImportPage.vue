@@ -47,6 +47,8 @@ const issueLabel = (issues: string[]) => issues.length ? "资料待处理" : "�
 function listQuery() { const query: Record<string, string | string[]> = {}; if (status.value !== "PENDING") query.status = status.value; if (keyword.value.trim()) query.keyword = keyword.value.trim(); if (category.value) query.category = category.value; if (factoryNames.value.length) query.factoryName = factoryNames.value; if (selectedTrackers.value.length) query.tracker = selectedTrackers.value; if (validationState.value) query.validationState = validationState.value; if (sortBy.value !== "default") query.sortBy = sortBy.value; if (sortOrder.value !== "asc") query.sortOrder = sortOrder.value; if (page.value !== 1) query.page = String(page.value); return query; }
 const detailRoute = (candidateId: string) => ({ path: `/orders/import/${candidateId}`, query: listQuery() });
 let requestSequence = 0;
+let unmounted = false;
+let fetchStarted = false;
 async function load() { const requestId = ++requestSequence; loading.value = true; errorMessage.value = ""; try { const result = await orderImportApi.list({ status: status.value, keyword: keyword.value.trim(), category: category.value || undefined, factoryNames: factoryNames.value, trackers: selectedTrackers.value, validationState: validationState.value || undefined, sortBy: sortBy.value, sortOrder: sortOrder.value, page: page.value, pageSize }); if (requestId !== requestSequence) return;
     const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
     if (page.value > lastPage) { page.value = lastPage; await router.replace({ path: "/orders/import", query: listQuery() }); await load(); return; }
@@ -56,7 +58,21 @@ async function search() { page.value = 1; await syncAndLoad(); } async function 
 function toggleOne(id: string) { const next = new Set(selected.value); if (next.has(id)) next.delete(id); else next.add(id); selected.value = next; } function togglePage() { const next = new Set(selected.value); if (allReadySelected.value) readyItems.value.forEach((item) => next.delete(item.candidateId)); else readyItems.value.forEach((item) => next.add(item.candidateId)); selected.value = next; }
 async function toggleSort(field: string) { if (sortBy.value === field) sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc"; else { sortBy.value = field; sortOrder.value = "asc"; } await search(); } async function excludeOne() { if (!deleteTarget.value) return; try { await orderImportApi.exclude(deleteTarget.value.candidateId); selected.value.delete(deleteTarget.value.candidateId); deleteTarget.value = null; await load(); } catch (error) { errorMessage.value = error instanceof ApiError ? error.message : "删除失败"; } }
 async function confirmSelected() { const result = await orderImportApi.confirmBatch([...selected.value]); const succeeded = result.items.filter((item) => item.succeeded).length; runMessage.value = `批量导入完成：成功 ${succeeded}，失败 ${result.items.length - succeeded}`; batchDialogOpen.value = false; selected.value = new Set(); await load(); }
-async function poll(run: ImportRun) { if (["SUCCEEDED", "FAILED"].includes(run.status)) { fetching.value = false; runMessage.value = run.status === "SUCCEEDED" ? `获取完成：新增 ${run.candidatesCreated} 个，已存在/跳过 ${run.candidatesUpdated + run.skippedRecords} 个，失败 ${run.failedRecords} 个。` : "获取失败，请检查飞书应用配置后重试。"; if (run.status === "SUCCEEDED") { lastSuccess.value = run.finishedAt; await load(); } return; } pollTimer = setTimeout(async () => { try { await poll(await orderImportApi.getRun(run.runId)); } catch { fetching.value = false; errorMessage.value = "获取任务状态失败"; } }, 1200); }
-async function fetchOrders() { fetching.value = true; errorMessage.value = ""; try { await poll(await orderImportApi.createRun()); } catch (error) { fetching.value = false; errorMessage.value = error instanceof ApiError ? error.message : "无法启动获取任务"; } }
-onMounted(async () => { const factories = await identityApi.listFactories().catch(() => null); factoryOptions.value = factories?.items.map((item) => item.factoryName) ?? []; const latest = await orderImportApi.latestRun().catch(() => null); if (latest?.status === "SUCCEEDED") lastSuccess.value = latest.finishedAt; else if (latest && !["FAILED", "SUCCEEDED"].includes(latest.status)) { fetching.value = true; void poll(latest); } await load(); }); onBeforeUnmount(() => { if (pollTimer) clearTimeout(pollTimer); });
+async function poll(run: ImportRun) { if (unmounted) return; if (["SUCCEEDED", "FAILED"].includes(run.status)) { fetching.value = false; runMessage.value = run.status === "SUCCEEDED" ? `获取完成：新增 ${run.candidatesCreated} 个，已存在/跳过 ${run.candidatesUpdated + run.skippedRecords} 个，失败 ${run.failedRecords} 个。` : "获取失败，请检查飞书应用配置后重试。"; if (run.status === "SUCCEEDED") { lastSuccess.value = run.finishedAt; await load(); } return; } pollTimer = setTimeout(async () => { try { await poll(await orderImportApi.getRun(run.runId)); } catch { fetching.value = false; errorMessage.value = "获取任务状态失败"; } }, 1200); }
+async function fetchOrders() { fetchStarted = true; fetching.value = true; errorMessage.value = ""; try { await poll(await orderImportApi.createRun()); } catch (error) { fetching.value = false; errorMessage.value = error instanceof ApiError ? error.message : "无法启动获取任务"; } }
+onMounted(() => {
+  void load();
+  void identityApi.listFactories().then((factories) => {
+    factoryOptions.value = factories.items.map((item) => item.factoryName);
+  }).catch(() => { factoryOptions.value = []; });
+  void orderImportApi.latestRun().then((latest) => {
+    if (unmounted || fetchStarted) return;
+    if (latest?.status === "SUCCEEDED") lastSuccess.value = latest.finishedAt;
+    else if (latest && !["FAILED", "SUCCEEDED"].includes(latest.status) && !fetching.value) {
+      fetching.value = true;
+      void poll(latest);
+    }
+  }).catch(() => {});
+});
+onBeforeUnmount(() => { unmounted = true; if (pollTimer) clearTimeout(pollTimer); });
 </script>

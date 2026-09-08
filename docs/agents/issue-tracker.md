@@ -4,8 +4,8 @@
 
 ## 与正式资料的关系
 
-- `docs/requirements/`、已批准原型、技术设计、开发计划和 `docs/project/work-orders/` 继续承担正式范围与验收依据；Issue 不替代它们。
-- 既有 S00–S12 工单保留原位，不批量迁移、不删除，也不在 GitHub 重复创建同内容 Issue。
+- 各阶段 `requirements/` 内的正式需求、已批准原型、技术设计、开发计划和正式工单继续承担范围与验收依据；Issue 不替代它们。阶段划分与当前入口见 `docs/README.md`。
+- 既有 S00–S12 工单随目录整理放入 `docs/一期/project/work-orders/`，保留其内容与历史记录，不批量迁移成 GitHub Issues、不删除，也不在 GitHub 重复创建同内容 Issue。
 - 只有尚未完成、需要独立实施或跟踪的具体缺陷和功能切片才创建 Issue。
 - Issue 应链接对应正式工单或需求，并只记录本次问题、证据、范围、依赖、验收标准和明确排除项。
 - Issue 与正式资料冲突时停止实施，先按 `AGENTS.md` 的资料层级修正正式资料或取得确认。

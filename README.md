@@ -1,13 +1,13 @@
 # 跟单管理系统
 
-本仓库包含管理员网页端、服务器后端，以及管理员和工厂共用的一套微信小程序。一期业务范围以 `docs/requirements/一期需求文档.md` V1.55 为准；S01 至 S10 已合并到 `main`，真实微信登录接缝已补齐，下一阶段按已确认工单实施 S11 通知提醒与审计收口。
+本仓库包含管理员网页端、服务器后端，以及管理员和工厂共用的一套微信小程序。一期业务范围以 [一期需求 V1.59](docs/一期/requirements/一期需求文档.md) 为准，目前处于一期验收和反馈迭代阶段。收货核对、返修草稿及生产 CD 已进入 `main`；生产版本工作流的验证状态与未完成验收见[里程碑与决策记录](docs/一期/project/一期里程碑与决策记录.md)。二期已开始[需求建设](docs/二期/project/二期需求建设计划.md)，尚未进入功能开发。
 
 ## 目录
 
 - `server/`：FastAPI API、后台 worker、MySQL 迁移与通用基础设施；
 - `admin-web/`：Vue 3 管理员网页端；
 - `miniprogram/`：微信原生 TypeScript 小程序；
-- `docs/`：需求、技术设计、开发计划、工单与参考资料；
+- `docs/`：按一期、二期组织需求、技术设计、计划与工单，共用规范和参考资料独立保存，见[文档目录](docs/README.md)；
 - `prototype/`：已确认的低保真原型，仅作交互约束，不是正式运行代码。
 
 ## 固定工具链
@@ -109,19 +109,14 @@ gh run view <run-id> --log-failed
 - `ghcr.io/kocotree/order-tracking-server:<version>`；
 - `ghcr.io/kocotree/order-tracking-admin-web:<version>`。
 
-API 和 worker 共用 server 镜像并使用不同启动命令；微信小程序不发布 Docker 镜像。创建首个版本示例：
-
-```bash
-git tag -a v1.0.0 -m "v1.0.0"
-git push origin v1.0.0
-```
+API 和 worker 共用 server 镜像并使用不同启动命令；微信小程序不发布 Docker 镜像。服务器版本 `v1.0.0` 已存在，后续按已批准的新版本号发布，不复用或覆盖已有标签。创建和推送版本标签需要用户明确授权。
 
 推送普通 `main` 提交不会发布 GHCR 镜像。用户主动推送已批准版本标签即授权该版本生产部署；两个镜像成功后会自动备份、迁移、更新生产服务并检查健康，无需手动触发 CD。测试和生产继续使用独立 Compose、环境配置和数据。详细发布与回滚步骤见 [部署说明](deploy/README.md)。部署时固定使用版本标签，不使用浮动的 `latest`。
 
 ## 配置与安全
 
 - `.env`、真实 AppID、AppSecret、Token、数据库密码和生产数据不得提交；
-- 本地开发和自动化测试不得连接生产飞书、聚水潭、微信、MinIO、MySQL 或公司 ECS；
+- 本地开发和自动化测试不得连接生产飞书、聚水潭、微信、OSS、MySQL 或公司 ECS；
 - 开发、测试和生产必须使用不同数据库和最小权限账号；
 - GHCR 发布使用工作流内置的 `GITHUB_TOKEN`，不得把个人 Token 或服务器拉取凭证写入仓库；
 - 本地自动化、微信开发者工具、真实外部联调、GHCR 发布和 ECS 部署是不同验收层级，不能互相替代。

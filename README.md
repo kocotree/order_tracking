@@ -104,7 +104,7 @@ gh run watch <run-id> --exit-status
 gh run view <run-id> --log-failed
 ```
 
-`.github/workflows/release.yml` 只在推送 `v*` 版本标签时运行。它会先复用完整 CI，成功后使用仓库自带的 `GITHUB_TOKEN` 发布两个 GHCR 镜像：
+`.github/workflows/release.yml` 只在推送 `v*` 版本标签时运行。它会先核验标签同一提交的最新 `main` push 完整 CI 已成功，不重复运行 CI，再使用仓库自带的 `GITHUB_TOKEN` 发布两个 GHCR 镜像：
 
 - `ghcr.io/kocotree/order-tracking-server:<version>`；
 - `ghcr.io/kocotree/order-tracking-admin-web:<version>`。
@@ -112,11 +112,11 @@ gh run view <run-id> --log-failed
 API 和 worker 共用 server 镜像并使用不同启动命令；微信小程序不发布 Docker 镜像。创建首个版本示例：
 
 ```bash
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
+git tag -a v1.0.0 -m "v1.0.0"
+git push origin v1.0.0
 ```
 
-推送普通 `main` 提交不会发布 GHCR 镜像。发布镜像也不等于部署 ECS；测试环境和生产环境仍需独立的部署 Compose、服务器环境变量、HTTPS 路由和明确的人工发布确认。部署时固定使用版本标签，不使用浮动的 `latest`。
+推送普通 `main` 提交不会发布 GHCR 镜像。用户主动推送已批准版本标签即授权该版本生产部署；两个镜像成功后会自动备份、迁移、更新生产服务并检查健康，无需手动触发 CD。测试和生产继续使用独立 Compose、环境配置和数据。详细发布与回滚步骤见 [部署说明](deploy/README.md)。部署时固定使用版本标签，不使用浮动的 `latest`。
 
 ## 配置与安全
 

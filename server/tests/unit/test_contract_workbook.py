@@ -115,7 +115,8 @@ def test_renderer_keeps_template_layout_and_leaves_prices_and_incomplete_totals_
     assert "B8:B9" in {str(item) for item in sheet.merged_cells.ranges}
     assert "C8:C9" in {str(item) for item in sheet.merged_cells.ranges}
     assert "H8:H19" in {str(item) for item in sheet.merged_cells.ranges}
-    assert sheet["H8"].value == "2026年9月10日"
+    assert sheet["H8"].value is None
+    assert sheet["A24"].value == "一.交货期限：    年    月    日前全部出货"
     assert "合同测试工厂有限公司" in sheet["E45"].value
     assert "委托代理人：\n开户银行：\n账号：\n电话：13800000000" in sheet["E45"].value
     assert all(

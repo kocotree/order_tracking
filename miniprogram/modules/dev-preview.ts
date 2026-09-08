@@ -74,13 +74,13 @@ export function previewUser(variant: string | undefined): User {
 export function previewOrder(factoryOnly = false): Order {
   const quantity = factoryOnly ? 40 : 100;
   const assignment = {
-    assignmentId: 1, factoryId: "preview-factory-1", factoryName: "禹帆",
+    contractShipDate: "2026-08-30", assignmentId: 1, factoryId: "preview-factory-1", factoryName: "禹帆",
     assignedQuantity: quantity, shippedQuantity: 0, pendingQuantity: quantity,
     overQuantity: 0, shortQuantity: quantity, progressPercent: 0,
   };
   return {
     orderId: "preview-order", orderNo: "E81", source: "manual",
-    orderDate: "2026-08-21", tracker: "松子", contractShipDate: "2026-08-30",
+    orderDate: "2026-08-21", tracker: "松子", contractShipDates: ["2026-08-30"], contractShipDate: "2026-08-30",
     lifecycle: "PUBLISHED", displayStatus: "未完成", version: 2,
     totalQuantity: quantity, shippedQuantity: 0, pendingQuantity: quantity,
     overQuantity: 0, shortQuantity: quantity, progressPercent: 0,

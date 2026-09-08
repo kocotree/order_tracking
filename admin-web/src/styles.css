@@ -336,7 +336,7 @@ h1, h2, p { margin-top: 0; }
 .allocation-meter strong { min-height: 38px; padding: 9px 10px; color: var(--success); background: var(--success-bg); border-radius: 5px; }
 .allocation-meter strong.is-mismatch { color: var(--warning); background: var(--warning-bg); }
 .assignment-list { display: grid; gap: 10px; padding: 0 14px 14px; }
-.assignment-row { display: grid; grid-template-columns: minmax(220px, 1fr) 180px auto; gap: 12px; align-items: end; }
+.assignment-row { display: grid; grid-template-columns: minmax(180px, 1fr) 140px 180px auto; gap: 12px; align-items: end; }
 .assignment-row > button { min-height: 38px; }
 .inline-add-button { justify-self: start; padding: 7px 0; color: var(--blue-dark); font-weight: 700; background: transparent; border: 0; }
 .form-error { margin: 12px 20px; }
@@ -601,19 +601,19 @@ h1, h2, p { margin-top: 0; }
 .order-detail-page .product-detail-table th:nth-child(1) { width: 52px; }
 .order-detail-page .product-detail-table th:nth-child(2) { width: 110px; }
 .order-detail-page .product-detail-table th:nth-child(3) { width: auto; }
-.order-detail-page .product-detail-table th:nth-child(4) { width: 135px; }
-.order-detail-page .product-detail-table th:nth-child(5) { width: 86px; }
-.order-detail-page .product-detail-table th:nth-child(6), .order-detail-page .product-detail-table th:nth-child(7), .order-detail-page .product-detail-table th:nth-child(8) { width: 96px; }
-.order-detail-page .product-detail-table th:nth-child(9) { width: 160px; }
-.order-detail-page .pending-import-detail-table { min-width: 1142px; }
+.order-detail-page .product-detail-table th:nth-child(4) { width: 156px; }
+.order-detail-page .product-detail-table th:nth-child(5) { width: 120px; }
+.order-detail-page .product-detail-table th:nth-child(6) { width: 174px; }
+.order-detail-page .product-detail-table th:nth-child(7), .order-detail-page .product-detail-table th:nth-child(8), .order-detail-page .product-detail-table th:nth-child(9) { width: 96px; }
+.order-detail-page .product-detail-table th:nth-child(10) { width: 144px; }
+.order-detail-page .product-detail-table { min-width: 1294px; }
+.order-detail-page .pending-import-detail-table { min-width: 1404px; }
 .order-detail-page .pending-import-detail-table th:nth-child(1) { width: 52px; }
 .order-detail-page .pending-import-detail-table th:nth-child(2) { width: 160px; }
 .order-detail-page .pending-import-detail-table th:nth-child(3) { width: auto; }
-.order-detail-page .pending-import-detail-table th:nth-child(4) { width: 120px; }
-.order-detail-page .pending-import-detail-table th:nth-child(5) { width: 68px; }
-.order-detail-page .pending-import-detail-table th:nth-child(6), .order-detail-page .pending-import-detail-table th:nth-child(7), .order-detail-page .pending-import-detail-table th:nth-child(8) { width: 96px; }
-.order-detail-page .pending-import-detail-table th:nth-child(9) { width: 144px; }
-.order-detail-page .pending-import-detail-table th:nth-child(10) { width: 110px; }
+.order-detail-page .pending-import-detail-table th:nth-child(11) { width: 110px; }
+.detail-date-input { width: 100%; min-width: 0; min-height: 32px; padding: 4px 6px; color: inherit; font: inherit; border: 1px solid var(--line-strong); border-radius: 4px; }
+.order-detail-page .detail-due-date, .date-summary { white-space: normal; overflow-wrap: anywhere; }
 .order-detail-page .pending-import-detail-table td:last-child .status-badge { min-width: 76px; }
 .order-detail-page .detail-sequence-column, .order-detail-page .detail-sequence-cell { padding-right: 8px !important; padding-left: 8px !important; text-align: center; white-space: nowrap; }
 .order-detail-page .detail-image-column, .order-detail-page .detail-image-cell { text-align: center; }
@@ -626,9 +626,7 @@ h1, h2, p { margin-top: 0; }
 .order-detail-page .detail-progress i { display: block; height: 100%; background: var(--erp-blue); border-radius: inherit; }
 .order-detail-page .detail-progress em { font-size: 12px; font-style: normal; font-weight: 700; text-align: right; }
 .order-detail-page .related-shipment-table { min-width: 900px; }
-.order-detail-page .related-shipment-table th:first-child { width: auto; }
-.order-detail-page .related-shipment-table th:nth-child(2) { width: 160px; }
-.order-detail-page .related-shipment-table th:nth-child(3) { width: 140px; }
+.order-detail-page .related-shipment-table th:nth-child(-n+3) { width: auto; }
 .order-detail-page .related-shipment-table th:nth-child(4) { width: 100px; }
 .order-audit-card { overflow: hidden; }
 .order-audit-toggle { display: flex; width: 100%; min-height: 56px; align-items: center; justify-content: space-between; padding: 0 20px; color: var(--ink-strong); background: #fff; border: 0; cursor: pointer; }
@@ -1354,3 +1352,4 @@ h1, h2, p { margin-top: 0; }
 
 /* Receipt feedback shares the existing import warning surface without page-state spacing. */
 .shipment-detail-page > .validation-callout { margin: 0; }
+.order-list-table td.date-summary, .dashboard-order-table td.date-summary { white-space: normal; overflow-wrap: anywhere; }

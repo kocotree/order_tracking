@@ -12,6 +12,7 @@ vi.mock("vue-router", () => ({
 }));
 
 const candidate = {
+  version: 1,
   candidateId: "candidate-1",
   orderNo: "E100",
   status: "PENDING",
@@ -19,13 +20,13 @@ const candidate = {
   validationIssues: [],
   orderDate: "2026-08-22",
   tracker: "松子",
-  contractShipDate: "2026-08-30",
+  contractShipDates: ["2026-08-30"], contractShipDate: "2026-08-30",
   category: "帽子",
   totalQuantity: 100,
   shippedQuantity: 0,
   pendingQuantity: 100,
   importedOrderId: null,
-  lines: [{ candidateLineId: 1, sourceSkuId: "6970000000001", productName: "测试童帽", propertiesValue: "蓝色 / 120", category: "童帽春夏", factoryName: "测试工厂", orderQuantity: 100, shippedQuantity: 0, pendingQuantity: 100, validationIssues: [] }],
+  lines: [{ candidateLineId: 1, contractShipDate: "2026-08-30", sourceContractShipDate: "2026-09-03", sourceSkuId: "6970000000001", productName: "测试童帽", propertiesValue: "蓝色 / 120", category: "童帽春夏", factoryName: "测试工厂", orderQuantity: 100, shippedQuantity: 0, pendingQuantity: 100, validationIssues: [] }],
   updatedAt: "2026-08-22T09:00:00",
 } satisfies ImportCandidate;
 

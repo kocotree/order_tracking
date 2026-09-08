@@ -139,14 +139,13 @@ def test_order_api_enforces_terminal_and_factory_visibility(
         "orderNo": " api-81 ",
         "orderDate": "2026-08-21",
         "tracker": "松子",
-        "contractShipDate": "2026-08-30",
         "lines": [
             {
                 "variantId": "order-api-variant",
                 "orderQuantity": 100,
                 "assignments": [
-                    {"factoryId": FACTORY_IDS[0], "quantity": 40},
-                    {"factoryId": FACTORY_IDS[1], "quantity": 60},
+                    {"factoryId": FACTORY_IDS[0], "quantity": 40, "contractShipDate": "2026-08-30"},
+                    {"factoryId": FACTORY_IDS[1], "quantity": 60, "contractShipDate": "2026-08-30"},
                 ],
             }
         ],
@@ -188,7 +187,11 @@ def test_order_api_enforces_terminal_and_factory_visibility(
                         "variantId": "order-api-variant",
                         "orderQuantity": 30,
                         "assignments": [
-                            {"factoryId": FACTORY_IDS[1], "quantity": 30}
+                            {
+                                "factoryId": FACTORY_IDS[1],
+                                "quantity": 30,
+                                "contractShipDate": "2026-08-30",
+                            }
                         ],
                     }
                 ],
@@ -219,9 +222,7 @@ def test_order_api_enforces_terminal_and_factory_visibility(
                 ],
             ).json()
             assert multi_factory["total"] == 1
-            sorted_orders = client.get(
-                "/api/v1/orders?sortBy=orderNoDesc"
-            ).json()
+            sorted_orders = client.get("/api/v1/orders?sortBy=orderNoDesc").json()
             assert [item["orderNo"] for item in sorted_orders["items"]] == [
                 "API-90",
                 "API-81",
@@ -232,9 +233,9 @@ def test_order_api_enforces_terminal_and_factory_visibility(
                 listed = factory_client.get("/api/v1/orders").json()
                 assert listed["total"] == 1
                 assert listed["items"][0]["totalQuantity"] == 40
-                assert [
-                    item["factoryId"] for item in listed["items"][0]["factoryProgress"]
-                ] == [FACTORY_IDS[0]]
+                assert [item["factoryId"] for item in listed["items"][0]["factoryProgress"]] == [
+                    FACTORY_IDS[0]
+                ]
 
             with TestClient(app, base_url="https://testserver") as other_factory:
                 other_factory.headers["Authorization"] = f"Bearer {factory_c.access_token}"

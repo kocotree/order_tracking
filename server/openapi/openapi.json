@@ -50,6 +50,18 @@
             "title": "Assignmentid",
             "type": "integer"
           },
+          "contractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
+          },
           "factoryId": {
             "title": "Factoryid",
             "type": "string"
@@ -80,6 +92,7 @@
           }
         },
         "required": [
+          "contractShipDate",
           "assignmentId",
           "factoryId",
           "factoryName",
@@ -95,6 +108,18 @@
       },
       "AssignmentWrite": {
         "properties": {
+          "contractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
+          },
           "factoryId": {
             "minLength": 1,
             "title": "Factoryid",
@@ -460,6 +485,33 @@
         "title": "Body_upload_draft_file_api_v1_factory_shipments_drafts__shipment_id__files_post",
         "type": "object"
       },
+      "CandidateDateWrite": {
+        "properties": {
+          "contractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "contractShipDate"
+        ],
+        "title": "CandidateDateWrite",
+        "type": "object"
+      },
       "CandidateLineResponse": {
         "properties": {
           "candidateLineId": {
@@ -476,6 +528,18 @@
               }
             ],
             "title": "Category"
+          },
+          "contractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
           },
           "factoryName": {
             "anyOf": [
@@ -529,6 +593,18 @@
             "title": "Shippedquantity",
             "type": "integer"
           },
+          "sourceContractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcecontractshipdate"
+          },
           "sourceSkuId": {
             "anyOf": [
               {
@@ -549,6 +625,8 @@
           }
         },
         "required": [
+          "contractShipDate",
+          "sourceContractShipDate",
           "candidateLineId",
           "sourceSkuId",
           "productName",
@@ -628,6 +706,14 @@
             ],
             "title": "Contractshipdate"
           },
+          "contractShipDates": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Contractshipdates",
+            "type": "array"
+          },
           "importedOrderId": {
             "anyOf": [
               {
@@ -704,9 +790,15 @@
           "validationState": {
             "title": "Validationstate",
             "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
+          "version",
+          "contractShipDates",
           "candidateId",
           "orderNo",
           "status",
@@ -1080,12 +1172,8 @@
         "type": "object"
       },
       "DraftUpdate": {
+        "additionalProperties": false,
         "properties": {
-          "contractShipDate": {
-            "format": "date",
-            "title": "Contractshipdate",
-            "type": "string"
-          },
           "lines": {
             "items": {
               "$ref": "#/components/schemas/DraftLineWrite"
@@ -1132,7 +1220,6 @@
         "required": [
           "orderNo",
           "tracker",
-          "contractShipDate",
           "lines",
           "version"
         ],
@@ -2062,9 +2149,24 @@
       "OrderResponse": {
         "properties": {
           "contractShipDate": {
-            "format": "date",
-            "title": "Contractshipdate",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
+          },
+          "contractShipDates": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Contractshipdates",
+            "type": "array"
           },
           "createdAt": {
             "format": "date-time",
@@ -2168,12 +2270,13 @@
           }
         },
         "required": [
+          "contractShipDate",
+          "contractShipDates",
           "orderId",
           "orderNo",
           "source",
           "orderDate",
           "tracker",
-          "contractShipDate",
           "lifecycle",
           "displayStatus",
           "version",
@@ -3151,9 +3254,16 @@
             "type": "integer"
           },
           "contractShipDate": {
-            "format": "date",
-            "title": "Contractshipdate",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
           },
           "orderId": {
             "title": "Orderid",
@@ -4019,12 +4129,8 @@
         "type": "object"
       },
       "app__api__orders__DraftCreate": {
+        "additionalProperties": false,
         "properties": {
-          "contractShipDate": {
-            "format": "date",
-            "title": "Contractshipdate",
-            "type": "string"
-          },
           "lines": {
             "items": {
               "$ref": "#/components/schemas/DraftLineWrite"
@@ -4060,7 +4166,6 @@
           "orderNo",
           "orderDate",
           "tracker",
-          "contractShipDate",
           "lines"
         ],
         "title": "DraftCreate",
@@ -5415,6 +5520,22 @@
           },
           {
             "in": "header",
+            "name": "x-candidate-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Candidate-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "Idempotency-Key",
             "required": true,
             "schema": {
@@ -5482,6 +5603,99 @@
           }
         },
         "summary": "Confirm Candidate",
+        "tags": [
+          "order-import"
+        ]
+      }
+    },
+    "/api/v1/admin/import-candidates/{candidate_id}/lines/{candidate_line_id}/date": {
+      "patch": {
+        "operationId": "save_candidate_date_api_v1_admin_import_candidates__candidate_id__lines__candidate_line_id__date_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "candidate_line_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Line Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateDateWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Candidate Date",
         "tags": [
           "order-import"
         ]

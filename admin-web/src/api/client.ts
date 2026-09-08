@@ -432,10 +432,14 @@ export const orderImportApi = {
       method: "DELETE",
       headers: idempotencyHeaders(),
     }),
-  confirm: (candidateId: string) =>
+  saveDate: (candidateId: string, lineId: number, version: number, contractShipDate: string | null) =>
+    request<ImportCandidate>(`/v1/admin/import-candidates/${encodeURIComponent(candidateId)}/lines/${lineId}/date`, {
+      method: "PATCH", body: JSON.stringify({ version, contractShipDate }),
+    }),
+  confirm: (candidateId: string, version?: number) =>
     request<{ orderId: string; requestId: string }>(
       `/v1/admin/import-candidates/${encodeURIComponent(candidateId)}/confirm`,
-      { method: "POST", headers: idempotencyHeaders() },
+      { method: "POST", headers: { ...idempotencyHeaders(), ...(version == null ? {} : { "X-Candidate-Version": String(version) }) } },
     ),
   confirmBatch: (candidateIds: string[]) =>
     request<BatchConfirmResult>("/v1/admin/import-candidates/confirm", {

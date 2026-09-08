@@ -95,7 +95,7 @@
                 </td>
                 <td><span class="tracker-tag" :data-tracker="item.tracker">{{ item.tracker }}</span></td>
                 <td>{{ factorySummary(item) }}</td>
-                <td>{{ item.contractShipDate }}</td>
+                <td class="date-summary" :title="item.contractShipDates.join('、')">{{ item.contractShipDates.join("、") || "—" }}</td>
                 <td><div class="list-progress-line"><span class="progress-track"><span class="progress-bar" :style="{ width: `${item.progressPercent}%` }"></span></span><span class="list-progress-percent">{{ item.progressPercent }}%</span></div></td>
                 <td class="order-shipment-count">{{ number(item.shippedQuantity) }} / {{ number(item.totalQuantity) }}</td>
                 <td><span class="status-badge" :class="statusTone(item)">{{ item.displayStatus }}</span></td>

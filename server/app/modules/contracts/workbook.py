@@ -125,7 +125,6 @@ class ContractWorkbookRenderer:
         snapshot: dict[str, Any],
     ) -> None:
         start_row = 8
-        ship_date = date.fromisoformat(str(snapshot["contractShipDate"]))
         for offset, line in enumerate(lines):
             row = start_row + offset
             sheet.cell(row, 4, str(line["propertiesValue"]))
@@ -160,7 +159,7 @@ class ContractWorkbookRenderer:
             )
             group_start = group_end + 1
         last_row = start_row + len(lines) - 1
-        sheet["H8"] = f"{ship_date.year}年{ship_date.month}月{ship_date.day}日"
+        sheet["H8"] = None
         detail_end = max(19, last_row)
         sheet.merge_cells(start_row=8, start_column=8, end_row=detail_end, end_column=8)
         sheet.merge_cells(start_row=8, start_column=9, end_row=detail_end, end_column=9)
@@ -210,13 +209,8 @@ class ContractWorkbookRenderer:
         sheet.cell(words_row, 4, f'=IF(G{total_row}="","",G{total_row})')
 
     @staticmethod
-    def _write_delivery_term(
-        sheet: Worksheet, snapshot: dict[str, Any], extra_rows: int
-    ) -> None:
-        ship_date = date.fromisoformat(str(snapshot["contractShipDate"]))
-        sheet.cell(24 + extra_rows, 1, (
-            f"一.交货期限：{ship_date.year}年{ship_date.month}月{ship_date.day}日前全部出货"
-        ))
+    def _write_delivery_term(sheet: Worksheet, snapshot: dict[str, Any], extra_rows: int) -> None:
+        sheet.cell(24 + extra_rows, 1, ("一.交货期限：    年    月    日前全部出货"))
 
     @staticmethod
     def _write_supplier_signature(

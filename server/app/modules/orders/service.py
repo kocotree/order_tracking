@@ -67,6 +67,7 @@ class AssignmentInput:
     factory_id: str
     quantity: int
     initial_shipped_quantity: int | None = None
+    contract_ship_date: date | None = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,7 @@ class DraftLineInput:
 @dataclass(frozen=True)
 class AssignmentSnapshot:
     assignment_id: int
+    contract_ship_date: date | None
     factory_id: str
     factory_name: str
     assigned_quantity: int
@@ -126,7 +128,8 @@ class OrderSnapshot:
     source: str
     order_date: date | None
     tracker: str
-    contract_ship_date: date
+    contract_ship_date: date | None
+    contract_ship_dates: list[date]
     lifecycle: str
     display_status: str
     version: int
@@ -173,7 +176,6 @@ class OrderService:
         order_no: str,
         order_date: date,
         tracker: str,
-        contract_ship_date: date,
         lines: list[DraftLineInput],
         request_id: str,
     ) -> OrderSnapshot:
@@ -190,7 +192,6 @@ class OrderService:
                     order_no=normalized_order_no,
                     order_date=order_date,
                     tracker=tracker,
-                    contract_ship_date=contract_ship_date,
                     lines=lines,
                     source="manual",
                     request_id=request_id,
@@ -209,7 +210,6 @@ class OrderService:
         order_no: str,
         order_date: date | None,
         tracker: str,
-        contract_ship_date: date,
         lines: list[DraftLineInput],
         source: str,
         request_id: str,
@@ -231,7 +231,7 @@ class OrderService:
             source=source,
             order_date=order_date,
             tracker=tracker,
-            contract_ship_date=contract_ship_date,
+            contract_ship_date=None,
             lifecycle="DRAFT",
             version=1,
             created_by=actor_id,
@@ -261,7 +261,6 @@ class OrderService:
         order_no: str,
         order_date: date | None,
         tracker: str,
-        contract_ship_date: date,
         lines: list[DraftLineInput],
         request_id: str,
     ) -> OrderSnapshot:
@@ -277,7 +276,7 @@ class OrderService:
                 order.order_no = normalized_order_no
                 order.order_date = order_date
                 order.tracker = tracker
-                order.contract_ship_date = contract_ship_date
+                order.contract_ship_date = None
                 order.version += 1
                 order.updated_by = actor_id
                 order.updated_at = now
@@ -623,30 +622,25 @@ class OrderService:
                     OrderLine.category_snapshot.in_(category_sources[category])
                 )
                 query = query.where(Order.order_id.in_(matching_categories))
-            if ship_date_from:
-                query = query.where(Order.contract_ship_date >= ship_date_from)
-            if ship_date_to:
-                query = query.where(Order.contract_ship_date <= ship_date_to)
-            if status == "草稿":
-                query = query.where(Order.lifecycle == "DRAFT")
-            elif status == "已完成":
-                query = query.where(Order.lifecycle == "COMPLETED")
-            elif status == "已逾期":
-                query = query.where(
-                    Order.lifecycle == "PUBLISHED",
-                    Order.contract_ship_date < business_today,
-                )
-            elif status == "未完成":
-                query = query.where(
-                    Order.lifecycle == "PUBLISHED",
-                    Order.contract_ship_date >= business_today,
-                )
-            elif status != "all":
+            if status not in {"all", "草稿", "已完成", "已逾期", "未完成"}:
                 raise OrderValidationError("invalid status")
             orders = list(session.scalars(query))
             snapshots = [
                 self._snapshot(session, item, business_today, factory_id=scoped_factory)
                 for item in orders
+            ]
+            snapshots = [
+                item
+                for item in snapshots
+                if (status == "all" or item.display_status == status)
+                and (
+                    not (ship_date_from or ship_date_to)
+                    or any(
+                        (ship_date_from is None or value >= ship_date_from)
+                        and (ship_date_to is None or value <= ship_date_to)
+                        for value in item.contract_ship_dates
+                    )
+                )
             ]
             reverse = sort_by in {
                 "orderNoDesc",
@@ -654,7 +648,6 @@ class OrderService:
                 "categoryDesc",
                 "trackerDesc",
                 "factoryDesc",
-                "contractShipDateDesc",
                 "progressPercentDesc",
                 "shippedQuantityDesc",
                 "statusDesc",
@@ -845,6 +838,7 @@ class OrderService:
             session.add(line)
             session.flush()
             assignments: dict[str, tuple[int, int | None]] = {}
+            dates: dict[str, date | None] = {}
             for assignment in item.assignments:
                 self._require_positive_integer(assignment.quantity, "assignment quantity")
                 if assignment.initial_shipped_quantity is not None and (
@@ -857,6 +851,12 @@ class OrderService:
                 previous_quantity, previous_initial = assignments.get(
                     assignment.factory_id, (0, None)
                 )
+                if (
+                    assignment.factory_id in dates
+                    and dates[assignment.factory_id] != assignment.contract_ship_date
+                ):
+                    raise OrderValidationError("同一产品和工厂只能填写一个合同出货时间")
+                dates[assignment.factory_id] = assignment.contract_ship_date
                 explicit_initial = assignment.initial_shipped_quantity
                 assignments[assignment.factory_id] = (
                     previous_quantity + assignment.quantity,
@@ -885,6 +885,7 @@ class OrderService:
                     OrderAssignment(
                         order_line_id=line.order_line_id,
                         factory_id=factory_id,
+                        contract_ship_date=dates[factory_id],
                         assigned_quantity=quantity,
                         initial_shipped_quantity=initial_quantity,
                         factory_name_snapshot=factory.factory_name,
@@ -925,6 +926,10 @@ class OrderService:
             assigned_total = sum(item.assigned_quantity for item in assignments)
             if not assignments or assigned_total != line.order_quantity:
                 raise OrderValidationError("assignment total must equal order quantity")
+            if any(item.contract_ship_date is None for item in assignments):
+                raise OrderValidationError(
+                    f"请填写产品 {line.sku_id_snapshot} 各工厂的合同出货时间"
+                )
             factory_ids.update(item.factory_id for item in assignments)
         for factory_id in factory_ids:
             factory = session.get(Factory, factory_id)
@@ -981,6 +986,11 @@ class OrderService:
                     )
             assignment_snapshots = []
             for item in assignments:
+                if item.contract_ship_date is None:
+                    validation_issues.append(
+                        f"请填写产品 {line.sku_id_snapshot}／"
+                        f"{item.factory_name_snapshot} 的合同出货时间"
+                    )
                 shipped = self._assignment_shipped(session, item)
                 pending = max(item.assigned_quantity - shipped, 0)
                 over = max(shipped - item.assigned_quantity, 0)
@@ -988,6 +998,7 @@ class OrderService:
                 assignment_snapshots.append(
                     AssignmentSnapshot(
                         assignment_id=item.order_assignment_id,
+                        contract_ship_date=item.contract_ship_date,
                         factory_id=item.factory_id,
                         factory_name=item.factory_name_snapshot,
                         assigned_quantity=item.assigned_quantity,
@@ -1044,15 +1055,26 @@ class OrderService:
             )
             for key, value in sorted(factory_totals.items())
         ]
+        visible_assignments = [item for line in line_snapshots for item in line.assignments]
+        dates = sorted(
+            {item.contract_ship_date for item in visible_assignments if item.contract_ship_date}
+        )
+        overdue = any(
+            item.pending_quantity > 0
+            and item.contract_ship_date is not None
+            and item.contract_ship_date < today
+            for item in visible_assignments
+        )
         return OrderSnapshot(
             order_id=order.order_id,
             order_no=order.order_no,
             source=order.source,
             order_date=order.order_date,
             tracker=order.tracker,
-            contract_ship_date=order.contract_ship_date,
+            contract_ship_date=dates[0] if dates else None,
+            contract_ship_dates=dates,
             lifecycle=order.lifecycle,
-            display_status=self._display_status(order, today),
+            display_status=self._display_status(order, overdue),
             version=order.version,
             total_quantity=total,
             shipped_quantity=total_shipped,
@@ -1153,18 +1175,25 @@ class OrderService:
                 "、".join(row.factory_name for row in item.factory_progress),
                 item.order_no,
             )
-        if normalized_sort == "contractShipDate":
-            return lambda item: (item.contract_ship_date, item.order_no)
+        if normalized_sort == "contractShipDate" or sort_by in {"shipDateAsc", "shipDateDesc"}:
+            descending = sort_by.endswith("Desc")
+            return lambda item: (
+                not item.contract_ship_dates,
+                (
+                    -item.contract_ship_dates[-1].toordinal()
+                    if descending
+                    else item.contract_ship_dates[0].toordinal()
+                )
+                if item.contract_ship_dates
+                else 0,
+                item.order_no,
+            )
         if normalized_sort == "progressPercent":
             return lambda item: (item.progress_percent, item.order_no)
         if normalized_sort == "shippedQuantity":
             return lambda item: (item.shipped_quantity, item.order_no)
         if normalized_sort == "status":
             return lambda item: (item.display_status, item.order_no)
-        if sort_by == "shipDateAsc":
-            return lambda item: (item.contract_ship_date, item.order_no)
-        if sort_by == "shipDateDesc":
-            return lambda item: (-item.contract_ship_date.toordinal(), item.order_no)
         if sort_by == "orderDateDesc":
             return lambda item: (
                 item.order_date is None,
@@ -1175,23 +1204,23 @@ class OrderService:
             return lambda item: (-item.updated_at.timestamp(), item.order_no)
         return lambda item: (
             0
-            if item.lifecycle == "PUBLISHED" and item.contract_ship_date < today
+            if item.display_status == "已逾期"
             else 1
             if item.lifecycle == "PUBLISHED"
             else 2
             if item.lifecycle == "COMPLETED"
             else 3,
-            item.contract_ship_date,
+            item.contract_ship_date or date.max,
             item.order_no,
         )
 
     @staticmethod
-    def _display_status(order: Order, today: date) -> str:
+    def _display_status(order: Order, overdue: bool) -> str:
         if order.lifecycle == "DRAFT":
             return "草稿"
         if order.lifecycle == "COMPLETED":
             return "已完成"
-        return "已逾期" if today > order.contract_ship_date else "未完成"
+        return "已逾期" if overdue else "未完成"
 
     @staticmethod
     def _normalize_order_no(value: str) -> str:

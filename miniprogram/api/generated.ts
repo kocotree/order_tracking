@@ -228,6 +228,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/import-candidates/{candidate_id}/lines/{candidate_line_id}/date": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Save Candidate Date */
+        patch: operations["save_candidate_date_api_v1_admin_import_candidates__candidate_id__lines__candidate_line_id__date_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/import-runs": {
         parameters: {
             query?: never;
@@ -1464,6 +1481,8 @@ export interface components {
             assignedQuantity: number;
             /** Assignmentid */
             assignmentId: number;
+            /** Contractshipdate */
+            contractShipDate: string | null;
             /** Factoryid */
             factoryId: string;
             /** Factoryname */
@@ -1481,6 +1500,8 @@ export interface components {
         };
         /** AssignmentWrite */
         AssignmentWrite: {
+            /** Contractshipdate */
+            contractShipDate?: string | null;
             /** Factoryid */
             factoryId: string;
             /** Quantity */
@@ -1605,12 +1626,21 @@ export interface components {
             /** File */
             file: string;
         };
+        /** CandidateDateWrite */
+        CandidateDateWrite: {
+            /** Contractshipdate */
+            contractShipDate: string | null;
+            /** Version */
+            version: number;
+        };
         /** CandidateLineResponse */
         CandidateLineResponse: {
             /** Candidatelineid */
             candidateLineId: number;
             /** Category */
             category: string | null;
+            /** Contractshipdate */
+            contractShipDate: string | null;
             /** Factoryname */
             factoryName: string | null;
             /** Orderquantity */
@@ -1623,6 +1653,8 @@ export interface components {
             propertiesValue: string | null;
             /** Shippedquantity */
             shippedQuantity: number;
+            /** Sourcecontractshipdate */
+            sourceContractShipDate: string | null;
             /** Sourceskuid */
             sourceSkuId: string | null;
             /** Validationissues */
@@ -1649,6 +1681,8 @@ export interface components {
             category: string | null;
             /** Contractshipdate */
             contractShipDate: string | null;
+            /** Contractshipdates */
+            contractShipDates: string[];
             /** Importedorderid */
             importedOrderId: string | null;
             /** Lines */
@@ -1676,6 +1710,8 @@ export interface components {
             validationIssues: string[];
             /** Validationstate */
             validationState: string;
+            /** Version */
+            version: number;
         };
         /** ContactResponse */
         ContactResponse: {
@@ -1809,11 +1845,6 @@ export interface components {
         };
         /** DraftUpdate */
         DraftUpdate: {
-            /**
-             * Contractshipdate
-             * Format: date
-             */
-            contractShipDate: string;
             /** Lines */
             lines: components["schemas"]["DraftLineWrite"][];
             /** Orderdate */
@@ -2164,11 +2195,10 @@ export interface components {
         };
         /** OrderResponse */
         OrderResponse: {
-            /**
-             * Contractshipdate
-             * Format: date
-             */
-            contractShipDate: string;
+            /** Contractshipdate */
+            contractShipDate: string | null;
+            /** Contractshipdates */
+            contractShipDates: string[];
             /**
              * Createdat
              * Format: date-time
@@ -2569,11 +2599,8 @@ export interface components {
             assignedQuantity: number;
             /** Assignmentid */
             assignmentId: number;
-            /**
-             * Contractshipdate
-             * Format: date
-             */
-            contractShipDate: string;
+            /** Contractshipdate */
+            contractShipDate: string | null;
             /** Orderid */
             orderId: string;
             /** Orderno */
@@ -2895,11 +2922,6 @@ export interface components {
         };
         /** DraftCreate */
         app__api__orders__DraftCreate: {
-            /**
-             * Contractshipdate
-             * Format: date
-             */
-            contractShipDate: string;
             /** Lines */
             lines: components["schemas"]["DraftLineWrite"][];
             /**
@@ -3476,6 +3498,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "x-candidate-version"?: number | null;
                 "Idempotency-Key": string;
                 "x-csrf-token"?: string | null;
             };
@@ -3497,6 +3520,46 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_candidate_date_api_v1_admin_import_candidates__candidate_id__lines__candidate_line_id__date_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                candidate_id: string;
+                candidate_line_id: number;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateDateWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateResponse"];
                 };
             };
             /** @description Validation Error */

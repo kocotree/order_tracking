@@ -29,7 +29,7 @@
       <view class="admin-summary-due {{statusTone === 'overdue' ? 'is-overdue' : ''}}">
         <view class="admin-fact-icon admin-fact-icon--calendar" />
         <text class="admin-fact-label">合同出货时间</text>
-        <text class="admin-due-value">{{order.contractShipDate}}</text>
+        <text class="admin-due-value">{{contractShipDateText}}</text>
       </view>
 
       <view class="admin-summary-progress">
@@ -61,7 +61,7 @@
             <view class="admin-product-table-head"><text>序号</text><text>产品名称</text><text>颜色/规格</text><text>已发/下单</text></view>
             <view wx:for="{{factory.products}}" wx:key="orderLineId" wx:for-item="product" class="admin-product-row">
               <text class="admin-product-index">{{product.index}}</text>
-              <text class="admin-product-name">{{product.productName}}</text>
+              <view class="admin-product-name"><text>{{product.productName}}</text><text class="detail-contract-date">合同出货时间 {{product.contractShipDateText}}</text></view>
               <text class="admin-product-spec">{{product.propertiesValue}}</text>
               <text class="admin-product-quantity">{{product.shippedText}} / {{product.assignedText}}</text>
             </view>

@@ -225,7 +225,7 @@ class ShipmentCatalogItem:
     assignment_id: int
     order_id: str
     order_no: str
-    contract_ship_date: date
+    contract_ship_date: date | None
     product_name: str
     properties_value: str
     assigned_quantity: int
@@ -606,7 +606,8 @@ class ShipmentService:
                     Order.deleted_at.is_(None),
                 )
                 .order_by(
-                    Order.contract_ship_date,
+                    OrderAssignment.contract_ship_date.is_(None),
+                    OrderAssignment.contract_ship_date,
                     Order.order_no,
                     OrderLine.order_line_id,
                 )
@@ -616,7 +617,7 @@ class ShipmentService:
                     assignment_id=assignment.order_assignment_id,
                     order_id=order.order_id,
                     order_no=order.order_no,
-                    contract_ship_date=order.contract_ship_date,
+                    contract_ship_date=assignment.contract_ship_date,
                     product_name=line.product_name_snapshot,
                     properties_value=line.properties_value_snapshot,
                     assigned_quantity=assignment.assigned_quantity,

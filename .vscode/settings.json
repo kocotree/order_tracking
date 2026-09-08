@@ -1,0 +1,13 @@
+{
+  "markdown-pdf.format": "A4",
+  "markdown-pdf.orientation": "portrait",
+  "markdown-pdf.margin.top": "15mm",
+  "markdown-pdf.margin.bottom": "15mm",
+  "markdown-pdf.margin.left": "15mm",
+  "markdown-pdf.margin.right": "15mm",
+  "markdown-pdf.displayHeaderFooter": false,
+  "markdown-pdf.styles": [
+    "docs/一期/manuals/pdf-style.css"
+  ],
+  "markdown-pdf.stylesRelativePathFile": false
+}

@@ -1,0 +1,110 @@
+/* 在 VS Code 中打开项目根目录，使用 Markdown PDF 插件导出。 */
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 12pt;
+  line-height: 1.6;
+  color: #222;
+  background: #fff;
+}
+
+h1 { font-size: 22pt; }
+h2 { font-size: 17pt; }
+h3 { font-size: 14pt; }
+
+/* 尽量避免标题单独留在页底。 */
+h1, h2, h3, h4 {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+p, li {
+  margin-top: 4px;
+  margin-bottom: 6px;
+  orphans: 2;
+  widows: 2;
+}
+
+strong {
+  font-weight: 700;
+}
+
+/* 长截图等比缩放，尽量保留图下注释的空间。 */
+img {
+  display: block;
+  max-width: 100%;
+  max-height: 205mm;
+  width: auto;
+  height: auto;
+  margin: 12px auto;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+}
+
+/* 如需手动分页，在 Markdown 中插入：
+   <div class="page-break"></div>
+*/
+.page-break {
+  break-before: page;
+  page-break-before: always;
+}
+
+/* 工厂手册专用；由正文开头的标记启用，不影响管理员手册。
+   微软雅黑须安装在导出电脑上；缺失时浏览器会使用后备字体。 */
+.factory-manual-style {
+  display: none;
+}
+
+body:has(.factory-manual-style) {
+  font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+  font-size: 15pt;
+  line-height: 1.65;
+}
+
+body:has(.factory-manual-style) h1 { font-size: 26pt; }
+body:has(.factory-manual-style) h2 { font-size: 22pt; }
+body:has(.factory-manual-style) h3 { font-size: 18pt; }
+
+body:has(.factory-manual-style) h1,
+body:has(.factory-manual-style) h2,
+body:has(.factory-manual-style) h3,
+body:has(.factory-manual-style) h4,
+body:has(.factory-manual-style) h5,
+body:has(.factory-manual-style) h6 {
+  font-weight: 700;
+}
+
+body:has(.factory-manual-style) h2 {
+  margin-top: 24px;
+  border-bottom: 2px solid #333;
+  padding-bottom: 6px;
+}
+
+body:has(.factory-manual-style) li {
+  margin-bottom: 10px;
+}
+
+body:has(.factory-manual-style) strong {
+  font-weight: 700;
+  color: #000;
+  background: #f0f0f0;
+}
+
+body:has(.factory-manual-style) code {
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 700;
+}
+
+body:has(.factory-manual-style) img {
+  max-height: 185mm;
+}

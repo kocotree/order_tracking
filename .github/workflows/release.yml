@@ -1,4 +1,4 @@
-name: Release images
+name: Release and deploy production
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   packages: write
 
 concurrency:
@@ -14,11 +15,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
+  verify-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify successful main CI for this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 deploy/scripts/verify-release-ci.py
 
   publish:
-    needs: ci
+    needs: verify-ci
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -43,6 +50,7 @@ jobs:
         id: metadata
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          flavor: latest=false
           tags: |
             type=ref,event=tag
             type=sha,prefix=sha-
@@ -55,3 +63,11 @@ jobs:
           labels: ${{ steps.metadata.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  deploy:
+    needs: publish
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy-production.yml
+    secrets: inherit

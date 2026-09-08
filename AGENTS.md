@@ -26,11 +26,11 @@
 
 - `.github/workflows/ci.yml` 是仓库持续集成基线：普通分支推送和 Pull Request 必须执行仓库空白检查、MySQL 8 迁移与后端检查、管理员网页端检查、小程序检查，以及 server、admin-web Docker 镜像构建；只有全部任务成功才称为远程 CI 通过。
 - 本地测试或构建通过不能替代 GitHub Actions；远程 CI 失败时必须先说明失败任务、原因和影响，不得继续把该提交描述为可发布版本。
-- `.github/workflows/release.yml` 只由明确推送的 `v*` 版本标签触发，并且必须先复用完整 CI；CI 失败时不得发布任何 GHCR 镜像。
+- `.github/workflows/release.yml` 只由明确推送的 `v*` 版本标签触发，先核验标签对应的同一提交已通过 `main` push 的完整 CI，不重复运行 CI；缺失、未结束或失败时不得发布任何 GHCR 镜像。
 - GHCR 只发布 `ghcr.io/kocotree/order-tracking-server:<version>` 和 `ghcr.io/kocotree/order-tracking-admin-web:<version>`。API 与 worker 共用 server 镜像并使用不同启动命令；微信小程序不发布 Docker 镜像。
-- 普通 `main` 推送不发布 GHCR 镜像；GHCR 镜像发布也不等于部署 ECS、执行数据库迁移、切换 Traefik 路由或上传/发布微信小程序。创建或推送版本标签、部署测试/生产环境和发布小程序均须用户明确授权。
+- 普通 `main` 推送不发布 GHCR 镜像或部署生产。用户主动推送已确认的 `v*` 版本标签，即授权该版本自动发布 GHCR 镜像，并在两个镜像成功后自动备份、迁移和部署生产；无需再次手动触发 CD。Agent 创建或推送版本标签仍须用户明确授权；测试部署、真实通知和小程序上传/发布不包含在标签授权内。
 - GitHub Actions 发布 GHCR 使用工作流内置的 `GITHUB_TOKEN` 和最小 `packages: write` 权限；个人 Token、服务器拉取凭证和生产环境变量不得写入仓库、workflow、README、日志或 Agent 交接记录。ECS 拉取私有镜像所需凭证只保存在服务器受控配置中。
-- 生产部署必须固定使用不可变版本标签，不使用浮动的 `latest`；测试环境和生产环境分别使用独立 Compose、环境变量、数据库和权限账号，并保留人工发布确认和回滚路径。
+- 生产部署必须固定使用不可变版本标签，不使用浮动的 `latest`；测试环境和生产环境分别使用独立 Compose、环境变量、数据库和权限账号，以用户明确批准推送版本标签作为人工发布确认，并保留回滚路径。
 
 ## Git 默认开发流程
 

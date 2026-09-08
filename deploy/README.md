@@ -1,7 +1,7 @@
 # S12 deployment entrypoint
 
 Shared test uses the company SSH + Git + Docker Compose path. Production uses
-the manual-dispatch image CD described below. This directory never stores real credentials.
+the tag-triggered image CD described below. This directory never stores real credentials.
 
 ## Environment separation
 
@@ -41,8 +41,8 @@ shell history. Confirm the exact SHA equals the CI-passed target before continui
 7. Keep all real notification switches false until each first-send gate is approved.
 
 Production uses the image CD procedure below with an approved immutable tag.
-A successful release does not authorize real messages, Mini Program upload,
-trial operation, or production cutover.
+A production tag authorizes that version’s server deployment. It does not
+authorize real messages, Mini Program upload, or business trial operation.
 
 ## Rollback and restore boundaries
 
@@ -60,13 +60,35 @@ Production now uses GHCR images through `compose.production.yaml`. The old
 Git/build release and rollback scripts are for shared test only. No ordinary
 `main` push deploys production.
 
-1. Merge the associated PR and wait for complete main CI.
-2. Push an approved `vMAJOR.MINOR.PATCH` tag. Wait for **Release images** to pass.
-3. Run **Deploy production**, selecting that same tag (not main). This reruns
-   complete CI, checks successful image publication, and deploys through SSH.
-4. Configure the GitHub `production` environment with reviewers when available.
-   Manual dispatch is an explicit production action even without environment reviewers.
-5. Verify external HTTPS and real user login separately after internal health.
+1. Merge the associated PR and wait for complete **main push CI** on that exact commit.
+2. Push an approved `vMAJOR.MINOR.PATCH` tag. This is the production approval.
+3. **Release and deploy production** verifies the latest main push CI for the tag's
+   exact commit, including all five required jobs. Missing, pending, failed or
+   skipped CI stops publication; release and CD do not rerun the test suite.
+4. Both GHCR image publications must succeed before the same workflow automatically
+   calls **Deploy production**. No separate manual CD command is needed. The deploy
+   workflow is reusable only; `needs: publish` is the publication gate.
+5. Verify external HTTPS and real user login after internal health.
+
+Production version numbering starts at `v1.0.0` by the user's 2026-09-08 decision,
+independent of the Mini Program version. Subsequent patches use new tags such as
+`v1.0.1`; never move or overwrite a published tag. Publish one version at a time
+and wait for deployment completion before starting another.
+
+```bash
+git switch main
+git pull --ff-only origin main
+# Confirm this commit's main CI and shared-test acceptance have passed first.
+git tag v1.0.0
+git push origin v1.0.0
+# Observe publication and deployment in the same run.
+gh run list --workflow release.yml --limit 5
+```
+
+If CI was still running when the tag was pushed, wait for main CI success and
+rerun the failed Release jobs on the same immutable tag. Do not recreate the tag.
+The `production` environment must not require an extra reviewer if fully automatic
+deployment after tag push is desired. Its existing secrets/environment separation remain.
 
 Required repository/environment Secrets: `PROD_SSH_HOST`, `PROD_SSH_PORT`,
 `PROD_SSH_USER`, `PROD_SSH_PRIVATE_KEY`, `PROD_SSH_KNOWN_HOSTS`, `PROD_DEPLOY_DIR`.

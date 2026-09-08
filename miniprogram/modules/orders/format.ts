@@ -12,9 +12,8 @@ export function orderFactorySummary(order: Order): string {
   return [...new Set(order.factoryProgress.map((item) => item.factoryName))].join("、") || "—";
 }
 
-export function formatContractShipDate(value: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  return match ? `${match[1]}-${match[2]}-${match[3]}` : value;
+export function formatContractShipDate(value: string | string[] | null): string {
+  return Array.isArray(value) ? [...new Set(value)].sort().join("、") || "—" : value || "—";
 }
 
 export function formatQuantity(value: number): string {

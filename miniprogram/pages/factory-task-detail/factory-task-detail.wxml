@@ -40,7 +40,7 @@
         </view>
         <view wx:for="{{order.lines}}" wx:key="orderLineId" class="factory-product-row">
           <text class="factory-product-index">{{item.index}}</text>
-          <text class="factory-product-name">{{item.productName}}</text>
+          <view class="factory-product-name"><text>{{item.productName}}</text><text class="detail-contract-date">合同出货时间 {{item.contractShipDateText}}</text></view>
           <text class="factory-product-spec">{{item.propertiesValue}}</text>
           <text class="factory-product-number">{{item.orderText}}</text>
           <text class="factory-product-number">{{item.shippedText}}</text>

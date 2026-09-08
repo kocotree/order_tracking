@@ -7,6 +7,7 @@ import { notificationIdFrom } from "../../modules/notifications";
 
 type ViewLine = Order["lines"][number] & {
   index: number;
+  contractShipDateText: string;
   orderText: string;
   shippedText: string;
   pendingText: string;
@@ -36,6 +37,7 @@ Page({
       lines: order.lines.map((line, index) => ({
         ...line,
         index: index + 1,
+        contractShipDateText: formatContractShipDate(line.assignments.map((item) => item.contractShipDate).filter((value): value is string => Boolean(value))),
         orderText: formatQuantity(line.orderQuantity),
         shippedText: formatQuantity(line.shippedQuantity),
         pendingText: formatQuantity(line.pendingQuantity),
@@ -44,7 +46,7 @@ Page({
     this.setData({
       order: viewOrder,
       productSummary: orderProductSummary(order),
-      contractShipDateText: formatContractShipDate(order.contractShipDate),
+      contractShipDateText: formatContractShipDate(order.contractShipDates),
       statusTone: statusTone(order.displayStatus),
       totalText: formatQuantity(order.totalQuantity),
       shippedText: formatQuantity(order.shippedQuantity),

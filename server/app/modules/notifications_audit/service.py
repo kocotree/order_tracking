@@ -42,6 +42,7 @@ from app.modules.infrastructure import utc_now
 
 logger = logging.getLogger(__name__)
 
+
 def _notification_products(names: list[str]) -> str:
     """Keep one readable product name while distinguishing multiple products."""
     unique = list(dict.fromkeys(name for name in names if name))
@@ -51,6 +52,7 @@ def _notification_products(names: list[str]) -> str:
     if len(first) > 120:
         first = first[:119] + "…"
     return first + ("等" if len(unique) > 1 else "")
+
 
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
 # Confirmed recipients for Issue #26; match the full Feishu profile name, never a nickname suffix.
@@ -353,38 +355,46 @@ class NotificationsAuditService:
             )
             return int(result.rowcount or 0)
 
-    def scan_due_reminders(
-        self, *, business_date: date, now: datetime | None = None
-    ) -> int:
+    def scan_due_reminders(self, *, business_date: date, now: datetime | None = None) -> int:
         created = 0
         current = now or utc_now()
         feishu_batches: dict[tuple[str, str], dict[str, Order]] = {}
         with self._session_factory() as session, session.begin():
-            orders = session.scalars(
-                select(Order)
+            shipped = (
+                select(
+                    QuantityLedger.order_assignment_id.label("assignment_id"),
+                    func.sum(QuantityLedger.quantity_delta).label("quantity"),
+                )
+                .group_by(QuantityLedger.order_assignment_id)
+                .subquery()
+            )
+            orders = session.execute(
+                select(Order, OrderAssignment.contract_ship_date)
+                .join(OrderLine, OrderLine.order_id == Order.order_id)
+                .join(OrderAssignment, OrderAssignment.order_line_id == OrderLine.order_line_id)
+                .outerjoin(shipped, shipped.c.assignment_id == OrderAssignment.order_assignment_id)
                 .where(
                     Order.lifecycle == "PUBLISHED",
                     Order.deleted_at.is_(None),
-                    Order.contract_ship_date.in_(
-                        [
-                            business_date + timedelta(days=10),
-                            business_date + timedelta(days=5),
-                            business_date + timedelta(days=3),
-                            business_date,
-                        ]
+                    OrderAssignment.contract_ship_date.in_(
+                        [business_date + timedelta(days=n) for n in (10, 5, 3, 0)]
                     ),
+                    OrderAssignment.assigned_quantity
+                    > OrderAssignment.initial_shipped_quantity
+                    + func.coalesce(shipped.c.quantity, 0),
                 )
-                .order_by(Order.order_no, Order.order_id)
+                .distinct()
+                .order_by(Order.order_no, Order.order_id, OrderAssignment.contract_ship_date)
             ).all()
-            for order in orders:
-                days = (order.contract_ship_date - business_date).days
+            for order, due_date in orders:
+                days = (due_date - business_date).days
                 node = "D0" if days == 0 else f"D-{days}"
                 title = (
                     f"订单 {order.order_no} 今日到期"
                     if days == 0
                     else f"订单 {order.order_no} 距合同出货还有 {days} 天"
                 )
-                summary = f"合同出货时间为 {order.contract_ship_date.isoformat()}，请及时跟进"
+                summary = f"合同出货时间为 {due_date.isoformat()}，请及时跟进"
                 admin_users = list(
                     session.scalars(
                         select(User)
@@ -393,9 +403,7 @@ class NotificationsAuditService:
                             User.is_enabled.is_(True),
                             or_(
                                 User.feishu_display_name == order.tracker,
-                                User.feishu_display_name.endswith(
-                                    f"&{order.tracker}"
-                                ),
+                                User.feishu_display_name.endswith(f"&{order.tracker}"),
                             ),
                         )
                         .order_by(User.user_id)
@@ -422,10 +430,8 @@ class NotificationsAuditService:
                     if user.user_id in seen_admins:
                         continue
                     seen_admins.add(user.user_id)
-                    feishu_batches.setdefault((user.user_id, node), {})[
-                        order.order_id
-                    ] = order
-                    dedupe_key = f"due:{order.order_id}:{node}"
+                    feishu_batches.setdefault((user.user_id, node), {})[order.order_id] = order
+                    dedupe_key = f"due:{order.order_id}:{due_date.isoformat()}:{node}"
                     if self._notification_exists(session, user.user_id, dedupe_key):
                         continue
                     session.add(
@@ -463,7 +469,13 @@ class NotificationsAuditService:
                         shipped_by_assignment.c.assignment_id
                         == OrderAssignment.order_assignment_id,
                     )
-                    .where(OrderLine.order_id == order.order_id)
+                    .where(
+                        OrderLine.order_id == order.order_id,
+                        OrderAssignment.contract_ship_date == due_date,
+                        OrderAssignment.assigned_quantity
+                        > OrderAssignment.initial_shipped_quantity
+                        + func.coalesce(shipped_by_assignment.c.system_quantity, 0),
+                    )
                     .group_by(OrderAssignment.factory_id)
                     .having(
                         func.sum(OrderAssignment.assigned_quantity)
@@ -484,12 +496,11 @@ class NotificationsAuditService:
                     .order_by(User.user_id)
                 ).all()
                 for user in factory_users:
-                    dedupe_key = f"due:{order.order_id}:{node}"
+                    dedupe_key = f"due:{order.order_id}:{due_date.isoformat()}:{node}"
                     if self._notification_exists(session, user.user_id, dedupe_key):
                         continue
                     target_path = (
-                        "/pages/factory-task-detail/factory-task-detail"
-                        f"?orderId={order.order_id}"
+                        f"/pages/factory-task-detail/factory-task-detail?orderId={order.order_id}"
                     )
                     session.add(
                         Notification(
@@ -527,15 +538,12 @@ class NotificationsAuditService:
                             target_id=order.order_id,
                             target_path=target_path,
                             dedupe_key=(
-                                f"delivery:due:{order.order_id}:{node}:{user.user_id}:wechat"
+                                f"delivery:due:{order.order_id}:{due_date.isoformat()}:{node}:{user.user_id}:wechat"
                             ),
                             available_at=current,
                             template_data={
                                 "character_string1": order.order_no,
-                                "thing5": (
-                                    "合同出货时间"
-                                    f"{order.contract_ship_date.isoformat()}"
-                                ),
+                                "thing5": (f"合同出货时间{due_date.isoformat()}"),
                                 "short_thing6": node,
                                 "time8": _wechat_time(current),
                             },
@@ -555,11 +563,12 @@ class NotificationsAuditService:
                         f"delivery:due:{business_date.isoformat()}:{node}:"
                         f"{recipient_id}:feishu:{page_number}"
                     )
-                    if session.scalar(
-                        select(OutboxMessage.id).where(
-                            OutboxMessage.dedupe_key == dedupe_key
+                    if (
+                        session.scalar(
+                            select(OutboxMessage.id).where(OutboxMessage.dedupe_key == dedupe_key)
                         )
-                    ) is not None:
+                        is not None
+                    ):
                         continue
                     title = f"合同出货提醒｜{node}"
                     if page_count > 1:
@@ -567,15 +576,12 @@ class NotificationsAuditService:
                     self._add_delivery(
                         session,
                         event_type="order.due_reminder",
-                        aggregate_type=(
-                            "order" if single_order is not None else "order_batch"
-                        ),
+                        aggregate_type=("order" if single_order is not None else "order_batch"),
                         aggregate_id=(
                             single_order.order_id
                             if single_order is not None
                             else (
-                                f"{business_date.isoformat()}:{node}:"
-                                f"{recipient_id}:{page_number}"
+                                f"{business_date.isoformat()}:{node}:{recipient_id}:{page_number}"
                             )
                         ),
                         source_event_id=None,
@@ -584,9 +590,7 @@ class NotificationsAuditService:
                         template_key="due_reminder",
                         title=title,
                         summary=f"今天有 {len(batch_orders)} 个订单需要跟进",
-                        target_type=(
-                            "order" if single_order is not None else "order_list"
-                        ),
+                        target_type=("order" if single_order is not None else "order_list"),
                         target_id=(
                             single_order.order_id
                             if single_order is not None
@@ -599,13 +603,17 @@ class NotificationsAuditService:
                         ),
                         dedupe_key=dedupe_key,
                         available_at=current,
-                        card_rows=self._due_card_rows(session, page_orders),
+                        card_rows=self._due_card_rows(
+                            session,
+                            page_orders,
+                            business_date + timedelta(days=0 if node == "D0" else int(node[2:])),
+                        ),
                     )
         return created
 
     @staticmethod
     def _due_card_rows(
-        session: Session, orders: list[Order]
+        session: Session, orders: list[Order], due_date: date
     ) -> tuple[dict[str, str], ...]:
         rows: list[dict[str, str]] = []
         for order in orders:
@@ -617,7 +625,21 @@ class NotificationsAuditService:
                     OrderAssignment.order_line_id == OrderLine.order_line_id,
                 )
                 .join(Factory, Factory.factory_id == OrderAssignment.factory_id)
-                .where(OrderLine.order_id == order.order_id)
+                .where(
+                    OrderLine.order_id == order.order_id,
+                    OrderAssignment.contract_ship_date == due_date,
+                    OrderAssignment.assigned_quantity
+                    > OrderAssignment.initial_shipped_quantity
+                    + (
+                        select(func.coalesce(func.sum(QuantityLedger.quantity_delta), 0))
+                        .where(
+                            QuantityLedger.order_assignment_id
+                            == OrderAssignment.order_assignment_id
+                        )
+                        .correlate(OrderAssignment)
+                        .scalar_subquery()
+                    ),
+                )
                 .order_by(OrderLine.order_line_id, Factory.factory_code)
             ).all()
             for product_name, factory_name in assignments:
@@ -629,7 +651,7 @@ class NotificationsAuditService:
                     "orderNo": order.order_no,
                     "productName": product_name,
                     "factoryNames": "、".join(factory_names),
-                    "contractShipDate": order.contract_ship_date.isoformat(),
+                    "contractShipDate": due_date.isoformat(),
                 }
                 for product_name, factory_names in product_factories.items()
             )

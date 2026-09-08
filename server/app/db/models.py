@@ -494,6 +494,7 @@ class OrderImportCandidate(Base):
     validation_state: Mapped[str] = mapped_column(String(32), nullable=False)
     validation_issues: Mapped[list[Any]] = mapped_column(JSON, nullable=False)
     issue_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    date_overrides: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     source_record_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     order_date: Mapped[date | None] = mapped_column(Date)
     tracker: Mapped[str | None] = mapped_column(String(32))
@@ -531,6 +532,8 @@ class OrderImportCandidateLine(Base):
     candidate_id: Mapped[str] = mapped_column(
         ForeignKey("order_import_candidates.candidate_id", ondelete="CASCADE"), nullable=False
     )
+    contract_ship_date: Mapped[date | None] = mapped_column(Date)
+    source_contract_ship_date: Mapped[date | None] = mapped_column(Date)
     source_record_pk: Mapped[int] = mapped_column(
         ForeignKey("order_import_source_records.source_record_pk", ondelete="RESTRICT"),
         nullable=False,
@@ -588,7 +591,7 @@ class Order(Base):
     source: Mapped[str] = mapped_column(String(32), nullable=False)
     order_date: Mapped[date | None] = mapped_column(Date)
     tracker: Mapped[str] = mapped_column(String(32), nullable=False)
-    contract_ship_date: Mapped[date] = mapped_column(Date, nullable=False)
+    contract_ship_date: Mapped[date | None] = mapped_column(Date)
     lifecycle: Mapped[str] = mapped_column(String(32), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     published_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
@@ -669,6 +672,7 @@ class OrderAssignment(Base):
     factory_id: Mapped[str] = mapped_column(
         ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
     )
+    contract_ship_date: Mapped[date | None] = mapped_column(Date)
     assigned_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     initial_shipped_quantity: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"

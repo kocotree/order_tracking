@@ -226,9 +226,7 @@ def test_factory_user_enable_enqueues_local_revalidation_job(
 
     with Session(test_database_engine) as session:
         job = session.scalar(
-            select(BackgroundJob).where(
-                BackgroundJob.job_type == "order_import_revalidate"
-            )
+            select(BackgroundJob).where(BackgroundJob.job_type == "order_import_revalidate")
         )
         assert job is not None
         assert job.payload["factoryNames"] == ["测试工厂"]
@@ -248,17 +246,18 @@ def test_factory_user_enable_enqueues_local_revalidation_job(
 
     with Session(test_database_engine) as session:
         candidate = session.scalar(
-            select(OrderImportCandidate).where(
-                OrderImportCandidate.order_no == "E-FACTORY-TRIGGER"
-            )
+            select(OrderImportCandidate).where(OrderImportCandidate.order_no == "E-FACTORY-TRIGGER")
         )
         assert candidate is not None
         assert candidate.validation_state == "READY"
-        assert session.scalar(
-            select(BackgroundJob.status).where(
-                BackgroundJob.job_type == "order_import_revalidate"
+        assert (
+            session.scalar(
+                select(BackgroundJob.status).where(
+                    BackgroundJob.job_type == "order_import_revalidate"
+                )
             )
-        ) == "completed"
+            == "completed"
+        )
 
     FactoryAccessService(sessions).set_factory_user_enabled(
         actor_id="admin-order-import",
@@ -270,9 +269,7 @@ def test_factory_user_enable_enqueues_local_revalidation_job(
     assert worker.run_once()
     with Session(test_database_engine) as session:
         candidate = session.scalar(
-            select(OrderImportCandidate).where(
-                OrderImportCandidate.order_no == "E-FACTORY-TRIGGER"
-            )
+            select(OrderImportCandidate).where(OrderImportCandidate.order_no == "E-FACTORY-TRIGGER")
         )
         assert candidate is not None
         assert candidate.validation_state == "INVALID"
@@ -324,9 +321,7 @@ def test_pending_candidate_revalidates_from_saved_snapshot_after_factory_user_en
     )
     with Session(test_database_engine) as session, session.begin():
         candidate = session.scalar(
-            select(OrderImportCandidate).where(
-                OrderImportCandidate.order_no == "E-REVALIDATE"
-            )
+            select(OrderImportCandidate).where(OrderImportCandidate.order_no == "E-REVALIDATE")
         )
         assert candidate is not None
         assert candidate.validation_issues == ["FACTORY_HAS_NO_ENABLED_USER"]
@@ -344,9 +339,7 @@ def test_pending_candidate_revalidates_from_saved_snapshot_after_factory_user_en
     assert result.updated_candidates == 1
     with Session(test_database_engine) as session:
         candidate = session.scalar(
-            select(OrderImportCandidate).where(
-                OrderImportCandidate.order_no == "E-REVALIDATE"
-            )
+            select(OrderImportCandidate).where(OrderImportCandidate.order_no == "E-REVALIDATE")
         )
         assert candidate is not None
         assert candidate.validation_state == "READY"
@@ -786,9 +779,7 @@ def test_worker_processes_each_page_without_replaying_previous_rows(
     _seed_import_dependencies(test_database_engine)
     sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
     service = OrderImportService(sessions)
-    run = service.create_or_reuse_run(
-        actor_id="admin-order-import", request_id="worker-pages-once"
-    )
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="worker-pages-once")
     rows = [
         SourceOrderRow(
             f"rec-worker-{index}",
@@ -830,9 +821,7 @@ def test_worker_processes_duplicate_record_only_once_per_run(
     _seed_import_dependencies(test_database_engine)
     sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
     service = OrderImportService(sessions)
-    run = service.create_or_reuse_run(
-        actor_id="admin-order-import", request_id="worker-duplicate"
-    )
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="worker-duplicate")
     first = SourceOrderRow(
         "rec-duplicate",
         "E110",
@@ -930,9 +919,7 @@ def test_successful_watermark_is_reused_and_failed_run_does_not_advance_it(
     try:
         handler.handlers()["order_import"]({"runId": failed_run.run_id})
     except Exception as error:
-        handler.terminal_failure_handlers()["order_import"](
-            {"runId": failed_run.run_id}, error
-        )
+        handler.terminal_failure_handlers()["order_import"]({"runId": failed_run.run_id}, error)
     else:
         raise AssertionError("the fake source should fail on its second page")
 
@@ -949,9 +936,9 @@ def test_successful_watermark_is_reused_and_failed_run_does_not_advance_it(
     retry_run = service.create_or_reuse_run(
         actor_id="admin-order-import", request_id="watermark-retry"
     )
-    OrderImportWorkerHandlers(service=service, source=retry_source).handlers()[
-        "order_import"
-    ]({"runId": retry_run.run_id})
+    OrderImportWorkerHandlers(service=service, source=retry_source).handlers()["order_import"](
+        {"runId": retry_run.run_id}
+    )
     retried = service.get_run(actor_id="admin-order-import", run_id=retry_run.run_id)
     assert retry_source.modified_since_requests == [first_modified]
     assert service.successful_watermark(retry_source.source_scope) == later_modified
@@ -989,9 +976,7 @@ def test_incremental_change_rebuilds_pending_candidate_from_saved_order_rows(
         )
         for index, quantity in ((1, 40), (2, 60))
     ]
-    first_run = service.create_or_reuse_run(
-        actor_id="admin-order-import", request_id="group-first"
-    )
+    first_run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="group-first")
     OrderImportWorkerHandlers(
         service=service, source=FakeFeishuOrderSource([original_rows])
     ).handlers()["order_import"]({"runId": first_run.run_id})
@@ -1016,9 +1001,12 @@ def test_incremental_change_rebuilds_pending_candidate_from_saved_order_rows(
         candidate = session.query(OrderImportCandidate).filter_by(order_no="E108").one()
         assert candidate.source_record_count == 2
         assert candidate.total_quantity == 110
-        assert session.query(OrderImportCandidateLine).filter_by(
-            candidate_id=candidate.candidate_id
-        ).count() == 2
+        assert (
+            session.query(OrderImportCandidateLine)
+            .filter_by(candidate_id=candidate.candidate_id)
+            .count()
+            == 2
+        )
 
     _clean_import_data(test_database_engine)
 
@@ -1056,10 +1044,7 @@ def test_incremental_change_does_not_overwrite_imported_source_snapshot(
     )
     with Session(test_database_engine) as session:
         candidate_id = (
-            session.query(OrderImportCandidate)
-            .filter_by(order_no="E109")
-            .one()
-            .candidate_id
+            session.query(OrderImportCandidate).filter_by(order_no="E109").one().candidate_id
         )
     order_id = service.confirm_candidate(
         actor_id="admin-order-import", candidate_id=candidate_id, request_id="frozen-confirm"
@@ -1082,9 +1067,9 @@ def test_incremental_change_does_not_overwrite_imported_source_snapshot(
     ).handlers()["order_import"]({"runId": second_run.run_id})
 
     with Session(test_database_engine) as session:
-        source_record = session.query(OrderImportSourceRecord).filter_by(
-            source_record_id="rec-frozen"
-        ).one()
+        source_record = (
+            session.query(OrderImportSourceRecord).filter_by(source_record_id="rec-frozen").one()
+        )
         order_line = session.query(OrderLine).filter_by(order_id=order_id).one()
         assert source_record.raw_fields == {"version": 1}
         assert source_record.source_modified_at == datetime(2026, 9, 4, 1, 0)
@@ -1126,3 +1111,254 @@ def test_worker_retries_before_releasing_failed_import_run(
     assert next_run.run_id != run.run_id
 
     _clean_import_data(test_database_engine)
+
+
+def test_detail_dates_convert_once_preserve_override_and_block_missing(
+    test_database_engine: Engine,
+) -> None:
+    from dataclasses import replace
+
+    import pytest
+
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    row = SourceOrderRow(
+        "date-row",
+        "438#",
+        "6970000000001",
+        "测试童帽",
+        "蓝色 / 120",
+        "童帽春夏",
+        "测试工厂",
+        100,
+        0,
+        100,
+        "松子",
+        None,
+        date(2026, 12, 31),
+        {},
+    )
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="date-run")
+    service.process_run(run_id=run.run_id, pages_read=1, rows=[row], source_scope="date-test")
+    candidates, _ = service.list_candidates(actor_id="admin-order-import")
+    candidate = candidates[0]
+    assert candidate.contract_ship_dates == [date(2026, 12, 27)]
+    assert candidate.lines[0].contract_ship_date == date(2026, 12, 27)
+    saved = service.save_candidate_date(
+        actor_id="admin-order-import",
+        candidate_id=candidate.candidate_id,
+        candidate_line_id=candidate.lines[0].candidate_line_id,
+        version=candidate.version,
+        contract_ship_date=date(2027, 1, 2),
+        request_id="save-date",
+    )
+    with pytest.raises(ValueError, match="version"):
+        service.save_candidate_date(
+            actor_id="admin-order-import",
+            candidate_id=candidate.candidate_id,
+            candidate_line_id=candidate.lines[0].candidate_line_id,
+            version=candidate.version,
+            contract_ship_date=date(2027, 1, 3),
+            request_id="stale-date",
+        )
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="date-run-2")
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[replace(row, contract_ship_date=None)],
+        source_scope="date-test",
+    )
+    refreshed = service.get_candidate(
+        actor_id="admin-order-import", candidate_id=saved.candidate_id
+    )
+    assert refreshed.lines[0].contract_ship_date == date(2027, 1, 2)
+    cleared = service.save_candidate_date(
+        actor_id="admin-order-import",
+        candidate_id=saved.candidate_id,
+        candidate_line_id=refreshed.lines[0].candidate_line_id,
+        version=refreshed.version,
+        contract_ship_date=None,
+        request_id="clear-date",
+    )
+    assert "INCONSISTENT_CONTRACT_SHIP_DATE" not in cleared.validation_issues
+    with pytest.raises(ValueError, match="合同出货时间"):
+        service.confirm_candidate(
+            actor_id="admin-order-import",
+            candidate_id=cleared.candidate_id,
+            request_id="confirm-empty",
+        )
+
+
+def test_same_sku_factory_conflicts_blank_then_import_one_assignment(
+    test_database_engine: Engine,
+) -> None:
+    from dataclasses import replace
+
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    row = SourceOrderRow(
+        "conflict-1",
+        "CONFLICT-DATE",
+        "6970000000001",
+        "测试童帽",
+        "蓝色 / 120",
+        "童帽春夏",
+        "测试工厂",
+        100,
+        0,
+        100,
+        "松子",
+        None,
+        date(2026, 12, 31),
+        {},
+    )
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="conflict-run")
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[row, replace(row, record_id="conflict-2", contract_ship_date=date(2027, 1, 1))],
+    )
+    candidate = service.list_candidates(actor_id="admin-order-import")[0][0]
+    assert candidate.validation_issues == []
+    assert all(line.contract_ship_date is None for line in candidate.lines)
+    saved = service.save_candidate_date(
+        actor_id="admin-order-import",
+        candidate_id=candidate.candidate_id,
+        candidate_line_id=candidate.lines[0].candidate_line_id,
+        version=candidate.version,
+        contract_ship_date=date(2027, 1, 2),
+        request_id="resolve-conflict",
+    )
+    assert all(line.contract_ship_date == date(2027, 1, 2) for line in saved.lines)
+    order_id = service.confirm_candidate(
+        actor_id="admin-order-import",
+        candidate_id=candidate.candidate_id,
+        version=saved.version,
+        request_id="import-conflict",
+    )
+    order = OrderService(sessions).get(order_id=order_id)
+    assert order.contract_ship_dates == [date(2027, 1, 2)]
+    assert len(order.lines) == 1 and len(order.lines[0].assignments) == 1
+    assert order.lines[0].assignments[0].assigned_quantity == 200
+    assert order.lines[0].assignments[0].contract_ship_date == date(2027, 1, 2)
+
+
+def test_candidate_date_api_authorization_version_and_import_lock(
+    test_database_engine: Engine, test_database_url: str
+) -> None:
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    row = SourceOrderRow(
+        "api-date",
+        "API-DATE",
+        "6970000000001",
+        "测试童帽",
+        "蓝色 / 120",
+        "童帽春夏",
+        "测试工厂",
+        100,
+        0,
+        100,
+        "松子",
+        None,
+        None,
+        {},
+    )
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="api-date-run")
+    service.process_run(run_id=run.run_id, pages_read=1, rows=[row])
+    candidate = service.list_candidates(actor_id="admin-order-import")[0][0]
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"date-api-token",
+        phone_encryption_secret=b"date-api-phone",
+        phone_digest_secret=b"date-api-digest",
+    )
+    admin = identity.issue_session(user_id="admin-order-import", terminal="web")
+    factory = identity.issue_session(user_id="factory-import-user", terminal="web")
+    url = (
+        f"/api/v1/admin/import-candidates/{candidate.candidate_id}/lines/"
+        f"{candidate.lines[0].candidate_line_id}/date"
+    )
+    payload = {"version": candidate.version, "contractShipDate": "2027-01-02"}
+    app = create_app(
+        database_url=test_database_url, identity_service=identity, order_import_service=service
+    )
+    with TestClient(app, base_url="https://testserver") as client:
+        assert client.patch(url, json=payload).status_code == 401
+        client.cookies.set("ot_web_session", factory.access_token)
+        assert (
+            client.patch(
+                url, json=payload, headers={"X-CSRF-Token": factory.csrf_token}
+            ).status_code
+            == 403
+        )
+        client.cookies.set("ot_web_session", admin.access_token)
+        assert client.patch(url, json=payload).status_code == 403
+        saved = client.patch(url, json=payload, headers={"X-CSRF-Token": admin.csrf_token})
+        assert saved.status_code == 200
+        assert saved.json()["contractShipDates"] == ["2027-01-02"]
+        assert (
+            client.patch(url, json=payload, headers={"X-CSRF-Token": admin.csrf_token}).status_code
+            == 409
+        )
+        confirm_url = f"/api/v1/admin/import-candidates/{candidate.candidate_id}/confirm"
+        headers = {
+            "X-CSRF-Token": admin.csrf_token,
+            "Idempotency-Key": "api-date-import",
+            "X-Candidate-Version": str(candidate.version),
+        }
+        assert client.post(confirm_url, headers=headers).status_code == 409
+        headers["X-Candidate-Version"] = str(saved.json()["version"])
+        assert client.post(confirm_url, headers=headers).status_code == 200
+        payload["version"] = saved.json()["version"]
+        assert (
+            client.patch(url, json=payload, headers={"X-CSRF-Token": admin.csrf_token}).status_code
+            == 409
+        )
+
+
+def test_contract_date_conversion_crosses_year_month_and_weekend(
+    test_database_engine: Engine,
+) -> None:
+    _seed_import_dependencies(test_database_engine)
+    service = OrderImportService(sessionmaker(test_database_engine, expire_on_commit=False))
+    cases = [
+        (date(2027, 1, 2), date(2026, 12, 29)),
+        (date(2026, 3, 1), date(2026, 2, 25)),
+        (date(2028, 3, 1), date(2028, 2, 26)),
+        (date(2026, 9, 7), date(2026, 9, 3)),
+    ]
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="calendar")
+    rows = [
+        SourceOrderRow(
+            f"calendar-{index}",
+            f"CAL-{index}",
+            "6970000000001",
+            "测试童帽",
+            "蓝色 / 120",
+            "童帽春夏",
+            "测试工厂",
+            100,
+            0,
+            100,
+            "松子",
+            None,
+            original,
+            {},
+        )
+        for index, (original, _) in enumerate(cases)
+    ]
+    service.process_run(run_id=run.run_id, pages_read=1, rows=rows)
+    candidates, count = service.list_candidates(
+        actor_id="admin-order-import", sort_by="orderNo", sort_order="asc"
+    )
+    assert count == 4
+    assert [item.lines[0].contract_ship_date for item in candidates] == [
+        expected for _, expected in cases
+    ]
+    assert [item.lines[0].source_contract_ship_date for item in candidates] == [
+        original for original, _ in cases
+    ]

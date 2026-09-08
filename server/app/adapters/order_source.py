@@ -163,7 +163,7 @@ class AppCredentialFeishuOrderSource:
             "下单数": {2, 19, 20},
             "跟单人员": {1, 3, 4, 19, 20},
             "下单时间": {5, 19, 20},
-            "生产计划出货时间（提前或者推迟 的时间）": {5, 19, 20},
+            "合同出货时间": {5, 19, 20},
             "出货总数": {2, 19, 20},
             "未出数量": {2, 19, 20},
             "产品编码": {1, 2, 19, 20},
@@ -195,7 +195,7 @@ class AppCredentialFeishuOrderSource:
                 "下单数",
                 "跟单人员",
                 "下单时间",
-                "生产计划出货时间（提前或者推迟 的时间）",
+                "合同出货时间",
                 "出货总数",
                 "未出数量",
                 "产品编码",
@@ -215,11 +215,36 @@ class AppCredentialFeishuOrderSource:
             pending_quantity=cls._integer(fields.get("未出数量")) or 0,
             tracker=cls._text(fields.get("跟单人员")),
             order_date=cls._date(fields.get("下单时间")),
-            contract_ship_date=cls._date(fields.get("生产计划出货时间（提前或者推迟 的时间）")),
+            contract_ship_date=cls._contract_date(fields.get("合同出货时间")),
             raw_fields=allowed_fields,
             source_detail_id=cls._text(fields.get("下单明细ID")),
             source_modified_at=cls._modified_at(item.get("last_modified_time")),
         )
+
+    @classmethod
+    def _contract_date(cls, value: Any) -> date | None:
+        # Formula/lookup responses may wrap a single date in value/list/text.
+        # Reject ambiguous multi-values before parsing; never truncate them.
+        if isinstance(value, dict):
+            return cls._contract_date(value.get("value", value.get("text")))
+        if isinstance(value, list):
+            return cls._contract_date(value[0]) if len(value) == 1 else None
+        if isinstance(value, bool) or value is None:
+            return None
+        try:
+            if isinstance(value, (int, float)):
+                return datetime.fromtimestamp(value / 1000, tz=UTC).astimezone(BUSINESS_TZ).date()
+            if isinstance(value, str):
+                text = value.strip()
+                if text.isdigit():
+                    return cls._contract_date(int(text))
+                if len(text) == 10:
+                    return date.fromisoformat(text)
+                parsed = datetime.fromisoformat(text)
+                return parsed.astimezone(BUSINESS_TZ).date() if parsed.tzinfo else parsed.date()
+        except (ValueError, OverflowError, OSError):
+            return None
+        return None
 
     @staticmethod
     def _modified_at(value: Any) -> datetime:

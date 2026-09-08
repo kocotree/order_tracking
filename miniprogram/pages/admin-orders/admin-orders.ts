@@ -180,8 +180,7 @@ Page({
           && (this.data.status === "all" || order.displayStatus === this.data.status)
           && (!this.data.factoryId || order.factoryProgress.some((factory) => factory.factoryId === this.data.factoryId))
           && (!this.data.tracker || order.tracker === this.data.tracker)
-          && (!this.data.shipDateFrom || order.contractShipDate >= this.data.shipDateFrom)
-          && (!this.data.shipDateTo || order.contractShipDate <= this.data.shipDateTo);
+          && (!(this.data.shipDateFrom || this.data.shipDateTo) || order.contractShipDates.some((value) => (!this.data.shipDateFrom || value >= this.data.shipDateFrom) && (!this.data.shipDateTo || value <= this.data.shipDateTo)));
         this.setData({ items: matches ? [this.toView(order)] : [] });
         return;
       }
@@ -203,7 +202,7 @@ Page({
       ...item,
       productSummary: orderProductSummary(item),
       factorySummary: orderFactorySummary(item),
-      contractShipDateText: formatContractShipDate(item.contractShipDate),
+      contractShipDateText: formatContractShipDate(item.contractShipDates),
       totalText: formatQuantity(item.totalQuantity),
       shippedText: formatQuantity(item.shippedQuantity),
       pendingText: formatQuantity(item.pendingQuantity),

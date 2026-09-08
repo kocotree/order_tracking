@@ -15,6 +15,7 @@ from app.db.models import (
     Factory,
     Order,
     OrderAssignment,
+    OrderLine,
     OutboxMessage,
     Product,
     ProductVariant,
@@ -94,12 +95,17 @@ def _publish_order(test_database_engine: Engine, *, factory_user_ids: list[str])
         order_no="S11-001",
         order_date=date(2026, 8, 27),
         tracker="松子",
-        contract_ship_date=date(2026, 9, 10),
         lines=[
             DraftLineInput(
                 variant_id="variant-notice",
                 order_quantity=100,
-                assignments=[AssignmentInput(factory_id="factory-notice-a", quantity=100)],
+                assignments=[
+                    AssignmentInput(
+                        factory_id="factory-notice-a",
+                        quantity=100,
+                        contract_ship_date=date(2026, 9, 10),
+                    )
+                ],
             )
         ],
         request_id="s11-create-order",
@@ -799,6 +805,8 @@ def test_unexpected_delivery_failure_is_safely_retried_and_stale_claim_is_recove
         delivery = session.query(OutboxMessage).filter_by(message_kind="delivery").one()
         assert delivery.status == "pending"
         assert delivery.locked_by is None
+
+
 def test_d3_scan_notifies_tracker_factory_users_and_two_special_admins_once(
     test_database_engine: Engine,
 ) -> None:
@@ -903,14 +911,14 @@ def test_d3_scan_notifies_tracker_factory_users_and_two_special_admins_once(
         with sessions() as session, session.begin():
             order = session.get(Order, draft.order_id)
             assert order is not None
-            order.contract_ship_date = contract_date
+            session.query(OrderAssignment).update({"contract_ship_date": contract_date})
         assert service.scan_due_reminders(business_date=business_date) == 2
         assert service.scan_due_reminders(business_date=business_date) == 0
 
     with sessions() as session, session.begin():
         order = session.get(Order, draft.order_id)
         assert order is not None
-        order.contract_ship_date = date(2026, 9, 2)
+        session.query(OrderAssignment).update({"contract_ship_date": date(2026, 9, 2)})
     assert service.scan_due_reminders(business_date=date(2026, 9, 3)) == 0
 
 
@@ -971,21 +979,32 @@ def test_due_scan_groups_orders_products_and_factories_into_one_feishu_delivery(
         order_no="S11-002",
         order_date=date(2026, 8, 27),
         tracker="松子",
-        contract_ship_date=date(2026, 9, 10),
         lines=[
             DraftLineInput(
                 variant_id="variant-notice",
                 order_quantity=100,
                 assignments=[
-                    AssignmentInput(factory_id="factory-notice-a", quantity=40),
-                    AssignmentInput(factory_id="factory-notice-b", quantity=60),
+                    AssignmentInput(
+                        factory_id="factory-notice-a",
+                        quantity=40,
+                        contract_ship_date=date(2026, 9, 10),
+                    ),
+                    AssignmentInput(
+                        factory_id="factory-notice-b",
+                        quantity=60,
+                        contract_ship_date=date(2026, 9, 10),
+                    ),
                 ],
             ),
             DraftLineInput(
                 variant_id="variant-notice-b",
                 order_quantity=80,
                 assignments=[
-                    AssignmentInput(factory_id="factory-notice-b", quantity=80)
+                    AssignmentInput(
+                        factory_id="factory-notice-b",
+                        quantity=80,
+                        contract_ship_date=date(2026, 9, 10),
+                    )
                 ],
             ),
         ],
@@ -1060,13 +1079,16 @@ def test_due_scan_splits_more_than_ten_orders_without_dropping_card_rows(
             order_no=f"S11-{index:03d}",
             order_date=date(2026, 8, 27),
             tracker="松子",
-            contract_ship_date=date(2026, 9, 10),
             lines=[
                 DraftLineInput(
                     variant_id="variant-notice",
                     order_quantity=100,
                     assignments=[
-                        AssignmentInput(factory_id="factory-notice-a", quantity=100)
+                        AssignmentInput(
+                            factory_id="factory-notice-a",
+                            quantity=100,
+                            contract_ship_date=date(2026, 9, 10),
+                        )
                     ],
                 )
             ],
@@ -1140,7 +1162,7 @@ def test_due_scan_stops_and_restores_for_fully_shipped_factory_and_completed_ord
         )
 
     service = NotificationsAuditService(sessions)
-    assert service.scan_due_reminders(business_date=date(2026, 9, 7)) == 1
+    assert service.scan_due_reminders(business_date=date(2026, 9, 7)) == 0
     assert service.list_notifications(
         user_id="factory-notice-user", unread_only=False, page=1, page_size=10
     ).total == 0
@@ -1157,7 +1179,7 @@ def test_due_scan_stops_and_restores_for_fully_shipped_factory_and_completed_ord
                 created_at=datetime(2026, 9, 7, 9, 0),
             )
         )
-    assert service.scan_due_reminders(business_date=date(2026, 9, 7)) == 1
+    assert service.scan_due_reminders(business_date=date(2026, 9, 7)) == 2
     assert service.list_notifications(
         user_id="factory-notice-user", unread_only=False, page=1, page_size=10
     ).total == 1
@@ -1166,7 +1188,7 @@ def test_due_scan_stops_and_restores_for_fully_shipped_factory_and_completed_ord
         order = session.get(Order, draft.order_id)
         assert order is not None
         order.lifecycle = "COMPLETED"
-        order.contract_ship_date = date(2026, 9, 12)
+        session.query(OrderAssignment).update({"contract_ship_date": date(2026, 9, 12)})
     assert service.scan_due_reminders(business_date=date(2026, 9, 7)) == 0
 
     with sessions() as session, session.begin():
@@ -1315,7 +1337,6 @@ def test_shipment_and_withdrawal_notify_only_involved_order_trackers(
     test_database_engine: Engine,
     tracker_state: str,
 ) -> None:
-    from app.db.models import OrderLine
     from app.modules.shipments.service import DraftBoxInput, DraftItemInput, ShipmentService
 
     sessions, orders, first = _publish_order(
@@ -1352,12 +1373,17 @@ def test_shipment_and_withdrawal_notify_only_involved_order_trackers(
             order_no=f"TRACK-{index}",
             order_date=date(2026, 8, 27),
             tracker=tracker,
-            contract_ship_date=date(2026, 9, 10),
             lines=[
                 DraftLineInput(
                     variant_id="variant-notice",
                     order_quantity=100,
-                    assignments=[AssignmentInput(factory_id="factory-notice-a", quantity=100)],
+                    assignments=[
+                        AssignmentInput(
+                            factory_id="factory-notice-a",
+                            quantity=100,
+                            contract_ship_date=date(2026, 9, 10),
+                        )
+                    ],
                 )
             ],
             request_id=f"tracker-create-{index}",
@@ -1451,3 +1477,78 @@ def test_shipment_and_withdrawal_notify_only_involved_order_trackers(
         assert service.list_notifications(
             user_id="unrelated-tracker", unread_only=False, page=1, page_size=10
         ).total == (1 if template == "admin_shipment" else 2)
+
+
+def test_reminders_separate_dates_and_only_include_unfulfilled_matching_lines(
+    test_database_engine: Engine,
+) -> None:
+    sessions, order_service, original = _publish_order(
+        test_database_engine, factory_user_ids=["factory-notice-user"]
+    )
+    with sessions() as session, session.begin():
+        session.get(Order, original.order_id).lifecycle = "COMPLETED"
+        session.add(
+            Factory(
+                factory_id="date-factory-b",
+                supplier_number="DATE-B",
+                factory_name="日期工厂乙",
+                factory_code="DB",
+                is_enabled=True,
+            )
+        )
+        session.flush()
+        session.add(
+            User(
+                user_id="date-user-b",
+                role="factory",
+                is_enabled=True,
+                feishu_display_name="乙用户",
+                factory_id="date-factory-b",
+                factory_position="owner",
+            )
+        )
+    draft = order_service.create_draft(
+        actor_id="admin-notice",
+        order_no="SPLIT-DATE",
+        tracker="松子",
+        order_date=date(2026, 9, 1),
+        lines=[
+            DraftLineInput(
+                "variant-notice",
+                100,
+                [
+                    AssignmentInput("factory-notice-a", 40, contract_ship_date=date(2026, 9, 10)),
+                    AssignmentInput("date-factory-b", 60, contract_ship_date=date(2026, 9, 12)),
+                ],
+            )
+        ],
+        request_id="split",
+    )
+    order_service.publish(
+        actor_id="admin-notice",
+        order_id=draft.order_id,
+        version=draft.version,
+        request_id="split-publish",
+        idempotency_key="split-publish",
+    )
+    service = NotificationsAuditService(sessions)
+    assert service.scan_due_reminders(business_date=date(2026, 9, 7)) == 4
+    assert service.scan_due_reminders(business_date=date(2026, 9, 7)) == 0
+    assert (
+        service.list_notifications(
+            user_id="admin-notice", unread_only=False, page=1, page_size=10
+        ).total
+        == 2
+    )
+    for user, due in [("factory-notice-user", "2026-09-10"), ("date-user-b", "2026-09-12")]:
+        notices = service.list_notifications(user_id=user, unread_only=False, page=1, page_size=10)
+        assert notices.total == 1 and due in notices.items[0].summary
+    with sessions() as session:
+        deliveries = (
+            session.query(OutboxMessage).filter_by(message_kind="delivery", channel="feishu").all()
+        )
+        assert len(deliveries) == 2
+        # Each delivery's card must contain only the factories sharing that date.
+        for delivery in deliveries:
+            payload = str(delivery.payload)
+            assert not ("通知工厂甲" in payload and "日期工厂乙" in payload)

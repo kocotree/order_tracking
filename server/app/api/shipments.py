@@ -191,7 +191,7 @@ class ShipmentCatalogItemResponse(ApiModel):
     assignment_id: int
     order_id: str
     order_no: str
-    contract_ship_date: date
+    contract_ship_date: date | None
     product_name: str
     properties_value: str
     assigned_quantity: int

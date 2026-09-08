@@ -138,6 +138,7 @@ def _seed_published_order(engine: Engine) -> None:
         session.flush()
         session.add(
             OrderAssignment(
+                contract_ship_date=date(2026, 9, 10),
                 order_line_id=line.order_line_id,
                 factory_id=FACTORY_ID,
                 assigned_quantity=100,
@@ -183,6 +184,7 @@ def _seed_second_published_order(engine: Engine) -> None:
         session.flush()
         session.add(
             OrderAssignment(
+                contract_ship_date=date(2026, 9, 11),
                 order_line_id=line.order_line_id,
                 factory_id=FACTORY_ID,
                 assigned_quantity=30,

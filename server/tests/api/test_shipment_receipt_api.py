@@ -452,12 +452,15 @@ def test_mixed_box_same_sku_keeps_each_orders_difference(
         order_no="RECEIPT-B",
         order_date=date(2026, 9, 7),
         tracker="松子",
-        contract_ship_date=date(2026, 9, 10),
         lines=[
             DraftLineInput(
                 variant_id=VARIANT_ID,
                 order_quantity=50,
-                assignments=[AssignmentInput(factory_id=FACTORY_IDS[0], quantity=50)],
+                assignments=[
+                    AssignmentInput(
+                        factory_id=FACTORY_IDS[0], quantity=50, contract_ship_date=date(2026, 9, 10)
+                    )
+                ],
             )
         ],
         request_id="receipt-second",

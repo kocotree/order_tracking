@@ -165,14 +165,17 @@ def test_admin_creates_and_publishes_complete_multi_factory_draft(
         order_no=" e81 ",
         order_date=date(2026, 8, 21),
         tracker="松子",
-        contract_ship_date=date(2026, 8, 30),
         lines=[
             DraftLineInput(
                 variant_id=variant_id,
                 order_quantity=100,
                 assignments=[
-                    AssignmentInput(factory_id=factory_a_id, quantity=40),
-                    AssignmentInput(factory_id=factory_b_id, quantity=60),
+                    AssignmentInput(
+                        factory_id=factory_a_id, quantity=40, contract_ship_date=date(2026, 8, 30)
+                    ),
+                    AssignmentInput(
+                        factory_id=factory_b_id, quantity=60, contract_ship_date=date(2026, 8, 30)
+                    ),
                 ],
             )
         ],
@@ -222,8 +225,13 @@ def test_draft_edit_preserves_initial_shipped_baseline_and_rejects_lower_quantit
         order_no="E-BASELINE",
         order_date=date(2026, 8, 21),
         tracker="松子",
-        contract_ship_date=date(2026, 8, 30),
-        lines=[DraftLineInput(variant_id, 100, [AssignmentInput(factory_a_id, 100)])],
+        lines=[
+            DraftLineInput(
+                variant_id,
+                100,
+                [AssignmentInput(factory_a_id, 100, contract_ship_date=date(2026, 8, 30))],
+            )
+        ],
         request_id="baseline-create",
     )
     with Session(test_database_engine) as session, session.begin():
@@ -238,8 +246,13 @@ def test_draft_edit_preserves_initial_shipped_baseline_and_rejects_lower_quantit
         order_no="E-BASELINE",
         order_date=None,
         tracker="松子",
-        contract_ship_date=date(2026, 8, 30),
-        lines=[DraftLineInput(variant_id, 100, [AssignmentInput(factory_a_id, 100)])],
+        lines=[
+            DraftLineInput(
+                variant_id,
+                100,
+                [AssignmentInput(factory_a_id, 100, contract_ship_date=date(2026, 8, 30))],
+            )
+        ],
         request_id="baseline-preserve",
     )
     assert preserved.shipped_quantity == 40
@@ -254,8 +267,13 @@ def test_draft_edit_preserves_initial_shipped_baseline_and_rejects_lower_quantit
             order_no="E-BASELINE",
             order_date=None,
             tracker="松子",
-            contract_ship_date=date(2026, 8, 30),
-            lines=[DraftLineInput(variant_id, 30, [AssignmentInput(factory_a_id, 30)])],
+            lines=[
+                DraftLineInput(
+                    variant_id,
+                    30,
+                    [AssignmentInput(factory_a_id, 30, contract_ship_date=date(2026, 8, 30))],
+                )
+            ],
             request_id="baseline-lower",
         )
     _clean_order_tables(test_database_engine)
@@ -273,12 +291,11 @@ def test_publish_validation_rolls_back_without_outbox_or_state_change(
         order_no="S04-INCOMPLETE",
         order_date=date(2026, 8, 21),
         tracker="松子",
-        contract_ship_date=date(2026, 8, 30),
         lines=[
             DraftLineInput(
                 variant_id,
                 50,
-                [AssignmentInput(factory_a_id, 20)],
+                [AssignmentInput(factory_a_id, 20, contract_ship_date=date(2026, 8, 30))],
             )
         ],
         request_id="req-incomplete-create",
@@ -309,7 +326,6 @@ def test_draft_update_merges_duplicates_and_rejects_stale_version(
         order_no="S04-EDIT",
         order_date=date(2026, 8, 21),
         tracker="松子",
-        contract_ship_date=date(2026, 8, 30),
         lines=[DraftLineInput(variant_id, 10, [])],
         request_id="req-create-edit",
     )
@@ -321,17 +337,16 @@ def test_draft_update_merges_duplicates_and_rejects_stale_version(
         order_no=" s04-edit ",
         order_date=date(2026, 8, 22),
         tracker="橄榄",
-        contract_ship_date=date(2026, 9, 1),
         lines=[
             DraftLineInput(
                 variant_id,
                 20,
-                [AssignmentInput(factory_a_id, 8)],
+                [AssignmentInput(factory_a_id, 8, contract_ship_date=date(2026, 9, 1))],
             ),
             DraftLineInput(
                 variant_id,
                 30,
-                [AssignmentInput(factory_a_id, 12)],
+                [AssignmentInput(factory_a_id, 12, contract_ship_date=date(2026, 9, 1))],
             ),
         ],
         request_id="req-update-edit",
@@ -349,7 +364,6 @@ def test_draft_update_merges_duplicates_and_rejects_stale_version(
             order_no="S04-EDIT",
             order_date=date(2026, 8, 22),
             tracker="橄榄",
-            contract_ship_date=date(2026, 9, 1),
             lines=[DraftLineInput(variant_id, 50, [])],
             request_id="req-stale-edit",
         )
@@ -370,14 +384,13 @@ def test_withdraw_complete_reopen_delete_and_factory_visibility(
         order_no="S04-LIFE",
         order_date=date(2026, 8, 21),
         tracker="松子",
-        contract_ship_date=date(2026, 9, 1),
         lines=[
             DraftLineInput(
                 variant_id,
                 100,
                 [
-                    AssignmentInput(factory_a_id, 40),
-                    AssignmentInput(factory_b_id, 60),
+                    AssignmentInput(factory_a_id, 40, contract_ship_date=date(2026, 9, 1)),
+                    AssignmentInput(factory_b_id, 60, contract_ship_date=date(2026, 9, 1)),
                 ],
             )
         ],
@@ -449,7 +462,6 @@ def test_withdraw_complete_reopen_delete_and_factory_visibility(
             order_no="NO-PERMISSION",
             order_date=date(2026, 8, 21),
             tracker="松子",
-            contract_ship_date=date(2026, 8, 30),
             lines=[DraftLineInput(variant_id, 1, [])],
             request_id="req-no-permission",
         )
@@ -458,7 +470,7 @@ def test_withdraw_complete_reopen_delete_and_factory_visibility(
 def test_display_status_uses_east_eight_business_date(
     test_database_engine: Engine,
 ) -> None:
-    admin_id, _, _, variant_id = _seed_order_dependencies(test_database_engine)
+    admin_id, factory_a_id, _, variant_id = _seed_order_dependencies(test_database_engine)
     service = OrderService(
         sessionmaker(test_database_engine, class_=Session, expire_on_commit=False),
         clock=lambda: datetime(2026, 8, 21, 16, 30, tzinfo=UTC),
@@ -468,8 +480,13 @@ def test_display_status_uses_east_eight_business_date(
         order_no="S04-TIMEZONE",
         order_date=date(2026, 8, 21),
         tracker="松子",
-        contract_ship_date=date(2026, 8, 21),
-        lines=[DraftLineInput(variant_id, 1, [])],
+        lines=[
+            DraftLineInput(
+                variant_id,
+                1,
+                [AssignmentInput(factory_a_id, 1, contract_ship_date=date(2026, 8, 21))],
+            )
+        ],
         request_id="req-timezone",
     )
     assert draft.display_status == "草稿"
@@ -491,12 +508,11 @@ def test_execution_guard_blocks_withdraw_delete_and_complete(
         order_no="S04-GUARD",
         order_date=date(2026, 8, 21),
         tracker="松子",
-        contract_ship_date=date(2026, 8, 30),
         lines=[
             DraftLineInput(
                 variant_id,
                 10,
-                [AssignmentInput(factory_a_id, 10)],
+                [AssignmentInput(factory_a_id, 10, contract_ship_date=date(2026, 8, 30))],
             )
         ],
         request_id="req-guard-create",
@@ -536,3 +552,155 @@ def test_execution_guard_blocks_withdraw_delete_and_complete(
             idempotency_key="guard-complete",
         )
     assert setup_service.get(order_id=draft.order_id).lifecycle == "PUBLISHED"
+
+
+def test_assignment_dates_scope_overdue_filter_sort_and_published_lock(
+    test_database_engine: Engine,
+) -> None:
+    admin, factory_a, factory_b, variant = _seed_order_dependencies(test_database_engine)
+    service = OrderService(
+        sessionmaker(test_database_engine, expire_on_commit=False),
+        clock=lambda: datetime(2026, 9, 8, tzinfo=UTC),
+    )
+    draft = service.create_draft(
+        actor_id=admin,
+        order_no="MULTI-DATE",
+        order_date=date(2026, 9, 1),
+        tracker="松子",
+        lines=[
+            DraftLineInput(
+                variant,
+                100,
+                [
+                    AssignmentInput(factory_a, 40, contract_ship_date=date(2026, 9, 1)),
+                    AssignmentInput(factory_b, 60, contract_ship_date=date(2026, 9, 20)),
+                ],
+            )
+        ],
+        request_id="multi",
+    )
+    assert draft.contract_ship_dates == [date(2026, 9, 1), date(2026, 9, 20)]
+    order = service.publish(
+        actor_id=admin,
+        order_id=draft.order_id,
+        version=draft.version,
+        request_id="publish-multi",
+        idempotency_key="publish-multi",
+    )
+    assert order.display_status == "已逾期"
+    factory_view = service.get_visible(actor_id="factory-user-b", order_id=order.order_id)
+    assert factory_view.contract_ship_dates == [date(2026, 9, 20)]
+    assert factory_view.display_status == "未完成"
+    visible, count = service.list_visible(actor_id="factory-user-b", status="已逾期")
+    assert count == 0 and visible == []
+    _, count = service.list_visible(
+        actor_id=admin, ship_date_from=date(2026, 9, 10), ship_date_to=date(2026, 9, 21)
+    )
+    assert count == 1
+    _, count = service.list_visible(
+        actor_id=admin, ship_date_from=date(2026, 9, 2), ship_date_to=date(2026, 9, 19)
+    )
+    assert count == 0  # range must match one actual date, not overlap the overall span
+    with pytest.raises(OrderConflict):
+        service.save_draft(
+            actor_id=admin,
+            order_id=order.order_id,
+            version=order.version,
+            order_no=order.order_no,
+            order_date=order.order_date,
+            tracker=order.tracker,
+            lines=[DraftLineInput(variant, 100, [])],
+            request_id="edit-published",
+        )
+    completed = service.complete(
+        actor_id=admin,
+        order_id=order.order_id,
+        request_id="complete-multi",
+        idempotency_key="complete-multi",
+    )
+    assert completed.display_status == "已完成"
+
+
+def test_fully_delivered_old_assignment_does_not_make_order_overdue(
+    test_database_engine: Engine,
+) -> None:
+    admin, factory_a, factory_b, variant = _seed_order_dependencies(test_database_engine)
+    service = OrderService(
+        sessionmaker(test_database_engine, expire_on_commit=False),
+        clock=lambda: datetime(2026, 9, 8, tzinfo=UTC),
+    )
+    draft = service.create_draft(
+        actor_id=admin,
+        order_no="DELIVERED-DATE",
+        order_date=date(2026, 9, 1),
+        tracker="松子",
+        lines=[
+            DraftLineInput(
+                variant,
+                100,
+                [
+                    AssignmentInput(
+                        factory_a,
+                        40,
+                        initial_shipped_quantity=40,
+                        contract_ship_date=date(2026, 9, 1),
+                    ),
+                    AssignmentInput(factory_b, 60, contract_ship_date=date(2026, 9, 20)),
+                ],
+            )
+        ],
+        request_id="delivered-date",
+    )
+    order = service.publish(
+        actor_id=admin,
+        order_id=draft.order_id,
+        version=draft.version,
+        request_id="publish-delivered",
+        idempotency_key="publish-delivered",
+    )
+    assert order.display_status == "未完成"
+
+
+def test_date_sort_uses_minimum_or_maximum_and_missing_last(test_database_engine: Engine) -> None:
+    admin, factory_a, factory_b, variant = _seed_order_dependencies(test_database_engine)
+    service = OrderService(sessionmaker(test_database_engine, expire_on_commit=False))
+    for name, dates in [
+        ("RANGE", [date(2026, 9, 1), date(2026, 9, 30)]),
+        ("MIDDLE", [date(2026, 9, 10), date(2026, 9, 20)]),
+        ("EMPTY", [None, None]),
+    ]:
+        service.create_draft(
+            actor_id=admin,
+            order_no=name,
+            order_date=date(2026, 9, 1),
+            tracker="松子",
+            lines=[
+                DraftLineInput(
+                    variant,
+                    100,
+                    [
+                        AssignmentInput(factory_a, 40, contract_ship_date=dates[0]),
+                        AssignmentInput(factory_b, 60, contract_ship_date=dates[1]),
+                    ],
+                )
+            ],
+            request_id=name,
+        )
+    for sort_by in ["shipDateAsc", "shipDateDesc", "contractShipDateAsc", "contractShipDateDesc"]:
+        items, count = service.list_visible(
+            actor_id=admin, sort_by=sort_by, include_drafts=True, page_size=1
+        )
+        assert count == 3 and items[0].order_no == "RANGE"
+        items, _ = service.list_visible(
+            actor_id=admin, sort_by=sort_by, include_drafts=True, page=3, page_size=1
+        )
+        assert items[0].order_no == "EMPTY"
+    empty = service.list_visible(actor_id=admin, keyword="EMPTY", include_drafts=True)[0][0]
+    with pytest.raises(OrderValidationError, match="合同出货时间"):
+        service.publish(
+            actor_id=admin,
+            order_id=empty.order_id,
+            version=empty.version,
+            request_id="blank",
+            idempotency_key="blank",
+        )

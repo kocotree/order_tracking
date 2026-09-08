@@ -13,7 +13,7 @@ function order(overrides: Partial<Order> = {}): Order {
     source: "manual",
     orderDate: "2026-08-20",
     tracker: "橄榄",
-    contractShipDate: "2026-08-25",
+    contractShipDates: ["2026-08-25"], contractShipDate: "2026-08-25",
     lifecycle: "PUBLISHED",
     displayStatus: "未完成",
     version: 1,

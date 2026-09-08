@@ -1,12 +1,13 @@
 import { returnFromNotificationDetail } from "../../modules/navigation";
 import { orderApi, type Order } from "../../api/orders";
-import { formatQuantity, orderProductSummary, statusTone } from "../../modules/orders/format";
+import { formatContractShipDate, formatQuantity, orderProductSummary, statusTone } from "../../modules/orders/format";
 import { isDevPreview, previewOrder } from "../../modules/dev-preview";
 import { notificationApi } from "../../api/notifications";
 import { notificationIdFrom } from "../../modules/notifications";
 
 type FactoryProduct = {
   index: number;
+  contractShipDateText: string;
   orderLineId: number;
   productName: string;
   propertiesValue: string;
@@ -25,6 +26,7 @@ Page({
   data: {
     order: null as Order | null,
     productSummary: "",
+    contractShipDateText: "",
     statusTone: "pending",
     totalText: "0",
     shippedText: "0",
@@ -41,6 +43,7 @@ Page({
         .filter((assignment) => assignment.factoryId === factory.factoryId)
         .map((assignment) => ({
           index: 0,
+          contractShipDateText: formatContractShipDate(assignment.contractShipDate),
           orderLineId: line.orderLineId,
           productName: line.productName,
           propertiesValue: line.propertiesValue,
@@ -57,6 +60,7 @@ Page({
     });
     this.setData({
       order,
+      contractShipDateText: formatContractShipDate(order.contractShipDates),
       productSummary: orderProductSummary(order),
       statusTone: statusTone(order.displayStatus),
       totalText: formatQuantity(order.totalQuantity),

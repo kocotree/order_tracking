@@ -472,7 +472,7 @@ class ContractService:
             "orderId": order.order_id,
             "orderNo": order.order_no,
             "orderDate": order.order_date.isoformat() if order.order_date else None,
-            "contractShipDate": order.contract_ship_date.isoformat(),
+            "contractShipDate": None,
             "factory": {
                 "factoryId": factory.factory_id,
                 "factoryCode": factory.factory_code,

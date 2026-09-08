@@ -211,6 +211,7 @@ def _seed(engine: Engine, *, initial_shipped_quantity: int = 0) -> int:
         session.add(line)
         session.flush()
         assignment = OrderAssignment(
+            contract_ship_date=date(2026, 9, 1),
             order_line_id=line.order_line_id,
             factory_id=FACTORY_IDS[0],
             assigned_quantity=40,
@@ -1403,6 +1404,7 @@ def test_admin_filters_shipments_by_actual_order_lines(
         session.add(line)
         session.flush()
         other = OrderAssignment(
+            contract_ship_date=date(2026, 9, 30),
             order_line_id=line.order_line_id,
             factory_id=FACTORY_IDS[0],
             assigned_quantity=40,

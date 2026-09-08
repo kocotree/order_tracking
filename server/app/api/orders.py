@@ -27,6 +27,7 @@ class ApiModel(BaseModel):
 
 
 class AssignmentWrite(ApiModel):
+    contract_ship_date: date | None = None
     factory_id: str = Field(min_length=1)
     quantity: StrictInt = Field(gt=0)
 
@@ -38,18 +39,18 @@ class DraftLineWrite(ApiModel):
 
 
 class DraftCreate(ApiModel):
+    model_config = ConfigDict(extra="forbid")
     order_no: str = Field(min_length=1, max_length=100)
     order_date: date
     tracker: Literal["烧麦", "松子", "橄榄", "大葱", "青椒"]
-    contract_ship_date: date
     lines: list[DraftLineWrite] = Field(min_length=1)
 
 
 class DraftUpdate(ApiModel):
+    model_config = ConfigDict(extra="forbid")
     order_no: str = Field(min_length=1, max_length=100)
     order_date: date | None = None
     tracker: Literal["烧麦", "松子", "橄榄", "大葱", "青椒"]
-    contract_ship_date: date
     lines: list[DraftLineWrite] = Field(min_length=1)
     version: StrictInt = Field(gt=0)
 
@@ -63,6 +64,7 @@ class ReopenWrite(ApiModel):
 
 
 class AssignmentResponse(ApiModel):
+    contract_ship_date: date | None
     assignment_id: int
     factory_id: str
     factory_name: str
@@ -103,12 +105,13 @@ class FactoryProgressResponse(ApiModel):
 
 
 class OrderResponse(ApiModel):
+    contract_ship_date: date | None
+    contract_ship_dates: list[date]
     order_id: str
     order_no: str
     source: str
     order_date: date | None
     tracker: str
-    contract_ship_date: date
     lifecycle: str
     display_status: str
     version: int
@@ -164,7 +167,11 @@ def _draft_lines(items: list[DraftLineWrite]) -> list[DraftLineInput]:
             variant_id=item.variant_id,
             order_quantity=item.order_quantity,
             assignments=[
-                AssignmentInput(factory_id=value.factory_id, quantity=value.quantity)
+                AssignmentInput(
+                    factory_id=value.factory_id,
+                    quantity=value.quantity,
+                    contract_ship_date=value.contract_ship_date,
+                )
                 for value in item.assignments
             ],
         )
@@ -233,7 +240,6 @@ def create_order_router(
             order_no=payload.order_no,
             order_date=payload.order_date,
             tracker=payload.tracker,
-            contract_ship_date=payload.contract_ship_date,
             lines=_draft_lines(payload.lines),
             request_id=request.state.request_id,
         )
@@ -259,7 +265,6 @@ def create_order_router(
             order_no=payload.order_no,
             order_date=payload.order_date,
             tracker=payload.tracker,
-            contract_ship_date=payload.contract_ship_date,
             lines=_draft_lines(payload.lines),
             request_id=request.state.request_id,
         )

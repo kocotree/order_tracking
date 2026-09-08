@@ -74,7 +74,7 @@
                 </td>
                 <td><span class="dashboard-tracker-tag">{{ item.tracker }}</span></td>
                 <td>{{ factorySummary(item) }}</td>
-                <td>{{ item.contractShipDate }}</td>
+                <td class="date-summary" :title="item.contractShipDates.join('、')">{{ item.contractShipDates.join("、") || "—" }}</td>
                 <td><div class="dashboard-progress-cell"><span><i :style="{ width: `${item.progressPercent}%` }"></i></span><em>{{ item.progressPercent }}%</em></div></td>
                 <td>{{ number(item.shippedQuantity) }} / {{ number(item.totalQuantity) }}</td>
                 <td><span class="order-status" :data-status="item.displayStatus">{{ item.displayStatus }}</span></td>
@@ -143,7 +143,7 @@ function sortValue(order: Order, key: SortKey): string | number {
     category: displayCategories(order).join("、"),
     tracker: order.tracker,
     factory: factorySummary(order),
-    contractShipDate: order.contractShipDate,
+    contractShipDate: (sortDirection.value === "desc" ? order.contractShipDates.at(-1) : order.contractShipDates[0]) ?? "",
     progressPercent: order.progressPercent,
     quantity: order.shippedQuantity,
     status: order.displayStatus,
@@ -160,6 +160,7 @@ const displayedOrders = computed(() => {
   if (!sortKey.value) return orders.slice(0, 10);
   const direction = sortDirection.value === "asc" ? 1 : -1;
   return orders.sort((left, right) => {
+    if (sortKey.value === "contractShipDate" && (!left.contractShipDates.length || !right.contractShipDates.length)) return Number(!left.contractShipDates.length) - Number(!right.contractShipDates.length);
     const leftValue = sortValue(left, sortKey.value as SortKey);
     const rightValue = sortValue(right, sortKey.value as SortKey);
     if (typeof leftValue === "number" && typeof rightValue === "number") return (leftValue - rightValue) * direction;

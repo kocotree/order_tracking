@@ -31,6 +31,8 @@ class ImportRunResponse(ApiModel):
 
 
 class CandidateLineResponse(ApiModel):
+    contract_ship_date: date | None
+    source_contract_ship_date: date | None
     candidate_line_id: int
     source_sku_id: str | None
     product_name: str | None
@@ -44,6 +46,8 @@ class CandidateLineResponse(ApiModel):
 
 
 class CandidateResponse(ApiModel):
+    version: int
+    contract_ship_dates: list[date]
     candidate_id: str
     order_no: str
     status: str
@@ -67,6 +71,11 @@ class CandidateListResponse(ApiModel):
     page: int
     page_size: int
     request_id: str
+
+
+class CandidateDateWrite(ApiModel):
+    version: int = Field(gt=0, strict=True)
+    contract_ship_date: date | None
 
 
 class BatchConfirmWrite(ApiModel):
@@ -235,6 +244,33 @@ def create_order_import_router(
         except ValueError as error:
             raise HTTPException(status_code=404) from error
 
+    @router.patch(
+        "/import-candidates/{candidate_id}/lines/{candidate_line_id}/date",
+        response_model=CandidateResponse,
+    )
+    def save_candidate_date(
+        candidate_id: str,
+        candidate_line_id: int,
+        payload: CandidateDateWrite,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> CandidateResponse:
+        actor = admin(ot_web_session, x_csrf_token, write=True)
+        try:
+            return _candidate_response(
+                service.save_candidate_date(
+                    actor_id=actor.user_id,
+                    candidate_id=candidate_id,
+                    candidate_line_id=candidate_line_id,
+                    version=payload.version,
+                    contract_ship_date=payload.contract_ship_date,
+                    request_id=request.state.request_id,
+                )
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
     @router.delete("/import-candidates/{candidate_id}", status_code=204)
     def exclude_candidate(
         candidate_id: str,
@@ -259,6 +295,7 @@ def create_order_import_router(
     def confirm_candidate(
         candidate_id: str,
         request: Request,
+        x_candidate_version: int | None = Header(default=None),
         idempotency_key: str = Header(alias="Idempotency-Key"),
         ot_web_session: str | None = Cookie(default=None),
         x_csrf_token: str | None = Header(default=None),
@@ -269,6 +306,7 @@ def create_order_import_router(
             order_id = service.confirm_candidate(
                 actor_id=actor.user_id,
                 candidate_id=candidate_id,
+                version=x_candidate_version,
                 request_id=request.state.request_id,
             )
         except ValueError as error:

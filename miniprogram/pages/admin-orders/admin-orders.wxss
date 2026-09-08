@@ -403,3 +403,5 @@
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+
+.mini-due-value { flex: 1; min-width: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }

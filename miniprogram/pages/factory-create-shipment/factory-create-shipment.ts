@@ -133,7 +133,7 @@ Page({
     const specOptions = specNames.map((name) => productCatalog.find((item) => item.propertiesValue === name)!).filter(Boolean);
     const orderOptions = productCatalog
       .filter((item) => item.propertiesValue === specName)
-      .map((item) => ({ ...item, orderLabel: `${item.orderNo} · 合同出货时间 ${item.contractShipDate}` }));
+      .map((item) => ({ ...item, orderLabel: `${item.orderNo} · 合同出货时间 ${item.contractShipDate || "—"}` }));
     const orderIndex = Math.min(this.data.orderIndex, Math.max(orderOptions.length - 1, 0));
     const selectedCatalog = orderOptions[orderIndex] || null;
     const selectedPackedQuantity = selectedCatalog

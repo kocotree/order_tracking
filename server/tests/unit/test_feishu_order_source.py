@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Any
 
+import pytest
+
 import app.adapters.order_source as order_source_module
 from app.adapters.order_source import (
     AppCredentialFeishuOrderSource,
@@ -45,7 +47,7 @@ class _Client:
                 "下单数": 2,
                 "跟单人员": 4,
                 "下单时间": 5,
-                "生产计划出货时间（提前或者推迟 的时间）": 5,
+                "合同出货时间": 20,
                 "出货总数": 20,
                 "未出数量": 20,
                 "产品编码": 2,
@@ -155,3 +157,48 @@ def test_feishu_order_source_uses_safe_modified_day_overlap(monkeypatch: Any) ->
         "page_size": 500,
         "automatic_fields": "true",
     }
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ({"type": 5, "value": [1798646400000]}, "2026-12-31"),
+        ([{"text": "2026-12-31 00:00"}], "2026-12-31"),
+        ("2026-12-30T16:00:00Z", "2026-12-31"),
+        ({"value": ["2026-09-01", "2026-09-04"]}, None),
+        ("2026-09-01、2026-09-04", None),
+        ("2026-09-01,2026-09-04", None),
+        (None, None),
+        (True, None),
+        ("invalid", None),
+    ],
+)
+def test_source_reads_contract_formula_without_plan_date(
+    monkeypatch: Any, value: Any, expected: str | None
+) -> None:
+    from datetime import date
+
+    client = _Client()
+    original_get = client.get
+
+    def get(path: str, **kwargs: object) -> _Response:
+        response = original_get(path, **kwargs)
+        if path.endswith("/records"):
+            response.json()["data"]["items"][0]["fields"].update(
+                {
+                    "合同出货时间": value,
+                    "生产计划出货时间（提前或者推迟 的时间）": None,
+                }
+            )
+        return response
+
+    client.get = get
+    monkeypatch.setattr(order_source_module.httpx, "Client", lambda **_kwargs: client)
+    source = AppCredentialFeishuOrderSource(
+        FeishuOrderSourceConfig(
+            app_id="test", app_secret="test", app_token="test", table_id="test", view_id="test"
+        )
+    )
+    row = list(source.read_pages())[0][0]
+    assert row.contract_ship_date == (date.fromisoformat(expected) if expected else None)
+    assert "合同出货时间" in row.raw_fields

@@ -12,6 +12,7 @@ vi.mock("vue-router", () => ({
 }));
 
 const candidate = {
+  version: 1,
   candidateId: "candidate-1",
   orderNo: "E100",
   status: "PENDING",
@@ -19,13 +20,13 @@ const candidate = {
   validationIssues: [],
   orderDate: "2026-08-22",
   tracker: "松子",
-  contractShipDate: "2026-08-30",
+  contractShipDates: ["2026-08-30"], contractShipDate: "2026-08-30",
   category: "帽子",
   totalQuantity: 100,
   shippedQuantity: 0,
   pendingQuantity: 100,
   importedOrderId: null,
-  lines: [{ candidateLineId: 1, sourceSkuId: "6970000000001", productName: "测试童帽", propertiesValue: "蓝色 / 120", category: "童帽春夏", factoryName: "测试工厂", orderQuantity: 100, shippedQuantity: 0, pendingQuantity: 100, validationIssues: [] }],
+  lines: [{ candidateLineId: 1, contractShipDate: "2026-08-30", sourceContractShipDate: "2026-09-03", sourceSkuId: "6970000000001", productName: "测试童帽", propertiesValue: "蓝色 / 120", category: "童帽春夏", factoryName: "测试工厂", orderQuantity: 100, shippedQuantity: 0, pendingQuantity: 100, validationIssues: [] }],
   updatedAt: "2026-08-22T09:00:00",
 } satisfies ImportCandidate;
 
@@ -47,10 +48,10 @@ describe("pending order import detail page", () => {
     });
     await flushPromises();
     const productTable = wrapper.get(".pending-import-detail-table");
-    expect(productTable.findAll("thead th")).toHaveLength(10);
+    expect(productTable.findAll("thead th")).toHaveLength(11);
     expect(productTable.findAll("thead th").map((cell) => cell.text())).not.toContain("图片");
     for (const row of productTable.findAll("tbody tr")) {
-      expect(row.findAll("td")).toHaveLength(10);
+      expect(row.findAll("td")).toHaveLength(11);
     }
 
 
@@ -73,8 +74,8 @@ describe("pending order import detail page", () => {
     expect(wrapper.text()).toContain("测试童帽");
     expect(wrapper.text()).toContain("通过");
     expect(wrapper.findAll(".detail-summary-grid > div")).toHaveLength(6);
-    expect(wrapper.findAll(".pending-import-detail-table th")).toHaveLength(10);
-    expect(wrapper.findAll(".data-grid-sort-button")).toHaveLength(9);
+    expect(wrapper.findAll(".pending-import-detail-table th")).toHaveLength(11);
+    expect(wrapper.findAll(".data-grid-sort-button")).toHaveLength(10);
     expect(wrapper.find(".category-tag").text()).toBe("帽子");
     expect(wrapper.find(".tracker-tag").text()).toBe("松子");
     expect(wrapper.find(".product-thumb").exists()).toBe(false);
@@ -87,10 +88,41 @@ describe("pending order import detail page", () => {
     await wrapper.get(".detail-confirm-dialog .detail-primary-button").trigger("click");
     await flushPromises();
 
-    expect(confirm).toHaveBeenCalledWith("candidate-1");
+    expect(confirm).toHaveBeenCalledWith("candidate-1", 1);
     expect(router.push).toHaveBeenCalledWith({
       path: "/orders/import",
       query: { imported: "E100" },
     });
   });
+});
+
+
+it("saves detail dates before importing and surfaces failures", async () => {
+  vi.spyOn(orderImportApi, "get").mockResolvedValue(candidate);
+  const save = vi.spyOn(orderImportApi, "saveDate").mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValueOnce({ ...candidate, version: 2, contractShipDates: ["2026-09-12"], lines: [{ ...candidate.lines[0], contractShipDate: "2026-09-12" }] });
+  const wrapper = mount(OrderImportDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" } } } });
+  await flushPromises();
+  await wrapper.get('input[type="date"]').setValue("2026-09-11");
+  await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toContain("日期保存失败");
+  expect(wrapper.get('.detail-primary-button').attributes('disabled')).toBeDefined();
+  await wrapper.get('input[type="date"]').setValue("2026-09-12");
+  await flushPromises();
+  expect(save).toHaveBeenLastCalledWith("candidate-1", 1, 1, "2026-09-12");
+  expect(wrapper.get('.detail-due-date').text()).toBe("2026-09-12");
+  expect(wrapper.get('.detail-primary-button').attributes('disabled')).toBeUndefined();
+});
+
+it("keeps missing dates blank and locates the row when importing", async () => {
+  vi.spyOn(orderImportApi, "get").mockResolvedValue({ ...candidate, contractShipDates: [], lines: [{ ...candidate.lines[0], contractShipDate: null }] });
+  const confirm = vi.spyOn(orderImportApi, "confirm");
+  const wrapper = mount(OrderImportDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" } } } });
+  await flushPromises();
+  expect(wrapper.find('.validation-callout').exists()).toBe(false);
+  expect((wrapper.get('input[type="date"]').element as HTMLInputElement).value).toBe("");
+  await wrapper.get('.detail-primary-button').trigger('click');
+  expect(wrapper.get('[role="alert"]').text()).toContain("6970000000001");
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+  expect(confirm).not.toHaveBeenCalled();
 });

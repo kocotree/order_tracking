@@ -58,7 +58,7 @@
         </div>
         <footer class="order-list-footer">
           <span>每页展示 10 条工厂资料。</span>
-          <NumberPagination :page="page" :total="sortedFactories.length" @change="page = $event" />
+          <NumberPagination :page="page" :total="total" @change="changePage" />
         </footer>
       </section>
     </article>
@@ -108,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import { ApiError, identityApi, type Factory } from "@/api/client";
@@ -119,7 +119,10 @@ import TableSortButton from "@/components/TableSortButton.vue";
 type FactoryForm = { supplierNumber: string; factoryName: string; factoryCode: string; legalName: string; address: string; legalRepresentative: string; contacts: { name: string; phone: string }[] };
 
 const router = useRouter();
-const factories = ref<Factory[]>([]);
+const pageFactories = ref<Factory[]>([]);
+const total = ref(0);
+let requestVersion = 0;
+let appliedFilters = { keyword: "", contractStatus: "all", accessStatus: "all" };
 const keyword = ref("");
 const contractStatus = ref("all");
 const accessStatus = ref("all");
@@ -134,34 +137,30 @@ const selectedFactory = ref<Factory | null>(null);
 const saving = ref(false);
 const form = reactive<FactoryForm>(emptyForm());
 
-const sortedFactories = computed(() => {
-  if (!sortBy.value) return factories.value;
-  const rows = [...factories.value];
-  const direction = sortOrder.value === "asc" ? 1 : -1;
-  return rows.sort((left, right) => String(sortValue(left, sortBy.value)).localeCompare(String(sortValue(right, sortBy.value)), "zh-CN", { numeric: true }) * direction);
-});
-const pageFactories = computed(() => sortedFactories.value.slice((page.value - 1) * pageSize, page.value * pageSize));
-
 function emptyForm(): FactoryForm { return { supplierNumber: "", factoryName: "", factoryCode: "", legalName: "", address: "", legalRepresentative: "", contacts: [] }; }
 function resetForm(value: FactoryForm) { Object.assign(form, value); }
 function contactNames(factory: Factory) { return factory.contacts.map((contact) => contact.name).filter(Boolean).join("、") || "—"; }
 function contactPhones(factory: Factory) { return factory.contacts.map((contact) => contact.phone).filter(Boolean).join("、") || "—"; }
-function sortValue(factory: Factory, field: string) {
-  if (field === "contactName") return contactNames(factory);
-  if (field === "contactPhone") return contactPhones(factory);
-  if (field === "contractStatus") return factory.missingContractFields.length;
-  if (field === "connectedUsers") return factory.connectedUsers;
-  return factory[field as "supplierNumber" | "factoryName" | "legalName"] ?? "";
-}
-
-async function load() {
+async function load(targetPage = page.value) {
+  const version = ++requestVersion;
   errorMessage.value = "";
-  try { factories.value = (await identityApi.listFactories(keyword.value, contractStatus.value, accessStatus.value)).items; page.value = 1; }
-  catch (error) { errorMessage.value = error instanceof ApiError ? error.message : "工厂资料加载失败"; }
+  try {
+    const result = await identityApi.listFactoryPage({ ...appliedFilters, page: targetPage, pageSize, sortBy: sortBy.value, sortOrder: sortOrder.value });
+    if (version !== requestVersion) return;
+    const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+    if (targetPage > lastPage) { await load(lastPage); return; }
+    page.value = targetPage;
+    total.value = result.total;
+    pageFactories.value = result.items;
+  } catch (error) { if (version === requestVersion) errorMessage.value = error instanceof ApiError ? error.message : "工厂资料加载失败"; }
 }
-async function applyFilters() { await load(); }
-async function resetFilters() { keyword.value = ""; contractStatus.value = "all"; accessStatus.value = "all"; sortBy.value = ""; sortOrder.value = "asc"; await load(); }
-function sortField(field: string) { if (sortBy.value === field) sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc"; else { sortBy.value = field; sortOrder.value = "asc"; } page.value = 1; }
+async function applyFilters() {
+  appliedFilters = { keyword: keyword.value, contractStatus: contractStatus.value, accessStatus: accessStatus.value };
+  await load(1);
+}
+async function resetFilters() { keyword.value = ""; contractStatus.value = "all"; accessStatus.value = "all"; sortBy.value = ""; sortOrder.value = "asc"; await applyFilters(); }
+async function changePage(value: number) { await load(value); }
+async function sortField(field: string) { if (sortBy.value === field) sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc"; else { sortBy.value = field; sortOrder.value = "asc"; } await load(1); }
 function openCreate() { errorMessage.value = ""; editing.value = null; resetForm(emptyForm()); addContact(); editorOpen.value = true; }
 function openEdit(factory: Factory) { errorMessage.value = ""; editing.value = factory; resetForm({ supplierNumber: factory.supplierNumber, factoryName: factory.factoryName, factoryCode: factory.factoryCode, legalName: factory.legalName ?? "", address: factory.address ?? "", legalRepresentative: factory.legalRepresentative ?? "", contacts: factory.contacts.map(({ name, phone }) => ({ name, phone })) }); if (form.contacts.length === 0) addContact(); editorOpen.value = true; }
 function closeEditor() { editorOpen.value = false; editing.value = null; }
@@ -184,5 +183,5 @@ async function save() {
   finally { saving.value = false; }
 }
 
-onMounted(load);
+onMounted(() => load());
 </script>

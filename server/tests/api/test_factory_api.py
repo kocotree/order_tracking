@@ -87,6 +87,22 @@ def test_factory_api_creates_reviews_and_disables_factory_user(
         assert listed.status_code == 200
         assert listed.json()["total"] == 1
 
+        paged = admin_client.get("/api/v1/admin/factories/page", params={"keyword": "王超"})
+        assert paged.status_code == 200 and paged.json() == listed.json()
+        options = admin_client.get("/api/v1/admin/factories/options")
+        assert options.status_code == 200
+        assert options.json() == {
+            "items": [{"factoryId": factory_id, "supplierNumber": "A10", "factoryName": "禹帆"}],
+            "total": 1,
+        }
+        assert (
+            admin_client.get("/api/v1/admin/factories/page", params={"page": 0}).status_code == 422
+        )
+        assert (
+            admin_client.get("/api/v1/admin/factories/page", params={"sortBy": "bad"}).status_code
+            == 422
+        )
+
     with TestClient(app, base_url="https://testserver") as mini_client:
         login = mini_client.post("/api/v1/mini/auth/wechat", json={"code": "wx-login"})
         phone = mini_client.post(

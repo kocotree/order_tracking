@@ -234,6 +234,48 @@ def create_factory_router(
         items = [_factory_response(factory) for factory in factories]
         return FactoryListResponse(items=items, total=len(items))
 
+    @router.get("/admin/factories/page", response_model=FactoryListResponse, tags=["factory-admin"])
+    def factory_page(
+        keyword: str = Query(default=""),
+        contract_status: Annotated[str, Query(alias="contractStatus")] = "all",
+        access_status: Annotated[str, Query(alias="accessStatus")] = "all",
+        page: int = Query(default=1, ge=1),
+        page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 10,
+        sort_by: Annotated[str, Query(alias="sortBy")] = "",
+        sort_order: Annotated[str, Query(alias="sortOrder")] = "asc",
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> FactoryListResponse:
+        actor = web_user(ot_web_session)
+        items, total = service.page_factories(
+            actor_id=actor.user_id,
+            keyword=keyword,
+            contract_status=contract_status,
+            access_status=access_status,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+        return FactoryListResponse(items=[_factory_response(item) for item in items], total=total)
+
+    @router.get(
+        "/admin/factories/options",
+        response_model=FactoryOptionListResponse,
+        tags=["factory-admin"],
+    )
+    def admin_factory_options(
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> FactoryOptionListResponse:
+        actor = web_user(ot_web_session)
+        rows = service.list_admin_factory_options(actor_id=actor.user_id)
+        return FactoryOptionListResponse(
+            items=[
+                FactoryOptionResponse(factory_id=id_, supplier_number=number, factory_name=name)
+                for id_, number, name in rows
+            ],
+            total=len(rows),
+        )
+
     @router.post(
         "/admin/factories",
         response_model=FactoryResponse,

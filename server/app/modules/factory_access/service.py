@@ -461,8 +461,6 @@ class FactoryAccessService:
             return [
                 (row.factory_id, row.supplier_number, row.factory_name)
                 for row in session.execute(
-                    select(Factory.factory_id, Factory.supplier_number, Factory.factory_name)
-                    .order_by(Factory.supplier_number)
                     select(
                         Factory.factory_id, Factory.supplier_number, Factory.factory_name
                     ).order_by(Factory.supplier_number)

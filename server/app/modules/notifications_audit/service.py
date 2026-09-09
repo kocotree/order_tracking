@@ -177,6 +177,8 @@ class NotificationsAuditService:
                 self._consume_shipment_submitted(session, message)
             elif message.event_type == "shipment.void_requested":
                 self._consume_void_requested(session, message)
+            elif message.event_type == "shipment.withdrawn":
+                self._consume_withdrawn(session, message)
             elif message.event_type in {"shipment.void_approved", "shipment.void_rejected"}:
                 self._consume_void_result(session, message)
             elif message.event_type == "shipment.receipt_confirmed":
@@ -898,9 +900,10 @@ class NotificationsAuditService:
         shipment = session.get(Shipment, message.aggregate_id)
         if shipment is None:
             return
+        fact_id = str(message.payload.get("factShipmentId", shipment.shipment_id))
         lines = session.scalars(
             select(ShipmentLine)
-            .where(ShipmentLine.shipment_id == shipment.shipment_id)
+            .where(ShipmentLine.shipment_id == fact_id)
             .order_by(ShipmentLine.line_id)
         ).all()
         # ShipmentLine already totals boxes per assignment. Merge equivalent snapshots too.
@@ -928,7 +931,7 @@ class NotificationsAuditService:
         ) or "工厂"
         product_summary = _notification_products([line.product_name_snapshot for line in lines])
         recipients = self._admin_business_recipient_ids(session)
-        recipients.update(self._shipment_tracker_recipient_ids(session, shipment.shipment_id))
+        recipients.update(self._shipment_tracker_recipient_ids(session, fact_id))
         for user in self._enabled_admins(session):
             self._notify_user(
                 session,
@@ -945,6 +948,31 @@ class NotificationsAuditService:
                 template_data={"totalQuantity": str(total_quantity)},
                 card_rows=rows,
             )
+
+    def _consume_withdrawn(self, session: Session, message: OutboxMessage) -> None:
+        shipment = session.get(Shipment, message.aggregate_id)
+        if shipment is None:
+            return
+        factory = session.get(Factory, shipment.factory_id)
+        name = factory.factory_name if factory else "工厂"
+        actor = session.get(User, str(message.payload["actorId"]))
+        recipients = self._admin_business_recipient_ids(session)
+        recipients.update(self._shipment_tracker_recipient_ids(
+            session, str(message.payload.get("factShipmentId", shipment.shipment_id))))
+        for user in self._enabled_admins(session):
+            self._notify_user(session, message=message, user_id=user.user_id, category="SHIPMENT",
+                target_type="shipment", target_id=shipment.shipment_id,
+                title=f"{name}已撤回发货",
+                summary=f"发货单 {message.payload['shipmentNo']} 已撤回，"
+                        f"扣回{message.payload['quantity']}件；原因：{message.payload['reason']}",
+                target_path=f"/shipments/{shipment.shipment_id}",
+                channel="feishu" if user.user_id in recipients else None,
+                template_key="admin_withdrawn", template_data={
+                    "factoryName": name, "shipmentNo": str(message.payload["shipmentNo"]),
+                    "applicant": actor.feishu_display_name if actor else "工厂用户",
+                    "requestedAt": str(message.payload["occurredAt"]),
+                    "reason": str(message.payload["reason"]),
+                })
 
     def _consume_void_requested(self, session: Session, message: OutboxMessage) -> None:
         shipment = session.get(Shipment, message.aggregate_id)

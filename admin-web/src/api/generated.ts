@@ -637,40 +637,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/shipment-void-requests/{request_id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Approve Void Request */
-        post: operations["approve_void_request_api_v1_admin_shipment_void_requests__request_id__approve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/shipment-void-requests/{request_id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reject Void Request */
-        post: operations["reject_void_request_api_v1_admin_shipment_void_requests__request_id__reject_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/shipments": {
         parameters: {
             query?: never;
@@ -1167,7 +1133,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/factory/shipments/{shipment_id}/void-requests": {
+    "/api/v1/factory/shipments/{shipment_id}/withdraw": {
         parameters: {
             query?: never;
             header?: never;
@@ -1176,8 +1142,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Request Void */
-        post: operations["request_void_api_v1_factory_shipments__shipment_id__void_requests_post"];
+        /** Withdraw */
+        post: operations["withdraw_api_v1_factory_shipments__shipment_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/shipments/{shipment_id}/withdraw-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Withdrawal Draft */
+        get: operations["withdrawal_draft_api_v1_factory_shipments__shipment_id__withdraw_draft_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2631,6 +2614,11 @@ export interface components {
             /** Businessdate */
             businessDate?: string | null;
             /**
+             * Caneditwithdrawal
+             * @default false
+             */
+            canEditWithdrawal: boolean;
+            /**
              * Createdat
              * Format: date-time
              */
@@ -2659,6 +2647,13 @@ export interface components {
              * @default
              */
             note: string;
+            /**
+             * Operations
+             * @default []
+             */
+            operations: {
+                [key: string]: string;
+            }[];
             /** Preferredorderid */
             preferredOrderId: string | null;
             receipt?: components["schemas"]["ReceiptResponse"] | null;
@@ -2696,6 +2691,8 @@ export interface components {
              */
             version: number;
             voidRequest?: components["schemas"]["ShipmentVoidRequestResponse"] | null;
+            /** Withdrawaldraftid */
+            withdrawalDraftId?: string | null;
         };
         /** ShipmentFileResponse */
         ShipmentFileResponse: {
@@ -2705,6 +2702,8 @@ export interface components {
             contentUrl: string;
             /** Displayorder */
             displayOrder: number;
+            /** Draftversion */
+            draftVersion?: number | null;
             /** Fileid */
             fileId: number;
             /** Filename */
@@ -2895,19 +2894,6 @@ export interface components {
             /** Version */
             version: number;
         };
-        /** VoidRequestCreate */
-        VoidRequestCreate: {
-            /** Reason */
-            reason: string;
-        };
-        /** VoidReviewWrite */
-        VoidReviewWrite: {
-            /**
-             * Comment
-             * @default
-             */
-            comment: string;
-        };
         /** WechatLoginRequest */
         WechatLoginRequest: {
             /** Code */
@@ -2919,6 +2905,13 @@ export interface components {
             bindingToken: string;
             /** Phonecode */
             phoneCode: string;
+        };
+        /** WithdrawWrite */
+        WithdrawWrite: {
+            /** Reason */
+            reason: string;
+            /** Version */
+            version: number;
         };
         /** DraftCreate */
         app__api__orders__DraftCreate: {
@@ -4430,86 +4423,6 @@ export interface operations {
             };
         };
     };
-    approve_void_request_api_v1_admin_shipment_void_requests__request_id__approve_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-csrf-token"?: string | null;
-                "Idempotency-Key"?: string | null;
-            };
-            path: {
-                request_id: string;
-            };
-            cookie?: {
-                ot_web_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VoidReviewWrite"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ShipmentVoidRequestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reject_void_request_api_v1_admin_shipment_void_requests__request_id__reject_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-csrf-token"?: string | null;
-                "Idempotency-Key"?: string | null;
-            };
-            path: {
-                request_id: string;
-            };
-            cookie?: {
-                ot_web_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VoidReviewWrite"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ShipmentVoidRequestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     admin_shipments_api_v1_admin_shipments_get: {
         parameters: {
             query?: {
@@ -5480,7 +5393,9 @@ export interface operations {
     };
     upload_draft_file_api_v1_factory_shipments_drafts__shipment_id__files_post: {
         parameters: {
-            query?: never;
+            query?: {
+                version?: number | null;
+            };
             header?: {
                 authorization?: string | null;
                 "Idempotency-Key"?: string | null;
@@ -5518,7 +5433,9 @@ export interface operations {
     };
     remove_draft_file_api_v1_factory_shipments_drafts__shipment_id__files__file_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                version?: number | null;
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -5617,7 +5534,7 @@ export interface operations {
             };
         };
     };
-    request_void_api_v1_factory_shipments__shipment_id__void_requests_post: {
+    withdraw_api_v1_factory_shipments__shipment_id__withdraw_post: {
         parameters: {
             query?: never;
             header?: {
@@ -5631,17 +5548,50 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["VoidRequestCreate"];
+                "application/json": components["schemas"]["WithdrawWrite"];
             };
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ShipmentVoidRequestResponse"];
+                    "application/json": components["schemas"]["ShipmentDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdrawal_draft_api_v1_factory_shipments__shipment_id__withdraw_draft_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDraftResponse"];
                 };
             };
             /** @description Validation Error */

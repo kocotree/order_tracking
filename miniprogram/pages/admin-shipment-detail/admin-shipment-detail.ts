@@ -16,10 +16,12 @@ function buildLineGroups(lines: ShipmentLine[]): LineGroup[] {
 }
 
 Page({
+  shipmentId: "",
+  onShow() { if (this.shipmentId) void this.load(this.shipmentId); },
   data: { receiptAtText: "", shipment: null as Shipment | null, lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], proofs: [] as ProofView[], loading: true, notificationId:null as number|null },
   onLoad(options: Record<string, string | undefined>) {
     if (isDevPreview(options)) { this.showShipment(PREVIEW_SHIPMENT); return; }
-    this.setData({notificationId:notificationIdFrom(options)}); if (options.shipmentId) void this.load(options.shipmentId);
+    this.setData({notificationId:notificationIdFrom(options)}); if (options.shipmentId) this.shipmentId = options.shipmentId;
   },
   showShipment(shipment: Shipment) {
     this.setData({ shipment, receiptAtText: formatShanghaiDateTime(shipment.receipt?.confirmedAt), lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), proofs: shipment.files.map(file => ({ ...file, localPath: "", status: "loading" })), loading: false });

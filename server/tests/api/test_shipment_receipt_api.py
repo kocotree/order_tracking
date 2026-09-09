@@ -118,7 +118,7 @@ def test_confirm_applies_delta_once_and_preserves_original_export(
 
 
 @pytest.mark.parametrize("quantity", [0, 28, 35])
-def test_void_reverses_confirmed_quantity(
+def test_confirmed_quantity_cannot_be_autonomously_withdrawn(
     receipt_clients: tuple[TestClient, TestClient, str], quantity: int
 ) -> None:
     admin, factory, shipment_id = receipt_clients
@@ -130,18 +130,16 @@ def test_void_reverses_confirmed_quantity(
         admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]}).status_code == 200
     )
     assert admin.post(url + "/receipt/confirm", json={"version": 1}).status_code == 200
-    request = factory.post(
-        f"/api/v1/factory/shipments/{shipment_id}/void-requests",
-        json={"reason": "测试撤回"},
-        headers={"Idempotency-Key": "void-after-receipt"},
+    version = admin.get(url).json()["version"]
+    result = factory.post(
+        f"/api/v1/factory/shipments/{shipment_id}/withdraw",
+        json={"reason": "test", "version": version},
+        headers={"Idempotency-Key": "blocked-confirmed"},
     )
-    assert request.status_code == 201
-    result = admin.post(
-        "/api/v1/admin/shipment-void-requests/" + request.json()["requestId"] + "/approve", json={}
-    )
-    assert result.status_code == 200, result.text
+    assert result.status_code == 409
     assert (
-        factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"] == 5
+        factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"]
+        == quantity + 5
     )
 
 
@@ -242,7 +240,8 @@ def test_invalid_receipt_quantities_are_rejected(
 
 @pytest.mark.parametrize("blocked", ["return", "pending", "voided"])
 def test_inverse_state_blocks_receipt_writes(
-    receipt_clients: tuple[TestClient, TestClient, str], blocked: str
+    receipt_clients: tuple[TestClient, TestClient, str], blocked: str,
+    test_database_engine: Engine,
 ) -> None:
     admin, factory, shipment_id = receipt_clients
     url = f"/api/v1/admin/shipments/{shipment_id}"
@@ -257,22 +256,13 @@ def test_inverse_state_blocks_receipt_writes(
             == 201
         )
     else:
-        request = factory.post(
-            f"/api/v1/factory/shipments/{shipment_id}/void-requests",
-            json={"reason": "测试"},
-            headers={"Idempotency-Key": "blocked"},
-        )
-        assert request.status_code == 201
-        if blocked == "voided":
-            assert (
-                admin.post(
-                    "/api/v1/admin/shipment-void-requests/"
-                    + request.json()["requestId"]
-                    + "/approve",
-                    json={},
-                ).status_code
-                == 200
-            )
+        from sqlalchemy.orm import Session
+
+        from app.db.models import Shipment
+        with Session(test_database_engine) as session, session.begin():
+            stored = session.get(Shipment, shipment_id)
+            assert stored is not None
+            stored.status = "VOIDED" if blocked == "voided" else "VOID_PENDING"
     assert (
         admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]}).status_code == 409
     )

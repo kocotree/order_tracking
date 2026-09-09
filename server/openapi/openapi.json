@@ -3347,6 +3347,11 @@
             ],
             "title": "Businessdate"
           },
+          "canEditWithdrawal": {
+            "default": false,
+            "title": "Caneditwithdrawal",
+            "type": "boolean"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
@@ -3385,6 +3390,17 @@
             "default": "",
             "title": "Note",
             "type": "string"
+          },
+          "operations": {
+            "default": [],
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Operations",
+            "type": "array"
           },
           "preferredOrderId": {
             "anyOf": [
@@ -3478,6 +3494,17 @@
                 "type": "null"
               }
             ]
+          },
+          "withdrawalDraftId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawaldraftid"
           }
         },
         "required": [
@@ -3504,6 +3531,17 @@
           "displayOrder": {
             "title": "Displayorder",
             "type": "integer"
+          },
+          "draftVersion": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draftversion"
           },
           "fileId": {
             "title": "Fileid",
@@ -4070,33 +4108,6 @@
         "title": "VersionWrite",
         "type": "object"
       },
-      "VoidRequestCreate": {
-        "properties": {
-          "reason": {
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Reason",
-            "type": "string"
-          }
-        },
-        "required": [
-          "reason"
-        ],
-        "title": "VoidRequestCreate",
-        "type": "object"
-      },
-      "VoidReviewWrite": {
-        "properties": {
-          "comment": {
-            "default": "",
-            "maxLength": 500,
-            "title": "Comment",
-            "type": "string"
-          }
-        },
-        "title": "VoidReviewWrite",
-        "type": "object"
-      },
       "WechatLoginRequest": {
         "properties": {
           "code": {
@@ -4126,6 +4137,27 @@
           "phoneCode"
         ],
         "title": "WechatPhoneRequest",
+        "type": "object"
+      },
+      "WithdrawWrite": {
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reason",
+          "version"
+        ],
+        "title": "WithdrawWrite",
         "type": "object"
       },
       "app__api__orders__DraftCreate": {
@@ -7591,206 +7623,6 @@
         ]
       }
     },
-    "/api/v1/admin/shipment-void-requests/{request_id}/approve": {
-      "post": {
-        "operationId": "approve_void_request_api_v1_admin_shipment_void_requests__request_id__approve_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "request_id",
-            "required": true,
-            "schema": {
-              "title": "Request Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-csrf-token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Csrf-Token"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "ot_web_session",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Ot Web Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VoidReviewWrite"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ShipmentVoidRequestResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Approve Void Request",
-        "tags": [
-          "shipment-admin"
-        ]
-      }
-    },
-    "/api/v1/admin/shipment-void-requests/{request_id}/reject": {
-      "post": {
-        "operationId": "reject_void_request_api_v1_admin_shipment_void_requests__request_id__reject_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "request_id",
-            "required": true,
-            "schema": {
-              "title": "Request Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-csrf-token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Csrf-Token"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "ot_web_session",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Ot Web Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VoidReviewWrite"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ShipmentVoidRequestResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Reject Void Request",
-        "tags": [
-          "shipment-admin"
-        ]
-      }
-    },
     "/api/v1/admin/shipments": {
       "get": {
         "operationId": "admin_shipments_api_v1_admin_shipments_get",
@@ -9705,6 +9537,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -9795,6 +9644,23 @@
             "schema": {
               "title": "File Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
             }
           },
           {
@@ -9984,9 +9850,9 @@
         ]
       }
     },
-    "/api/v1/factory/shipments/{shipment_id}/void-requests": {
+    "/api/v1/factory/shipments/{shipment_id}/withdraw": {
       "post": {
-        "operationId": "request_void_api_v1_factory_shipments__shipment_id__void_requests_post",
+        "operationId": "withdraw_api_v1_factory_shipments__shipment_id__withdraw_post",
         "parameters": [
           {
             "in": "path",
@@ -10034,18 +9900,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/VoidRequestCreate"
+                "$ref": "#/components/schemas/WithdrawWrite"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ShipmentVoidRequestResponse"
+                  "$ref": "#/components/schemas/ShipmentDraftResponse"
                 }
               }
             },
@@ -10062,10 +9928,62 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Request Void",
-        "tags": [
-          "shipment-factory"
-        ]
+        "summary": "Withdraw"
+      }
+    },
+    "/api/v1/factory/shipments/{shipment_id}/withdraw-draft": {
+      "get": {
+        "operationId": "withdrawal_draft_api_v1_factory_shipments__shipment_id__withdraw_draft_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipment_id",
+            "required": true,
+            "schema": {
+              "title": "Shipment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdrawal Draft"
       }
     },
     "/api/v1/files/{file_id}/download": {

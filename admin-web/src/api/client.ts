@@ -64,6 +64,7 @@ export interface ShipmentFile {
 }
 
 export interface Shipment {
+  operations?: {action:string;reason:string;actorName:string;createdAt:string}[];
   receipt?: ShipmentReceipt | null;
   receiptDifferences?: ShipmentLine[];
   shipmentId: string;
@@ -377,14 +378,6 @@ export const shipmentApi = {
   download: (shipment: Shipment) => download(
     `/v1/admin/shipments/${encodeURIComponent(shipment.shipmentId)}/export`,
     `${shipment.factoryName || shipment.factoryId}_${shipment.businessDate || ""}_${shipment.shipmentNo || shipment.shipmentId}.xlsx`,
-  ),
-  approveVoid: (requestId: string, comment = "") => request<ShipmentVoidRequest>(
-    `/v1/admin/shipment-void-requests/${encodeURIComponent(requestId)}/approve`,
-    { method: "POST", headers: idempotencyHeaders(), body: JSON.stringify({ comment }) },
-  ),
-  rejectVoid: (requestId: string, comment: string) => request<ShipmentVoidRequest>(
-    `/v1/admin/shipment-void-requests/${encodeURIComponent(requestId)}/reject`,
-    { method: "POST", headers: idempotencyHeaders(), body: JSON.stringify({ comment }) },
   ),
   createReturn: (shipmentId: string, reason: string, lines: { shipmentLineId:number; quantity:number }[]) => request<ShipmentReturnEvent>(
     `/v1/admin/shipments/${encodeURIComponent(shipmentId)}/returns`,

@@ -43,8 +43,9 @@ Page({
     const previewMode = isDevPreview(options);
     this.setData({ previewMode });
     if (previewMode) { this.setItems(PREVIEW_FACTORY_SHIPMENTS); this.setRepairs(PREVIEW_ADMIN_REPAIRS); }
-    else { void this.load(); void this.loadRepairs(); }
+    else { void this.loadRepairs(); }
   },
+  onShow() { if (!this.data.previewMode) void this.load(); },
   selectTab(event: WechatMiniprogram.TouchEvent) {
     this.setData({ activeTab: String(event.currentTarget.dataset.tab), keyword: "", filterOpen: false }, () => {
       this.refreshFactoryOptions();

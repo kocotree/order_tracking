@@ -1,5 +1,5 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { repairApi, type Repair, type RepairPreview } from "@/api/client";
 import RepairCreatePage from "@/pages/RepairCreatePage.vue";
@@ -81,6 +81,8 @@ const preview: RepairPreview = {
 
 const shellStub = { template: "<div><slot /></div>" };
 
+beforeEach(() => { vi.spyOn(repairApi, "listFactoryOptions").mockResolvedValue({items:["宇婷","阿厂2"]}); });
+
 afterEach(() => {
   vi.restoreAllMocks();
   routerPush.mockReset();
@@ -88,7 +90,7 @@ afterEach(() => {
 
 describe("repair web prototype alignment", () => {
   it("renders the prototype list density and eight sortable business columns", async () => {
-    vi.spyOn(repairApi, "list").mockResolvedValue({ items: [repair], total: 1, page: 1, pageSize: 10 });
+    vi.spyOn(repairApi, "listSummaries").mockResolvedValue({ items: [repair], total: 1, page: 1, pageSize: 10 });
     const wrapper = mount(RepairsPage, { global: { stubs: { AdminShell: shellStub } } });
     await flushPromises();
 
@@ -107,7 +109,7 @@ describe("repair web prototype alignment", () => {
       repairedQuantity: 826,
       returnedQuantity: 826,
     };
-    vi.spyOn(repairApi, "list").mockResolvedValue({ items: [repair, completed], total: 2, page: 1, pageSize: 10 });
+    vi.spyOn(repairApi, "listSummaries").mockResolvedValueOnce({ items: [repair, completed], total: 2, page: 1, pageSize: 10 }).mockResolvedValue({items:[repair], total:1, page:1, pageSize:10});
     const archive = vi.spyOn(repairApi, "archive").mockResolvedValue({ repairId: completed.repairId, archivedAt: "2026-08-27T12:00:00", archivedBy: "admin-1" });
     const wrapper = mount(RepairsPage, { global: { stubs: { AdminShell: shellStub } } });
     await flushPromises();
@@ -199,12 +201,17 @@ describe("repair web prototype alignment", () => {
 
 it("loads repairs beyond the first hundred and returns from an emptied last page", async () => {
   const rows = Array.from({ length: 101 }, (_, index) => ({ ...repair, repairId: `r${index}`, repairNo: `FX${String(index).padStart(3, "0")}`, status: "COMPLETED" as const }));
-  const list = vi.spyOn(repairApi, "list").mockImplementation(async (params) => ({ items: rows.slice(((params?.page ?? 1) - 1) * 100, (params?.page ?? 1) * 100), total: rows.length, page: params?.page ?? 1, pageSize: 100 }));
-  vi.spyOn(repairApi, "archive").mockResolvedValue({} as never);
+  const list = vi.spyOn(repairApi, "listSummaries").mockImplementation(async (params) => {
+    const filtered = rows.filter(row=>!params?.keyword||row.repairNo.includes(params.keyword));
+    return { items:filtered.slice(((params?.page??1)-1)*10,(params?.page??1)*10),total:filtered.length,page:params?.page??1,pageSize:10 };
+  });
+  vi.spyOn(repairApi, "archive").mockImplementation(async()=>{rows.pop();return {} as never;});
   const wrapper = mount(RepairsPage, { global: { stubs: { AdminShell: shellStub } } });
   await flushPromises();
-  expect(list).toHaveBeenCalledWith({ page: 2, pageSize: 100 });
+  expect(list).toHaveBeenCalledTimes(1);
+  expect(list).toHaveBeenCalledWith(expect.objectContaining({page:1,pageSize:10}));
   await wrapper.get("button[aria-label='第 11 页']").trigger("click");
+  await flushPromises();
   expect(wrapper.get(".repair-list-table tbody").text()).toContain("FX100");
   expect(wrapper.get(".order-sequence-cell").text()).toBe("101");
   await wrapper.get(".repair-archive-button").trigger("click");
@@ -213,7 +220,46 @@ it("loads repairs beyond the first hundred and returns from an emptied last page
   expect(wrapper.get("button[aria-current=page]").text()).toBe("10");
   expect(wrapper.get(".order-page-total").text()).toBe("共 100 条");
   await wrapper.get("input[type=search]").setValue("FX000");
+  await flushPromises();
   expect(wrapper.get("button[aria-current=page]").text()).toBe("1");
   expect(wrapper.findAll(".repair-list-table tbody tr")).toHaveLength(1);
+  wrapper.unmount();
+});
+
+it("shows the first page without waiting for factory options and ignores stale list replies", async () => {
+  let resolveOptions!: (value:{items:string[]})=>void;
+  vi.mocked(repairApi.listFactoryOptions).mockReturnValue(new Promise(resolve=>{resolveOptions=resolve;}));
+  let resolveOld!: (value:{items:Repair[];total:number;page:number;pageSize:number})=>void;
+  const list=vi.spyOn(repairApi,"listSummaries")
+    .mockReturnValueOnce(new Promise(resolve=>{resolveOld=resolve;}))
+    .mockResolvedValue({items:[{...repair,repairNo:"new"}],total:1,page:1,pageSize:10});
+  const wrapper=mount(RepairsPage,{global:{stubs:{AdminShell:shellStub}}});
+  await wrapper.get("input[type=search]").setValue("new");
+  await flushPromises();
+  expect(list).toHaveBeenCalledTimes(2);
+  expect(wrapper.get("tbody").text()).toContain("new");
+  resolveOld({items:[repair],total:1,page:1,pageSize:10});
+  resolveOptions({items:["其他工厂","宇婷"]});
+  await flushPromises();
+  expect(wrapper.get("tbody").text()).not.toContain(repair.repairNo);
+  await wrapper.get(".order-multiselect-trigger").trigger("click");
+  expect(wrapper.get(".order-multiselect-menu").text()).toContain("其他工厂");
+  wrapper.unmount();
+});
+
+it("keeps list data when factory options fail and batches sorting with page reset", async()=>{
+  vi.mocked(repairApi.listFactoryOptions).mockRejectedValue(new Error("options"));
+  const list=vi.spyOn(repairApi,"listSummaries").mockResolvedValue({items:[repair],total:30,page:1,pageSize:10});
+  const wrapper=mount(RepairsPage,{global:{stubs:{AdminShell:shellStub}}});
+  await flushPromises();
+  expect(wrapper.get("tbody").text()).toContain(repair.repairNo);
+  expect(wrapper.get(".page-error").text()).toContain("工厂筛选选项加载失败");
+  await wrapper.get("button[aria-label='第 2 页']").trigger("click");
+  await flushPromises();
+  list.mockClear();
+  await wrapper.findAll(".data-grid-sort-button")[1]!.trigger("click");
+  await flushPromises();
+  expect(list).toHaveBeenCalledTimes(1);
+  expect(list).toHaveBeenCalledWith(expect.objectContaining({page:1,sortBy:"factoryName",sortOrder:"asc"}));
   wrapper.unmount();
 });

@@ -3518,6 +3518,22 @@
         "title": "ShipmentDraftResponse",
         "type": "object"
       },
+      "ShipmentFactoryOptionsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ShipmentFactoryOptionsResponse",
+        "type": "object"
+      },
       "ShipmentFileResponse": {
         "properties": {
           "contentSha256": {
@@ -3806,6 +3822,95 @@
           "lines"
         ],
         "title": "ShipmentReturnWrite",
+        "type": "object"
+      },
+      "ShipmentSummaryListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShipmentSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ShipmentSummaryListResponse",
+        "type": "object"
+      },
+      "ShipmentSummaryResponse": {
+        "properties": {
+          "businessDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Businessdate"
+          },
+          "factoryId": {
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          },
+          "orderNos": {
+            "title": "Ordernos",
+            "type": "string"
+          },
+          "productNames": {
+            "title": "Productnames",
+            "type": "string"
+          },
+          "shipmentId": {
+            "title": "Shipmentid",
+            "type": "string"
+          },
+          "shipmentNo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipmentno"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "totalQuantity": {
+            "title": "Totalquantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shipmentId",
+          "shipmentNo",
+          "status",
+          "factoryId",
+          "factoryName",
+          "businessDate",
+          "orderNos",
+          "productNames",
+          "totalQuantity"
+        ],
+        "title": "ShipmentSummaryResponse",
         "type": "object"
       },
       "ShipmentVoidRequestResponse": {
@@ -7871,6 +7976,246 @@
           }
         },
         "summary": "Admin Shipments",
+        "tags": [
+          "shipment-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/shipments/factory-options": {
+      "get": {
+        "operationId": "admin_shipment_factory_options_api_v1_admin_shipments_factory_options_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentFactoryOptionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Shipment Factory Options",
+        "tags": [
+          "shipment-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/shipments/summary": {
+      "get": {
+        "operationId": "admin_shipment_summary_api_v1_admin_shipments_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Keyword",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "factory",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Factory",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateFrom",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Datefrom"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateTo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dateto"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "required": false,
+            "schema": {
+              "default": "",
+              "enum": [
+                "",
+                "shipmentNo",
+                "orderNos",
+                "factory",
+                "productNames",
+                "totalQuantity",
+                "businessDate"
+              ],
+              "title": "Sortby",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortOrder",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Sortorder",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentSummaryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Shipment Summary",
         "tags": [
           "shipment-admin"
         ]

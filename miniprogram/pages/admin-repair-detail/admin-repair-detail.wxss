@@ -26,4 +26,6 @@
 .admin-return-row > b { font-size: 20rpx; }
 .admin-return-row > b:last-child { color: #1267c9; }
 
-.repair-period-label{margin-left:20rpx;font-size:28rpx;}
+.admin-repair-summary .repair-mini-heading > view { display: flex; align-items: baseline; gap: 20rpx; min-width: 0; }
+.admin-repair-summary .repair-mini-heading b { min-width: 0; }
+.repair-period-label { flex-shrink: 0; font-size: 28rpx; white-space: nowrap; }

@@ -234,6 +234,21 @@ def create_factory_router(
         items = [_factory_response(factory) for factory in factories]
         return FactoryListResponse(items=items, total=len(items))
 
+    @router.get(
+        "/admin/factories/options",
+        response_model=FactoryOptionListResponse,
+        tags=["factory-admin"],
+    )
+    def admin_factory_options(
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> FactoryOptionListResponse:
+        actor = web_user(ot_web_session)
+        rows = service.list_admin_factory_options(actor_id=actor.user_id)
+        return FactoryOptionListResponse(items=[
+            FactoryOptionResponse(factory_id=id_, supplier_number=number, factory_name=name)
+            for id_, number, name in rows
+        ], total=len(rows))
+
     @router.post(
         "/admin/factories",
         response_model=FactoryResponse,

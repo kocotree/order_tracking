@@ -24,13 +24,14 @@ Page({
     ],
   },
 
+  onShow() { if (!this.data.previewMode) void this.load(); },
   onLoad(options: Record<string, string | undefined>) {
     const previewMode = isDevPreview(options);
     this.setData({ previewMode });
     if (previewMode) {
       const allItems = PREVIEW_FACTORY_SHIPMENTS.map(toCard);
       this.setData({ allItems, items: allItems, loading: false });
-    } else void this.load();
+    }
   },
 
   async load() {

@@ -1,5 +1,7 @@
 <view class="ship-page">
-  <mini-titlebar title="创建发货单" showBack="{{true}}" backLeft="{{true}}" bind:back="goBack" />
+  <view wx:if="{{withdrawalId}}" class="ship-submit-notice">发货单 {{originalShipmentNo}}</view>
+  <view wx:if="{{conflict}}" class="ship-submit-notice">{{saveMessage}}<button bindtap="reloadLatest">重新加载</button></view>
+  <mini-titlebar title="{{withdrawalId ? '修改发货单' : '创建发货单'}}" showBack="{{true}}" backLeft="{{true}}" bind:back="goBack" />
   <view class="ship-steps step-{{step}}">
     <view wx:for="{{['箱号','装箱','凭证','提交']}}" wx:key="*this" class="ship-step {{step >= index + 1 ? 'is-active' : ''}}"><text>{{step > index + 1 ? '✓' : index + 1}}</text><text>{{item}}</text></view>
   </view>
@@ -60,5 +62,5 @@
     </view>
   </view>
 
-  <view class="ship-bottom"><button wx:if="{{step > 1}}" class="ship-secondary" disabled="{{loading}}" bindtap="previous">上一步</button><button wx:if="{{step < 4}}" class="ship-primary" disabled="{{loading || !ready}}" bindtap="next">下一步：{{step === 1 ? '装箱' : step === 2 ? '凭证' : '预览'}}</button><button wx:else class="ship-primary" loading="{{loading}}" disabled="{{loading}}" bindtap="submit">提交发货单</button></view>
+  <view class="ship-bottom"><button wx:if="{{step > 1}}" class="ship-secondary" disabled="{{loading}}" bindtap="previous">上一步</button><button wx:if="{{step < 4}}" class="ship-primary" disabled="{{loading || !ready}}" bindtap="next">下一步：{{step === 1 ? '装箱' : step === 2 ? '凭证' : '预览'}}</button><button wx:else class="ship-primary" loading="{{loading}}" disabled="{{loading}}" bindtap="submit">{{withdrawalId ? '重新发货' : '提交发货单'}}</button></view>
 </view>

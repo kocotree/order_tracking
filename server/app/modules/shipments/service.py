@@ -1,7 +1,7 @@
 import hashlib
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime
 from io import BytesIO
 from uuid import uuid4
@@ -183,6 +183,7 @@ class ShipmentFileSnapshot:
     size_bytes: int
     content_sha256: str
     display_order: int
+    draft_version: int | None = None
 
     @property
     def content_url(self) -> str:
@@ -218,6 +219,9 @@ class ShipmentDraftSnapshot:
     return_events: list[ShipmentReturnEventSnapshot] = field(default_factory=list)
     receipt: ReceiptSnapshot | None = None
     receipt_differences: list[ShipmentLineSnapshot] = field(default_factory=list)
+    withdrawal_draft_id: str | None = None
+    can_edit_withdrawal: bool = False
+    operations: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -248,7 +252,12 @@ class ShipmentService:
     def get_receipt(self, *, shipment_id: str) -> ReceiptSnapshot:
         with self._sessions() as session:
             shipment = session.get(Shipment, shipment_id)
-            if shipment is None or shipment.deleted_at is not None or shipment.status == "DRAFT":
+            if (
+                shipment is None
+                or shipment.deleted_at is not None
+                or shipment.status == "DRAFT"
+                or shipment.source_shipment_id is not None
+            ):
                 raise ShipmentNotFound("shipment not found")
             return self._receipt_snapshot(session, shipment_id)
 
@@ -288,12 +297,14 @@ class ShipmentService:
             .where(Shipment.shipment_id == shipment_id, Shipment.deleted_at.is_(None))
             .with_for_update()
         )
-        if shipment is None or shipment.status == "DRAFT":
+        if shipment is None or shipment.status == "DRAFT" or shipment.source_shipment_id:
             raise ShipmentNotFound("shipment not found")
         return shipment
 
     @staticmethod
     def _require_receivable(session: Session, shipment: Shipment) -> None:
+        if shipment.status == "WITHDRAWN":
+            raise ShipmentConflict("发货单已撤回")
         if (
             shipment.status != "SHIPPED"
             or session.scalar(
@@ -647,6 +658,10 @@ class ShipmentService:
             if shipment.status != "DRAFT":
                 raise ShipmentConflict("submitted shipment cannot be edited")
             if shipment.version != expected_version:
+                if shipment.source_shipment_id:
+                    raise ShipmentConflict(
+                        "这张发货单已被其他人修改，本次修改未保存，请重新加载最新内容。"
+                    )
                 if (
                     expected_version < shipment.version
                     and (shipment.note or "") == note.strip()
@@ -688,6 +703,8 @@ class ShipmentService:
     ) -> None:
         with self._sessions.begin() as session:
             shipment = self._owned_shipment(session, shipment_id, actor_id, factory_id, lock=True)
+            if shipment.source_shipment_id:
+                raise ShipmentConflict("撤回草稿不能作为普通草稿丢弃")
             if shipment.status != "DRAFT" or shipment.version != expected_version:
                 raise ShipmentConflict("草稿已更新或已提交，请重新进入后操作")
             shipment.deleted_at = datetime.now(UTC)
@@ -718,6 +735,7 @@ class ShipmentService:
         declared_mime_type: str,
         content: bytes,
         idempotency_key: str,
+        expected_version: int | None = None,
     ) -> tuple[ShipmentFileSnapshot, bool]:
         if self._file_store is None:
             raise ShipmentConflict("private file store is not configured")
@@ -728,19 +746,31 @@ class ShipmentService:
             declared_mime_type=declared_mime_type,
         )
         with self._sessions() as session:
+            current_draft = self._owned_shipment(
+                session, shipment_id, actor_id, factory_id, lock=False
+            )
             existing = session.execute(
                 select(ShipmentFile, StoredFile)
                 .join(StoredFile, StoredFile.file_id == ShipmentFile.stored_file_id)
                 .where(
                     StoredFile.uploaded_by == actor_id,
                     StoredFile.idempotency_key == idempotency_key,
+                    ShipmentFile.shipment_id == shipment_id,
                 )
             ).one_or_none()
             if existing is not None:
                 relationship, stored = existing
+                if current_draft.source_shipment_id and (
+                    current_draft.status != "DRAFT"
+                    or expected_version is None
+                    or current_draft.version != expected_version + 1
+                ):
+                    raise ShipmentConflict("发货单已被修改，请重新加载最新内容")
                 if relationship.shipment_id != shipment_id:
                     raise ShipmentConflict("file idempotency key belongs to another shipment")
-                return self._file_snapshot(relationship, stored), False
+                return replace(self._file_snapshot(relationship, stored),
+                    draft_version=current_draft.version if current_draft.source_shipment_id
+                    else None), False
 
         extension = SHIPMENT_FILE_EXTENSION_BY_MIME[actual_mime_type]
         object_key = f"shipments/{shipment_id}/{uuid4().hex}.{extension}"
@@ -756,6 +786,8 @@ class ShipmentService:
                 )
                 if shipment.status != "DRAFT":
                     raise ShipmentConflict("submitted shipment cannot accept files")
+                if shipment.source_shipment_id and shipment.version != expected_version:
+                    raise ShipmentConflict("草稿已更新，请重新加载最新内容")
                 existing_files = list(
                     session.scalars(
                         select(ShipmentFile)
@@ -783,8 +815,11 @@ class ShipmentService:
                     display_order=len(existing_files),
                 )
                 session.add(relationship)
+                if shipment.source_shipment_id:
+                    shipment.version += 1
                 session.flush()
-                return self._file_snapshot(relationship, stored), True
+                return replace(self._file_snapshot(relationship, stored),
+                    draft_version=shipment.version if shipment.source_shipment_id else None), True
         except Exception:
             self._file_store.delete(object_key=object_key)
             raise
@@ -795,11 +830,12 @@ class ShipmentService:
         file_id: int,
         actor_role: str | None,
         actor_factory_id: str | None,
+        actor_id: str | None = None,
     ) -> ShipmentFileContent:
         if self._file_store is None:
             raise ShipmentNotFound("shipment file not found")
         with self._sessions() as session:
-            row = session.execute(
+            rows = session.execute(
                 select(ShipmentFile, StoredFile, Shipment)
                 .join(StoredFile, StoredFile.file_id == ShipmentFile.stored_file_id)
                 .join(Shipment, Shipment.shipment_id == ShipmentFile.shipment_id)
@@ -807,22 +843,23 @@ class ShipmentService:
                     StoredFile.file_id == file_id,
                     Shipment.deleted_at.is_(None),
                 )
-            ).one_or_none()
-            if row is None:
-                raise ShipmentNotFound("shipment file not found")
-            _relationship, stored, shipment = row
-            if actor_role == "factory":
-                if actor_factory_id is None or shipment.factory_id != actor_factory_id:
-                    raise ShipmentNotFound("shipment file not found")
-            elif actor_role == "admin":
-                if shipment.status == "DRAFT":
-                    raise ShipmentNotFound("shipment file not found")
-            else:
-                raise ShipmentPermissionDenied("shipment file permission denied")
-            return ShipmentFileContent(
-                content=self._file_store.get(object_key=stored.object_key),
-                mime_type=stored.mime_type,
-            )
+            ).all()
+            for _relationship, stored, shipment in rows:
+                if actor_role == "factory" and shipment.factory_id == actor_factory_id:
+                    if shipment.status == "DRAFT":
+                        owners = ((shipment.created_by, shipment.submitted_by)
+                                  if shipment.source_shipment_id else (shipment.created_by,))
+                        if actor_id not in owners:
+                            continue
+                elif actor_role == "admin" and shipment.status != "DRAFT":
+                    pass
+                else:
+                    continue
+                return ShipmentFileContent(
+                    content=self._file_store.get(object_key=stored.object_key),
+                    mime_type=stored.mime_type,
+                )
+            raise ShipmentNotFound("shipment file not found")
 
     def remove_file(
         self,
@@ -832,13 +869,16 @@ class ShipmentService:
         shipment_id: str,
         file_id: int,
         now: datetime | None = None,
-    ) -> None:
+        expected_version: int | None = None,
+    ) -> int:
         with self._sessions.begin() as session:
             shipment = self._owned_shipment(
                 session, shipment_id, actor_id, factory_id, lock=True
             )
             if shipment.status != "DRAFT":
                 raise ShipmentConflict("submitted shipment files cannot be removed")
+            if shipment.source_shipment_id and shipment.version != expected_version:
+                raise ShipmentConflict("草稿已更新，请重新加载最新内容")
             relationship = session.scalar(
                 select(ShipmentFile).where(
                     ShipmentFile.shipment_id == shipment_id,
@@ -859,8 +899,12 @@ class ShipmentService:
             )
             for display_order, item in enumerate(remaining):
                 item.display_order = display_order
-            if stored is not None:
+            if stored is not None and not session.scalar(select(ShipmentFile.shipment_file_id)
+                    .where(ShipmentFile.stored_file_id == file_id).limit(1)):
                 stored.replaced_at = now or datetime.now(UTC)
+            if shipment.source_shipment_id:
+                shipment.version += 1
+            return shipment.version
 
     def submit_draft(
         self,
@@ -876,6 +920,10 @@ class ShipmentService:
         business_date = current.astimezone(BUSINESS_TIME_ZONE).date()
         with self._sessions.begin() as session:
             shipment = self._owned_shipment(session, shipment_id, actor_id, factory_id, lock=True)
+            if shipment.source_shipment_id:
+                return self._resubmit(
+                    session, shipment, actor_id, expected_version, idempotency_key, current
+                )
             if shipment.status == "SHIPPED":
                 return self._detail_snapshot(session, shipment)
             if shipment.status != "DRAFT":
@@ -971,7 +1019,8 @@ class ShipmentService:
     ) -> list[ShipmentDraftSnapshot]:
         with self._sessions() as session:
             query = select(Shipment).where(
-                Shipment.status != "DRAFT", Shipment.deleted_at.is_(None)
+                Shipment.status != "DRAFT", Shipment.deleted_at.is_(None),
+                Shipment.source_shipment_id.is_(None),
             )
             if factory_id is not None:
                 query = query.where(Shipment.factory_id == factory_id)
@@ -992,15 +1041,403 @@ class ShipmentService:
             return [self._detail_snapshot(session, item) for item in shipments]
 
     def get_shipment(
-        self, *, shipment_id: str, factory_id: str | None = None
+        self, *, shipment_id: str, factory_id: str | None = None, actor_id: str | None = None
     ) -> ShipmentDraftSnapshot:
         with self._sessions() as session:
             shipment = session.get(Shipment, shipment_id)
-            if shipment is None or shipment.status == "DRAFT" or shipment.deleted_at is not None:
+            if (shipment is None or shipment.status == "DRAFT" or shipment.deleted_at is not None
+                    or shipment.source_shipment_id is not None):
                 raise ShipmentNotFound("shipment not found")
             if factory_id is not None and shipment.factory_id != factory_id:
                 raise ShipmentNotFound("shipment not found")
-            return self._detail_snapshot(session, shipment)
+            result = self._detail_snapshot(session, shipment)
+            draft = session.scalar(select(Shipment).where(
+                Shipment.source_shipment_id == shipment_id, Shipment.status == "DRAFT",
+                Shipment.deleted_at.is_(None),
+            ))
+            allowed = bool(
+                draft and actor_id and actor_id in (draft.created_by, draft.submitted_by)
+            )
+            return replace(
+                result,
+                withdrawal_draft_id=draft.shipment_id if allowed and draft else None,
+                can_edit_withdrawal=allowed,
+            )
+
+    def _copy_contents(self, session: Session, source: Shipment, target: Shipment) -> None:
+        for old in session.scalars(
+            select(ShipmentBox).where(ShipmentBox.shipment_id == source.shipment_id)
+        ).all():
+            box = ShipmentBox(
+                shipment_id=target.shipment_id, box_no=old.box_no, group_key=old.group_key
+            )
+            session.add(box)
+            session.flush()
+            for item in session.scalars(
+                select(ShipmentBoxItem).where(ShipmentBoxItem.box_id == old.box_id)
+            ).all():
+                session.add(
+                    ShipmentBoxItem(
+                        box_id=box.box_id,
+                        order_assignment_id=item.order_assignment_id,
+                        quantity=item.quantity,
+                    )
+                )
+        for file_link in session.scalars(
+            select(ShipmentFile).where(ShipmentFile.shipment_id == source.shipment_id)
+        ).all():
+            session.add(
+                ShipmentFile(
+                    shipment_id=target.shipment_id,
+                    stored_file_id=file_link.stored_file_id,
+                    display_order=file_link.display_order,
+                )
+            )
+        for line in session.scalars(
+            select(ShipmentLine).where(ShipmentLine.shipment_id == source.shipment_id)
+        ).all():
+            session.add(
+                ShipmentLine(
+                    shipment_id=target.shipment_id,
+                    order_assignment_id=line.order_assignment_id,
+                    quantity=line.quantity,
+                    order_no_snapshot=line.order_no_snapshot,
+                    sku_id_snapshot=line.sku_id_snapshot,
+                    product_name_snapshot=line.product_name_snapshot,
+                    properties_value_snapshot=line.properties_value_snapshot,
+                )
+            )
+
+    def withdraw(
+        self,
+        *,
+        actor_id: str,
+        factory_id: str,
+        shipment_id: str,
+        reason: str,
+        expected_version: int,
+        idempotency_key: str,
+    ) -> ShipmentDraftSnapshot:
+        reason = reason.strip()
+        if not reason or len(reason) > 500:
+            raise ShipmentValidationError("请填写撤回原因")
+        current = datetime.now(UTC)
+        with self._sessions.begin() as session:
+            original = self._receipt_shipment(session, shipment_id)
+            if original.factory_id != factory_id or original.source_shipment_id:
+                raise ShipmentNotFound("shipment not found")
+            previous = session.scalar(
+                select(AuditLog).where(
+                    AuditLog.target_id == shipment_id,
+                    AuditLog.action == "shipment_withdrawn",
+                    AuditLog.request_id == idempotency_key[:64],
+                    AuditLog.actor_id == actor_id,
+                )
+            )
+            if previous:
+                return self._detail_snapshot(session, original)
+            self._require_receivable(session, original)
+            receipt = session.get(ShipmentReceipt, shipment_id)
+            if receipt and receipt.status == "CONFIRMED":
+                raise ShipmentConflict("已确认收货，不能撤回")
+            if original.version != expected_version:
+                raise ShipmentConflict("发货单已更新，请刷新后再撤回")
+            if not session.scalar(
+                select(AuditLog.id)
+                .where(
+                    AuditLog.target_type == "shipment",
+                    AuditLog.target_id == shipment_id,
+                    AuditLog.action == "shipment_submitted",
+                )
+                .limit(1)
+            ):
+                session.add(
+                    AuditLog(
+                        request_id=idempotency_key[:64],
+                        action="shipment_submitted",
+                        target_type="shipment",
+                        target_id=shipment_id,
+                        actor_id=original.submitted_by or original.created_by,
+                        source_terminal="factory-mini",
+                        changes={},
+                        created_at=original.submitted_at or original.created_at,
+                    )
+                )
+            draft_id = str(uuid4())
+            history_id = str(uuid4())
+            # Preserve formal contents before creating the editable copy.
+            for status in ("SHIPPED", "DRAFT"):
+                copy = Shipment(
+                    shipment_id=draft_id if status == "DRAFT" else history_id,
+                    source_shipment_id=shipment_id,
+                    factory_id=factory_id,
+                    status=status,
+                    created_by=actor_id,
+                    submitted_by=original.submitted_by,
+                    submitted_at=original.submitted_at if status == "SHIPPED" else None,
+                    business_date=original.business_date,
+                    note=original.note,
+                    created_at=current,
+                    version=1,
+                )
+                session.add(copy)
+                session.flush()
+                self._copy_contents(session, original, copy)
+                if status == "SHIPPED":
+                    for message in session.scalars(
+                        select(OutboxMessage).where(
+                            OutboxMessage.aggregate_id == shipment_id,
+                            OutboxMessage.event_type == "shipment.submitted",
+                        )
+                    ).all():
+                        if not message.payload.get("factShipmentId"):
+                            message.payload = {
+                                **message.payload,
+                                "factShipmentId": copy.shipment_id,
+                            }
+                if status == "DRAFT":
+                    session.flush()
+                    session.execute(
+                        delete(ShipmentLine).where(ShipmentLine.shipment_id == draft_id)
+                    )
+            quantities = self._effective_line_quantities(session, shipment_id)
+            assignments = self._load_assignments(
+                session, set(quantities), factory_id, lock=True, require_published=False
+            )
+            for assignment_id, quantity in quantities.items():
+                if quantity:
+                    session.add(
+                        QuantityLedger(
+                            order_assignment_id=assignment_id,
+                            source_type="SHIPMENT_VOID",
+                            source_id=draft_id,
+                            quantity_delta=-quantity,
+                            actor_id=actor_id,
+                            created_at=current,
+                        )
+                    )
+            for order in {v[2].order_id: v[2] for v in assignments.values()}.values():
+                if order.lifecycle == "COMPLETED":
+                    order.lifecycle = "PUBLISHED"
+                    order.completed_at = None
+                    order.completed_by = None
+                    order.version += 1
+                    order.updated_by = actor_id
+                    order.updated_at = current
+                    session.add(
+                        OrderCompletionRecord(
+                            order_id=order.order_id,
+                            action="REOPEN",
+                            reason=f"发货单 {original.shipment_no} 撤回",
+                            actor_id=actor_id,
+                            source_terminal="factory-mini",
+                            before_lifecycle="COMPLETED",
+                            after_lifecycle="PUBLISHED",
+                            quantity_snapshot={"shipmentId": shipment_id},
+                            created_at=current,
+                        )
+                    )
+                session.add(
+                    AuditLog(
+                        request_id=idempotency_key[:64],
+                        action="shipment_withdrawn",
+                        target_type="order",
+                        target_id=order.order_id,
+                        actor_id=actor_id,
+                        source_terminal="factory-mini",
+                        changes={"shipmentId": shipment_id, "reason": reason, "draftId": draft_id},
+                    )
+                )
+            receipt_history = asdict(self._receipt_snapshot(session, shipment_id))
+            # These drafts have no confirmation timestamps; normalize the snapshot to JSON.
+            session.add(
+                AuditLog(
+                    request_id=idempotency_key[:64],
+                    action="shipment_withdrawn",
+                    target_type="shipment",
+                    target_id=shipment_id,
+                    actor_id=actor_id,
+                    source_terminal="factory-mini",
+                    changes={
+                        "reason": reason,
+                        "draftId": draft_id,
+                        "receiptDraft": receipt_history,
+                    },
+                )
+            )
+            if receipt:
+                session.execute(
+                    delete(ShipmentReceiptItem).where(
+                        ShipmentReceiptItem.shipment_id == shipment_id
+                    )
+                )
+                receipt.version += 1
+            else:
+                session.add(
+                    ShipmentReceipt(
+                        shipment_id=shipment_id,
+                        status="DRAFT",
+                        version=1,
+                        saved_by=actor_id,
+                        saved_at=current,
+                    )
+                )
+            original.status = "WITHDRAWN"
+            original.version += 1
+            session.add(
+                OutboxMessage(
+                    event_type="shipment.withdrawn",
+                    aggregate_type="shipment",
+                    aggregate_id=shipment_id,
+                    dedupe_key=f"shipment-withdrawn:{draft_id}",
+                    payload={
+                        "shipmentId": shipment_id,
+                        "factShipmentId": history_id,
+                        "reason": reason,
+                        "actorId": actor_id,
+                        "shipmentNo": original.shipment_no,
+                        "occurredAt": current.isoformat(),
+                        "quantity": sum(quantities.values()),
+                    },
+                    status="pending",
+                    available_at=current,
+                )
+            )
+            session.flush()
+            return self._detail_snapshot(session, original)
+
+    def get_withdrawal_draft(
+        self, *, shipment_id: str, actor_id: str, factory_id: str
+    ) -> ShipmentDraftSnapshot:
+        with self._sessions() as session:
+            draft = session.scalar(
+                select(Shipment).where(
+                    Shipment.source_shipment_id == shipment_id,
+                    Shipment.status == "DRAFT",
+                    Shipment.deleted_at.is_(None),
+                )
+            )
+            if draft is None:
+                raise ShipmentNotFound("withdrawal draft not found")
+            draft = self._owned_shipment(
+                session, draft.shipment_id, actor_id, factory_id, lock=False
+            )
+            result = self._detail_snapshot(session, draft)
+            original = session.get(Shipment, shipment_id)
+            return replace(result, shipment_no=original.shipment_no if original else None)
+
+    def _resubmit(
+        self,
+        session: Session,
+        draft: Shipment,
+        actor_id: str,
+        expected_version: int | None,
+        key: str,
+        current: datetime,
+    ) -> ShipmentDraftSnapshot:
+        original = session.get(Shipment, draft.source_shipment_id)
+        if original is None:
+            raise ShipmentNotFound("shipment not found")
+        scope = f"shipment.resubmit:{draft.shipment_id}"
+        previous = session.scalar(
+            select(IdempotencyRecord).where(
+                IdempotencyRecord.scope == scope, IdempotencyRecord.idempotency_key == key
+            )
+        )
+        if previous:
+            return self._detail_snapshot(session, original)
+        if draft.status != "DRAFT" or original.status != "WITHDRAWN":
+            raise ShipmentConflict("发货单已重新提交，不能继续修改")
+        if expected_version != draft.version:
+            raise ShipmentConflict("这张发货单已被其他人修改，请重新加载最新内容后再提交。")
+        boxes = self._box_inputs(session, draft.shipment_id)
+        self._validate_boxes(boxes)
+        totals: dict[int, int] = defaultdict(int)
+        for box in boxes:
+            for item in box.items:
+                totals[item.assignment_id] += item.quantity
+        assignments = self._load_assignments(session, set(totals), draft.factory_id, lock=True)
+        session.add(IdempotencyRecord(scope=scope, idempotency_key=key, status="completed"))
+        for aid, quantity in totals.items():
+            _, line, order = assignments[aid]
+            session.add(
+                ShipmentLine(
+                    shipment_id=draft.shipment_id,
+                    order_assignment_id=aid,
+                    quantity=quantity,
+                    order_no_snapshot=order.order_no,
+                    sku_id_snapshot=line.sku_id_snapshot,
+                    product_name_snapshot=line.product_name_snapshot,
+                    properties_value_snapshot=line.properties_value_snapshot,
+                )
+            )
+            session.add(
+                QuantityLedger(
+                    order_assignment_id=aid,
+                    source_type="SHIPMENT",
+                    source_id=draft.shipment_id,
+                    quantity_delta=quantity,
+                    actor_id=actor_id,
+                    created_at=current,
+                )
+            )
+            session.add(
+                AuditLog(
+                    request_id=key[:64],
+                    action="shipment_resubmitted",
+                    target_type="order",
+                    target_id=order.order_id,
+                    actor_id=actor_id,
+                    source_terminal="factory-mini",
+                    changes={"shipmentId": original.shipment_id, "quantity": quantity},
+                )
+            )
+        session.flush()
+        box_ids = select(ShipmentBox.box_id).where(ShipmentBox.shipment_id == original.shipment_id)
+        session.execute(delete(ShipmentBoxItem).where(ShipmentBoxItem.box_id.in_(box_ids)))
+        session.execute(delete(ShipmentBox).where(ShipmentBox.shipment_id == original.shipment_id))
+        session.execute(
+            delete(ShipmentLine).where(ShipmentLine.shipment_id == original.shipment_id)
+        )
+        session.execute(
+            delete(ShipmentFile).where(ShipmentFile.shipment_id == original.shipment_id)
+        )
+        self._copy_contents(session, draft, original)
+        original.note = draft.note
+        original.status = draft.status = "SHIPPED"
+        original.submitted_by = draft.submitted_by = actor_id
+        original.submitted_at = draft.submitted_at = current
+        original.business_date = draft.business_date = current.astimezone(BUSINESS_TIME_ZONE).date()
+        original.version += 1
+        draft.version += 1
+        session.add(
+            AuditLog(
+                request_id=key[:64],
+                action="shipment_resubmitted",
+                target_type="shipment",
+                target_id=original.shipment_id,
+                actor_id=actor_id,
+                source_terminal="factory-mini",
+                changes={"draftId": draft.shipment_id},
+            )
+        )
+        session.add(
+            OutboxMessage(
+                event_type="shipment.submitted",
+                aggregate_type="shipment",
+                aggregate_id=original.shipment_id,
+                dedupe_key=f"shipment:{draft.shipment_id}:resubmitted",
+                payload={
+                    "shipmentId": original.shipment_id,
+                    "factShipmentId": draft.shipment_id,
+                    "shipmentNo": original.shipment_no,
+                },
+                status="pending",
+                available_at=current,
+            )
+        )
+        session.flush()
+        return self._detail_snapshot(session, original)
 
     def request_void(
         self,
@@ -1439,6 +1876,7 @@ class ShipmentService:
                     .where(
                         OrderLine.order_id == order_id,
                         Shipment.status.in_(("SHIPPED", "VOID_PENDING")),
+                        Shipment.source_shipment_id.is_(None),
                     )
                     .limit(1)
                 )
@@ -1452,6 +1890,7 @@ class ShipmentService:
             if (
                 shipment is None
                 or shipment.status not in ("SHIPPED", "VOID_PENDING")
+                or shipment.source_shipment_id is not None
                 or shipment.deleted_at is not None
                 or shipment.business_date is None
                 or shipment.shipment_no is None
@@ -1566,9 +2005,14 @@ class ShipmentService:
     def _owned_shipment(
         session: Session, shipment_id: str, actor_id: str, factory_id: str, *, lock: bool
     ) -> Shipment:
+        source_id = session.scalar(select(Shipment.source_shipment_id).where(
+            Shipment.shipment_id == shipment_id))
+        if source_id and lock:
+            session.scalar(
+                select(Shipment).where(Shipment.shipment_id == source_id).with_for_update()
+            )
         query = select(Shipment).where(
             Shipment.shipment_id == shipment_id,
-            Shipment.created_by == actor_id,
             Shipment.factory_id == factory_id,
             Shipment.deleted_at.is_(None),
         )
@@ -1576,6 +2020,10 @@ class ShipmentService:
             query = query.with_for_update()
         shipment = session.scalar(query)
         if shipment is None:
+            raise ShipmentNotFound("shipment not found")
+        permitted = (actor_id in (shipment.created_by, shipment.submitted_by)
+                     if shipment.source_shipment_id else shipment.created_by == actor_id)
+        if not permitted:
             raise ShipmentNotFound("shipment not found")
         return shipment
 
@@ -1829,6 +2277,26 @@ class ShipmentService:
                 )
                 for value in lines
                 if receipt and value.quantity != persisted_lines[value.assignment_id].quantity
+            ],
+            operations=[
+                {
+                    "action": log.action,
+                    "reason": str(log.changes.get("reason", "")),
+                    "actorName": actor.feishu_display_name or "工厂用户",
+                    "createdAt": log.created_at.isoformat(),
+                }
+                for log, actor in session.execute(
+                    select(AuditLog, User)
+                    .join(User, User.user_id == AuditLog.actor_id)
+                    .where(
+                        AuditLog.target_type == "shipment",
+                        AuditLog.target_id == shipment.shipment_id,
+                        AuditLog.action.in_(
+                            ["shipment_submitted", "shipment_withdrawn", "shipment_resubmitted"]
+                        ),
+                    )
+                    .order_by(AuditLog.created_at)
+                ).all()
             ],
         )
 

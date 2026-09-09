@@ -225,6 +225,11 @@ export const identityApi = {
       { method: "POST", body: JSON.stringify({ version }) },
     ),
   listFactoryOptions: () => request<components["schemas"]["FactoryOptionListResponse"]>("/v1/admin/factories/options"),
+  listFactoryPage: (params: { keyword?: string; contractStatus?: string; accessStatus?: string; page?: number; pageSize?: number; sortBy?: string; sortOrder?: "asc" | "desc" } = {}) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) if (value !== undefined) query.set(key, String(value));
+    return request<FactoryList>(`/v1/admin/factories/page?${query}`);
+  },
   listFactories: (keyword = "", contractStatus = "all", accessStatus = "all") =>
     request<FactoryList>(
       `/v1/admin/factories?keyword=${encodeURIComponent(keyword)}&contractStatus=${encodeURIComponent(contractStatus)}&accessStatus=${encodeURIComponent(accessStatus)}`,

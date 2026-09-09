@@ -90,6 +90,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/factories/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Factory Page */
+        get: operations["factory_page_api_v1_admin_factories_page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/factories/{factory_id}": {
         parameters: {
             query?: never;
@@ -3155,6 +3172,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactoryOptionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_page_api_v1_admin_factories_page_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                contractStatus?: string;
+                accessStatus?: string;
+                page?: number;
+                pageSize?: number;
+                sortBy?: string;
+                sortOrder?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryListResponse"];
                 };
             };
             /** @description Validation Error */

@@ -2,19 +2,66 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { createRouter, createMemoryHistory } from "vue-router";
 import { afterEach, expect, it, vi } from "vitest";
 import ShipmentsPage from "@/pages/ShipmentsPage.vue";
-import { shipmentApi } from "@/api/client";
-afterEach(() => vi.restoreAllMocks());
-it("filters dashboard dates and allows resetting them", async () => {
-  vi.spyOn(shipmentApi, "list").mockResolvedValue({ items: [
-    { shipmentId: "a", shipmentNo: "TODAY", businessDate: "2026-09-05", lines: [], totalQuantity: 1 },
-    { shipmentId: "b", shipmentNo: "YESTERDAY", businessDate: "2026-09-04", lines: [], totalQuantity: 1 },
-  ] } as never);
+import { shipmentApi, type ShipmentSummary } from "@/api/client";
+const row = (name: string): ShipmentSummary => ({ shipmentId: name, shipmentNo: name, businessDate: "2026-09-05", status: "SHIPPED", factoryId: "a", factoryName: "工厂甲", orderNos: "ORDER1", productNames: "产品", totalQuantity: 1 });
+const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
+async function setup(url = "/shipments") {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/shipments", component: ShipmentsPage }] });
-  await router.push("/shipments?dateFrom=2026-09-05&dateTo=2026-09-05");
+  await router.push(url);
   const wrapper = mount(ShipmentsPage, { global: { plugins: [router], stubs: { AdminShell: { template: "<div><slot/></div>" } } } });
   await flushPromises();
-  expect(wrapper.text()).toContain("TODAY"); expect(wrapper.text()).not.toContain("YESTERDAY");
+  return wrapper;
+}
+afterEach(() => vi.restoreAllMocks());
+it("loads one database page with dashboard dates and resets filters", async () => {
+  const list = vi.spyOn(shipmentApi, "listSummary").mockResolvedValue({items: [row("TODAY")], total: 1});
+  vi.spyOn(shipmentApi, "listFactoryOptions").mockResolvedValue({items: ["工厂甲", "非当前页工厂"]});
+  const wrapper = await setup("/shipments?dateFrom=2026-09-05&dateTo=2026-09-05");
+  expect(list).toHaveBeenCalledTimes(1);
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({dateFrom: "2026-09-05", dateTo: "2026-09-05", page: 1, pageSize: 10}));
+  expect(wrapper.text()).toContain("TODAY");
+  expect(wrapper.get("select").text()).toContain("非当前页工厂");
+  list.mockResolvedValue({items: [row("YESTERDAY")], total: 1});
   await wrapper.get(".order-secondary-button").trigger("click");
+  await flushPromises();
+  expect(list).toHaveBeenCalledTimes(2);
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({dateFrom: "", dateTo: "", page: 1}));
   expect(wrapper.text()).toContain("YESTERDAY");
+  wrapper.unmount();
+});
+it("shows rows while independent options are slow and rejects stale responses", async () => {
+  const options = deferred<{items:string[]}>();
+  vi.spyOn(shipmentApi, "listFactoryOptions").mockReturnValue(options.promise);
+  const old = deferred<{items:ShipmentSummary[];total:number}>();
+  const list = vi.spyOn(shipmentApi, "listSummary").mockResolvedValueOnce({items:[row("FIRST")],total:20}).mockReturnValueOnce(old.promise).mockResolvedValue({items:[row("NEW")],total:1});
+  const wrapper = await setup();
+  expect(wrapper.text()).toContain("FIRST");
+  await wrapper.get('input[type="search"]').setValue("old"); await flushPromises();
+  await wrapper.get('input[type="search"]').setValue("new"); await flushPromises();
+  expect(wrapper.text()).toContain("NEW");
+  old.resolve({items:[row("STALE")],total:20}); await flushPromises();
+  expect(wrapper.text()).not.toContain("STALE");
+  expect(list).toHaveBeenCalledTimes(3);
+  options.resolve({items:["全量工厂"]}); await flushPromises();
+  expect(wrapper.get("select").text()).toContain("全量工厂");
+  wrapper.unmount();
+});
+it("requests global sort and falls back when a page becomes empty", async () => {
+  vi.spyOn(shipmentApi, "listFactoryOptions").mockResolvedValue({items:[]});
+  const list = vi.spyOn(shipmentApi, "listSummary").mockResolvedValueOnce({items:[row("FIRST")],total:11}).mockResolvedValueOnce({items:[],total:10}).mockResolvedValue({items:[row("FALLBACK")],total:10});
+  const wrapper = await setup();
+  await wrapper.get('[aria-label="下一页"]').trigger("click"); await flushPromises();
+  expect(list.mock.calls.map(call => call[0]?.page)).toEqual([1,2,1]);
+  expect(wrapper.text()).toContain("FALLBACK");
+  await wrapper.get('[aria-label="按发货单号升序排序"]').trigger("click"); await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({sortBy:"shipmentNo",sortOrder:"asc",page:1}));
+  wrapper.unmount();
+});
+it("keeps the main list available if factory options fail", async () => {
+  vi.spyOn(shipmentApi, "listFactoryOptions").mockRejectedValue(new Error("offline"));
+  vi.spyOn(shipmentApi, "listSummary").mockResolvedValue({items:[row("VISIBLE")],total:1});
+  const wrapper = await setup();
+  expect(wrapper.text()).toContain("VISIBLE");
+  expect(wrapper.text()).toContain("工厂筛选选项加载失败");
   wrapper.unmount();
 });

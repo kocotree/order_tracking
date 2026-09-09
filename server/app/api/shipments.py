@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, File, Header, Query, Request, Response, UploadFile
@@ -188,6 +188,27 @@ class ShipmentFileResponse(ApiModel):
     display_order: int
     content_url: str
     draft_version: int | None = None
+
+
+class ShipmentSummaryResponse(ApiModel):
+    shipment_id: str
+    shipment_no: str | None
+    status: str
+    factory_id: str
+    factory_name: str
+    business_date: date | None
+    order_nos: str
+    product_names: str
+    total_quantity: int
+
+
+class ShipmentSummaryListResponse(ApiModel):
+    items: list[ShipmentSummaryResponse]
+    total: int
+
+
+class ShipmentFactoryOptionsResponse(ApiModel):
+    items: list[str]
 
 
 class ShipmentListResponse(ApiModel):
@@ -527,6 +548,66 @@ def create_shipment_router(
                 "X-Content-Type-Options": "nosniff",
             },
         )
+
+    @router.get(
+        "/admin/shipments/summary",
+        response_model=ShipmentSummaryListResponse,
+        tags=["shipment-admin"],
+    )
+    def admin_shipment_summary(
+        keyword: str = "",
+        factory: str = "",
+        date_from: Annotated[date | None, Query(alias="dateFrom")] = None,
+        date_to: Annotated[date | None, Query(alias="dateTo")] = None,
+        sort_by: Annotated[
+            Literal[
+                "",
+                "shipmentNo",
+                "orderNos",
+                "factory",
+                "productNames",
+                "totalQuantity",
+                "businessDate",
+            ],
+            Query(alias="sortBy"),
+        ] = "",
+        sort_order: Annotated[Literal["asc", "desc"], Query(alias="sortOrder")] = "asc",
+        page: Annotated[int, Query(ge=1)] = 1,
+        page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 10,
+        ot_web_session: str | None = Cookie(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> ShipmentSummaryListResponse:
+        actor, _terminal = query_user(ot_web_session, authorization)
+        if actor.role != "admin":
+            raise PermissionDenied("administrator role required")
+        items, total = service.page_admin_shipments(
+            keyword=keyword,
+            factory=factory,
+            date_from=date_from,
+            date_to=date_to,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            page=page,
+            page_size=page_size,
+        )
+        return ShipmentSummaryListResponse(
+            items=[ShipmentSummaryResponse.model_validate(item) for item in items],
+            total=total,
+        )
+
+    @router.get(
+        "/admin/shipments/factory-options",
+        response_model=ShipmentFactoryOptionsResponse,
+        tags=["shipment-admin"],
+    )
+    def admin_shipment_factory_options(
+        ot_web_session: str | None = Cookie(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> ShipmentFactoryOptionsResponse:
+        actor, _terminal = query_user(ot_web_session, authorization)
+        if actor.role != "admin":
+            raise PermissionDenied("administrator role required")
+        return ShipmentFactoryOptionsResponse(items=service.admin_shipment_factories())
 
     @router.get("/admin/shipments", response_model=ShipmentListResponse, tags=["shipment-admin"])
     def admin_shipments(

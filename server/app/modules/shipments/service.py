@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime
 from io import BytesIO
+from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -1013,6 +1014,18 @@ class ShipmentService:
             )
             session.flush()
             return self._detail_snapshot(session, shipment)
+
+    def page_admin_shipments(self, **filters: Any) -> tuple[list[dict[str, Any]], int]:
+        from app.modules.shipments.list_query import page_shipments
+
+        with self._sessions() as session:
+            return page_shipments(session, **filters)
+
+    def admin_shipment_factories(self) -> list[str]:
+        from app.modules.shipments.list_query import shipment_factories
+
+        with self._sessions() as session:
+            return shipment_factories(session)
 
     def list_shipments(
         self, *, factory_id: str | None = None, order_id: str | None = None

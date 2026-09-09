@@ -96,6 +96,8 @@ export interface RepairSpec { variantId:string; sourceSkuId:string; sourceProduc
 export interface RepairReturnLine { variantId:string; sourceSkuId:string; sourceProductId:string; productName:string; propertiesValue:string; warehouseReturnQuantity:number; repairedQuantity:number; scrappedQuantity:number; returnedQuantity:number }
 export interface RepairReturnBatch { batchId:string; submittedAt:string; returnDate:string; submittedBy:string; lines:RepairReturnLine[] }
 export interface Repair { repairId:string; repairNo:string; status:"INCOMPLETE"|"COMPLETED"; returnDate:string; factoryId:string; factoryName:string; warehouseReturnQuantity:number; repairedQuantity:number; scrappedQuantity:number; returnedQuantity:number; originalFileId:number; originalFilename:string; originalSizeBytes:number; createdAt:string; lines:RepairLine[]; specs:RepairSpec[]; returnBatches:RepairReturnBatch[] }
+export type RepairSummary = Pick<Repair, "repairId" | "repairNo" | "status" | "returnDate" | "factoryId" | "factoryName" | "warehouseReturnQuantity" | "repairedQuantity" | "scrappedQuantity" | "returnedQuantity">;
+export interface RepairSummaryList { items:RepairSummary[]; total:number; page:number; pageSize:number }
 export interface RepairList { items:Repair[]; total:number; page:number; pageSize:number }
 export interface RepairArchiveResult { repairId:string; archivedAt:string; archivedBy:string }
 export type NotificationItem = components["schemas"]["NotificationResponse"];
@@ -443,6 +445,14 @@ export const orderImportApi = {
 };
 
 export const repairApi = {
+  listSummaries: (params: { keyword?:string; status?:string; factories?:string[]; returnFrom?:string; returnTo?:string; sortBy?:string; sortOrder?:string; page?:number; pageSize?:number } = {}) => {
+    const query = new URLSearchParams({ keyword:params.keyword ?? "", status:params.status ?? "all", page:String(params.page ?? 1), pageSize:String(params.pageSize ?? 10), sortBy:params.sortBy ?? "", sortOrder:params.sortOrder ?? "asc" });
+    for (const factory of params.factories ?? []) query.append("factories", factory);
+    if (params.returnFrom) query.set("returnFrom", params.returnFrom);
+    if (params.returnTo) query.set("returnTo", params.returnTo);
+    return request<RepairSummaryList>(`/v1/admin/repairs/summary?${query}`);
+  },
+  listFactoryOptions: () => request<{items:string[]}>("/v1/admin/repairs/factory-options"),
   list: (params: { keyword?:string; status?:string; returnFrom?:string; returnTo?:string; page?:number; pageSize?:number } = {}) => {
     const query = new URLSearchParams({ keyword:params.keyword ?? "", status:params.status ?? "all", page:String(params.page ?? 1), pageSize:String(params.pageSize ?? 10) });
     if (params.returnFrom) query.set("returnFrom", params.returnFrom);

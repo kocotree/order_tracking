@@ -2589,6 +2589,22 @@
         "title": "RepairDraftResponse",
         "type": "object"
       },
+      "RepairFactoryOptionsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RepairFactoryOptionsResponse",
+        "type": "object"
+      },
       "RepairLineResponse": {
         "properties": {
           "boxNumber": {
@@ -3177,6 +3193,96 @@
           "pendingQuantity"
         ],
         "title": "RepairSpecResponse",
+        "type": "object"
+      },
+      "RepairSummaryListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RepairSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "RepairSummaryListResponse",
+        "type": "object"
+      },
+      "RepairSummaryResponse": {
+        "properties": {
+          "factoryId": {
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          },
+          "repairId": {
+            "title": "Repairid",
+            "type": "string"
+          },
+          "repairNo": {
+            "title": "Repairno",
+            "type": "string"
+          },
+          "repairedQuantity": {
+            "title": "Repairedquantity",
+            "type": "integer"
+          },
+          "returnDate": {
+            "format": "date",
+            "title": "Returndate",
+            "type": "string"
+          },
+          "returnedQuantity": {
+            "title": "Returnedquantity",
+            "type": "integer"
+          },
+          "scrappedQuantity": {
+            "title": "Scrappedquantity",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "warehouseReturnQuantity": {
+            "title": "Warehousereturnquantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "repairId",
+          "repairNo",
+          "status",
+          "returnDate",
+          "factoryId",
+          "factoryName",
+          "warehouseReturnQuantity",
+          "repairedQuantity",
+          "scrappedQuantity",
+          "returnedQuantity"
+        ],
+        "title": "RepairSummaryResponse",
         "type": "object"
       },
       "SessionResponse": {
@@ -7463,6 +7569,221 @@
         "summary": "List Admin Repairs",
         "tags": [
           "repair-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/repairs/factory-options": {
+      "get": {
+        "operationId": "repair_factory_options_api_v1_admin_repairs_factory_options_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairFactoryOptionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Repair Factory Options",
+        "tags": [
+          "repair-admin-web"
+        ]
+      }
+    },
+    "/api/v1/admin/repairs/summary": {
+      "get": {
+        "operationId": "list_repair_summaries_api_v1_admin_repairs_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Keyword",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "factories",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Factories"
+            }
+          },
+          {
+            "in": "query",
+            "name": "returnFrom",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Returnfrom"
+            }
+          },
+          {
+            "in": "query",
+            "name": "returnTo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Returnto"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Sortby",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortOrder",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "pattern": "^(asc|desc)$",
+              "title": "Sortorder",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairSummaryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Repair Summaries",
+        "tags": [
+          "repair-admin-web"
         ]
       }
     },

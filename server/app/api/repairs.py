@@ -27,6 +27,7 @@ from app.modules.repairs.confirmation import (
     RepairConfirmationService,
     RepairOrderView,
 )
+from app.modules.repairs.listing import RepairListingService
 from app.modules.repairs.preview import (
     RepairPreviewExpired,
     RepairPreviewNotFound,
@@ -149,6 +150,30 @@ class RepairResponse(ApiModel):
     lines: list[RepairLineResponse]
     specs: list[RepairSpecResponse]
     return_batches: list[RepairReturnBatchResponse]
+
+
+class RepairSummaryResponse(ApiModel):
+    repair_id: str
+    repair_no: str
+    status: str
+    return_date: date
+    factory_id: str
+    factory_name: str
+    warehouse_return_quantity: int
+    repaired_quantity: int
+    scrapped_quantity: int
+    returned_quantity: int
+
+
+class RepairSummaryListResponse(ApiModel):
+    items: list[RepairSummaryResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class RepairFactoryOptionsResponse(ApiModel):
+    items: list[str]
 
 
 class RepairListResponse(ApiModel):
@@ -385,6 +410,55 @@ def create_repair_router(
             page=page,
             page_size=page_size,
         )
+
+    @router.get(
+        "/admin/repairs/summary",
+        response_model=RepairSummaryListResponse,
+        tags=["repair-admin-web"],
+    )
+    def list_repair_summaries(
+        keyword: str = "",
+        status: str = "all",
+        factories: Annotated[list[str] | None, Query()] = None,
+        return_from: Annotated[date | None, Query(alias="returnFrom")] = None,
+        return_to: Annotated[date | None, Query(alias="returnTo")] = None,
+        sort_by: Annotated[str, Query(alias="sortBy")] = "",
+        sort_order: Annotated[str, Query(alias="sortOrder", pattern="^(asc|desc)$")] = "asc",
+        page: Annotated[int, Query(ge=1)] = 1,
+        page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 10,
+        web_token: str | None = Cookie(default=None, alias="ot_web_session"),
+    ) -> RepairSummaryListResponse:
+        user, _terminal = actor(web_token, None, require_web=True)
+        admin(user)
+        rows, total = RepairListingService(session_factory).page(
+            keyword=keyword,
+            status=status,
+            factories=factories,
+            return_from=return_from,
+            return_to=return_to,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            page=page,
+            page_size=page_size,
+        )
+        return RepairSummaryListResponse(
+            items=[RepairSummaryResponse(**row) for row in rows],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+
+    @router.get(
+        "/admin/repairs/factory-options",
+        response_model=RepairFactoryOptionsResponse,
+        tags=["repair-admin-web"],
+    )
+    def repair_factory_options(
+        web_token: str | None = Cookie(default=None, alias="ot_web_session"),
+    ) -> RepairFactoryOptionsResponse:
+        user, _terminal = actor(web_token, None, require_web=True)
+        admin(user)
+        return RepairFactoryOptionsResponse(items=RepairListingService(session_factory).factories())
 
     @router.get(
         "/admin/repairs/{repair_id}",

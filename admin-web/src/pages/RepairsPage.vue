@@ -2,7 +2,7 @@
   <AdminShell title="返修退回">
     <article class="order-list-page repair-list-page">
       <section class="order-list-filter-card repair-filter-card" aria-label="返修单筛选">
-        <form class="order-filter-form" @submit.prevent="page = 1">
+        <form class="order-filter-form" @submit.prevent="search">
           <div class="order-filter-row repair-filter-row">
             <label class="order-list-search-field">
               <span class="sr-only">搜索返修单号或工厂名称</span>
@@ -38,7 +38,7 @@
           <div class="order-list-heading"><h1>返修退回</h1></div>
           <button class="order-primary-button repair-create-button" type="button" @click="router.push('/repairs/new')">新建返修单</button>
         </header>
-        <p v-if="error" class="page-error">{{ error }}</p>
+        <p v-if="error || optionsError" class="page-error">{{ error || optionsError }}</p>
         <div class="table-scroll">
           <table class="orders-table repair-list-table data-grid-table">
             <thead><tr>
@@ -65,7 +65,7 @@
         </div>
         <footer class="order-list-footer repair-list-footer">
           <span>每页展示 10 条返修单。</span>
-          <NumberPagination :page="page" :total="sortedItems.length" :loading="loading" @change="page = $event" />
+          <NumberPagination :page="page" :total="total" :loading="loading" @change="page = $event" />
         </footer>
       </section>
       <div v-if="archiveTarget" class="detail-confirm-layer">
@@ -84,9 +84,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { ApiError, repairApi, type Repair } from "@/api/client";
+import { ApiError, repairApi, type RepairSummary } from "@/api/client";
 import NumberPagination from "@/components/NumberPagination.vue";
 import AdminShell from "@/components/AdminShell.vue";
 import TableSortButton from "@/components/TableSortButton.vue";
@@ -99,33 +99,44 @@ const sortableColumns: Array<{ label:string; field:SortField }> = [
   { label:"退回时间", field:"returnDate" }, { label:"状态", field:"status" },
 ];
 const router=useRouter();
-const items=ref<Repair[]>([]), loading=ref(true), error=ref("");
-const archiveTarget=ref<Repair|null>(null),archiving=ref(false);
+const items=ref<RepairSummary[]>([]), loading=ref(true), error=ref("");
+const archiveTarget=ref<RepairSummary|null>(null),archiving=ref(false);
 const keyword=ref(""), status=ref("all"), factoryFilter=ref<string[]>([]), dateFrom=ref(""), dateTo=ref("");
 const factoryMenuOpen=ref(false), page=ref(1), pageSize=10;
 const sortBy=ref<SortField|"">(""), sortOrder=ref<"asc"|"desc">("asc");
-const factories=computed(()=>[...new Set(items.value.map(v=>v.factoryName))].sort((a,b)=>a.localeCompare(b,"zh-CN")));
+const factories=ref<string[]>([]), total=ref(0), optionsError=ref("");
+let requestId=0, optionsId=0, disposed=false;
 const factoryLabel=computed(()=>factoryFilter.value.length===0?"全部工厂":factoryFilter.value.length===1?factoryFilter.value[0]:`已选 ${factoryFilter.value.length} 个工厂`);
-const filtered=computed(()=>{const k=keyword.value.trim().toLocaleLowerCase("zh-CN");return items.value.filter(v=>(!k||`${v.repairNo} ${v.factoryName}`.toLocaleLowerCase("zh-CN").includes(k))&&(status.value==="all"||v.status===status.value)&&(!factoryFilter.value.length||factoryFilter.value.includes(v.factoryName))&&(!dateFrom.value||v.returnDate>=dateFrom.value)&&(!dateTo.value||v.returnDate<=dateTo.value));});
-const sortedItems=computed(()=>{const values=[...filtered.value];if(!sortBy.value)return values;return values.sort((a,b)=>{const av=a[sortBy.value as SortField],bv=b[sortBy.value as SortField];const result=typeof av==="number"&&typeof bv==="number"?av-bv:String(av).localeCompare(String(bv),"zh-CN",{numeric:true});return sortOrder.value==="asc"?result:-result;});});
-const pages=computed(()=>Math.max(1,Math.ceil(sortedItems.value.length/pageSize)));
-const pageItems=computed(()=>sortedItems.value.slice((page.value-1)*pageSize,page.value*pageSize));
-watch([keyword, status, factoryFilter, dateFrom, dateTo], () => { page.value = 1; }, { deep: true });
-watch(sortedItems,()=>{if(page.value>pages.value)page.value=pages.value});
+const pageItems=computed(()=>items.value);
+// A single combined watcher batches page reset and filter changes into one request.
+watch([keyword, status, factoryFilter, dateFrom, dateTo, sortBy, sortOrder], () => { page.value=1; }, {deep:true, flush:"sync"});
+watch([keyword, status, factoryFilter, dateFrom, dateTo, sortBy, sortOrder, page], () => { void load(); }, {deep:true});
+async function load(){
+  const id=++requestId;
+  loading.value=true; error.value="";
+  try {
+    const result=await repairApi.listSummaries({keyword:keyword.value,status:status.value,factories:[...factoryFilter.value],returnFrom:dateFrom.value,returnTo:dateTo.value,sortBy:sortBy.value,sortOrder:sortOrder.value,page:page.value,pageSize});
+    if(disposed||id!==requestId)return;
+    total.value=result.total;
+    const lastPage=Math.max(1,Math.ceil(result.total/pageSize));
+    if(page.value>lastPage){page.value=lastPage;return;}
+    items.value=result.items;
+  }catch(e){if(!disposed&&id===requestId)error.value=e instanceof ApiError?e.message:"返修单加载失败";}
+  finally{if(!disposed&&id===requestId)loading.value=false;}
+}
+async function loadFactories(){
+  const id=++optionsId;
+  try{const result=await repairApi.listFactoryOptions();if(disposed||id!==optionsId)return;factories.value=[...new Set(result.items)].sort((a,b)=>a.localeCompare(b,"zh-CN"));optionsError.value="";}
+  catch(e){if(!disposed&&id===optionsId)optionsError.value=e instanceof ApiError?e.message:"工厂筛选选项加载失败";}
+}
+function search(){if(page.value!==1)page.value=1;else void load();}
 function sort(field:string){const next=field as SortField;if(sortBy.value===next)sortOrder.value=sortOrder.value==="asc"?"desc":"asc";else{sortBy.value=next;sortOrder.value="asc"}page.value=1}
 function reset(){keyword.value="";status.value="all";factoryFilter.value=[];dateFrom.value="";dateTo.value="";sortBy.value="";sortOrder.value="asc";page.value=1}
 const n=(v:number)=>v.toLocaleString("zh-CN");
 const open=(id:string)=>router.push(`/repairs/${id}`);
-async function confirmArchive(){if(!archiveTarget.value||archiving.value)return;const target=archiveTarget.value;archiving.value=true;error.value="";try{await repairApi.archive(target.repairId);items.value=items.value.filter(item=>item.repairId!==target.repairId);archiveTarget.value=null}catch(e){error.value=e instanceof ApiError?e.message:"返修单归档失败"}finally{archiving.value=false}}
-onMounted(async()=>{try{const all: Repair[] = []; let nextPage = 1;
-    while (true) {
-      const result = await repairApi.list({ page: nextPage, pageSize: 100 });
-      all.push(...result.items);
-      if (all.length >= result.total) break;
-      if (!result.items.length) throw new Error("返修单分页数据不完整");
-      nextPage += 1;
-    }
-    items.value = all}catch(e){error.value=e instanceof ApiError?e.message:"返修单加载失败"}finally{loading.value=false}});
+async function confirmArchive(){if(!archiveTarget.value||archiving.value)return;const target=archiveTarget.value;archiving.value=true;error.value="";try{await repairApi.archive(target.repairId);archiveTarget.value=null;void loadFactories();await load();}catch(e){error.value=e instanceof ApiError?e.message:"返修单归档失败"}finally{archiving.value=false}}
+onMounted(()=>{void load();void loadFactories();});
+onBeforeUnmount(()=>{disposed=true;requestId++;optionsId++;});
 </script>
 
 <style scoped>

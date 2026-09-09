@@ -603,6 +603,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/repairs/factory-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Repair Factory Options */
+        get: operations["repair_factory_options_api_v1_admin_repairs_factory_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/repairs/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Repair Summaries */
+        get: operations["list_repair_summaries_api_v1_admin_repairs_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/repairs/{repair_id}": {
         parameters: {
             query?: never;
@@ -2336,6 +2370,11 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** RepairFactoryOptionsResponse */
+        RepairFactoryOptionsResponse: {
+            /** Items */
+            items: string[];
+        };
         /** RepairLineResponse */
         RepairLineResponse: {
             /** Boxnumber */
@@ -2552,6 +2591,43 @@ export interface components {
             sourceSkuId: string;
             /** Variantid */
             variantId: string;
+            /** Warehousereturnquantity */
+            warehouseReturnQuantity: number;
+        };
+        /** RepairSummaryListResponse */
+        RepairSummaryListResponse: {
+            /** Items */
+            items: components["schemas"]["RepairSummaryResponse"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            /** Total */
+            total: number;
+        };
+        /** RepairSummaryResponse */
+        RepairSummaryResponse: {
+            /** Factoryid */
+            factoryId: string;
+            /** Factoryname */
+            factoryName: string;
+            /** Repairid */
+            repairId: string;
+            /** Repairno */
+            repairNo: string;
+            /** Repairedquantity */
+            repairedQuantity: number;
+            /**
+             * Returndate
+             * Format: date
+             */
+            returnDate: string;
+            /** Returnedquantity */
+            returnedQuantity: number;
+            /** Scrappedquantity */
+            scrappedQuantity: number;
+            /** Status */
+            status: string;
             /** Warehousereturnquantity */
             warehouseReturnQuantity: number;
         };
@@ -4339,6 +4415,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RepairListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    repair_factory_options_api_v1_admin_repairs_factory_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairFactoryOptionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_repair_summaries_api_v1_admin_repairs_summary_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                status?: string;
+                factories?: string[] | null;
+                returnFrom?: string | null;
+                returnTo?: string | null;
+                sortBy?: string;
+                sortOrder?: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairSummaryListResponse"];
                 };
             };
             /** @description Validation Error */

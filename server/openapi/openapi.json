@@ -4652,6 +4652,55 @@
         ]
       }
     },
+    "/api/v1/admin/factories/options": {
+      "get": {
+        "operationId": "admin_factory_options_api_v1_admin_factories_options_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryOptionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Factory Options",
+        "tags": [
+          "factory-admin"
+        ]
+      }
+    },
     "/api/v1/admin/factories/{factory_id}": {
       "get": {
         "operationId": "get_factory_api_v1_admin_factories__factory_id__get",

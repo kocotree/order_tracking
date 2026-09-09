@@ -224,6 +224,7 @@ export const identityApi = {
       `/v1/admin/users/${encodeURIComponent(userId)}/${enabled ? "enable" : "disable"}`,
       { method: "POST", body: JSON.stringify({ version }) },
     ),
+  listFactoryOptions: () => request<components["schemas"]["FactoryOptionListResponse"]>("/v1/admin/factories/options"),
   listFactories: (keyword = "", contractStatus = "all", accessStatus = "all") =>
     request<FactoryList>(
       `/v1/admin/factories?keyword=${encodeURIComponent(keyword)}&contractStatus=${encodeURIComponent(contractStatus)}&accessStatus=${encodeURIComponent(accessStatus)}`,

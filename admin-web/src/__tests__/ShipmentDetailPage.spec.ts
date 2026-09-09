@@ -1,7 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { shipmentApi, type Shipment } from "@/api/client";
+import { ApiError, shipmentApi, type Shipment } from "@/api/client";
 import ShipmentDetailPage from "@/pages/ShipmentDetailPage.vue";
 
 const routerPush = vi.hoisted(() => vi.fn());
@@ -101,6 +101,32 @@ describe("shipment evidence in the administrator detail", () => {
 
 
 describe("receipt verification", () => {
+  it("shows the withdrawn history without receipt or approval actions", async () => {
+    vi.spyOn(shipmentApi, "get").mockResolvedValue({ ...shipment, status: "WITHDRAWN",
+      operations: [{action:"shipment_withdrawn",reason:"数量录错",actorName:"乙",createdAt:"2026-09-09T03:00:00Z"}] });
+    const wrapper = mount(ShipmentDetailPage, {global:{stubs:{AdminShell:shellStub,TableSortButton:true}}});
+    await flushPromises();
+    expect(wrapper.text()).toContain("已撤回");
+    expect(wrapper.text()).toContain("数量录错");
+    expect(wrapper.find('[data-action="confirm-receipt"]').exists()).toBe(false);
+    expect(wrapper.find('[data-action="save-receipt"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("通过撤回申请");
+    expect(shipmentApi.getReceipt).not.toHaveBeenCalled();
+  });
+
+  it("refreshes a stale receipt page to read-only after withdrawal", async () => {
+    vi.spyOn(shipmentApi, "get").mockResolvedValueOnce(shipment)
+      .mockResolvedValue({...shipment,status:"WITHDRAWN"});
+    vi.spyOn(shipmentApi, "saveReceipt").mockRejectedValue(new ApiError(409, "conflict", "发货单已撤回"));
+    const wrapper = mount(ShipmentDetailPage, {global:{stubs:{AdminShell:shellStub,TableSortButton:true}}});
+    await flushPromises();
+    await wrapper.get('[data-action="save-receipt"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("发货单已撤回");
+    expect(wrapper.find('[data-action="save-receipt"]').exists()).toBe(false);
+    expect(wrapper.find('[data-action="confirm-receipt"]').exists()).toBe(false);
+  });
+
   it("saves by box, derives totals, requires save before confirm and locks confirmed values", async () => {
     const value = { ...shipment, boxes: [{ boxNo: 1, groupKey: null, items: [{ ...shipment.lines[0]!, boxItemId: 7 }] }] };
     vi.spyOn(shipmentApi, "get").mockResolvedValue(value);

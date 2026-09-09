@@ -791,7 +791,7 @@ class Shipment(Base):
         UniqueConstraint("shipment_no", name="uq_shipments_no"),
         UniqueConstraint("active_draft_owner_id", name="uq_shipments_active_draft_owner"),
         CheckConstraint(
-            "status IN ('DRAFT', 'SHIPPED', 'VOID_PENDING', 'VOIDED')",
+            "status IN ('DRAFT', 'SHIPPED', 'VOID_PENDING', 'VOIDED', 'WITHDRAWN')",
             name="ck_shipments_status",
         ),
         Index("ix_shipments_factory_status", "factory_id", "status", "created_at"),
@@ -799,6 +799,9 @@ class Shipment(Base):
 
     shipment_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     shipment_no: Mapped[str | None] = mapped_column(String(32))
+    source_shipment_id: Mapped[str | None] = mapped_column(
+        String(36), index=True
+    )
     factory_id: Mapped[str] = mapped_column(
         ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
     )
@@ -921,7 +924,7 @@ class ShipmentFile(Base):
     __tablename__ = "shipment_files"
     __table_args__ = (
         UniqueConstraint("shipment_id", "display_order", name="uq_shipment_files_order"),
-        UniqueConstraint("stored_file_id", name="uq_shipment_files_stored_file"),
+        Index("ix_shipment_files_stored_file", "stored_file_id"),
         CheckConstraint(
             "display_order >= 0 AND display_order < 3",
             name="ck_shipment_files_display_order",

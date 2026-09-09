@@ -94,6 +94,9 @@ class ShipmentDraftResponse(ApiModel):
     return_events: list["ShipmentReturnEventResponse"] = []
     receipt: ReceiptResponse | None = None
     receipt_differences: list["ShipmentLineResponse"] = []
+    withdrawal_draft_id: str | None = None
+    can_edit_withdrawal: bool = False
+    operations: list[dict[str, str]] = []
 
 
 class DraftItemWrite(ApiModel):
@@ -115,6 +118,10 @@ class DraftSave(ApiModel):
 
 class VoidRequestCreate(ApiModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+class WithdrawWrite(VoidRequestCreate):
+    version: StrictInt = Field(ge=1)
 
 
 class VoidReviewWrite(ApiModel):
@@ -180,6 +187,7 @@ class ShipmentFileResponse(ApiModel):
     content_sha256: str
     display_order: int
     content_url: str
+    draft_version: int | None = None
 
 
 class ShipmentListResponse(ApiModel):
@@ -323,6 +331,7 @@ def create_shipment_router(
         shipment_id: str,
         file: Annotated[UploadFile, File()],
         response: Response,
+        version: Annotated[int | None, Query(ge=1)] = None,
         authorization: str | None = Header(default=None),
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> ShipmentFileResponse:
@@ -337,10 +346,12 @@ def create_shipment_router(
             declared_mime_type=file.content_type or "application/octet-stream",
             content=await file.read(SHIPMENT_FILE_MAX_BYTES + 1),
             idempotency_key=idempotency_key,
+            expected_version=version,
         )
         if not created:
             response.status_code = 200
-        return ShipmentFileResponse.model_validate(result, from_attributes=True)
+        value = ShipmentFileResponse.model_validate(result, from_attributes=True)
+        return value
 
     @router.delete(
         "/factory/shipments/drafts/{shipment_id}/files/{file_id}",
@@ -350,15 +361,20 @@ def create_shipment_router(
     def remove_draft_file(
         shipment_id: str,
         file_id: int,
+        version: Annotated[int | None, Query(ge=1)] = None,
         authorization: str | None = Header(default=None),
     ) -> Response:
         actor = factory_user(authorization)
-        service.remove_file(
+        new_version = service.remove_file(
             actor_id=actor.user_id,
             factory_id=actor.factory_id or "",
             shipment_id=shipment_id,
             file_id=file_id,
+            expected_version=version,
         )
+        if version is not None:
+            return Response(content=f'{{"version":{new_version}}}',
+                            media_type="application/json", status_code=200)
         return Response(status_code=204)
 
     @router.delete(
@@ -443,30 +459,27 @@ def create_shipment_router(
         ]
         return ShipmentListResponse(items=items, total=len(items))
 
-    @router.post(
-        "/factory/shipments/{shipment_id}/void-requests",
-        response_model=ShipmentVoidRequestResponse,
-        status_code=201,
-        tags=["shipment-factory"],
-    )
-    def request_void(
-        shipment_id: str,
-        payload: VoidRequestCreate,
-        authorization: str | None = Header(default=None),
-        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    ) -> ShipmentVoidRequestResponse:
+    @router.post("/factory/shipments/{shipment_id}/withdraw", response_model=ShipmentDraftResponse)
+    def withdraw(shipment_id: str, payload: WithdrawWrite,
+                 authorization: str | None = Header(default=None),
+                 idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                 ) -> ShipmentDraftResponse:
         actor = factory_user(authorization)
-        if not idempotency_key:
-            raise ShipmentValidationError("Idempotency-Key is required")
-        return _void_request_response(
-            service.request_void(
-                actor_id=actor.user_id,
-                factory_id=actor.factory_id or "",
-                shipment_id=shipment_id,
-                reason=payload.reason,
-                idempotency_key=idempotency_key,
+        if not idempotency_key or len(idempotency_key) > 64:
+            raise ShipmentValidationError(
+                "Idempotency-Key is required and must be at most 64 chars"
             )
-        )
+        return _draft_response(service.withdraw(actor_id=actor.user_id,
+            factory_id=actor.factory_id or "", shipment_id=shipment_id, reason=payload.reason,
+            expected_version=payload.version, idempotency_key=idempotency_key))
+
+    @router.get("/factory/shipments/{shipment_id}/withdraw-draft",
+                response_model=ShipmentDraftResponse)
+    def withdrawal_draft(shipment_id: str, authorization: str | None = Header(default=None),
+                         ) -> ShipmentDraftResponse:
+        actor = factory_user(authorization)
+        return _draft_response(service.get_withdrawal_draft(shipment_id=shipment_id,
+            actor_id=actor.user_id, factory_id=actor.factory_id or ""))
 
     @router.get(
         "/factory/shipments/{shipment_id}",
@@ -478,7 +491,8 @@ def create_shipment_router(
     ) -> ShipmentDraftResponse:
         actor = factory_user(authorization)
         return _draft_response(
-            service.get_shipment(shipment_id=shipment_id, factory_id=actor.factory_id)
+            service.get_shipment(shipment_id=shipment_id, factory_id=actor.factory_id,
+                                 actor_id=actor.user_id)
         )
 
     @router.get(
@@ -503,6 +517,7 @@ def create_shipment_router(
             file_id=file_id,
             actor_role=actor.role,
             actor_factory_id=actor.factory_id,
+            actor_id=actor.user_id,
         )
         return Response(
             content=result.content,
@@ -650,55 +665,5 @@ def create_shipment_router(
         if not created:
             response.status_code = 200
         return _return_event_response(event)
-
-    @router.post(
-        "/admin/shipment-void-requests/{request_id}/approve",
-        response_model=ShipmentVoidRequestResponse,
-        tags=["shipment-admin"],
-    )
-    def approve_void_request(
-        request_id: str,
-        payload: VoidReviewWrite,
-        ot_web_session: str | None = Cookie(default=None),
-        x_csrf_token: str | None = Header(default=None),
-        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    ) -> ShipmentVoidRequestResponse:
-        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
-        if not idempotency_key:
-            raise ShipmentValidationError("Idempotency-Key is required")
-        return _void_request_response(
-            service.review_void(
-                actor_id=actor.user_id,
-                request_id=request_id,
-                approve=True,
-                comment=payload.comment,
-                idempotency_key=idempotency_key,
-            )
-        )
-
-    @router.post(
-        "/admin/shipment-void-requests/{request_id}/reject",
-        response_model=ShipmentVoidRequestResponse,
-        tags=["shipment-admin"],
-    )
-    def reject_void_request(
-        request_id: str,
-        payload: VoidReviewWrite,
-        ot_web_session: str | None = Cookie(default=None),
-        x_csrf_token: str | None = Header(default=None),
-        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    ) -> ShipmentVoidRequestResponse:
-        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
-        if not idempotency_key:
-            raise ShipmentValidationError("Idempotency-Key is required")
-        return _void_request_response(
-            service.review_void(
-                actor_id=actor.user_id,
-                request_id=request_id,
-                approve=False,
-                comment=payload.comment,
-                idempotency_key=idempotency_key,
-            )
-        )
 
     return router

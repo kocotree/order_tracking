@@ -24,7 +24,7 @@
       <view class="admin-ship-head"><text>{{item.productSummary}}　{{item.orderSummary}}</text><text>›</text></view>
       <view class="admin-ship-meta"><view><image src="/assets/icons/factory-blue.svg" mode="aspectFit"/><text>工厂</text><b>{{item.factoryName}}</b></view><view><image src="/assets/icons/calendar-blue.svg" mode="aspectFit"/><text>发货日期</text><b>{{item.businessDate}}</b></view></view>
       <view class="admin-ship-stats"><view><text>发货数量</text><b>{{item.totalQuantity}}</b></view><view><text>总箱数</text><b>{{item.totalBoxes}}</b></view></view>
-      <view class="admin-ship-number"><text>发货单号</text><b>{{item.shipmentNo}}</b></view>
+      <view class="admin-ship-number"><text>发货单号</text><b>{{item.shipmentNo}}</b><text wx:if="{{item.status === 'WITHDRAWN'}}">已撤回</text></view>
     </view>
   </view>
   <view wx:if="{{filterOpen}}" class="admin-ship-sheet-layer" bindtap="closeFilter">

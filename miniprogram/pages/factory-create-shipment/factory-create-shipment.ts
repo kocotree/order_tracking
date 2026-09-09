@@ -18,6 +18,8 @@ function confirmModal(title: string, content: string, confirmText = "确定", ca
 }
 
 Page({
+  fileWriting: false,
+  submitKey: `resubmit-${Date.now()}`,
   draftSession: null as ShipmentDraftSession | null,
   saveTimer: null as ReturnType<typeof setTimeout> | null,
   pageClosed: false,
@@ -30,6 +32,7 @@ Page({
     selectedOverQuantity: 0,
     packedBoxCount: 0, currentItems: [] as PackedItemView[], previewBoxes: [] as PreviewBox[],
     productSummaries: [] as ProductSummary[], quantity: "", photos: [] as ShipmentEvidencePhoto[], note: "",
+    withdrawalId: "", originalShipmentNo: "", conflict: false,
     previewMode: false, loading: false, totalQuantity: 0, draftId: "", uploadError: "",
     expandedProducts: [] as string[], expandedBoxes: [] as number[],
     ready: false, saveMessage: "",
@@ -38,9 +41,10 @@ Page({
 
   onLoad(options: Record<string, string | undefined>) {
     this.pageClosed = false;
+    this.submitKey = `resubmit-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     this.draftSession = new ShipmentDraftSession(shipmentApi);
     const previewMode = isDevPreview(options);
-    this.setData({ previewMode, catalog: previewMode ? PREVIEW_SHIPMENT_CATALOG : [] });
+    this.setData({ withdrawalId: options.withdrawalId || "", previewMode, catalog: previewMode ? PREVIEW_SHIPMENT_CATALOG : [] });
     if (previewMode) { this.setData({ready:true}); this.refreshDerived(); }
     else void this.loadCatalog();
   },
@@ -48,9 +52,10 @@ Page({
   async loadCatalog() {
     this.setData({loading:true, ready:false});
     try {
-      const [catalog, draft] = await Promise.all([shipmentApi.catalog(), shipmentApi.currentDraft()]);
+      const [catalog, draft] = await Promise.all([shipmentApi.catalog(), (this.data.withdrawalId ? shipmentApi.withdrawalDraft(this.data.withdrawalId) : shipmentApi.currentDraft())]);
       this.setData({catalog:catalog.items});
-      if (draft) {
+      if (draft && this.data.withdrawalId) { await this.restoreDraft(draft); }
+      else if (draft) {
         let resume = await confirmModal("有未提交的发货草稿", "是否继续填写上次保存的内容？", "继续填写", "重新创建");
         if (!resume) {
           const restart = await confirmModal("重新创建发货单", "将放弃当前草稿的装箱内容、凭证和备注，是否继续？", "重新创建");
@@ -79,11 +84,13 @@ Page({
       catch { photo.downloadFailed = true; }
       return photo;
     }));
-    this.setData({draftId:draft.shipmentId,boxes,boxCount:String(boxes.length || ""),note:draft.note,
+    this.setData({originalShipmentNo:draft.shipmentNo || this.data.originalShipmentNo,draftId:draft.shipmentId,boxes,boxCount:String(boxes.length || ""),note:draft.note,
       photos,step:boxes.length ? 2 : 1,currentBox:0,saveMessage:"草稿已保存"});
   },
 
   async saveDraftNow(): Promise<boolean> {
+    if (this.data.conflict) return false;
+    if (this.fileWriting) return false;
     if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer=null; }
     if (this.data.previewMode) return true;
     if (!this.data.ready || !this.data.boxes.length) return false;
@@ -97,15 +104,15 @@ Page({
       return true;
     } catch (error) {
       const message = (error as {statusCode?:number}).statusCode === 409
-        ? "草稿已在其他页面更新，本页修改未保存，请重新进入核对"
+        ? "这张发货单已被其他人修改，本次修改未保存，请重新加载最新内容。"
         : "草稿未保存，请检查网络后重试下一步";
-      if (!this.pageClosed) this.setData({saveMessage:message});
+      if (!this.pageClosed) this.setData({saveMessage:message,conflict:(error as {statusCode?:number}).statusCode === 409});
       return false;
     }
   },
 
   scheduleSave() {
-    if (this.data.previewMode || !this.data.draftId) return;
+    if (this.data.previewMode || !this.data.draftId || this.data.conflict || this.fileWriting) return;
     this.setData({saveMessage:"有修改尚未保存"});
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer=setTimeout(() => { this.saveTimer=null; void this.saveDraftNow(); },500);
@@ -284,7 +291,7 @@ Page({
     if (!await this.saveDraftNow()) return false;
     try {
       await uploadShipmentEvidence({shipmentId:this.data.draftId,photos:this.data.photos,
-        uploadFile:(id,photo,onProgress) => shipmentApi.uploadFile(id,photo.localPath,photo.uploadKey,onProgress),
+        uploadFile:(id,photo,onProgress) => this.uploadDraftPhoto(id,photo.localPath,photo.uploadKey,onProgress),
         onPhotosChange:photos => { if (!this.pageClosed) this.setData({photos}); }});
       this.setData({uploadError:""});
       return true;
@@ -300,9 +307,15 @@ Page({
     if (!photo) return;
     this.setData({loading:true});
     try {
-      if (photo.fileId && this.data.draftId) await shipmentApi.removeFile(this.data.draftId, photo.fileId);
+      if (photo.fileId && this.data.draftId) {
+        if (!await this.saveDraftNow()) return;
+        this.fileWriting = true;
+        try { const result = await shipmentApi.removeFile(this.data.draftId, photo.fileId, this.data.withdrawalId ? this.draftSession!.current!.version : undefined);
+          if (result?.version) this.draftSession!.current!.version = result.version;
+        } finally { this.fileWriting = false; }
+      }
       this.setData({ photos: this.data.photos.filter((_, itemIndex) => itemIndex !== index), uploadError: "" });
-    } catch { wx.showToast({ title: "凭证移除失败，请重试", icon: "none" }); }
+    } catch (error) { if ((error as {statusCode?:number}).statusCode === 409) this.setData({conflict:true,saveMessage:"草稿已更新，请重新加载最新内容。"}); wx.showToast({ title: "凭证移除失败，请重试", icon: "none" }); }
     finally { this.setData({loading:false}); }
   },
   noteChanged(event: WechatMiniprogram.TextareaInput) { if(this.data.loading)return; this.setData({ note: event.detail.value }); this.scheduleSave(); },
@@ -362,24 +375,48 @@ Page({
         gateway: {
           createDraft: async () => this.draftSession!.current!,
           saveDraft: async () => { if(!await this.saveDraftNow()) throw new Error("草稿未保存"); },
-          uploadFile: (shipmentId, photo, onProgress) => shipmentApi.uploadFile(shipmentId, photo.localPath, photo.uploadKey, onProgress),
-          submitDraft: id => shipmentApi.submitDraft(id,this.draftSession!.current!.version),
+          uploadFile: (shipmentId, photo, onProgress) => this.uploadDraftPhoto(shipmentId, photo.localPath, photo.uploadKey, onProgress),
+          submitDraft: id => shipmentApi.submitDraft(id,this.draftSession!.current!.version, this.submitKey),
         },
         onPhotosChange: photos => this.setData({ photos }),
       });
       const submitted = result.shipment;
       wx.redirectTo({ url: `/pages/factory-shipment-detail/factory-shipment-detail?shipmentId=${encodeURIComponent(submitted.shipmentId)}` });
-    } catch {
+    } catch (error) {
+      if ((error as {statusCode?:number}).statusCode === 409) this.setData({conflict:true,saveMessage:"发货单已更新或已提交，请重新加载最新内容。"});
       const uploadFailed = this.data.photos.some(photo => photo.status === "failed");
       this.setData({ uploadError: uploadFailed ? "凭证上传失败，发货单尚未提交，可点击重试" : "" });
       wx.showToast({ title: uploadFailed ? "凭证上传失败，请重试" : "提交失败，请检查装箱数量", icon: "none" });
     }
     finally { this.setData({ loading: false }); }
   },
+  async reloadLatest() {
+    if (this.data.loading || this.fileWriting) return;
+    if (!await confirmModal("重新加载", "将放弃本页未保存修改，读取最新内容，是否继续？", "重新加载")) return;
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.draftSession = new ShipmentDraftSession(shipmentApi);
+    this.setData({conflict:false});
+    if (this.data.withdrawalId) {
+      try { await this.restoreDraft(await shipmentApi.withdrawalDraft(this.data.withdrawalId)); this.refreshDerived(); this.setData({saveMessage:"草稿已保存"}); }
+      catch { wx.redirectTo({url:`/pages/factory-shipment-detail/factory-shipment-detail?shipmentId=${encodeURIComponent(this.data.withdrawalId)}`}); }
+    } else await this.loadCatalog();
+  },
+  async uploadDraftPhoto(id:string,path:string,key:string,onProgress:(progress:number)=>void) {
+    this.fileWriting = true;
+    try {
+      const file = await shipmentApi.uploadFile(id,path,key,onProgress,this.data.withdrawalId ? this.draftSession!.current!.version : undefined);
+      if (file.draftVersion) this.draftSession!.current!.version = file.draftVersion;
+      return file;
+    } catch (error) {
+      if ((error as {statusCode?:number}).statusCode === 409) this.setData({conflict:true,saveMessage:"草稿已更新，请重新加载最新内容。"});
+      throw error;
+    } finally { this.fileWriting = false; }
+  },
   async goBack() {
     if(this.data.loading)return;
     if(this.data.step>1) { await this.previous(); return; }
     if(this.data.draftId && !await this.saveDraftNow()) return;
-    wx.navigateBack();
+    if (this.data.withdrawalId) wx.redirectTo({url:`/pages/factory-shipment-detail/factory-shipment-detail?shipmentId=${encodeURIComponent(this.data.withdrawalId)}`});
+    else wx.navigateBack();
   },
 });

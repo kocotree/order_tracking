@@ -16,10 +16,13 @@ function buildLineGroups(lines: ShipmentLine[]): LineGroup[] {
 }
 
 Page({
+  shipmentId: "",
+  withdrawKey: "",
+  onShow() { if (this.shipmentId) void this.load(this.shipmentId); },
   data: { receiptAtText: "", shipment: null as Shipment | null, submittedAtText: "", lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], proofs: [] as ProofView[], loading: true, withdrawStep: "" as ""|"form"|"confirm", withdrawReason: "", withdrawError: "", submitting: false, notificationId:null as number|null },
   onLoad(options: Record<string, string | undefined>) {
     if (isDevPreview(options)) { this.showShipment(PREVIEW_SHIPMENT); return; }
-    this.setData({notificationId:notificationIdFrom(options)}); if (options.shipmentId) void this.load(options.shipmentId);
+    this.setData({notificationId:notificationIdFrom(options)}); if (options.shipmentId) this.shipmentId = options.shipmentId;
   },
   showShipment(shipment: Shipment) {
     this.setData({ shipment, receiptAtText: formatShanghaiDateTime(shipment.receipt?.confirmedAt), submittedAtText: formatShanghaiDateTime(shipment.submittedAt), lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), proofs: shipment.files.map(file => ({ ...file, localPath: "", status: "loading" })), loading: false });
@@ -60,7 +63,7 @@ Page({
     const boxNo = Number(event.currentTarget.dataset.boxNo);
     this.setData({ boxGroups: this.data.boxGroups.map((box) => box.boxNo === boxNo ? { ...box, expanded: !box.expanded } : box) });
   },
-  openWithdraw() { this.setData({ withdrawStep: "form", withdrawReason: "", withdrawError: "" }); },
+  openWithdraw() { this.withdrawKey = `withdraw-${Date.now()}`; this.setData({ withdrawStep: "form", withdrawReason: "", withdrawError: "" }); },
   closeWithdraw() { if (!this.data.submitting) this.setData({ withdrawStep: "", withdrawError: "" }); },
   stopPropagation() {},
   updateWithdrawReason(event: WechatMiniprogram.Input) { this.setData({ withdrawReason: String(event.detail.value), withdrawError: "" }); },
@@ -68,8 +71,9 @@ Page({
   async confirmWithdraw() {
     const shipment = this.data.shipment; if (!shipment || this.data.submitting) return;
     this.setData({ submitting: true, withdrawError: "" });
-    try { await shipmentApi.requestVoid(shipment.shipmentId, this.data.withdrawReason); await this.load(shipment.shipmentId); this.setData({ withdrawStep: "", submitting: false }); wx.showToast({ title: "撤回申请已提交", icon: "success" }); }
-    catch { this.setData({ submitting: false, withdrawError: "撤回申请提交失败" }); }
+    try { await shipmentApi.withdraw(shipment.shipmentId, this.data.withdrawReason, shipment.version, this.withdrawKey); this.setData({ withdrawStep: "", submitting: false }); this.continueEditing(); }
+    catch { this.setData({ submitting: false, withdrawError: "撤回失败，请刷新发货单后重试" }); }
   },
+  continueEditing() { if (this.data.shipment) wx.navigateTo({url:`/pages/factory-create-shipment/factory-create-shipment?withdrawalId=${encodeURIComponent(this.data.shipment.shipmentId)}`}); },
   goBack() { returnFromShipmentDetail(); },
 });

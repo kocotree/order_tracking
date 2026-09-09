@@ -1,7 +1,6 @@
 <view class="repair-return-page">
   <mini-titlebar title="发回返修品" monochrome="{{true}}" showBack="{{true}}" backLeft="{{true}}" bind:back="goBack"/>
   <view class="ship-steps repair-return-steps"><view class="ship-step is-active"><text>{{step === 'preview' ? '✓' : '1'}}</text><text>填写数量</text></view><view class="ship-step {{step === 'preview' ? 'is-active' : ''}}"><text>2</text><text>预览提交</text></view></view>
-  <view class="repair-return-steps"><view class="repair-return-step is-active"><text>{{step === 'preview' ? '✓' : '1'}}</text><b>填写数量</b></view><i class="{{step === 'preview' ? 'is-active' : ''}}"/><view class="repair-return-step {{step === 'preview' ? 'is-active' : ''}}"><text>2</text><b>预览提交</b></view></view>
   <view wx:if="{{saveMessage}}" class="repair-return-save-status">{{saveMessage}}</view>
   <view wx:if="{{loading}}" class="mini-empty">正在加载返修任务…</view>
   <view wx:elif="{{repair && ready}}" class="repair-return-content">

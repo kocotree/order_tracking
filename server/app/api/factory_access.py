@@ -268,6 +268,10 @@ def create_factory_router(
     ) -> FactoryOptionListResponse:
         actor = web_user(ot_web_session)
         rows = service.list_admin_factory_options(actor_id=actor.user_id)
+        return FactoryOptionListResponse(items=[
+            FactoryOptionResponse(factory_id=id_, supplier_number=number, factory_name=name)
+            for id_, number, name in rows
+        ], total=len(rows))
         return FactoryOptionListResponse(
             items=[
                 FactoryOptionResponse(factory_id=id_, supplier_number=number, factory_name=name)

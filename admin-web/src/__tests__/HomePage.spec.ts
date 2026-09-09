@@ -138,3 +138,15 @@ it("limits the dashboard to ten rows and keeps the all-orders link without pagin
   expect(link?.attributes("href")).toBe("/orders");
   wrapper.unmount();
 });
+
+it.each(["slow", "failed"])("renders dashboard independently of %s notifications", async (mode) => {
+  vi.spyOn(orderApi, "dashboard").mockResolvedValue({ recentOrders: [order()], overdueOrders: 101, todayShipments: 2, pendingImportOrders: 0 } as never);
+  vi.spyOn(notificationApi, "unreadCount").mockResolvedValue({ count: 0 } as never);
+  vi.spyOn(notificationApi, "list").mockImplementation(() => mode === "failed" ? Promise.reject(new Error("offline")) : new Promise(() => undefined));
+  const wrapper = mount(HomePage, { global: { plugins: [createPinia()], stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { template: "<a><slot /></a>" } } } });
+  await flushPromises();
+  expect(wrapper.text()).toContain("090#");
+  expect(wrapper.text()).toContain("101");
+  expect(wrapper.text()).not.toContain("订单看板加载失败");
+  wrapper.unmount();
+});

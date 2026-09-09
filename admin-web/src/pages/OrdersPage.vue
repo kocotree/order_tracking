@@ -140,7 +140,7 @@ const sortableColumns: { key: TableSortKey; label: string }[] = [
 ];
 const trackers = ["烧麦", "松子", "橄榄", "大葱", "青椒"];
 const items = ref<Order[]>([]);
-const factories = ref<Factory[]>([]);
+const factories = ref<Pick<Factory, "factoryId" | "factoryName" | "supplierNumber">[]>([]);
 const total = ref(0);
 const page = ref(1);
 const pageSize = 10;
@@ -231,9 +231,8 @@ function closeMenus(event: MouseEvent) { if (!(event.target as Element).closest(
 
 onMounted(async () => {
   document.addEventListener("click", closeMenus);
-  const result = await identityApi.listFactories().catch(() => null);
-  factories.value = result?.items ?? [];
+  void identityApi.listFactoryOptions().then((result) => { factories.value = result.items; }).catch(() => undefined);
   await load();
 });
-onBeforeUnmount(() => document.removeEventListener("click", closeMenus));
+onBeforeUnmount(() => { requestSequence += 1; document.removeEventListener("click", closeMenus); });
 </script>

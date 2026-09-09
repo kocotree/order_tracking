@@ -451,17 +451,18 @@ def create_order_router(
         items, _ = service.list_visible(
             actor_id=actor.user_id,
             include_drafts=False,
-            page_size=100,
+            page_size=10,
             sort_by="updatedDesc",
         )
+        overdue, shipments = service.dashboard_counts(actor_id=actor.user_id)
         return DashboardResponse(
-            overdue_orders=sum(item.display_status == "已逾期" for item in items),
+            overdue_orders=overdue,
             pending_import_orders=(
                 order_import_service.pending_count(actor_id=actor.user_id)
                 if order_import_service is not None
                 else 0
             ),
-            today_shipments=0,
+            today_shipments=shipments,
             recent_orders=[_order_response(item, request.state.request_id) for item in items[:10]],
             request_id=request.state.request_id,
         )

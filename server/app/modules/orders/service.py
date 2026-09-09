@@ -21,8 +21,10 @@ from app.db.models import (
     Product,
     ProductVariant,
     QuantityLedger,
+    Shipment,
     User,
 )
+from app.modules.orders.admin_query import display_status, page_orders
 
 TRACKERS = frozenset({"烧麦", "松子", "橄榄", "大葱", "青椒"})
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
@@ -587,15 +589,16 @@ class OrderService:
                     dict.fromkeys([*(factory_ids or []), *([factory_id] if factory_id else [])])
                 )
                 if selected_factory_ids:
-                    query = (
-                        query.join(OrderLine, OrderLine.order_id == Order.order_id)
-                        .join(
-                            OrderAssignment,
-                            OrderAssignment.order_line_id == OrderLine.order_line_id,
+                    matching_factories = (
+                        select(OrderAssignment.order_assignment_id)
+                        .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+                        .where(
+                            OrderLine.order_id == Order.order_id,
+                            OrderAssignment.factory_id.in_(selected_factory_ids),
                         )
-                        .where(OrderAssignment.factory_id.in_(selected_factory_ids))
-                        .distinct()
+                        .exists()
                     )
+                    query = query.where(matching_factories)
             else:
                 raise OrderPermissionDenied("order access is not available")
             if keyword.strip():
@@ -624,6 +627,24 @@ class OrderService:
                 query = query.where(Order.order_id.in_(matching_categories))
             if status not in {"all", "草稿", "已完成", "已逾期", "未完成"}:
                 raise OrderValidationError("invalid status")
+            if user.role == "admin":
+                # EXISTS avoids duplicate orders and permits ordering by derived expressions.
+                orders, total = page_orders(
+                    session,
+                    query,
+                    today=business_today,
+                    status=status,
+                    ship_date_from=ship_date_from,
+                    ship_date_to=ship_date_to,
+                    sort_by=sort_by,
+                    page=page,
+                    page_size=page_size,
+                )
+                preloaded = self._page_snapshot_data(session, orders)
+                return [
+                    self._snapshot(session, item, business_today, preloaded=preloaded)
+                    for item in orders
+                ], total
             orders = list(session.scalars(query))
             snapshots = [
                 self._snapshot(session, item, business_today, factory_id=scoped_factory)
@@ -946,6 +967,66 @@ class OrderService:
                 raise OrderValidationError("factory must be enabled and connected")
         return factory_ids
 
+    def dashboard_counts(self, *, actor_id: str, today: date | None = None) -> tuple[int, int]:
+        business_today = today or self._business_today()
+        with self._session_factory() as session:
+            self._require_admin(session, actor_id)
+            overdue = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(Order)
+                    .where(Order.deleted_at.is_(None), display_status(business_today) == "已逾期")
+                )
+                or 0
+            )
+            shipments = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(Shipment)
+                    .where(
+                        Shipment.deleted_at.is_(None),
+                        Shipment.status.in_(["SHIPPED", "VOID_PENDING"]),
+                        Shipment.business_date == business_today,
+                    )
+                )
+                or 0
+            )
+            return int(overdue), int(shipments)
+
+    @staticmethod
+    def _page_snapshot_data(
+        session: Session,
+        orders: list[Order],
+    ) -> tuple[dict[str, list[OrderLine]], dict[int, list[OrderAssignment]], dict[int, int]]:
+        lines: dict[str, list[OrderLine]] = {}
+        assignments: dict[int, list[OrderAssignment]] = {}
+        quantities: dict[int, int] = {}
+        if not orders:
+            return lines, assignments, quantities
+        order_ids = [item.order_id for item in orders]
+        for line in session.scalars(
+            select(OrderLine)
+            .where(OrderLine.order_id.in_(order_ids))
+            .order_by(OrderLine.order_line_id)
+        ):
+            lines.setdefault(line.order_id, []).append(line)
+        for assignment in session.scalars(
+            select(OrderAssignment)
+            .join(OrderLine)
+            .where(OrderLine.order_id.in_(order_ids))
+            .order_by(OrderAssignment.order_assignment_id)
+        ):
+            assignments.setdefault(assignment.order_line_id, []).append(assignment)
+        for assignment_id, quantity in session.execute(
+            select(QuantityLedger.order_assignment_id, func.sum(QuantityLedger.quantity_delta))
+            .join(OrderAssignment)
+            .join(OrderLine)
+            .where(OrderLine.order_id.in_(order_ids))
+            .group_by(QuantityLedger.order_assignment_id)
+        ):
+            quantities[assignment_id] = int(quantity)
+        return lines, assignments, quantities
+
     def _snapshot(
         self,
         session: Session,
@@ -953,23 +1034,35 @@ class OrderService:
         today: date,
         *,
         factory_id: str | None = None,
+        preloaded: tuple[
+            dict[str, list[OrderLine]], dict[int, list[OrderAssignment]], dict[int, int]
+        ]
+        | None = None,
     ) -> OrderSnapshot:
-        rows = list(
-            session.scalars(
-                select(OrderLine)
-                .where(OrderLine.order_id == order.order_id)
-                .order_by(OrderLine.order_line_id)
+        rows = (
+            preloaded[0].get(order.order_id, [])
+            if preloaded is not None
+            else list(
+                session.scalars(
+                    select(OrderLine)
+                    .where(OrderLine.order_id == order.order_id)
+                    .order_by(OrderLine.order_line_id)
+                )
             )
         )
         line_snapshots: list[LineSnapshot] = []
         factory_totals: dict[str, tuple[str, int, int]] = {}
         validation_issues: list[str] = []
         for line in rows:
-            assignments = list(
-                session.scalars(
-                    select(OrderAssignment)
-                    .where(OrderAssignment.order_line_id == line.order_line_id)
-                    .order_by(OrderAssignment.order_assignment_id)
+            assignments = (
+                preloaded[1].get(line.order_line_id, [])
+                if preloaded is not None
+                else list(
+                    session.scalars(
+                        select(OrderAssignment)
+                        .where(OrderAssignment.order_line_id == line.order_line_id)
+                        .order_by(OrderAssignment.order_assignment_id)
+                    )
                 )
             )
             if factory_id is not None:
@@ -991,7 +1084,11 @@ class OrderService:
                         f"请填写产品 {line.sku_id_snapshot}／"
                         f"{item.factory_name_snapshot} 的合同出货时间"
                     )
-                shipped = self._assignment_shipped(session, item)
+                shipped = (
+                    item.initial_shipped_quantity + preloaded[2].get(item.order_assignment_id, 0)
+                    if preloaded is not None
+                    else self._assignment_shipped(session, item)
+                )
                 pending = max(item.assigned_quantity - shipped, 0)
                 over = max(shipped - item.assigned_quantity, 0)
                 progress = round(shipped * 100 / item.assigned_quantity)

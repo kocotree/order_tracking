@@ -18,7 +18,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("order list prototype alignment", () => {
   it("keeps all filters visible, hides more operations, and sends category, multi-factory, and table sorts", async () => {
-    vi.spyOn(identityApi, "listFactories").mockResolvedValue({ items: [{ factoryId: "factory-1", factoryName: "启宏" }], total: 1 } as never);
+    vi.spyOn(identityApi, "listFactoryOptions").mockResolvedValue({ items: [{ factoryId: "factory-1", factoryName: "启宏" }], total: 1 } as never);
     const listSpy = vi.spyOn(orderApi, "list").mockResolvedValue({ items: [sampleOrder], total: 1, page: 1, pageSize: 10, requestId: "request-list" });
     const wrapper = mount(OrdersPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
     await flushPromises();
@@ -45,7 +45,7 @@ describe("order list prototype alignment", () => {
 });
 
 it("opens the overdue tab from the dashboard query", async () => {
-  vi.spyOn(identityApi, "listFactories").mockResolvedValue({ items: [], total: 0 } as never);
+  vi.spyOn(identityApi, "listFactoryOptions").mockResolvedValue({ items: [], total: 0 } as never);
   const list = vi.spyOn(orderApi, "list").mockResolvedValue({ items: [], total: 0 } as never);
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/orders", component: OrdersPage }] });
   await router.push("/orders?status=已逾期");
@@ -53,5 +53,56 @@ it("opens the overdue tab from the dashboard query", async () => {
   await flushPromises();
   expect(list).toHaveBeenCalledWith(expect.objectContaining({ status: "已逾期" }));
   expect(wrapper.get(".order-status-tab.is-active").text()).toBe("已逾期");
+  wrapper.unmount();
+});
+
+it("renders orders before slow factory options and ignores stale list responses", async () => {
+  let resolveFactories!: (value: never) => void;
+  vi.spyOn(identityApi, "listFactoryOptions").mockImplementation(() => new Promise((resolve) => { resolveFactories = resolve; }));
+  let resolveOld!: (value: never) => void;
+  const list = vi.spyOn(orderApi, "list")
+    .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+    .mockResolvedValue({ items: [sampleOrder], total: 1 } as never);
+  const wrapper = mount(OrdersPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { template: "<a><slot /></a>" } } } });
+  expect(list).toHaveBeenCalledTimes(1);
+  await wrapper.get(".order-filter-form").trigger("submit");
+  await flushPromises();
+  expect(wrapper.text()).toContain("090#");
+  expect(wrapper.text()).not.toContain("正在加载订单");
+  resolveOld({ items: [], total: 0 } as never);
+  resolveFactories({ items: [{ factoryId: "other", factoryName: "非当前页工厂", supplierNumber: "S2" }], total: 1 } as never);
+  await flushPromises();
+  expect(wrapper.text()).toContain("090#");
+  await wrapper.get(".order-multiselect-trigger").trigger("click");
+  expect(wrapper.text()).toContain("非当前页工厂");
+  expect(list).toHaveBeenCalledTimes(2);
+  wrapper.unmount();
+});
+
+it("does not block orders when factory options fail", async () => {
+  vi.spyOn(identityApi, "listFactoryOptions").mockRejectedValue(new Error("offline"));
+  const list = vi.spyOn(orderApi, "list").mockResolvedValue({ items: [sampleOrder], total: 1 } as never);
+  const wrapper = mount(OrdersPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { template: "<a><slot /></a>" } } } });
+  await flushPromises();
+  expect(wrapper.text()).toContain("090#");
+  expect(list).toHaveBeenCalledTimes(1);
+  wrapper.unmount();
+});
+
+it("returns to the last valid page when the result shrinks", async () => {
+  vi.spyOn(identityApi, "listFactoryOptions").mockResolvedValue({ items: [], total: 0 });
+  const list = vi.spyOn(orderApi, "list")
+    .mockResolvedValueOnce({ items: [sampleOrder], total: 11 } as never)
+    .mockResolvedValueOnce({ items: [], total: 10 } as never)
+    .mockResolvedValue({ items: [sampleOrder], total: 10 } as never);
+  const wrapper = mount(OrdersPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { template: "<a><slot /></a>" } } } });
+  await flushPromises();
+  const second = wrapper.findAll("button").find((button) => button.text() === "2");
+  expect(second).toBeDefined();
+  await second!.trigger("click");
+  await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }));
+  expect(wrapper.text()).toContain("090#");
+  expect(list).toHaveBeenCalledTimes(3);
   wrapper.unmount();
 });

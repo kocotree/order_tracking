@@ -198,8 +198,9 @@ async function openNotification(item:NotificationItem) {
 }
 
 onMounted(async () => {
+  void notificationStore.refresh().catch(() => undefined);
   try {
-    const [dashboardResult] = await Promise.all([orderApi.dashboard(), notificationStore.refresh()]);
+    const dashboardResult = await orderApi.dashboard();
     dashboard.value = dashboardResult;
 
   } catch (error) {

@@ -158,7 +158,7 @@ class RepairConfirmationService:
                 select(RepairOrder).where(RepairOrder.source_sha256 == preview.source_sha256)
             )
             if duplicate is not None:
-                raise RepairConfirmationConflict(f"该质检 Excel 已创建返修单 {duplicate.repair_no}")
+                raise RepairConfirmationConflict("该文件已创建")
 
             preview_lines = session.scalars(
                 select(RepairPreviewLine)
@@ -222,7 +222,11 @@ class RepairConfirmationService:
                     status="completed",
                 )
             )
+            from app.modules.repairs.periods import attach_period
+
+            period_id = attach_period(session, preview.factory_id, business_date)
             repair = RepairOrder(
+                period_id=period_id,
                 repair_id=repair_id,
                 repair_no=repair_no,
                 factory_id=preview.factory_id,

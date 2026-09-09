@@ -1212,6 +1212,9 @@ class RepairOrder(Base):
     )
 
     repair_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    period_id: Mapped[str | None] = mapped_column(
+        ForeignKey("repair_periods.period_id", ondelete="RESTRICT"), index=True
+    )
     repair_no: Mapped[str] = mapped_column(String(32), nullable=False)
     factory_id: Mapped[str] = mapped_column(
         ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
@@ -1301,6 +1304,9 @@ class RepairReturnBatch(Base):
     batch_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     repair_id: Mapped[str] = mapped_column(
         ForeignKey("repair_orders.repair_id", ondelete="RESTRICT"), nullable=False
+    )
+    period_batch_id: Mapped[str | None] = mapped_column(
+        ForeignKey("repair_period_batches.batch_id", ondelete="RESTRICT"), index=True
     )
     submitted_by: Mapped[str] = mapped_column(
         ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
@@ -1552,6 +1558,54 @@ class RepairReturnDraft(Base):
     )
     user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    entries: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    submission_key: Mapped[str] = mapped_column(String(36), nullable=False)
+
+
+class RepairPeriod(Base):
+    __tablename__ = "repair_periods"
+    __table_args__ = (
+        UniqueConstraint("factory_id", "start_date", name="uq_repair_period_factory_start"),
+    )
+    period_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    factory_id: Mapped[str] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="CASCADE"), nullable=False
+    )
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    label: Mapped[str] = mapped_column(String(32), nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    archived_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+
+
+class RepairPeriodBatch(Base):
+    __tablename__ = "repair_period_batches"
+    __table_args__ = (
+        UniqueConstraint("submitted_by", "idempotency_key", name="uq_repair_period_batch_key"),
+    )
+    batch_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    period_id: Mapped[str] = mapped_column(
+        ForeignKey("repair_periods.period_id", ondelete="RESTRICT"), nullable=False
+    )
+    submitted_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    submitted_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(191), nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class RepairPeriodDraft(Base):
+    __tablename__ = "repair_period_drafts"
+    repair_id: Mapped[str] = mapped_column(
+        ForeignKey("repair_periods.period_id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     entries: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)

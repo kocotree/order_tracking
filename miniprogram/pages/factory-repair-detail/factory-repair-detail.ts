@@ -41,7 +41,7 @@ Page({
     } catch { wx.showToast({ title:this.data.notificationId?"内容已不可查看":"返修任务加载失败", icon: "none" }); }
     finally { this.setData({ loading: false }); }
   },
-  async download() { if (!this.data.repair) return; if (this.data.previewMode) { wx.showToast({ title: "演示模式不下载附件", icon: "none" }); return; } try { const path = await repairApi.download(this.data.repair.originalFileId); wx.openDocument({ filePath: path, showMenu: true }); } catch { wx.showToast({ title: "质检附件下载失败", icon: "none" }); } },
+  async download(event: WechatMiniprogram.TouchEvent) { if (!this.data.repair) return; if (this.data.previewMode) { wx.showToast({ title: "演示模式不下载附件", icon: "none" }); return; } try { const path = await repairApi.download(Number(event.currentTarget.dataset.fileId)); wx.openDocument({ filePath: path, showMenu: true }); } catch { wx.showToast({ title: "质检附件下载失败", icon: "none" }); } },
   toggleProduct(event: WechatMiniprogram.TouchEvent) { const index = Number(event.currentTarget.dataset.index); this.setData({ [`productGroups[${index}].expanded`]: !this.data.productGroups[index]?.expanded }); },
   toggleBatch(event: WechatMiniprogram.TouchEvent) { const index = Number(event.currentTarget.dataset.index); this.setData({ [`returnBatches[${index}].expanded`]: !this.data.returnBatches[index]?.expanded }); },
   openReturn() { if (!this.data.repair) return; const preview = this.data.previewMode ? "&preview=1" : ""; wx.navigateTo({ url: `/pages/factory-repair-return/factory-repair-return?repairId=${encodeURIComponent(this.data.repair.repairId)}${preview}` }); },

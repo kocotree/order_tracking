@@ -25,3 +25,5 @@
 .admin-return-head text:nth-child(n+3),.admin-return-row > text:nth-child(n+3),.admin-return-row > b:last-child { text-align: center; }
 .admin-return-row > b { font-size: 20rpx; }
 .admin-return-row > b:last-child { color: #1267c9; }
+
+.repair-period-label{margin-left:20rpx;font-size:28rpx;}

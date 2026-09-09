@@ -69,6 +69,7 @@ def test_migration_creates_independent_repair_order_boundary(
     assert columns == {
         "repair_id",
         "repair_no",
+        "period_id",
         "factory_id",
         "status",
         "warehouse_return_quantity",

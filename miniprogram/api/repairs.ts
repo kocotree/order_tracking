@@ -38,7 +38,9 @@ export interface RepairSpec extends RepairReturnLine {
   pendingQuantity: number;
 }
 
+export interface RepairAttachment { fileId:number; filename:string; sizeBytes:number }
 export interface Repair {
+  attachments?: RepairAttachment[];
   repairId: string;
   repairNo: string;
   status: "INCOMPLETE" | "COMPLETED";
@@ -77,12 +79,25 @@ function download(fileId: number): Promise<string> {
 export interface RepairDraftEntry { variantId: string; selected: boolean; repaired: string; scrapped: string }
 export interface RepairDraft { version: number; entries: RepairDraftEntry[]; submissionKey: string }
 
+async function listPeriods(role: "admin"|"factory"): Promise<RepairList> {
+  const items:Repair[]=[];
+  let total=0, page=1;
+  do {
+    const result=await authorizedRequest<RepairList>({url:`/${role}/repair-periods?pageSize=100&page=${page}`,method:"GET"});
+    items.push(...result.items.map(item=>({...item, lines:[], specs:[], returnBatches:[], attachments:[]})));
+    total=result.total;
+    if(!result.items.length)break;
+    page++;
+  } while(items.length<total);
+  return {items,total,page:1,pageSize:items.length};
+}
+
 export const repairApi = {
   getReturnDraft: (id: string) => authorizedRequest<RepairDraft>({ url: `/factory/repairs/${encodeURIComponent(id)}/return-draft`, method: "GET" }),
   saveReturnDraft: (id: string, version: number, entries: RepairDraftEntry[]) => authorizedRequest<RepairDraft>({ url: `/factory/repairs/${encodeURIComponent(id)}/return-draft`, method: "PUT", data: { version, entries } }),
-  adminList: () => authorizedRequest<RepairList>({ url: "/admin/repairs?pageSize=100", method: "GET" }),
+  adminList: () => listPeriods("admin"),
   adminGet: (repairId: string) => authorizedRequest<Repair>({ url: `/admin/repairs/${encodeURIComponent(repairId)}`, method: "GET" }),
-  factoryList: () => authorizedRequest<RepairList>({ url: "/factory/repairs?pageSize=100", method: "GET" }),
+  factoryList: () => listPeriods("factory"),
   factoryGet: (repairId: string) => authorizedRequest<Repair>({ url: `/factory/repairs/${encodeURIComponent(repairId)}`, method: "GET" }),
   factorySubmitReturn: (repairId: string, lines: Array<{ variantId: string; repairedQuantity: number; scrappedQuantity: number }>, idempotencyKey: string, draftVersion?: number) => authorizedRequest<Repair>({
     url: `/factory/repairs/${encodeURIComponent(repairId)}/return-batches`,

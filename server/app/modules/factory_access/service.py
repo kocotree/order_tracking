@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import case, delete, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, literal, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -15,6 +16,7 @@ from app.db.models import (
     User,
     UserSession,
 )
+from app.db.natural_sort import natural_sort_keys
 from app.modules.factory_access.codes import normalize_factory_code
 from app.modules.identity_access import (
     ApplicationConflict,
@@ -293,6 +295,165 @@ class FactoryAccessService:
                 ]
             return snapshots
 
+    def page_factories(
+        self,
+        *,
+        actor_id: str,
+        keyword: str = "",
+        contract_status: str = "all",
+        access_status: str = "all",
+        page: int = 1,
+        page_size: int = 10,
+        sort_by: str = "",
+        sort_order: str = "asc",
+    ) -> tuple[list[FactorySnapshot], int]:
+        if contract_status not in {"all", "complete", "incomplete"}:
+            raise FactoryValidation("contract status is invalid")
+        if access_status not in {"all", "connected", "unconnected"}:
+            raise FactoryValidation("access status is invalid")
+        if page < 1 or not 1 <= page_size <= 100 or sort_order not in {"asc", "desc"}:
+            raise FactoryValidation("pagination or sort order is invalid")
+        allowed = {
+            "",
+            "supplierNumber",
+            "factoryName",
+            "legalName",
+            "contactName",
+            "contactPhone",
+            "contractStatus",
+            "connectedUsers",
+        }
+        if sort_by not in allowed:
+            raise FactoryValidation("sort field is invalid")
+        with self._session_factory() as session:
+            self._require_admin(session, actor_id)
+            counts = (
+                select(User.factory_id, func.count().label("connected_users"))
+                .where(User.role == "factory", User.is_enabled.is_(True))
+                .group_by(User.factory_id)
+                .subquery()
+            )
+            connected = func.coalesce(counts.c.connected_users, 0)
+            required = [
+                Factory.factory_code,
+                Factory.legal_name,
+                Factory.address,
+                Factory.legal_representative,
+            ]
+            # CHAR_LENGTH matches Python truthiness even for legacy whitespace-only fields.
+            complete = and_(*(func.char_length(func.coalesce(field, "")) > 0 for field in required))
+            query = select(Factory.factory_id.label("id")).outerjoin(
+                counts, counts.c.factory_id == Factory.factory_id
+            )
+            if keyword.strip():
+                pattern = f"%{keyword.strip()}%"
+                contact_match = (
+                    select(FactoryContact.factory_id)
+                    .where(
+                        FactoryContact.factory_id == Factory.factory_id,
+                        or_(FactoryContact.name.like(pattern), FactoryContact.phone.like(pattern)),
+                    )
+                    .exists()
+                )
+                query = query.where(
+                    or_(
+                        Factory.supplier_number.like(pattern),
+                        Factory.factory_name.like(pattern),
+                        Factory.legal_name.like(pattern),
+                        contact_match,
+                    )
+                )
+            if contract_status != "all":
+                query = query.where(complete if contract_status == "complete" else ~complete)
+            if access_status != "all":
+                query = query.where(
+                    connected > 0 if access_status == "connected" else connected == 0
+                )
+            total = int(session.scalar(select(func.count()).select_from(query.subquery())) or 0)
+            if not total:
+                return [], 0
+            eligible = query.subquery()
+            page_query = (
+                select(Factory, connected.label("connected_users"))
+                .join(eligible, eligible.c.id == Factory.factory_id)
+                .outerjoin(counts, counts.c.factory_id == Factory.factory_id)
+            )
+            if sort_by:
+                missing = sum(
+                    case((func.char_length(func.coalesce(field, "")) == 0, 1), else_=0)
+                    for field in required
+                )
+                if sort_by in {"connectedUsers", "contractStatus"}:
+                    field: Any = connected if sort_by == "connectedUsers" else missing
+                    page_query = page_query.order_by(
+                        field.desc() if sort_order == "desc" else field
+                    )
+                else:
+                    field = {
+                        "supplierNumber": Factory.supplier_number,
+                        "factoryName": Factory.factory_name,
+                        "legalName": func.coalesce(Factory.legal_name, ""),
+                    }.get(sort_by)
+                    if sort_by in {"contactName", "contactPhone"}:
+                        column = (
+                            FactoryContact.name
+                            if sort_by == "contactName"
+                            else FactoryContact.phone
+                        )
+                        # The statement hint prevents GROUP_CONCAT's default truncation.
+                        ordering = FactoryContact.display_order.op("SEPARATOR", precedence=100)(
+                            literal("、")
+                        )
+                        field = func.coalesce(
+                            (
+                                select(func.group_concat(column.op("ORDER BY")(ordering)))
+                                .where(
+                                    FactoryContact.factory_id == Factory.factory_id,
+                                    func.char_length(column) > 0,
+                                )
+                                .correlate(Factory)
+                                .scalar_subquery()
+                            ),
+                            "—",
+                        )
+                    keys = natural_sort_keys(
+                        query.add_columns(field.label("value")), name="factory_sort"
+                    )
+                    page_query = page_query.join(keys, keys.c.id == Factory.factory_id).order_by(
+                        keys.c.sort_key.desc() if sort_order == "desc" else keys.c.sort_key
+                    )
+            # Original full list order is also the stable tie breaker for browser sorting.
+            page_query = (
+                page_query.order_by(Factory.supplier_number)
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+                .prefix_with(
+                    "/*+ SET_VAR(group_concat_max_len=16777216) "
+                    "SET_VAR(cte_max_recursion_depth=1000000) "
+                    "SET_VAR(max_sort_length=8388608) */"
+                )
+            )
+            rows = session.execute(page_query).all()
+            if not rows:
+                return [], total
+            ids = [factory.factory_id for factory, _ in rows]
+            contacts_by_factory: dict[str, list[FactoryContact]] = {id_: [] for id_ in ids}
+            for contact in session.scalars(
+                select(FactoryContact)
+                .where(FactoryContact.factory_id.in_(ids))
+                .order_by(FactoryContact.display_order)
+            ):
+                contacts_by_factory[contact.factory_id].append(contact)
+            return [
+                self._snapshot(
+                    session,
+                    factory,
+                    contacts=contacts_by_factory[factory.factory_id],
+                    connected_users=int(count),
+                )
+                for factory, count in rows
+            ], total
+
     def list_admin_factory_options(self, *, actor_id: str) -> list[tuple[str, str, str]]:
         """Order filter options use the original admin directory, including disabled rows."""
         with self._session_factory() as session:
@@ -300,8 +461,9 @@ class FactoryAccessService:
             return [
                 (row.factory_id, row.supplier_number, row.factory_name)
                 for row in session.execute(
-                    select(Factory.factory_id, Factory.supplier_number, Factory.factory_name)
-                    .order_by(Factory.supplier_number)
+                    select(
+                        Factory.factory_id, Factory.supplier_number, Factory.factory_name
+                    ).order_by(Factory.supplier_number)
                 )
             ]
 
@@ -827,7 +989,10 @@ class FactoryAccessService:
             )
 
     @classmethod
-    def _snapshot(cls, session: Session, factory: Factory) -> FactorySnapshot:
+    def _snapshot(
+        cls, session: Session, factory: Factory, *, contacts: list[FactoryContact] | None = None,
+        connected_users: int | None = None,
+    ) -> FactorySnapshot:
         missing = tuple(
             label
             for value, label in (
@@ -838,11 +1003,12 @@ class FactoryAccessService:
             )
             if not value
         )
-        contacts = session.scalars(
-            select(FactoryContact)
-            .where(FactoryContact.factory_id == factory.factory_id)
-            .order_by(FactoryContact.display_order)
-        ).all()
+        if contacts is None:
+            contacts = list(session.scalars(
+                select(FactoryContact)
+                .where(FactoryContact.factory_id == factory.factory_id)
+                .order_by(FactoryContact.display_order)
+            ).all())
         return FactorySnapshot(
             factory_id=factory.factory_id,
             supplier_number=factory.supplier_number,
@@ -864,7 +1030,8 @@ class FactoryAccessService:
                 )
                 for contact in contacts
             ),
-            connected_users=cls._connected_user_count(session, factory.factory_id),
+            connected_users=(cls._connected_user_count(session, factory.factory_id)
+                             if connected_users is None else connected_users),
         )
 
     @staticmethod

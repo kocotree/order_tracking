@@ -26,7 +26,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("factory editor", () => {
   it("matches the approved prototype contact and address rows", async () => {
-    vi.spyOn(identityApi, "listFactories").mockResolvedValue({
+    vi.spyOn(identityApi, "listFactoryPage").mockResolvedValue({
       items: [factory], total: 1,
     });
     const wrapper = mount(FactoriesPage, {
@@ -49,7 +49,7 @@ describe("factory editor", () => {
 });
 
 it.each([["", ""], [" xz（帽厂） ", "XZ"], ["xz-分厂", "XZ"], ["X Z", null], ["A1", null], ["ſ", null]])("saves or rejects edited code %s", async (input, expected) => {
-  vi.spyOn(identityApi, "listFactories").mockResolvedValue({ items: [factory], total: 1 });
+  vi.spyOn(identityApi, "listFactoryPage").mockResolvedValue({ items: [factory], total: 1 });
   const update = vi.spyOn(identityApi, "updateFactory").mockResolvedValue(factory);
   const wrapper = mount(FactoriesPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, TableSortButton: true } } });
   await flushPromises();
@@ -63,4 +63,40 @@ it.each([["", ""], [" xz（帽厂） ", "XZ"], ["xz-分厂", "XZ"], ["X Z", null
   } else {
     expect(update).toHaveBeenCalledWith(factory.factoryId, expect.objectContaining({ factoryCode: expected }));
   }
+});
+
+
+it("requests one database page and keeps only submitted filters during paging", async () => {
+  const list = vi.spyOn(identityApi, "listFactoryPage").mockResolvedValue({ items: [factory], total: 25 });
+  const wrapper = mount(FactoriesPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" } } } });
+  await flushPromises();
+  expect(list).toHaveBeenCalledTimes(1);
+  await wrapper.get('input[type="search"]').setValue("未提交");
+  await wrapper.get('[aria-label="第 2 页"]').trigger("click");
+  await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, pageSize: 10, keyword: "" }));
+  expect(wrapper.get(".factory-sequence").text()).toBe("11");
+  await wrapper.get(".order-filter-form").trigger("submit");
+  await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, keyword: "未提交" }));
+  wrapper.unmount();
+});
+
+it("ignores stale responses and returns to the last valid page after edits", async () => {
+  const list = vi.spyOn(identityApi, "listFactoryPage").mockResolvedValue({ items: [factory], total: 25 });
+  const wrapper = mount(FactoriesPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" } } } });
+  await flushPromises();
+  let resolveOld!: (value: { items: Factory[]; total: number }) => void;
+  list.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+  await wrapper.get('[aria-label="第 2 页"]').trigger("click");
+  list.mockResolvedValueOnce({ items: [], total: 10 }).mockResolvedValueOnce({ items: [{ ...factory, factoryName: "最新工厂" }], total: 10 });
+  await wrapper.get('[aria-label="第 3 页"]').trigger("click");
+  await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }));
+  resolveOld({ items: [{ ...factory, factoryName: "过期工厂" }], total: 25 });
+  await flushPromises();
+  expect(wrapper.text()).toContain("最新工厂");
+  expect(wrapper.text()).not.toContain("过期工厂");
+  expect(wrapper.get(".factory-sequence").text()).toBe("1");
+  wrapper.unmount();
 });

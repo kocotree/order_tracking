@@ -73,7 +73,22 @@ class RepairReturnService:
         self._id_factory = id_factory
         self._reader = RepairConfirmationService(session_factory)
 
-    def get(self, repair_id: str) -> RepairOrderView:
+    def _period_id(self, repair_id: str) -> str | None:
+        from app.db.models import RepairPeriod
+
+        with self._session_factory() as session:
+            if session.get(RepairPeriod, repair_id) is not None:
+                return repair_id
+            source = session.get(RepairOrder, repair_id)
+            return source.period_id if source else None
+
+    def get(self, repair_id: str, *, include_history: bool = True) -> RepairOrderView:
+        if period_id := self._period_id(repair_id):
+            from app.modules.repairs.periods import RepairPeriodService
+
+            return RepairPeriodService(self._session_factory, clock=self._clock).get(
+                period_id, include_history=include_history
+            )
         try:
             return self._reader.get(repair_id)
         except RepairConfirmationNotFound as error:
@@ -104,6 +119,12 @@ class RepairReturnService:
         return repair
 
     def get_draft(self, *, repair_id: str, factory_id: str, user_id: str) -> RepairDraftView:
+        if period_id := self._period_id(repair_id):
+            from app.modules.repairs.periods import RepairPeriodService
+
+            return RepairPeriodService(self._session_factory, clock=self._clock).get_draft(
+                repair_id=period_id, factory_id=factory_id, user_id=user_id
+            )
         with self._session_factory() as session, session.begin():
             self._draft_repair(session, repair_id, factory_id, user_id)
             draft = session.get(RepairReturnDraft, (repair_id, user_id))
@@ -122,6 +143,16 @@ class RepairReturnService:
         version: int,
         entries: list[dict[str, Any]],
     ) -> RepairDraftView:
+        if period_id := self._period_id(repair_id):
+            from app.modules.repairs.periods import RepairPeriodService
+
+            return RepairPeriodService(self._session_factory, clock=self._clock).save_draft(
+                repair_id=period_id,
+                factory_id=factory_id,
+                user_id=user_id,
+                version=version,
+                entries=entries,
+            )
         if type(version) is not int or version < 0 or len(entries) > 1000:
             raise RepairReturnValidationError("无效草稿")
         seen: set[str] = set()
@@ -177,6 +208,12 @@ class RepairReturnService:
         archived_by: str,
         idempotency_key: str,
     ) -> RepairArchiveView:
+        if period_id := self._period_id(repair_id):
+            from app.modules.repairs.periods import RepairPeriodService
+
+            return RepairPeriodService(self._session_factory, clock=self._clock).archive(
+                repair_id=period_id, archived_by=archived_by, idempotency_key=idempotency_key
+            )
         normalized_key = idempotency_key.strip()
         if not normalized_key or len(normalized_key) > 191:
             raise RepairReturnValidationError("无效的幂等键")
@@ -246,6 +283,17 @@ class RepairReturnService:
         lines: Sequence[RepairReturnLineInput],
         draft_version: int | None = None,
     ) -> RepairOrderView:
+        if period_id := self._period_id(repair_id):
+            from app.modules.repairs.periods import RepairPeriodService
+
+            return RepairPeriodService(self._session_factory, clock=self._clock).submit(
+                repair_id=period_id,
+                factory_id=factory_id,
+                submitted_by=submitted_by,
+                idempotency_key=idempotency_key,
+                lines=lines,
+                draft_version=draft_version,
+            )
         normalized_key = idempotency_key.strip()
         if not normalized_key or len(normalized_key) > 191:
             raise RepairReturnValidationError("无效的幂等键")

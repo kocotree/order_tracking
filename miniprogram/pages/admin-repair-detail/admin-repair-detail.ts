@@ -51,11 +51,11 @@ Page({
     } catch { wx.showToast({ title:this.data.notificationId?"内容已不可查看":"返修详情加载失败", icon: "none" }); }
     finally { this.setData({ loading: false }); }
   },
-  async openAttachment() {
+  async openAttachment(event: WechatMiniprogram.TouchEvent) {
     if (!this.data.repair) return;
     if (this.data.previewMode) { wx.showToast({ title: "演示模式不下载附件", icon: "none" }); return; }
     try {
-      const path = await repairApi.download(this.data.repair.originalFileId);
+      const path = await repairApi.download(Number(event.currentTarget.dataset.fileId));
       wx.openDocument({ filePath: path, showMenu: true });
     } catch { wx.showToast({ title: "质检附件打开失败", icon: "none" }); }
   },

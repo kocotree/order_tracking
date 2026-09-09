@@ -81,7 +81,7 @@ const preview: RepairPreview = {
 
 const shellStub = { template: "<div><slot /></div>" };
 
-beforeEach(() => { vi.spyOn(repairApi, "listFactoryOptions").mockResolvedValue({items:["宇婷","阿厂2"]}); });
+beforeEach(() => { vi.spyOn(repairApi,"listPeriodOptions").mockResolvedValue({items:["2026.8-2027.1"]}); vi.spyOn(repairApi, "listFactoryOptions").mockResolvedValue({items:["宇婷","阿厂2"]}); });
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -94,10 +94,10 @@ describe("repair web prototype alignment", () => {
     const wrapper = mount(RepairsPage, { global: { stubs: { AdminShell: shellStub } } });
     await flushPromises();
 
-    expect(wrapper.findAll(".data-grid-sort-button")).toHaveLength(8);
+    expect(wrapper.findAll(".data-grid-sort-button")).toHaveLength(7);
     expect(wrapper.find(".repair-filter-row .order-list-search-field").exists()).toBe(true);
     expect(wrapper.get(".repair-list-table .status-badge").classes()).toContain("is-info");
-    expect(wrapper.get(".repair-list-footer").text()).toContain("每页展示 10 条返修单");
+    expect(wrapper.get(".repair-list-footer").text()).toContain("每页展示 10 条返修周期");
   });
 
   it("offers archive only for completed repairs and archives after confirmation", async () => {
@@ -124,68 +124,24 @@ describe("repair web prototype alignment", () => {
     expect(wrapper.text()).not.toContain("FX20260826-002");
   });
 
-  it("uses the compact detail matrix and omits photo parsing UI", async () => {
-    vi.spyOn(repairApi, "get").mockResolvedValue({
-      ...repair,
-      lines: [
-        repair.lines[0],
-        {
-          ...repair.lines[0],
-          inspectionLineId: 2,
-          sourceRow: 3,
-          sourceOrder: 2,
-          boxNumber: "2号箱",
-          warehouseReturnQuantity: 24,
-        },
-      ],
-    });
-    const wrapper = mount(RepairDetailPage, { global: { stubs: { AdminShell: shellStub } } });
+  it("shows all period attachments and SKU totals, without inspection boxes or return history", async () => {
+    vi.spyOn(repairApi,"get").mockResolvedValue({...repair,repairNo:"2026.8-2027.1",attachments:[{fileId:1,filename:"2026-09-09-01.xlsx",sizeBytes:50},{fileId:2,filename:"2026-09-09-02.xlsx",sizeBytes:50}],specs:[{variantId:"v",sourceSkuId:"SKU1",sourceProductId:"P1",productName:"演示帽",propertiesValue:"蓝色",warehouseReturnQuantity:50,repairedQuantity:35,scrappedQuantity:5,returnedQuantity:40,pendingQuantity:10}]});
+    const download=vi.spyOn(repairApi,"download").mockResolvedValue();
+    const wrapper=mount(RepairDetailPage,{global:{stubs:{AdminShell:shellStub}}});
     await flushPromises();
-
     expect(wrapper.findAll(".repair-summary-matrix dt")).toHaveLength(4);
-    expect(wrapper.findAll(".repair-quality-table th")).toHaveLength(7);
-    expect(wrapper.find(".repair-detail-title .status-badge").exists()).toBe(false);
-    expect(wrapper.findAll(".repair-reason-cell")).toHaveLength(1);
-    expect(wrapper.get(".repair-reason-cell").attributes("rowspan")).toBe("2");
-    expect(wrapper.text()).not.toContain("次品照片");
-    expect(wrapper.text()).not.toContain("补传");
-    expect(wrapper.get(".repair-source-file").text()).toContain("2 个箱号 · 2 条明细 · 仓库退回 826 件");
+    expect(wrapper.findAll(".repair-source-file")).toHaveLength(2);
+    expect(wrapper.findAll(".repair-product-table th")).toHaveLength(8);
+    expect(wrapper.get(".repair-product-table").text()).toContain("40 / 50");
+    expect(wrapper.get(".repair-product-table").text()).toContain("80%");
+    expect(wrapper.text()).not.toContain("工厂发回记录");
+    expect(wrapper.text()).not.toContain("箱号");
+    await wrapper.findAll(".repair-source-file button")[1]!.trigger('click');
+    expect(download).toHaveBeenCalledWith(2,"2026-09-09-02.xlsx");
+    wrapper.unmount();
   });
 
-  it("renders real factory return batch lines in the eight-column detail table", async () => {
-    vi.spyOn(repairApi, "get").mockResolvedValue({
-      ...repair,
-      repairedQuantity: 5,
-      returnedQuantity: 5,
-      returnBatches: [{
-        batchId: "batch-1",
-        submittedAt: "2026-08-27T03:00:00",
-        returnDate: "2026-08-27",
-        submittedBy: "factory-user-1",
-        lines: [{
-          variantId: "variant-1",
-          sourceSkuId: "6941716530266",
-          sourceProductId: "KQ26001",
-          productName: "夏宠冰果乐披风帽",
-          propertiesValue: "椰椰西瓜冻L",
-          warehouseReturnQuantity: 18,
-          repairedQuantity: 5,
-          scrappedQuantity: 0,
-          returnedQuantity: 5,
-        }],
-      }],
-    });
-    const wrapper = mount(RepairDetailPage, { global: { stubs: { AdminShell: shellStub } } });
-    await flushPromises();
-
-    expect(wrapper.findAll(".repair-return-table th")).toHaveLength(8);
-    expect(wrapper.findAll(".repair-return-table tbody tr")).toHaveLength(1);
-    expect(wrapper.get(".repair-return-table tbody").text()).toContain("2026-08-27");
-    expect(wrapper.get(".repair-return-table tbody").text()).toContain("椰椰西瓜冻L");
-    expect(wrapper.text()).not.toContain("工厂尚未提交返修发回记录");
-  });
-
-  it("previews structured Excel fields without photo upload controls", async () => {
+  it("shows the original filename and parse state without inspection details", async () => {
     vi.spyOn(repairApi, "upload").mockResolvedValue(preview);
     const wrapper = mount(RepairCreatePage, { global: { stubs: { AdminShell: shellStub } } });
     const input = wrapper.get<HTMLInputElement>('input[type="file"]');
@@ -193,7 +149,9 @@ describe("repair web prototype alignment", () => {
     await input.trigger("change");
     await flushPromises();
 
-    expect(wrapper.findAll(".repair-preview-table th")).toHaveLength(7);
+    expect(wrapper.find("table").exists()).toBe(false);
+    expect(wrapper.text()).toContain("E22质检.xlsx");
+    expect(wrapper.text()).toContain("解析通过，等待确认");
     expect(wrapper.text()).not.toContain("次品照片");
     expect(wrapper.text()).not.toContain("补传");
   });
@@ -261,5 +219,27 @@ it("keeps list data when factory options fail and batches sorting with page rese
   await flushPromises();
   expect(list).toHaveBeenCalledTimes(1);
   expect(list).toHaveBeenCalledWith(expect.objectContaining({page:1,sortBy:"factoryName",sortOrder:"asc"}));
+  wrapper.unmount();
+});
+
+it("shares click/drop upload and creates only valid files, retrying no successes", async () => {
+  vi.spyOn(repairApi, "upload").mockImplementation(async file => {
+    if (file.name === "坏单.xlsx") throw new Error("第 2 行数量必须为正整数");
+    return {...preview, previewId:file.name, originalFilename:file.name};
+  });
+  const confirm = vi.spyOn(repairApi, "confirm").mockResolvedValue(repair);
+  const wrapper=mount(RepairCreatePage,{global:{stubs:{AdminShell:shellStub}}});
+  await wrapper.get('.repair-upload-zone').trigger('drop', {dataTransfer:{files:[new File(['a'],'好单.xlsx'),new File(['b'],'坏单.xlsx')]}});
+  await flushPromises();
+  expect(wrapper.text()).toContain('坏单.xlsx');
+  expect(wrapper.text()).toContain('第 2 行数量必须为正整数');
+  expect(wrapper.find('table').exists()).toBe(false);
+  expect(confirm).not.toHaveBeenCalled();
+  await wrapper.get('[data-confirm-create]').trigger('click');
+  await flushPromises();
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(confirm).toHaveBeenCalledWith('好单.xlsx', expect.any(String));
+  expect(wrapper.get('[data-confirm-create]').attributes('disabled')).toBeDefined();
+  expect(wrapper.text()).toContain('创建成功');
   wrapper.unmount();
 });

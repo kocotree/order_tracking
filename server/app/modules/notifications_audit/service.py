@@ -1157,18 +1157,27 @@ class NotificationsAuditService:
         )
         if batch is None or batch.repair_id != repair.repair_id:
             raise ValueError("repair return event has no matching batch")
+        batch_ids = (
+            select(RepairReturnBatch.batch_id).where(
+                RepairReturnBatch.period_batch_id == batch.period_batch_id
+            )
+            if batch.period_batch_id
+            else select(RepairReturnBatch.batch_id).where(
+                RepairReturnBatch.batch_id == batch.batch_id
+            )
+        )
         quantities = session.execute(
             select(
                 func.coalesce(func.sum(RepairReturnLine.repaired_quantity), 0),
                 func.coalesce(func.sum(RepairReturnLine.scrapped_quantity), 0),
-            ).where(RepairReturnLine.batch_id == batch.batch_id)
+            ).where(RepairReturnLine.batch_id.in_(batch_ids))
         ).one()
         repaired_quantity, scrapped_quantity = int(quantities[0]), int(quantities[1])
         product_names = session.scalars(
             select(Product.name)
             .join(ProductVariant, ProductVariant.product_id == Product.product_id)
             .join(RepairReturnLine, RepairReturnLine.variant_id == ProductVariant.variant_id)
-            .where(RepairReturnLine.batch_id == batch.batch_id)
+            .where(RepairReturnLine.batch_id.in_(batch_ids))
             .order_by(RepairReturnLine.line_order)
         ).all()
         product_summary = _notification_products(list(product_names))
@@ -1181,14 +1190,14 @@ class NotificationsAuditService:
                 user_id=user.user_id,
                 category="REPAIR",
                 target_type="repair",
-                target_id=repair.repair_id,
+                target_id=repair.period_id or repair.repair_id,
                 title=f"{factory_name}提交返修结果",
                 summary=(
                     f"{factory_name}返回：{product_summary}，"
                     f"总计{repaired_quantity + scrapped_quantity}件"
                     f"（返修{repaired_quantity}件，报废{scrapped_quantity}件）"
                 ),
-                target_path=f"/repairs/{repair.repair_id}",
+                target_path=f"/repairs/{repair.period_id or repair.repair_id}",
                 channel="feishu" if user.user_id in recipients else None,
                 template_key="admin_repair",
                 card_rows=(

@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.private_files import PrivateFileStore
-from app.db.models import RepairPreview, StoredFile
+from app.db.models import RepairOrder, RepairPreview, StoredFile
 from app.modules.identity_access import IdentityAccessService, PermissionDenied, SessionInvalid
 from app.modules.identity_access.service import UserSnapshot
 from app.modules.repairs.confirmation import (
@@ -28,6 +28,7 @@ from app.modules.repairs.confirmation import (
     RepairOrderView,
 )
 from app.modules.repairs.listing import RepairListingService
+from app.modules.repairs.periods import RepairPeriodService, attachment_names
 from app.modules.repairs.preview import (
     RepairPreviewExpired,
     RepairPreviewNotFound,
@@ -42,6 +43,7 @@ from app.modules.repairs.returns import (
     RepairReturnService,
     RepairReturnValidationError,
 )
+from app.modules.repairs.workbook import InspectionWorkbookValidationError
 from app.modules.repairs.workflow import RepairWorkflowService, RepairWorkflowValidationError
 
 
@@ -132,7 +134,14 @@ class RepairReturnBatchResponse(ApiModel):
     lines: list[RepairReturnLineResponse]
 
 
+class RepairAttachmentResponse(ApiModel):
+    file_id: int
+    filename: str
+    size_bytes: int
+
+
 class RepairResponse(ApiModel):
+    attachments: list[RepairAttachmentResponse] = []
     repair_id: str
     repair_no: str
     status: str
@@ -264,6 +273,14 @@ def create_repair_router(
             raise PermissionDenied("administrator role required")
 
     def translate(error: Exception) -> HTTPException:
+        if isinstance(error, InspectionWorkbookValidationError):
+            return HTTPException(
+                status_code=422,
+                detail="；".join(
+                    (f"第 {issue['row']} 行：" if issue.get("row") else "") + str(issue["message"])
+                    for issue in error.issues
+                ),
+            )
         if isinstance(error, RepairReturnNotFound):
             return HTTPException(status_code=404, detail=str(error))
         if isinstance(error, RepairReturnConflict):
@@ -461,6 +478,88 @@ def create_repair_router(
         return RepairFactoryOptionsResponse(items=RepairListingService(session_factory).factories())
 
     @router.get(
+        "/admin/repair-periods", response_model=RepairSummaryListResponse, tags=["repair-admin"]
+    )
+    def list_admin_periods(
+        keyword: str = "",
+        status: str = "all",
+        period: str = "",
+        factories: Annotated[list[str] | None, Query()] = None,
+        sort_by: Annotated[str, Query(alias="sortBy")] = "",
+        sort_order: Annotated[str, Query(alias="sortOrder", pattern="^(asc|desc)$")] = "asc",
+        page: Annotated[int, Query(ge=1)] = 1,
+        page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 10,
+        web_token: str | None = Cookie(default=None, alias="ot_web_session"),
+        authorization: str | None = Header(default=None),
+    ) -> RepairSummaryListResponse:
+        user, _ = actor(web_token, authorization)
+        admin(user)
+        rows, total = RepairPeriodService(session_factory).page(
+            keyword=keyword,
+            status=status,
+            period=period,
+            factories=factories,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            page=page,
+            page_size=page_size,
+        )
+        return RepairSummaryListResponse(
+            items=[RepairSummaryResponse(**r) for r in rows],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+
+    @router.get(
+        "/factory/repair-periods", response_model=RepairSummaryListResponse, tags=["repair-factory"]
+    )
+    def list_factory_periods(
+        keyword: str = "",
+        status: str = "all",
+        page: Annotated[int, Query(ge=1)] = 1,
+        page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 20,
+        authorization: str | None = Header(default=None),
+    ) -> RepairSummaryListResponse:
+        user, _ = actor(None, authorization)
+        if user.role != "factory" or not user.factory_id:
+            raise PermissionDenied("factory role required")
+        rows, total = RepairPeriodService(session_factory).page(
+            factory_id=user.factory_id,
+            keyword=keyword,
+            status=status,
+            page=page,
+            page_size=page_size,
+        )
+        return RepairSummaryListResponse(
+            items=[RepairSummaryResponse(**r) for r in rows],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+
+    @router.get(
+        "/admin/repair-periods/options",
+        response_model=RepairFactoryOptionsResponse,
+        tags=["repair-admin-web"],
+    )
+    def period_options(
+        web_token: str | None = Cookie(default=None, alias="ot_web_session"),
+    ) -> RepairFactoryOptionsResponse:
+        from app.db.models import RepairPeriod
+
+        user, _ = actor(web_token, None, require_web=True)
+        admin(user)
+        with session_factory() as session:
+            values = session.scalars(
+                select(RepairPeriod.label)
+                .where(RepairPeriod.archived_at.is_(None))
+                .distinct()
+                .order_by(RepairPeriod.label.desc())
+            ).all()
+            return RepairFactoryOptionsResponse(items=list(values))
+
+    @router.get(
         "/admin/repairs/{repair_id}",
         response_model=RepairResponse,
         tags=["repair-admin"],
@@ -473,7 +572,7 @@ def create_repair_router(
         user, _terminal = actor(web_token, authorization)
         admin(user)
         try:
-            return _repair_response(returns.get(repair_id))
+            return _repair_response(returns.get(repair_id, include_history=_terminal != "web"))
         except Exception as error:
             raise translate(error) from error
 
@@ -648,21 +747,32 @@ def create_repair_router(
         authorization: str | None = Header(default=None),
     ) -> Response:
         user, terminal = actor(web_token, authorization)
-        orders = returns.list_all()
-        matched = next(
-            (order for order in orders if order.original_file_id == file_id),
-            None,
-        )
-        preview_file = False
-        if matched is None and user.role == "admin" and terminal == "web":
-            with session_factory() as session:
-                preview_file = bool(
+        with session_factory() as session:
+            source = session.scalar(
+                select(RepairOrder).where(RepairOrder.original_file_id == file_id)
+            )
+            matched = source if source and source.archived_at is None else None
+            filename = None
+            if matched and matched.period_id:
+                sources = session.scalars(
+                    select(RepairOrder).where(RepairOrder.period_id == matched.period_id)
+                ).all()
+                filename = attachment_names(sources)[file_id]
+            preview_file = (
+                source is None
+                and user.role == "admin"
+                and terminal == "web"
+                and bool(
                     session.scalar(
                         select(RepairPreview.preview_id)
-                        .where(RepairPreview.original_file_id == file_id)
+                        .where(
+                            RepairPreview.original_file_id == file_id,
+                            RepairPreview.status != "CONFIRMED",
+                        )
                         .limit(1)
                     )
                 )
+            )
         if matched is None and not preview_file:
             raise HTTPException(status_code=404, detail="文件不存在")
         if user.role == "factory":
@@ -690,7 +800,8 @@ def create_repair_router(
                 media_type=stored.mime_type,
                 headers={
                     "Content-Disposition": (
-                        "attachment; filename*=UTF-8''" + quote(stored.original_filename)
+                        "attachment; filename*=UTF-8''"
+                        + quote(filename or stored.original_filename)
                     )
                 },
             )

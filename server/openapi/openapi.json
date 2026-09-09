@@ -2540,6 +2540,29 @@
         "title": "RepairArchiveResponse",
         "type": "object"
       },
+      "RepairAttachmentResponse": {
+        "properties": {
+          "fileId": {
+            "title": "Fileid",
+            "type": "integer"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "title": "Sizebytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fileId",
+          "filename",
+          "sizeBytes"
+        ],
+        "title": "RepairAttachmentResponse",
+        "type": "object"
+      },
       "RepairDraftRequest": {
         "properties": {
           "entries": {
@@ -2894,6 +2917,14 @@
       },
       "RepairResponse": {
         "properties": {
+          "attachments": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RepairAttachmentResponse"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
@@ -7490,6 +7521,213 @@
         ]
       }
     },
+    "/api/v1/admin/repair-periods": {
+      "get": {
+        "operationId": "list_admin_periods_api_v1_admin_repair_periods_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Keyword",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Period",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "factories",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Factories"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Sortby",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortOrder",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "pattern": "^(asc|desc)$",
+              "title": "Sortorder",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairSummaryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Admin Periods",
+        "tags": [
+          "repair-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/repair-periods/options": {
+      "get": {
+        "operationId": "period_options_api_v1_admin_repair_periods_options_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairFactoryOptionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Period Options",
+        "tags": [
+          "repair-admin-web"
+        ]
+      }
+    },
     "/api/v1/admin/repair-previews": {
       "post": {
         "operationId": "create_preview_api_v1_admin_repair_previews_post",
@@ -9673,6 +9911,98 @@
         "summary": "My Factory Application",
         "tags": [
           "factory-mini"
+        ]
+      }
+    },
+    "/api/v1/factory/repair-periods": {
+      "get": {
+        "operationId": "list_factory_periods_api_v1_factory_repair_periods_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Keyword",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairSummaryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Factory Periods",
+        "tags": [
+          "repair-factory"
         ]
       }
     },

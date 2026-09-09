@@ -33,7 +33,7 @@ Page({
     activeTab: "shipments", repairItems: [] as RepairCard[], allRepairItems: [] as RepairCard[], repairStatus: "all", repairFactoryCount: 0,
     allItems: [] as ShipmentCard[], items: [] as ShipmentCard[], keyword: "", loading: true, previewMode: false,
     factoryId: "", shipDateFrom: "", shipDateTo: "", activeFilterCount: 0, filterOpen: false,
-    repairFactoryId: "", repairDateFrom: "", repairDateTo: "", repairFilterCount: 0,
+    repairFactoryId: "", repairPeriod: "", periodOptions:["全部周期"], draftPeriodIndex:0, repairFilterCount: 0,
     factoryOptions: [{ label: "全部工厂", value: "" }] as FilterOption[],
     repairStatusOptions: ["全部状态", "未完成", "已完成"],
     draftFactoryIndex: 0, draftShipDateFrom: "", draftShipDateTo: "", draftRepairStatus: "all",
@@ -45,7 +45,7 @@ Page({
     if (previewMode) { this.setItems(PREVIEW_FACTORY_SHIPMENTS); this.setRepairs(PREVIEW_ADMIN_REPAIRS); }
     else { void this.loadRepairs(); }
   },
-  onShow() { if (!this.data.previewMode) void this.load(); },
+  onShow() { if (!this.data.previewMode) {void this.load();void this.loadRepairs();} },
   selectTab(event: WechatMiniprogram.TouchEvent) {
     this.setData({ activeTab: String(event.currentTarget.dataset.tab), keyword: "", filterOpen: false }, () => {
       this.refreshFactoryOptions();
@@ -59,7 +59,7 @@ Page({
   },
   setRepairs(repairs: Repair[]) {
     const allRepairItems = repairs.map((item) => ({ ...item, productSummary: repairProductSummary(item), progress: item.warehouseReturnQuantity ? Math.round(item.returnedQuantity / item.warehouseReturnQuantity * 100) : 0, pending: Math.max(0, item.warehouseReturnQuantity - item.returnedQuantity) }));
-    this.setData({ allRepairItems }, () => { if (this.data.activeTab === "repairs") this.refreshFactoryOptions(); this.applyVisibleItems(); });
+    this.setData({ allRepairItems, periodOptions:["全部周期",...new Set(allRepairItems.map(item=>item.repairNo))] }, () => { if (this.data.activeTab === "repairs") this.refreshFactoryOptions(); this.applyVisibleItems(); });
   },
   setItems(shipments: Shipment[]) {
     const allItems = shipments.map(toCard);
@@ -87,8 +87,7 @@ Page({
         (!keyword || item.factoryName.toLowerCase().includes(keyword))
         && (this.data.repairStatus === "all" || item.status === this.data.repairStatus)
         && (!this.data.repairFactoryId || item.factoryId === this.data.repairFactoryId)
-        && (!this.data.repairDateFrom || item.returnDate >= this.data.repairDateFrom)
-        && (!this.data.repairDateTo || item.returnDate <= this.data.repairDateTo));
+        && (!this.data.repairPeriod || item.repairNo === this.data.repairPeriod));
       this.setData({ repairItems, repairFactoryCount: new Set(repairItems.map((item) => item.factoryId)).size });
       return;
     }
@@ -105,9 +104,10 @@ Page({
     this.setData({
       filterOpen: true,
       draftFactoryIndex: optionIndex(this.data.factoryOptions, this.data.activeTab === "repairs" ? this.data.repairFactoryId : this.data.factoryId),
-      draftShipDateFrom: this.data.activeTab === "repairs" ? this.data.repairDateFrom : this.data.shipDateFrom,
-      draftShipDateTo: this.data.activeTab === "repairs" ? this.data.repairDateTo : this.data.shipDateTo,
+      draftShipDateFrom: this.data.shipDateFrom,
+      draftShipDateTo: this.data.shipDateTo,
       draftRepairStatus: this.data.repairStatus,
+      draftPeriodIndex: Math.max(0,this.data.periodOptions.indexOf(this.data.repairPeriod)),
     });
   },
   closeFilter() { this.setData({ filterOpen: false }); },
@@ -116,16 +116,17 @@ Page({
   shipDateFromChanged(event: WechatMiniprogram.PickerChange) { this.setData({ draftShipDateFrom: String(event.detail.value) }); },
   shipDateToChanged(event: WechatMiniprogram.PickerChange) { this.setData({ draftShipDateTo: String(event.detail.value) }); },
   repairStatusChanged(event: WechatMiniprogram.PickerChange) { this.setData({ draftRepairStatus: ["all", "INCOMPLETE", "COMPLETED"][Number(event.detail.value)] || "all" }); },
-  resetFilter() { this.setData({ draftFactoryIndex: 0, draftShipDateFrom: "", draftShipDateTo: "", draftRepairStatus: "all" }); },
+  periodChanged(event: WechatMiniprogram.PickerChange) {this.setData({draftPeriodIndex:Number(event.detail.value)});},
+  resetFilter() { this.setData({ draftFactoryIndex: 0, draftShipDateFrom: "", draftShipDateTo: "", draftRepairStatus: "all", draftPeriodIndex:0 }); },
   applyFilter() {
-    if (this.data.draftShipDateFrom && this.data.draftShipDateTo && this.data.draftShipDateFrom > this.data.draftShipDateTo) {
+    if (this.data.activeTab !== "repairs" && this.data.draftShipDateFrom && this.data.draftShipDateTo && this.data.draftShipDateFrom > this.data.draftShipDateTo) {
       wx.showToast({ title: "开始日期不能晚于结束日期", icon: "none" });
       return;
     }
     const selectedFactoryId = this.data.factoryOptions[this.data.draftFactoryIndex]?.value ?? "";
     if (this.data.activeTab === "repairs") {
-      const repairFilterCount = [this.data.draftRepairStatus !== "all", Boolean(selectedFactoryId), Boolean(this.data.draftShipDateFrom), Boolean(this.data.draftShipDateTo)].filter(Boolean).length;
-      this.setData({ repairStatus: this.data.draftRepairStatus, repairFactoryId: selectedFactoryId, repairDateFrom: this.data.draftShipDateFrom, repairDateTo: this.data.draftShipDateTo, repairFilterCount, filterOpen: false }, () => this.applyVisibleItems());
+      const repairFilterCount = [this.data.draftRepairStatus !== "all", Boolean(selectedFactoryId), this.data.draftPeriodIndex > 0].filter(Boolean).length;
+      this.setData({ repairStatus: this.data.draftRepairStatus, repairFactoryId: selectedFactoryId, repairPeriod: this.data.draftPeriodIndex ? this.data.periodOptions[this.data.draftPeriodIndex] : "", repairFilterCount, filterOpen: false }, () => this.applyVisibleItems());
       return;
     }
     const activeFilterCount = [Boolean(selectedFactoryId), Boolean(this.data.draftShipDateFrom), Boolean(this.data.draftShipDateTo)].filter(Boolean).length;

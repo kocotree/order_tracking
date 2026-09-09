@@ -6,14 +6,13 @@
     <view role="button" aria-label="筛选" class="admin-ship-filter" bindtap="toggleFilter"><image src="/assets/icons/filter-blue.svg" mode="aspectFit"/><text>筛选</text><text wx:if="{{activeTab === 'repairs' ? repairFilterCount : activeFilterCount}}" class="admin-ship-filter-count">{{activeTab === 'repairs' ? repairFilterCount : activeFilterCount}}</text></view>
   </view>
   <view wx:if="{{activeTab === 'repairs'}}" class="repair-mini-list">
-    <view class="repair-result"><text>共 {{repairFactoryCount}} 家工厂</text><text>按退回日期倒序</text></view>
+    <view class="repair-result"><text>共 {{repairFactoryCount}} 家工厂</text><text>按周期倒序</text></view>
     <view wx:if="{{!repairItems.length}}" class="mini-empty"><text>没有符合条件的返修记录</text><text>可以调整工厂名称或筛选条件后再试</text></view>
     <view wx:for="{{repairItems}}" wx:key="repairId" class="repair-mini-card" data-id="{{item.repairId}}" bindtap="openRepair">
-      <view class="repair-mini-card-head"><view><b>{{item.factoryName}}</b><em>{{item.productSummary}}</em></view><view class="repair-mini-card-pending"><b>{{item.pending}}件</b></view></view>
+      <view class="repair-mini-card-head"><view><b>{{item.factoryName}}</b></view><view class="repair-mini-card-pending"><b>{{item.pending}}件</b></view></view>
       <view class="repair-mini-card-progress"><view><text>返回进度</text><b>{{item.returnedQuantity}} / {{item.warehouseReturnQuantity}}</b><em>{{item.progress}}%</em></view><view><view style="width:{{item.progress}}%"/></view></view>
       <view class="repair-mini-card-stats"><view><text>返修数量</text><b>{{item.repairedQuantity}}</b></view><view><text>报废数量</text><b>{{item.scrappedQuantity}}</b></view></view>
-      <view class="repair-mini-card-date"><image src="/assets/icons/calendar-blue.svg" mode="aspectFit"/><text>退回日期</text><b>{{item.returnDate}}</b></view>
-      <view class="repair-mini-card-foot"><text>返修单号</text><b>{{item.repairNo}}</b></view>
+      <view class="repair-mini-card-date"><image src="/assets/icons/calendar-blue.svg" mode="aspectFit"/><text>周期</text><b>{{item.repairNo}}</b></view>
     </view>
   </view>
   <view wx:else class="ship-record-content">
@@ -37,7 +36,8 @@
       <view class="admin-ship-filter-body">
         <view wx:if="{{activeTab === 'repairs'}}" class="admin-ship-filter-field"><text class="admin-ship-filter-label">返修状态</text><picker range="{{repairStatusOptions}}" value="{{draftRepairStatus === 'INCOMPLETE' ? 1 : draftRepairStatus === 'COMPLETED' ? 2 : 0}}" bindchange="repairStatusChanged"><view class="admin-ship-picker-value"><text>{{draftRepairStatus === 'INCOMPLETE' ? '未完成' : draftRepairStatus === 'COMPLETED' ? '已完成' : '全部状态'}}</text><view class="admin-ship-picker-arrow"/></view></picker></view>
         <view class="admin-ship-filter-field"><text class="admin-ship-filter-label">工厂</text><picker range="{{factoryOptions}}" range-key="label" value="{{draftFactoryIndex}}" bindchange="factoryChanged"><view class="admin-ship-picker-value"><text>{{factoryOptions[draftFactoryIndex].label}}</text><view class="admin-ship-picker-arrow"/></view></picker></view>
-        <view class="admin-ship-filter-field"><text class="admin-ship-filter-label">{{activeTab === 'repairs' ? '退回日期范围' : '发货日期范围'}}</text><view class="admin-ship-date-range"><picker mode="date" value="{{draftShipDateFrom}}" bindchange="shipDateFromChanged"><view class="admin-ship-date-value"><text class="admin-ship-date-copy {{draftShipDateFrom ? '' : 'is-placeholder'}}">{{draftShipDateFrom || 'yyyy/mm/日'}}</text><view class="admin-ship-date-icon"/></view></picker><text class="admin-ship-date-separator">至</text><picker mode="date" value="{{draftShipDateTo}}" bindchange="shipDateToChanged"><view class="admin-ship-date-value"><text class="admin-ship-date-copy {{draftShipDateTo ? '' : 'is-placeholder'}}">{{draftShipDateTo || 'yyyy/mm/日'}}</text><view class="admin-ship-date-icon"/></view></picker></view></view>
+        <view wx:if="{{activeTab === 'repairs'}}" class="admin-ship-filter-field"><text class="admin-ship-filter-label">周期</text><picker range="{{periodOptions}}" value="{{draftPeriodIndex}}" bindchange="periodChanged"><view class="admin-ship-picker-value"><text>{{periodOptions[draftPeriodIndex]}}</text><view class="admin-ship-picker-arrow"/></view></picker></view>
+        <view wx:if="{{activeTab !== 'repairs'}}" class="admin-ship-filter-field"><text class="admin-ship-filter-label">{{activeTab === 'repairs' ? '退回日期范围' : '发货日期范围'}}</text><view class="admin-ship-date-range"><picker mode="date" value="{{draftShipDateFrom}}" bindchange="shipDateFromChanged"><view class="admin-ship-date-value"><text class="admin-ship-date-copy {{draftShipDateFrom ? '' : 'is-placeholder'}}">{{draftShipDateFrom || 'yyyy/mm/日'}}</text><view class="admin-ship-date-icon"/></view></picker><text class="admin-ship-date-separator">至</text><picker mode="date" value="{{draftShipDateTo}}" bindchange="shipDateToChanged"><view class="admin-ship-date-value"><text class="admin-ship-date-copy {{draftShipDateTo ? '' : 'is-placeholder'}}">{{draftShipDateTo || 'yyyy/mm/日'}}</text><view class="admin-ship-date-icon"/></view></picker></view></view>
       </view>
       <view class="admin-ship-filter-actions"><view role="button" class="admin-ship-filter-reset" bindtap="resetFilter">重置</view><view role="button" class="admin-ship-filter-apply" bindtap="applyFilter">查看结果</view></view>
     </view>

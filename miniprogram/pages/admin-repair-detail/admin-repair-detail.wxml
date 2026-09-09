@@ -3,14 +3,13 @@
   <view wx:if="{{loading}}" class="mini-empty">正在加载返修详情…</view>
   <view wx:elif="{{repair}}" class="repair-mini-content">
     <view class="repair-mini-summary admin-repair-summary">
-      <view class="repair-mini-heading"><view><b>{{repair.factoryName}}</b></view></view>
-      <view class="admin-repair-meta"><view><text>返修单号</text><b>{{repair.repairNo}}</b></view><view><text>退回日期</text><b>{{repair.returnDate}}</b></view></view>
+      <view class="repair-mini-heading"><view><b>{{repair.factoryName}}</b><text class="repair-period-label">{{repair.repairNo}}</text></view></view>
       <view class="repair-mini-stats"><view><text>返修数量</text><b>{{repair.repairedQuantity}}</b></view><view><text>报废数量</text><b>{{repair.scrappedQuantity}}</b></view></view>
       <view class="repair-mini-progress"><view><text>返回进度</text><b>{{repair.returnedQuantity}} / {{repair.warehouseReturnQuantity}}</b><em>{{progress}}%</em></view><view class="repair-mini-track"><view style="width:{{progress}}%"/></view></view>
     </view>
     <view class="repair-mini-section">
       <view class="repair-mini-section-head"><b>质检附件</b><text>原始质检文件</text></view>
-      <view class="repair-mini-attachment"><view class="repair-file-icon"><image src="/assets/icons/file-blue.svg" mode="aspectFit"/></view><view><b>{{repair.originalFilename}}</b><text>Excel · {{fileSizeText}}</text></view><button bindtap="openAttachment">查看</button><button bindtap="openAttachment">下载</button></view>
+      <view wx:for="{{repair.attachments}}" wx:key="fileId" class="repair-mini-attachment"><view class="repair-file-icon"><image src="/assets/icons/file-blue.svg" mode="aspectFit"/></view><view><b>{{item.filename}}</b><text>Excel · 原始文件</text></view><button data-file-id="{{item.fileId}}" bindtap="openAttachment">查看</button><button data-file-id="{{item.fileId}}" bindtap="openAttachment">下载</button></view>
     </view>
     <view class="repair-mini-section">
       <view class="repair-mini-section-head"><b>工厂发回记录</b><text>{{returnBatches.length}} 次</text></view>

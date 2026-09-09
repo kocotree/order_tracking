@@ -261,7 +261,7 @@ def test_confirm_creates_an_incomplete_repair_with_formal_lines_and_files(
             )
         )
 
-    with pytest.raises(ValueError, match="FX20260827-001"):
+    with pytest.raises(ValueError, match="该文件已创建"):
         service.confirm(
             preview_id="confirm-preview-duplicate",
             confirmed_by="confirm-admin",

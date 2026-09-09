@@ -569,6 +569,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/repair-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admin Periods */
+        get: operations["list_admin_periods_api_v1_admin_repair_periods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/repair-periods/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Period Options */
+        get: operations["period_options_api_v1_admin_repair_periods_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/repair-previews": {
         parameters: {
             query?: never;
@@ -1004,6 +1038,23 @@ export interface paths {
         };
         /** My Factory Application */
         get: operations["my_factory_application_api_v1_factory_applications_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factory/repair-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Factory Periods */
+        get: operations["list_factory_periods_api_v1_factory_repair_periods_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2418,6 +2469,15 @@ export interface components {
             /** Repairid */
             repairId: string;
         };
+        /** RepairAttachmentResponse */
+        RepairAttachmentResponse: {
+            /** Fileid */
+            fileId: number;
+            /** Filename */
+            filename: string;
+            /** Sizebytes */
+            sizeBytes: number;
+        };
         /** RepairDraftRequest */
         RepairDraftRequest: {
             /** Entries */
@@ -2542,6 +2602,11 @@ export interface components {
         };
         /** RepairResponse */
         RepairResponse: {
+            /**
+             * Attachments
+             * @default []
+             */
+            attachments: components["schemas"]["RepairAttachmentResponse"][];
             /**
              * Createdat
              * Format: date-time
@@ -4453,6 +4518,79 @@ export interface operations {
             };
         };
     };
+    list_admin_periods_api_v1_admin_repair_periods_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                status?: string;
+                period?: string;
+                factories?: string[] | null;
+                sortBy?: string;
+                sortOrder?: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairSummaryListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    period_options_api_v1_admin_repair_periods_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairFactoryOptionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_preview_api_v1_admin_repair_previews_post: {
         parameters: {
             query?: never;
@@ -5397,6 +5535,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FactoryApplicationResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_factory_periods_api_v1_factory_repair_periods_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                status?: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepairSummaryListResponse"];
                 };
             };
             /** @description Validation Error */

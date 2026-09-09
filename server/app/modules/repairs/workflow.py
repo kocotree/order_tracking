@@ -4,11 +4,11 @@ from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.private_files import PrivateFileStore
-from app.db.models import RepairPreview, RepairPreviewLine, StoredFile
+from app.db.models import RepairOrder, RepairPreview, RepairPreviewLine, StoredFile
 from app.modules.repairs.preview import RepairPreviewService, RepairPreviewView
 from app.modules.repairs.workbook import InspectionWorkbookParser
 
@@ -48,8 +48,13 @@ class RepairWorkflowService:
     ) -> RepairPreviewView:
         if Path(filename).suffix.lower() != ".xlsx" or mime_type != XLSX_MIME:
             raise RepairWorkflowValidationError("只支持标准 .xlsx 质检文件")
-        snapshot = self._parser.parse(content)
         digest = sha256(content).hexdigest()
+        with self._sessions() as session:
+            if session.scalar(
+                select(RepairOrder.repair_id).where(RepairOrder.source_sha256 == digest)
+            ):
+                raise RepairWorkflowValidationError("该文件已创建")
+        snapshot = self._parser.parse(content)
         upload_id = self._id_factory()
         original_key = f"repairs/previews/{upload_id}/source.xlsx"
         self._file_store.put(

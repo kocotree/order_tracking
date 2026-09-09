@@ -18,7 +18,104 @@ def natural_sort_keys(source: Select[Any], *, name: str) -> CTE:
     The resulting CTE exposes id/key for a database JOIN + ORDER BY. The caller
     retains its original stable tie breaker. No source records leave MySQL.
     """
-    values = source.cte(f"{name}_values")
+    raw = source.cte(f"{name}_raw")
+    # Intl numeric collation also recognizes Unicode decimal digits (e.g. fullwidth).
+    # Only those uncommon values enter normalization; ordinary text is unchanged.
+    needs_normalization = func.regexp_like(raw.c.value, r"[\p{Nd}&&[^0-9]]")
+    normalized = select(
+        raw.c.id,
+        case((needs_normalization, raw.c.value), else_="").label("rest"),
+        cast(case((needs_normalization, ""), else_=raw.c.value), String(4194304)).label("value"),
+    ).cte(f"{name}_normalized", recursive=True)
+    digit_or_text = func.regexp_substr(normalized.c.rest, r"^\p{Nd}|^[^\p{Nd}]+")
+    ordinal = func.ord(digit_or_text)
+    # UTF-8 decimal blocks are consecutive, including their byte representation.
+    zero_ordinals = [
+        48,
+        55712,
+        56240,
+        57216,
+        14722470,
+        14722982,
+        14723494,
+        14724006,
+        14724518,
+        14725030,
+        14725542,
+        14726054,
+        14726566,
+        14727078,
+        14727568,
+        14728080,
+        14728352,
+        14778752,
+        14779024,
+        14786464,
+        14786704,
+        14787974,
+        14788496,
+        14789248,
+        14789264,
+        14790032,
+        14790320,
+        14791040,
+        14791056,
+        15374496,
+        15377296,
+        15377536,
+        15378320,
+        15378352,
+        15378832,
+        15380400,
+        15711376,
+        4036006560,
+        4036015280,
+        4036067750,
+        4036068272,
+        4036068534,
+        4036069264,
+        4036070320,
+        4036071824,
+        4036072336,
+        4036073872,
+        4036074368,
+        4036074672,
+        4036076448,
+        4036076944,
+        4036080016,
+        4036081040,
+        4036081312,
+        4036405664,
+        4036406672,
+        4036861838,
+        4036861848,
+        4036861858,
+        4036861868,
+        4036861878,
+        4036920704,
+        4036922288,
+        4036928912,
+        4036997040,
+    ]
+    normalized_token = case(
+        *[
+            (ordinal.between(zero, zero + 9), cast(ordinal - zero, String()))
+            for zero in zero_ordinals
+        ],
+        else_=digit_or_text,
+    )
+    normalized = normalized.union_all(
+        select(
+            normalized.c.id,
+            func.substring(normalized.c.rest, func.char_length(digit_or_text) + 1),
+            func.concat(normalized.c.value, normalized_token),
+        ).where(normalized.c.rest != "")
+    )
+    values = (
+        select(normalized.c.id, normalized.c.value)
+        .where(normalized.c.rest == "")
+        .cte(f"{name}_values")
+    )
     parts = select(
         values.c.id,
         values.c.value.label("rest"),

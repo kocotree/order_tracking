@@ -8,6 +8,9 @@ from app.db.natural_sort import natural_sort_keys
 
 def test_natural_sort_matches_chinese_numeric_collator(test_database_engine: Engine) -> None:
     values = [
+        "工厂１０",
+        "工厂２",
+        "工厂٠٢",
         "工厂10",
         "工厂2",
         "工厂02",

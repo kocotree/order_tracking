@@ -4953,6 +4953,7 @@ export interface operations {
             query?: {
                 keyword?: string;
                 factory?: string;
+                factories?: string[] | null;
                 dateFrom?: string | null;
                 dateTo?: string | null;
                 sortBy?: "" | "shipmentNo" | "orderNos" | "factory" | "productNames" | "totalQuantity" | "businessDate";

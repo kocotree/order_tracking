@@ -379,14 +379,14 @@ export const contractApi = {
 
 export type ShipmentSummary = components["schemas"]["ShipmentSummaryResponse"];
 export interface ShipmentSummaryQuery {
-  keyword?: string; factory?: string; dateFrom?: string; dateTo?: string;
+  keyword?: string; factory?: string; factories?: string[]; dateFrom?: string; dateTo?: string;
   sortBy?: string; sortOrder?: "asc" | "desc"; page?: number; pageSize?: number;
 }
 
 export const shipmentApi = {
   listSummary: (params: ShipmentSummaryQuery = {}) => {
     const query = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== "") query.set(key, String(value)); });
+    Object.entries(params).forEach(([key, value]) => { if (Array.isArray(value)) value.forEach(name => query.append(key, name)); else if (value !== undefined && value !== "") query.set(key, String(value)); });
     return request<components["schemas"]["ShipmentSummaryListResponse"]>(`/v1/admin/shipments/summary?${query}`);
   },
   listFactoryOptions: () => request<components["schemas"]["ShipmentFactoryOptionsResponse"]>("/v1/admin/shipments/factory-options"),

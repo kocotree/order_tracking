@@ -1,6 +1,10 @@
+import type { components } from "./generated";
+import { invalidateFactoryLists } from "../modules/lists/factory-revisions";
 import { currentApiBaseUrl } from "./config";
 import { authorizedRequest } from "./identity";
 import { accessToken } from "../modules/identity/session";
+
+export type FactoryShipmentSummary = components["schemas"]["FactoryShipmentSummary"];
 
 export interface ShipmentLine { assignmentId:number; orderId:string; orderNo:string; skuId:string; productName:string; propertiesValue:string; quantity:number; lineId?:number|null; returnedQuantity?:number; returnableQuantity?:number }
 export interface ShipmentBox { boxNo:number; groupKey:string|null; items:ShipmentLine[] }
@@ -46,11 +50,15 @@ export const shipmentApi = {
     success(result) { if(result.statusCode===200)resolve(result.tempFilePath); else reject(new Error("发货凭证加载失败")); },
     fail:error => reject(new Error(error.errMsg)),
   })),
-  submitDraft: (shipmentId:string,version?:number,key?:string) => authorizedRequest<Shipment>({url:`/factory/shipments/drafts/${encodeURIComponent(shipmentId)}/submit${version === undefined ? "" : `?version=${version}`}`,method:"POST",header:{"Idempotency-Key":key || `shipment-${Date.now()}`}}),
+  submitDraft: (shipmentId:string,version?:number,key?:string) => authorizedRequest<Shipment>({url:`/factory/shipments/drafts/${encodeURIComponent(shipmentId)}/submit${version === undefined ? "" : `?version=${version}`}`,method:"POST",header:{"Idempotency-Key":key || `shipment-${Date.now()}`}}).then(result => { invalidateFactoryLists("orders", "shipments"); return result; }),
+  factoryPage: (params: {keyword?:string;shipDateFrom?:string;shipDateTo?:string;page:number}) => {
+    const query = Object.entries({...params, pageSize:20}).filter(([,value])=>value!==undefined).map(([key,value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+    return authorizedRequest<components["schemas"]["FactoryShipmentPage"]>({url:`/factory/shipment-page?${query}`,method:"GET"});
+  },
   factoryList: () => authorizedRequest<{items:Shipment[];total:number}>({url:"/factory/shipments",method:"GET"}),
   factoryGet: (shipmentId:string) => authorizedRequest<Shipment>({url:`/factory/shipments/${encodeURIComponent(shipmentId)}`,method:"GET"}),
   withdrawalDraft: (id:string) => authorizedRequest<Shipment>({url:`/factory/shipments/${encodeURIComponent(id)}/withdraw-draft`,method:"GET"}),
-  withdraw: (id:string,reason:string,version:number,key:string) => authorizedRequest<Shipment>({url:`/factory/shipments/${encodeURIComponent(id)}/withdraw`,method:"POST",data:{reason,version},header:{"Idempotency-Key":key}}),
+  withdraw: (id:string,reason:string,version:number,key:string) => authorizedRequest<Shipment>({url:`/factory/shipments/${encodeURIComponent(id)}/withdraw`,method:"POST",data:{reason,version},header:{"Idempotency-Key":key}}).then(result => { invalidateFactoryLists("orders", "shipments"); return result; }),
   adminList: () => authorizedRequest<{items:Shipment[];total:number}>({url:"/admin/shipments",method:"GET"}),
   adminGet: (shipmentId:string) => authorizedRequest<Shipment>({url:`/admin/shipments/${encodeURIComponent(shipmentId)}`,method:"GET"}),
 };

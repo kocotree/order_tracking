@@ -1,16 +1,16 @@
-"""Administrator list read expressions; paginate before constructing detailed snapshots."""
+"""Order list expressions with optional factory scope; paginate before detailed snapshots."""
 
 from datetime import date
 from typing import Any
 
-from sqlalchemy import Select, case, func, literal_column, select
+from sqlalchemy import Select, case, func, literal_column, select, true
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.models import Order, OrderAssignment, OrderLine, QuantityLedger
 
 
-def display_status(today: date) -> ColumnElement[str]:
+def display_status(today: date, factory_id: str | None = None) -> ColumnElement[str]:
     # Uncorrelated membership is materialized once; a correlated EXISTS may scan every
     # assignment for each order when MySQL chooses the date condition as its entry point.
     ledger = (
@@ -31,6 +31,8 @@ def display_status(today: date) -> ColumnElement[str]:
             > OrderAssignment.initial_shipped_quantity + func.coalesce(ledger.c.quantity, 0),
         )
     )
+    if factory_id is not None:
+        overdue_orders = overdue_orders.where(OrderAssignment.factory_id == factory_id)
     overdue = Order.order_id.in_(overdue_orders)
     return case(
         (Order.lifecycle == "DRAFT", "草稿"),
@@ -51,8 +53,22 @@ def page_orders(
     sort_by: str,
     page: int,
     page_size: int,
+    factory_id: str | None = None,
 ) -> tuple[list[Order], int]:
-    state = display_status(today)
+    state = display_status(today, factory_id)
+    visible_line = (
+        (
+            select(OrderAssignment.order_assignment_id)
+            .where(
+                OrderAssignment.order_line_id == OrderLine.order_line_id,
+                OrderAssignment.factory_id == factory_id,
+            )
+            .correlate(OrderLine)
+            .exists()
+        )
+        if factory_id is not None
+        else true()
+    )
     if status != "all":
         query = query.where(state == status)
     dates = (
@@ -61,6 +77,8 @@ def page_orders(
         .where(OrderLine.order_id == Order.order_id)
         .correlate(Order)
     )
+    if factory_id is not None:
+        dates = dates.where(OrderAssignment.factory_id == factory_id)
     if ship_date_from or ship_date_to:
         matching_dates = dates
         if ship_date_from:
@@ -99,7 +117,7 @@ def page_orders(
                     )
                 )
             )
-            .where(OrderLine.order_id == Order.order_id)
+            .where(OrderLine.order_id == Order.order_id, visible_line)
             .correlate(Order)
             .scalar_subquery()
         )
@@ -109,6 +127,7 @@ def page_orders(
             select(OrderLine.order_line_id)
             .where(
                 OrderLine.order_id == Order.order_id,
+                visible_line,
                 OrderLine.category_snapshot.collate("utf8mb4_0900_bin").in_(
                     ["童装春夏", "童装秋冬"]
                 ),
@@ -120,6 +139,7 @@ def page_orders(
             select(OrderLine.order_line_id)
             .where(
                 OrderLine.order_id == Order.order_id,
+                visible_line,
                 OrderLine.category_snapshot.collate("utf8mb4_0900_bin") != "",
                 OrderLine.category_snapshot.collate("utf8mb4_0900_bin").not_in(
                     ["童装春夏", "童装秋冬"]
@@ -153,6 +173,7 @@ def page_orders(
                 .label("position"),
             )
             .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+            .where(OrderAssignment.factory_id == factory_id if factory_id is not None else true())
             .subquery("names")
         )
         names = (
@@ -189,12 +210,14 @@ def page_orders(
                     OrderAssignment.initial_shipped_quantity
                     + func.coalesce(ledger_totals.c.quantity, 0)
                 ).label("shipped"),
+                func.sum(OrderAssignment.assigned_quantity).label("assigned"),
             )
             .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
             .outerjoin(
                 ledger_totals,
                 ledger_totals.c.order_assignment_id == OrderAssignment.order_assignment_id,
             )
+            .where(OrderAssignment.factory_id == factory_id if factory_id is not None else true())
             .group_by(OrderLine.order_id)
             .subquery()
         )
@@ -209,7 +232,10 @@ def page_orders(
                 .subquery()
             )
             query = query.outerjoin(line_totals, line_totals.c.order_id == Order.order_id)
-            denominator = func.nullif(line_totals.c.quantity, 0)
+            denominator = func.nullif(
+                assignment_totals.c.assigned if factory_id is not None else line_totals.c.quantity,
+                0,
+            )
             numerator = shipped * 100
             # Integer remainder avoids MySQL decimal division rounding a near-half into a tie.
             # Python round uses ties-to-even, including negative values.
@@ -255,7 +281,7 @@ def page_orders(
             query.prefix_with(
                 "/*+ SET_VAR(group_concat_max_len=4294967295) SET_VAR(max_sort_length=8388608) */"
             )
-            .order_by(*keys)
+            .order_by(*keys, Order.order_id)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )

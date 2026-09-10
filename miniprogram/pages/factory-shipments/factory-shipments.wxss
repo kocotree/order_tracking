@@ -38,3 +38,5 @@
 .record-filter-actions { display: grid; grid-template-columns: 1fr 2fr; gap: 16rpx; }
 .record-filter-reset,.record-filter-apply { height: 82rpx; font-size: 27rpx; font-weight: 750; line-height: 82rpx; background: #f2f4f7; border-radius: 18rpx; }
 .record-filter-apply { color: #fff; background: #1677ff; }
+
+.factory-page-status { padding: 24rpx; color: #7a8592; font-size: 24rpx; text-align: center; }

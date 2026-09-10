@@ -1,7 +1,9 @@
-import { shipmentApi, type Shipment } from "../../api/shipments";
+import { PagedList } from "../../modules/lists/paged-list";
+import { factoryRevision } from "../../modules/lists/factory-revisions";
+import { shipmentApi, type Shipment, type FactoryShipmentSummary } from "../../api/shipments";
 import { isDevPreview, PREVIEW_FACTORY_SHIPMENTS } from "../../modules/dev-preview";
 
-type ShipmentCard = Shipment & { productSummary: string; orderSummary: string };
+type ShipmentCard = FactoryShipmentSummary;
 
 function toCard(item: Shipment): ShipmentCard {
   const productNames = Array.from(new Set(item.lines.map((line) => line.productName)));
@@ -14,8 +16,10 @@ function toCard(item: Shipment): ShipmentCard {
 }
 
 Page({
+  pager: null as PagedList<ShipmentCard> | null,
+  revision: -1,
   data: {
-    allItems: [] as ShipmentCard[], items: [] as ShipmentCard[], keyword: "", loading: true, previewMode: false,
+    total:0, loadingMore:false, hasMore:false, error:"", items: [] as ShipmentCard[], keyword: "", loading: true, previewMode: false,
     filterOpen: false, shipDateFrom: "", shipDateTo: "", draftShipDateFrom: "", draftShipDateTo: "", filterCount: 0,
     navigationItems: [
       { key: "primary", label: "任务", path: "/pages/factory-tasks/factory-tasks", icon: "/assets/icons/admin-orders.svg", activeIcon: "/assets/icons/admin-orders-active.svg" },
@@ -24,34 +28,28 @@ Page({
     ],
   },
 
-  onShow() { if (!this.data.previewMode) void this.load(); },
-  onLoad(options: Record<string, string | undefined>) {
-    const previewMode = isDevPreview(options);
-    this.setData({ previewMode });
-    if (previewMode) {
-      const allItems = PREVIEW_FACTORY_SHIPMENTS.map(toCard);
-      this.setData({ allItems, items: allItems, loading: false });
-    }
+  onShow() {
+    if(this.revision !== factoryRevision("shipments")) { void this.load(); wx.pageScrollTo({scrollTop:0,duration:0}); }
   },
-
+  onLoad(options: Record<string, string | undefined>) { this.setData({previewMode:isDevPreview(options)}); void this.load(); },
+  onUnload() { this.pager?.dispose(); },
+  onReachBottom() { void this.pager?.next(); },
+  retry() { this.onReachBottom(); },
+  onPullDownRefresh() { void this.load().finally(()=>wx.stopPullDownRefresh()); },
   async load() {
-    try {
-      const allItems = (await shipmentApi.factoryList()).items.map(toCard);
-      this.setData({ allItems });
-      this.applyLocalFilters();
-    } catch { wx.showToast({ title: "发货记录加载失败", icon: "none" }); }
-    finally { this.setData({ loading: false }); }
-  },
-
-  applyLocalFilters() {
-    const keyword = this.data.keyword.trim().toLowerCase();
-    const items = this.data.allItems.filter((item) => {
-      const searchable = `${item.productSummary} ${item.orderSummary}`.toLowerCase();
-      return (!keyword || searchable.includes(keyword))
-        && (!this.data.shipDateFrom || (item.businessDate || "") >= this.data.shipDateFrom)
-        && (!this.data.shipDateTo || (item.businessDate || "") <= this.data.shipDateTo);
+    this.revision=factoryRevision("shipments");
+    if(!this.pager) this.pager=new PagedList(item=>item.shipmentId,state=>this.setData(state));
+    const params={keyword:this.data.keyword,shipDateFrom:this.data.shipDateFrom||undefined,shipDateTo:this.data.shipDateTo||undefined};
+    await this.pager.reset(async page=> {
+      if(!this.data.previewMode) return shipmentApi.factoryPage({...params,page});
+      const keyword=params.keyword.trim().toLowerCase();
+      const items=PREVIEW_FACTORY_SHIPMENTS.map(toCard).filter(item=>(!keyword || `${item.productSummary} ${item.orderSummary}`.toLowerCase().includes(keyword))&&(!params.shipDateFrom || (item.businessDate||"")>=params.shipDateFrom)&&(!params.shipDateTo || (item.businessDate||"")<=params.shipDateTo));
+      return {items,total:items.length};
     });
-    this.setData({ items, filterCount: Number(Boolean(this.data.shipDateFrom || this.data.shipDateTo)) });
+  },
+  applyLocalFilters() {
+    this.setData({filterCount:Number(Boolean(this.data.shipDateFrom||this.data.shipDateTo))});
+    wx.pageScrollTo({scrollTop:0,duration:0}); void this.load();
   },
 
   keywordChanged(event: WechatMiniprogram.Input) { this.setData({ keyword: event.detail.value }); this.applyLocalFilters(); },

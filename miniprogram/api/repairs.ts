@@ -1,6 +1,10 @@
+import type { components } from "./generated";
+import { invalidateFactoryLists } from "../modules/lists/factory-revisions";
 import { currentApiBaseUrl } from "./config";
 import { authorizedRequest } from "./identity";
 import { accessToken } from "../modules/identity/session";
+
+export type RepairSummary = components["schemas"]["RepairSummaryResponse"];
 
 export interface RepairLine {
   inspectionLineId: number;
@@ -97,6 +101,10 @@ export const repairApi = {
   saveReturnDraft: (id: string, version: number, entries: RepairDraftEntry[]) => authorizedRequest<RepairDraft>({ url: `/factory/repairs/${encodeURIComponent(id)}/return-draft`, method: "PUT", data: { version, entries } }),
   adminList: () => listPeriods("admin"),
   adminGet: (repairId: string) => authorizedRequest<Repair>({ url: `/admin/repairs/${encodeURIComponent(repairId)}`, method: "GET" }),
+  factoryPage: (params: {keyword:string;status:string;page:number}) => {
+    const query=Object.entries({...params,pageSize:20}).map(([key,value])=>`${key}=${encodeURIComponent(value)}`).join("&");
+    return authorizedRequest<components["schemas"]["RepairSummaryListResponse"]>({url:`/factory/repair-periods?${query}`,method:"GET"});
+  },
   factoryList: () => listPeriods("factory"),
   factoryGet: (repairId: string) => authorizedRequest<Repair>({ url: `/factory/repairs/${encodeURIComponent(repairId)}`, method: "GET" }),
   factorySubmitReturn: (repairId: string, lines: Array<{ variantId: string; repairedQuantity: number; scrappedQuantity: number }>, idempotencyKey: string, draftVersion?: number) => authorizedRequest<Repair>({
@@ -104,6 +112,6 @@ export const repairApi = {
     method: "POST",
     header: { "Idempotency-Key": idempotencyKey },
     data: { lines, draftVersion },
-  }),
+  }).then(result => { invalidateFactoryLists("repairs"); return result; }),
   download,
 };

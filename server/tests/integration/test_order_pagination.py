@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, event, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -18,8 +19,10 @@ from app.modules.orders import AssignmentInput, DraftLineInput, OrderService
 from tests.integration.test_order_lifecycle import _seed_order_dependencies
 
 
+@pytest.mark.parametrize("factory_scope", [False, True])
 def test_admin_pagination_matches_complete_snapshots_and_bounds_queries(
     test_database_engine: Engine,
+    factory_scope: bool,
 ) -> None:
     admin, factory, factory_b, variant = _seed_order_dependencies(test_database_engine)
     service = OrderService(sessionmaker(test_database_engine, expire_on_commit=False))
@@ -88,10 +91,13 @@ def test_admin_pagination_matches_complete_snapshots_and_bounds_queries(
                         contract_ship_date=date(2026, 10, 1),
                     )
                 )
+    actor_id = "factory-user-a" if factory_scope else admin
     today = date(2026, 9, 9)
     with Session(test_database_engine) as session:
         expected = [
-            service._snapshot(session, item, today) for item in session.scalars(select(Order))
+            service._snapshot(session, item, today, factory_id=factory if factory_scope else None)
+            for item in session.scalars(select(Order))
+            if not factory_scope or item.lifecycle != "DRAFT"
         ]
     for sort in ["priority", "updatedDesc", "orderDateDesc", "shipDateAsc", "shipDateDesc"] + [
         field + direction
@@ -123,12 +129,17 @@ def test_admin_pagination_matches_complete_snapshots_and_bounds_queries(
         event.listen(test_database_engine, "before_cursor_execute", count)
         try:
             actual, total = service.list_visible(
-                actor_id=admin, include_drafts=True, sort_by=sort, page=2, page_size=10, today=today
+                actor_id=actor_id,
+                include_drafts=True,
+                sort_by=sort,
+                page=2,
+                page_size=10,
+                today=today,
             )
         finally:
             event.remove(test_database_engine, "before_cursor_execute", count)
         assert actual == ordered[10:20], sort
-        assert total == 25
+        assert total == len(expected)
         assert len(calls) <= 6, (sort, len(calls))
 
     for status in ["all", "草稿", "未完成", "已逾期", "已完成"]:
@@ -152,7 +163,7 @@ def test_admin_pagination_matches_complete_snapshots_and_bounds_queries(
             ]
             matching.sort(key=service._sort_key("priority", today))
             actual, total = service.list_visible(
-                actor_id=admin,
+                actor_id=actor_id,
                 include_drafts=True,
                 status=status,
                 ship_date_from=start,
@@ -163,7 +174,7 @@ def test_admin_pagination_matches_complete_snapshots_and_bounds_queries(
             assert actual == matching[:10]
             assert total == len(matching)
     actual, total = service.list_visible(
-        actor_id=admin,
+        actor_id=actor_id,
         include_drafts=True,
         factory_ids=[factory, factory_b],
         today=today,
@@ -343,3 +354,78 @@ def test_long_summary_sort_empty_orders_and_last_factory_name(test_database_engi
             )
             assert actual == ordered[1:2], sort
             assert total == 3
+
+
+def test_factory_keyword_and_category_only_match_visible_lines(
+    test_database_engine: Engine,
+) -> None:
+    admin, factory, other, variant = _seed_order_dependencies(test_database_engine)
+    service = OrderService(sessionmaker(test_database_engine, expire_on_commit=False))
+    draft = service.create_draft(
+        actor_id=admin,
+        order_no="scoped",
+        order_date=date(2026, 9, 1),
+        tracker="松子",
+        request_id="scoped",
+        lines=[
+            DraftLineInput(
+                variant_id=variant,
+                order_quantity=10,
+                assignments=[
+                    AssignmentInput(
+                        factory_id=factory, quantity=10, contract_ship_date=date(2026, 9, 30)
+                    )
+                ],
+            )
+        ],
+    )
+    with Session(test_database_engine) as session, session.begin():
+        order = session.get(Order, draft.order_id)
+        order.lifecycle = "PUBLISHED"
+        own = session.scalar(select(OrderLine).where(OrderLine.order_id == order.order_id))
+        own.product_name_snapshot = "own hat"
+        own.category_snapshot = "童帽春夏"
+        template = session.get(ProductVariant, variant)
+        session.add(
+            ProductVariant(
+                variant_id="hidden-variant",
+                product_id=template.product_id,
+                source_sku_id="hidden",
+                properties_value="hidden",
+                is_available=True,
+                source_modified_at=template.source_modified_at,
+                first_synced_at=template.first_synced_at,
+                last_synced_at=template.last_synced_at,
+            )
+        )
+        session.flush()
+        hidden = OrderLine(
+            order_id=order.order_id,
+            product_variant_id="hidden-variant",
+            order_quantity=10,
+            sku_id_snapshot="hidden",
+            product_name_snapshot="secret clothing",
+            properties_value_snapshot="hidden",
+            category_snapshot="童装春夏",
+        )
+        session.add(hidden)
+        session.flush()
+        session.add(
+            OrderAssignment(
+                order_line_id=hidden.order_line_id,
+                factory_id=other,
+                assigned_quantity=10,
+                initial_shipped_quantity=0,
+                factory_name_snapshot="other",
+                contract_ship_date=date(2020, 1, 1),
+            )
+        )
+    assert service.list_visible(actor_id="factory-user-a", keyword="secret")[1] == 0
+    assert service.list_visible(actor_id="factory-user-a", category="服装")[1] == 0
+    items, total = service.list_visible(
+        actor_id="factory-user-a", keyword="own", category="帽子", today=date(2026, 9, 10)
+    )
+    assert total == 1 and len(items[0].lines) == 1
+    assert items[0].display_status == "未完成"
+    assert items[0].contract_ship_dates == [date(2026, 9, 30)]
+    assert service.list_visible(actor_id=admin, keyword="secret", category="服装")[1] == 1

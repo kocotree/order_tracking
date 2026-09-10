@@ -8,8 +8,9 @@
           <button class="repair-upload-zone" :class="{'is-dragging': dragging}" type="button" :disabled="busy" @click="excelInput?.click()" @dragover.prevent="dragging = !busy" @dragleave.prevent="dragging = false" @drop.prevent="dropExcel">
             <svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M24 33V12m0 0-8 8m8-8 8 8M10 34v4h28v-4"/></svg>
             <strong>{{ busy ? '正在处理…' : '点击或拖入质检 Excel' }}</strong>
-            <span>支持一次上传多个 .xlsx 文件，每个不超过 20 MiB；解析后点击“确认创建”。原始 Excel 完整保留。</span>
+            <span>每次最多上传 20 个 .xlsx 文件，每个不超过 20 MiB；解析后点击“确认创建”。原始 Excel 完整保留。</span>
           </button>
+          <p v-if="selectionError" class="page-error" role="alert">{{ selectionError }}</p>
           <div v-for="item in files" :key="item.id" class="repair-uploaded-file">
             <div><span class="repair-file-mark">XLS</span><span><strong>{{ item.file.name }}</strong><small :class="{'page-error': item.error}">{{ item.error || item.status }}</small></span></div>
             <button v-if="!item.created" class="repair-file-remove" type="button" :aria-label="`移除 ${item.file.name}`" :disabled="busy" @click="removeFile(item.id)">×</button>
@@ -30,14 +31,22 @@ import AdminShell from "@/components/AdminShell.vue";
 type UploadItem = {id:string; file:File; preview:RepairPreview|null; status:string; error:string; key:string; created:boolean};
 const router=useRouter(), excelInput=ref<HTMLInputElement|null>(null);
 const files=ref<UploadItem[]>([]), uploading=ref(false), submitting=ref(false), dragging=ref(false);
+const selectionError=ref('');
 const busy=computed(()=>uploading.value||submitting.value);
 const readyFiles=computed(()=>files.value.filter(item=>item.preview?.status==='READY'&&!item.created));
 function removeFile(id:string){
   if(busy.value)return;
+  selectionError.value='';
   files.value=files.value.filter(item=>item.id!==id||item.created);
 }
 async function receive(selected:File[]){
   if(busy.value||!selected.length)return;
+  const remaining=20-files.value.length;
+  if(selected.length>remaining){
+    selectionError.value=`每次最多上传 20 个文件，当前已有 ${files.value.length} 个，还可添加 ${remaining} 个；本次选择未加入，请重新选择。`;
+    return;
+  }
+  selectionError.value='';
   uploading.value=true;
   const additions=selected.map(file=>({id:crypto.randomUUID(), file, preview:null, status:'等待解析', error:'', key:crypto.randomUUID(), created:false} as UploadItem));
   files.value.push(...additions);

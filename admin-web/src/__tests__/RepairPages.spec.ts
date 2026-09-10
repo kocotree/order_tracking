@@ -292,3 +292,31 @@ it("explains an upload gateway 413 response", async () => {
   expect(wrapper.get<HTMLButtonElement>('[data-confirm-create]').element.disabled).toBe(true);
   wrapper.unmount();
 });
+
+it("limits the cumulative click and drop queue to 20 and releases removed slots", async () => {
+  const upload=vi.spyOn(repairApi,'upload').mockResolvedValue(preview);
+  const wrapper=mount(RepairCreatePage,{global:{stubs:{AdminShell:shellStub}}});
+  const input=wrapper.get<HTMLInputElement>('input[type="file"]');
+  const files=Array.from({length:21},(_,i)=>new File(['a'],`file-${i}.xlsx`));
+  Object.defineProperty(input.element,'files',{value:files,configurable:true});
+  await input.trigger('change');await flushPromises();
+  expect(upload).not.toHaveBeenCalled();
+  expect(wrapper.get('[role="alert"]').text()).toContain('最多上传 20 个');
+  Object.defineProperty(input.element,'files',{value:files.slice(0,19),configurable:true});
+  await input.trigger('change');await flushPromises();
+  await wrapper.get('.repair-upload-zone').trigger('drop',{dataTransfer:{files:files.slice(19)}});
+  await flushPromises();
+  expect(upload).toHaveBeenCalledTimes(19);
+  expect(wrapper.get('[role="alert"]').text()).toContain('还可添加 1 个');
+  await wrapper.get('.repair-upload-zone').trigger('drop',{dataTransfer:{files:[files[19]]}});
+  await flushPromises();
+  expect(upload).toHaveBeenCalledTimes(20);
+  expect(wrapper.findAll('.repair-uploaded-file')).toHaveLength(20);
+  await wrapper.get('button[aria-label="移除 file-0.xlsx"]').trigger('click');
+  await wrapper.get('.repair-upload-zone').trigger('drop',{dataTransfer:{files:[files[20]]}});
+  await flushPromises();
+  expect(upload).toHaveBeenCalledTimes(21);
+  expect(wrapper.findAll('.repair-uploaded-file')).toHaveLength(20);
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  wrapper.unmount();
+});

@@ -32,11 +32,11 @@
                 <span>{{ factoryLabel }}</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 9 5 5 5-5" /></svg>
               </button>
               <div v-if="factoryOpen" class="order-multiselect-menu is-open">
-                <strong>选择工厂（可多选）</strong>
-                <label v-for="item in factories" :key="item.factoryId" class="order-multiselect-option">
+                <strong>选择工厂（可多选）</strong><input v-model="factorySearch" class="order-multiselect-search" type="search" aria-label="搜索工厂名称" placeholder="搜索工厂名称" autocomplete="off" @keydown.enter.prevent />
+                <label v-for="item in filteredFactories" :key="item.factoryId" class="order-multiselect-option">
                   <input v-model="factoryIds" type="checkbox" :value="item.factoryId" @change="search" /><span>{{ item.factoryName }}</span>
                 </label>
-                <span v-if="factories.length === 0" class="order-multiselect-empty">暂无工厂</span>
+                <span v-if="filteredFactories.length === 0" class="order-multiselect-empty">{{ factorySearch ? "没有匹配的工厂" : "暂无工厂" }}</span>
               </div>
             </div>
 
@@ -214,6 +214,7 @@ async function toggleSort(key: TableSortKey) {
 }
 
 async function reset() {
+  factorySearch.value = "";
   keyword.value = ""; status.value = "all"; category.value = ""; factoryIds.value = []; selectedTrackers.value = [];
   shipDateFrom.value = ""; shipDateTo.value = ""; sortBy.value = "priority"; tableSortKey.value = null; tableSortDirection.value = "asc";
   await search();
@@ -235,4 +236,7 @@ onMounted(async () => {
   await load();
 });
 onBeforeUnmount(() => { requestSequence += 1; document.removeEventListener("click", closeMenus); });
+
+const factorySearch = ref("");
+const filteredFactories = computed(() => factories.value.filter((item) => item.factoryName.includes(factorySearch.value.trim())));
 </script>

@@ -18,10 +18,10 @@
                 <span>{{ factoryLabel }}</span>
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg>
               </button>
-              <div v-if="factoryMenuOpen" class="order-multiselect-menu">
-                <strong>选择工厂（可多选）</strong>
-                <label v-for="name in factories" :key="name" class="order-multiselect-option"><input v-model="factoryFilter" type="checkbox" :value="name" /><span>{{ name }}</span></label>
-                <span v-if="!factories.length" class="order-multiselect-empty">暂无工厂</span>
+              <div v-if="factoryMenuOpen" class="order-multiselect-menu is-open">
+                <strong>选择工厂（可多选）</strong><input v-model="factorySearch" class="order-multiselect-search" type="search" aria-label="搜索工厂名称" placeholder="搜索工厂名称" autocomplete="off" @keydown.enter.prevent />
+                <label v-for="name in filteredFactories" :key="name" class="order-multiselect-option"><input v-model="factoryFilter" type="checkbox" :value="name" /><span>{{ name }}</span></label>
+                <span v-if="!filteredFactories.length" class="order-multiselect-empty">{{ factorySearch ? "没有匹配的工厂" : "暂无工厂" }}</span>
               </div>
             </div>
             <label class="order-select-field"><span class="sr-only">返修周期</span><select v-model="period"><option value="">全部周期</option><option v-for="value in periods" :key="value" :value="value">{{value}}</option></select></label>
@@ -128,12 +128,15 @@ async function loadFactories(){
 }
 function search(){if(page.value!==1)page.value=1;else void load();}
 function sort(field:string){const next=field as SortField;if(sortBy.value===next)sortOrder.value=sortOrder.value==="asc"?"desc":"asc";else{sortBy.value=next;sortOrder.value="asc"}page.value=1}
-function reset(){keyword.value="";status.value="all";factoryFilter.value=[];period.value="";sortBy.value="";sortOrder.value="asc";page.value=1}
+function reset(){factorySearch.value="";keyword.value="";status.value="all";factoryFilter.value=[];period.value="";sortBy.value="";sortOrder.value="asc";page.value=1}
 const n=(v:number)=>v.toLocaleString("zh-CN");
 const open=(id:string)=>router.push(`/repairs/${id}`);
 async function confirmArchive(){if(!archiveTarget.value||archiving.value)return;const target=archiveTarget.value;archiving.value=true;error.value="";try{await repairApi.archive(target.repairId);archiveTarget.value=null;void loadFactories();await load();}catch(e){error.value=e instanceof ApiError?e.message:"返修单归档失败"}finally{archiving.value=false}}
 onMounted(()=>{void load();void loadFactories();void repairApi.listPeriodOptions().then(result=>{if(!disposed)periods.value=result.items;}).catch(()=>{if(!disposed)optionsError.value="周期筛选选项加载失败";});});
 onBeforeUnmount(()=>{disposed=true;requestId++;optionsId++;});
+
+const factorySearch = ref("");
+const filteredFactories = computed(() => factories.value.filter((name) => name.includes(factorySearch.value.trim())));
 </script>
 
 <style scoped>

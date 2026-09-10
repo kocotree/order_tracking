@@ -8631,6 +8631,25 @@
           },
           {
             "in": "query",
+            "name": "factories",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Factories"
+            }
+          },
+          {
+            "in": "query",
             "name": "dateFrom",
             "required": false,
             "schema": {

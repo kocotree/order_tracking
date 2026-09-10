@@ -557,6 +557,7 @@ def create_shipment_router(
     def admin_shipment_summary(
         keyword: str = "",
         factory: str = "",
+        factories: Annotated[list[str] | None, Query()] = None,
         date_from: Annotated[date | None, Query(alias="dateFrom")] = None,
         date_to: Annotated[date | None, Query(alias="dateTo")] = None,
         sort_by: Annotated[
@@ -583,6 +584,7 @@ def create_shipment_router(
         items, total = service.page_admin_shipments(
             keyword=keyword,
             factory=factory,
+            factories=factories,
             date_from=date_from,
             date_to=date_to,
             sort_by=sort_by,

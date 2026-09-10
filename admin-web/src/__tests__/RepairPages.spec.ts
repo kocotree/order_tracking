@@ -1,7 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { repairApi, type Repair, type RepairPreview } from "@/api/client";
+import { ApiError, repairApi, type Repair, type RepairPreview } from "@/api/client";
 import RepairCreatePage from "@/pages/RepairCreatePage.vue";
 import RepairDetailPage from "@/pages/RepairDetailPage.vue";
 import RepairsPage from "@/pages/RepairsPage.vue";
@@ -241,5 +241,54 @@ it("shares click/drop upload and creates only valid files, retrying no successes
   expect(confirm).toHaveBeenCalledWith('好单.xlsx', expect.any(String));
   expect(wrapper.get('[data-confirm-create]').attributes('disabled')).toBeDefined();
   expect(wrapper.text()).toContain('创建成功');
+  wrapper.unmount();
+});
+
+it("removes pending files from confirmation and keeps created records", async () => {
+  vi.spyOn(repairApi, "upload").mockResolvedValueOnce({...preview,previewId:"removed"}).mockResolvedValueOnce({...preview,previewId:"kept"});
+  const confirm=vi.spyOn(repairApi,"confirm").mockResolvedValue(repair);
+  const wrapper=mount(RepairCreatePage,{global:{stubs:{AdminShell:shellStub}}});
+  const input=wrapper.get<HTMLInputElement>('input[type="file"]');
+  Object.defineProperty(input.element,"files",{value:[new File(['a'],'a.xlsx'),new File(['b'],'b.xlsx')]});
+  await input.trigger('change');await flushPromises();
+  await wrapper.get('button[aria-label="移除 a.xlsx"]').trigger('click');
+  expect(wrapper.text()).not.toContain('a.xlsx');
+  await wrapper.get('[data-confirm-create]').trigger('click');await flushPromises();
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(confirm).toHaveBeenCalledWith('kept',expect.any(String));
+  expect(wrapper.find('.repair-file-remove').exists()).toBe(false);
+  wrapper.unmount();
+});
+
+it("blocks oversized files, accepts the size boundary, and disables removal during upload", async () => {
+  let finish!:(value:RepairPreview)=>void;
+  const upload=vi.spyOn(repairApi,'upload').mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+  const large=new File(['a'],'large.xlsx'),boundary=new File(['b'],'boundary.xlsx');
+  Object.defineProperty(large,'size',{value:20*1024*1024+1});
+  Object.defineProperty(boundary,'size',{value:20*1024*1024});
+  const wrapper=mount(RepairCreatePage,{global:{stubs:{AdminShell:shellStub}}});
+  const input=wrapper.get<HTMLInputElement>('input[type="file"]');
+  Object.defineProperty(input.element,'files',{value:[large,boundary]});
+  await input.trigger('change');
+  expect(wrapper.text()).toContain('文件超过 20 MiB');
+  expect(upload).toHaveBeenCalledTimes(1);
+  expect(upload).toHaveBeenCalledWith(boundary);
+  expect(wrapper.get<HTMLButtonElement>('.repair-file-remove').element.disabled).toBe(true);
+  finish(preview);await flushPromises();
+  await wrapper.get('button[aria-label="移除 large.xlsx"]').trigger('click');
+  await wrapper.get('button[aria-label="移除 boundary.xlsx"]').trigger('click');
+  expect(wrapper.find('[data-confirm-create]').exists()).toBe(false);
+  wrapper.unmount();
+});
+
+
+it("explains an upload gateway 413 response", async () => {
+  vi.spyOn(repairApi,'upload').mockRejectedValue(new ApiError(413,'request_failed','请求失败，请稍后重试'));
+  const wrapper=mount(RepairCreatePage,{global:{stubs:{AdminShell:shellStub}}});
+  const input=wrapper.get<HTMLInputElement>('input[type="file"]');
+  Object.defineProperty(input.element,'files',{value:[new File(['a'],'failed.xlsx')]});
+  await input.trigger('change');await flushPromises();
+  expect(wrapper.text()).toContain('文件超过上传入口大小限制');
+  expect(wrapper.get<HTMLButtonElement>('[data-confirm-create]').element.disabled).toBe(true);
   wrapper.unmount();
 });

@@ -1611,6 +1611,100 @@
         "title": "FactoryResponse",
         "type": "object"
       },
+      "FactoryShipmentPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FactoryShipmentSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "FactoryShipmentPage",
+        "type": "object"
+      },
+      "FactoryShipmentSummary": {
+        "properties": {
+          "businessDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Businessdate"
+          },
+          "orderSummary": {
+            "title": "Ordersummary",
+            "type": "string"
+          },
+          "productSummary": {
+            "title": "Productsummary",
+            "type": "string"
+          },
+          "shipmentId": {
+            "title": "Shipmentid",
+            "type": "string"
+          },
+          "shipmentNo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipmentno"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "totalBoxes": {
+            "title": "Totalboxes",
+            "type": "integer"
+          },
+          "totalQuantity": {
+            "title": "Totalquantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shipmentId",
+          "shipmentNo",
+          "status",
+          "businessDate",
+          "totalQuantity",
+          "totalBoxes",
+          "productSummary",
+          "orderSummary"
+        ],
+        "title": "FactoryShipmentSummary",
+        "type": "object"
+      },
       "FactoryUpdate": {
         "properties": {
           "address": {
@@ -8631,6 +8725,25 @@
           },
           {
             "in": "query",
+            "name": "factories",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Factories"
+            }
+          },
+          {
+            "in": "query",
             "name": "dateFrom",
             "required": false,
             "schema": {
@@ -10401,6 +10514,122 @@
           }
         },
         "summary": "Shipment Catalog",
+        "tags": [
+          "shipment-factory"
+        ]
+      }
+    },
+    "/api/v1/factory/shipment-page": {
+      "get": {
+        "operationId": "factory_shipment_page_api_v1_factory_shipment_page_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Keyword",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "shipDateFrom",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Shipdatefrom"
+            }
+          },
+          {
+            "in": "query",
+            "name": "shipDateTo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Shipdateto"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryShipmentPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Factory Shipment Page",
         "tags": [
           "shipment-factory"
         ]

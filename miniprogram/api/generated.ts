@@ -1149,6 +1149,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/factory/shipment-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Factory Shipment Page */
+        get: operations["factory_shipment_page_api_v1_factory_shipment_page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/factory/shipments": {
         parameters: {
             query?: never;
@@ -2119,6 +2136,36 @@ export interface components {
             supplierNumber: string;
             /** Version */
             version: number;
+        };
+        /** FactoryShipmentPage */
+        FactoryShipmentPage: {
+            /** Items */
+            items: components["schemas"]["FactoryShipmentSummary"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            /** Total */
+            total: number;
+        };
+        /** FactoryShipmentSummary */
+        FactoryShipmentSummary: {
+            /** Businessdate */
+            businessDate: string | null;
+            /** Ordersummary */
+            orderSummary: string;
+            /** Productsummary */
+            productSummary: string;
+            /** Shipmentid */
+            shipmentId: string;
+            /** Shipmentno */
+            shipmentNo: string | null;
+            /** Status */
+            status: string;
+            /** Totalboxes */
+            totalBoxes: number;
+            /** Totalquantity */
+            totalQuantity: number;
         };
         /** FactoryUpdate */
         FactoryUpdate: {
@@ -4953,6 +5000,7 @@ export interface operations {
             query?: {
                 keyword?: string;
                 factory?: string;
+                factories?: string[] | null;
                 dateFrom?: string | null;
                 dateTo?: string | null;
                 sortBy?: "" | "shipmentNo" | "orderNos" | "factory" | "productNames" | "totalQuantity" | "businessDate";
@@ -5779,6 +5827,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShipmentCatalogResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factory_shipment_page_api_v1_factory_shipment_page_get: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                shipDateFrom?: string | null;
+                shipDateTo?: string | null;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryShipmentPage"];
                 };
             };
             /** @description Validation Error */

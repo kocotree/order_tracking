@@ -20,7 +20,8 @@ it("loads one database page with dashboard dates and resets filters", async () =
   expect(list).toHaveBeenCalledTimes(1);
   expect(list).toHaveBeenLastCalledWith(expect.objectContaining({dateFrom: "2026-09-05", dateTo: "2026-09-05", page: 1, pageSize: 10}));
   expect(wrapper.text()).toContain("TODAY");
-  expect(wrapper.get("select").text()).toContain("非当前页工厂");
+  await wrapper.get(".shipment-factory-field button").trigger("click");
+  expect(wrapper.get(".shipment-factory-field").text()).toContain("非当前页工厂");
   list.mockResolvedValue({items: [row("YESTERDAY")], total: 1});
   await wrapper.get(".order-secondary-button").trigger("click");
   await flushPromises();
@@ -43,7 +44,8 @@ it("shows rows while independent options are slow and rejects stale responses", 
   expect(wrapper.text()).not.toContain("STALE");
   expect(list).toHaveBeenCalledTimes(3);
   options.resolve({items:["全量工厂"]}); await flushPromises();
-  expect(wrapper.get("select").text()).toContain("全量工厂");
+  await wrapper.get(".shipment-factory-field button").trigger("click");
+  expect(wrapper.get(".shipment-factory-field").text()).toContain("全量工厂");
   wrapper.unmount();
 });
 it("requests global sort and falls back when a page becomes empty", async () => {
@@ -63,5 +65,32 @@ it("keeps the main list available if factory options fail", async () => {
   const wrapper = await setup();
   expect(wrapper.text()).toContain("VISIBLE");
   expect(wrapper.text()).toContain("工厂筛选选项加载失败");
+  wrapper.unmount();
+});
+
+it("searches candidates without querying and retains selections across keywords", async () => {
+  const list = vi.spyOn(shipmentApi, "listSummary").mockResolvedValue({items:[row("VISIBLE")],total:21});
+  vi.spyOn(shipmentApi, "listFactoryOptions").mockResolvedValue({items:["工厂甲", "工厂乙", "远方工厂"]});
+  const wrapper = await setup();
+  await wrapper.get('[aria-label="下一页"]').trigger("click"); await flushPromises();
+  await wrapper.get('.shipment-factory-field button').trigger("click");
+  const input = wrapper.get('[aria-label="搜索工厂名称"]');
+  const count = list.mock.calls.length;
+  await input.setValue("甲"); await input.trigger("keydown", {key:"Enter"}); await flushPromises();
+  expect(list).toHaveBeenCalledTimes(count);
+  expect(wrapper.findAll('.order-multiselect-option')).toHaveLength(1);
+  await wrapper.get('.order-multiselect-option input').setValue(true); await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({factories:["工厂甲"],page:1}));
+  await input.setValue("乙");
+  await wrapper.get('.order-multiselect-option input').setValue(true); await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({factories:["工厂甲","工厂乙"]}));
+  await input.setValue("找不到");
+  expect(wrapper.text()).toContain("没有匹配的工厂");
+  await input.setValue("");
+  expect(wrapper.findAll('.order-multiselect-option input').filter(x => (x.element as HTMLInputElement).checked)).toHaveLength(2);
+  await input.setValue("甲");
+  await wrapper.get('.order-secondary-button').trigger("click"); await flushPromises();
+  expect((input.element as HTMLInputElement).value).toBe("");
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({factories:[],page:1}));
   wrapper.unmount();
 });

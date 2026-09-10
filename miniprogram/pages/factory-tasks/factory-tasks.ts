@@ -1,5 +1,7 @@
+import { PagedList } from "../../modules/lists/paged-list";
+import { factoryRevision } from "../../modules/lists/factory-revisions";
 import { orderApi, type Order } from "../../api/orders";
-import { repairApi, type Repair } from "../../api/repairs";
+import { repairApi, type RepairSummary } from "../../api/repairs";
 import { isDevPreview, PREVIEW_REPAIRS, previewOrder } from "../../modules/dev-preview";
 import { clearSession, storedUser } from "../../modules/identity/session";
 import { formatContractShipDate, formatQuantity, orderProductSummary, statusTone } from "../../modules/orders/format";
@@ -13,7 +15,7 @@ type ViewOrder = Order & {
   pendingText: string;
   statusTone: string;
 };
-type RepairCard = Repair & { productSummary: string; progress: number; pending: number; returnDateText: string };
+type RepairCard = RepairSummary & { productSummary: string; progress: number; pending: number; returnDateText: string };
 
 const statusOptions: FilterOption[] = [
   { label: "全部状态", value: "all" },
@@ -42,10 +44,15 @@ function countFilters(values: { status: string; shipDateFrom: string; shipDateTo
 }
 
 Page({
+  ordersPager: null as PagedList<ViewOrder> | null,
+  repairsPager: null as PagedList<RepairCard> | null,
+  initialized: false,
+  ordersRevision: -1,
+  repairsRevision: -1,
   data: {
     activeTab: "orders",
     items: [] as ViewOrder[],
-    repairItems: [] as RepairCard[], allRepairItems: [] as RepairCard[], repairStatus: "all",
+    repairItems: [] as RepairCard[], repairStatus: "all",
     repairStatusOptions,
     draftRepairStatusIndex: 0,
     repairActiveFilterCount: 0,
@@ -59,6 +66,7 @@ Page({
     draftShipDateTo: "",
     activeFilterCount: 0,
     filterOpen: false,
+    total: 0, loadingMore: false, hasMore: false,
     loading: true,
     error: "",
     previewMode: false,
@@ -75,26 +83,48 @@ Page({
       wx.reLaunch({ url: "/pages/auth/auth" });
       return;
     }
+    this.initialized = true;
     this.setData({ previewMode });
     void this.loadOrders();
   },
   onShow() {
-    if (!this.data.loading && this.data.activeTab === "repairs") void this.loadRepairs();
+    if (!this.initialized) return;
+    const repairs = this.data.activeTab === "repairs";
+    if ((repairs ? this.repairsRevision : this.ordersRevision) !== factoryRevision(repairs ? "repairs" : "orders")) {
+      if (repairs) void this.loadRepairs(); else void this.loadOrders();
+      wx.pageScrollTo({scrollTop:0,duration:0});
+    }
   },
+  onUnload() { this.ordersPager?.dispose(); this.repairsPager?.dispose(); },
+  onReachBottom() { void (this.data.activeTab === "repairs" ? this.repairsPager : this.ordersPager)?.next(); },
+  retry() { this.onReachBottom(); },
   onPullDownRefresh() {
     const request = this.data.activeTab === "repairs" ? this.loadRepairs() : this.loadOrders();
     void request.finally(() => wx.stopPullDownRefresh());
   },
-  selectTab(event: WechatMiniprogram.TouchEvent) { const activeTab = String(event.currentTarget.dataset.tab); this.setData({ activeTab, keyword: "", filterOpen: false }); if (activeTab === "repairs") void this.loadRepairs(); },
-  keywordChanged(event: WechatMiniprogram.Input) { this.setData({ keyword: event.detail.value }); if (this.data.activeTab === "repairs") this.applyRepairFilters(); },
-  search() { if (this.data.activeTab === "repairs") this.applyRepairFilters(); else void this.loadOrders(); },
-  async loadRepairs() {
-    this.setData({ loading: true, error: "" });
-    try { const repairs = this.data.previewMode ? PREVIEW_REPAIRS : (await repairApi.factoryList()).items; const allRepairItems = repairs.map((item) => ({ ...item, productSummary: Array.from(new Set(item.lines.map((line) => line.productName))).join("、") || "—", progress: item.warehouseReturnQuantity ? Math.round(item.returnedQuantity / item.warehouseReturnQuantity * 100) : 0, pending: Math.max(0, item.warehouseReturnQuantity - item.returnedQuantity), returnDateText: formatRepairDate(item.returnDate) })); this.setData({ allRepairItems }); this.applyRepairFilters(); }
-    catch { this.setData({ error: "返修任务加载失败，请下拉重试" }); }
-    finally { this.setData({ loading: false }); }
+  selectTab(event: WechatMiniprogram.TouchEvent) {
+    const activeTab = String(event.currentTarget.dataset.tab);
+    if (activeTab === this.data.activeTab) return;
+    this.ordersPager?.dispose(); this.repairsPager?.dispose();
+    this.setData({ activeTab, keyword: "", filterOpen: false });
+    wx.pageScrollTo({scrollTop:0,duration:0});
+    if (activeTab === "repairs") void this.loadRepairs(); else void this.loadOrders();
   },
-  applyRepairFilters() { const keyword = this.data.keyword.trim().toLowerCase(); this.setData({ repairItems: this.data.allRepairItems.filter((item) => (!keyword || `${item.repairNo} ${item.productSummary}`.toLowerCase().includes(keyword)) && (this.data.repairStatus === "all" || item.status === this.data.repairStatus)) }); },
+  keywordChanged(event: WechatMiniprogram.Input) { this.setData({ keyword: event.detail.value }); if (this.data.activeTab === "repairs") this.applyRepairFilters(); },
+  search() { wx.pageScrollTo({scrollTop:0,duration:0}); if (this.data.activeTab === "repairs") this.applyRepairFilters(); else void this.loadOrders(); },
+  async loadRepairs() {
+    this.repairsRevision = factoryRevision("repairs");
+    if (!this.repairsPager) this.repairsPager = new PagedList(item => item.repairId, state => {
+      if (this.data.activeTab === "repairs") { const {items, ...rest}=state; this.setData({...rest,repairItems:items}); }
+    });
+    const keyword=this.data.keyword, status=this.data.repairStatus;
+    await this.repairsPager.reset(async page => {
+      const result=this.data.previewMode ? {items:PREVIEW_REPAIRS.filter(item=>(!keyword.trim() || item.repairNo.toLowerCase().includes(keyword.trim().toLowerCase())) && (status === "all" || item.status === status)),total:0} : await repairApi.factoryPage({keyword,status,page});
+      if(this.data.previewMode) result.total=result.items.length;
+      return {total:result.total,items:result.items.map(item=>({...item,productSummary:"",progress:item.warehouseReturnQuantity ? Math.round(item.returnedQuantity/item.warehouseReturnQuantity*100):0,pending:Math.max(0,item.warehouseReturnQuantity-item.returnedQuantity),returnDateText:formatRepairDate(item.returnDate)}))};
+    });
+  },
+  applyRepairFilters() { wx.pageScrollTo({scrollTop:0,duration:0}); void this.loadRepairs(); },
   setRepairStatus(event: WechatMiniprogram.TouchEvent) { this.setData({ repairStatus: String(event.currentTarget.dataset.status) }, () => this.applyRepairFilters()); },
   openRepair(event: WechatMiniprogram.TouchEvent) { wx.navigateTo({ url: `/pages/factory-repair-detail/factory-repair-detail?repairId=${encodeURIComponent(event.currentTarget.dataset.id)}${this.data.previewMode ? "&preview=1" : ""}` }); },
   toggleFilter() {
@@ -135,29 +165,23 @@ Page({
       shipDateFrom: this.data.draftShipDateFrom,
       shipDateTo: this.data.draftShipDateTo,
     };
-    this.setData({ ...values, activeFilterCount: countFilters(values), filterOpen: false }, () => { void this.loadOrders(); });
+    this.setData({ ...values, activeFilterCount: countFilters(values), filterOpen: false }, () => { wx.pageScrollTo({scrollTop:0,duration:0}); void this.loadOrders(); });
   },
   async loadOrders() {
-    this.setData({ loading: true, error: "" });
-    try {
-      if (this.data.previewMode) {
-        const order = previewOrder(true);
-        const keyword = this.data.keyword.trim().toLowerCase();
-        const matches = (!keyword || order.orderNo.toLowerCase().includes(keyword) || order.lines.some((line) => line.productName.toLowerCase().includes(keyword)))
-          && (this.data.status === "all" || order.displayStatus === this.data.status)
-          && (!(this.data.shipDateFrom || this.data.shipDateTo) || order.contractShipDates.some((value) => (!this.data.shipDateFrom || value >= this.data.shipDateFrom) && (!this.data.shipDateTo || value <= this.data.shipDateTo)));
-        this.setData({ items: matches ? [this.toView(order)] : [] });
-        return;
+    this.ordersRevision = factoryRevision("orders");
+    if (!this.ordersPager) this.ordersPager = new PagedList(item => item.orderId, state => {
+      if (this.data.activeTab === "orders") this.setData(state);
+    });
+    const params = {keyword:this.data.keyword,status:this.data.status,shipDateFrom:this.data.shipDateFrom||undefined,shipDateTo:this.data.shipDateTo||undefined};
+    await this.ordersPager.reset(async page => {
+      if(this.data.previewMode) {
+        const order=previewOrder(true), keyword=params.keyword.trim().toLowerCase();
+        const matches=(!keyword || order.orderNo.toLowerCase().includes(keyword) || order.lines.some(line=>line.productName.toLowerCase().includes(keyword))) && (params.status==="all" || order.displayStatus===params.status) && (!(params.shipDateFrom || params.shipDateTo) || order.contractShipDates.some(value=>(!params.shipDateFrom || value>=params.shipDateFrom)&&(!params.shipDateTo || value<=params.shipDateTo)));
+        return {items:matches?[this.toView(order)]:[],total:matches?1:0};
       }
-      const result = await orderApi.list({
-        keyword: this.data.keyword,
-        status: this.data.status,
-        shipDateFrom: this.data.shipDateFrom || undefined,
-        shipDateTo: this.data.shipDateTo || undefined,
-      });
-      this.setData({ items: result.items.map((item) => this.toView(item)) });
-    } catch { this.setData({ error: "任务加载失败，请下拉重试" }); }
-    finally { this.setData({ loading: false }); }
+      const result=await orderApi.list({...params,page,pageSize:20});
+      return {items:result.items.map(item=>this.toView(item)),total:result.total};
+    });
   },
   toView(item: Order): ViewOrder {
     return {

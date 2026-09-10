@@ -405,3 +405,37 @@ def test_factory_options_include_records_outside_current_page(test_database_engi
     assert total == 1 and rows[0]["shipment_id"] == "off-page"
     assert rows[0]["order_nos"] == rows[0]["product_names"] == "—"
     assert rows[0]["total_quantity"] == 0
+
+
+def test_multiple_factories_filter_before_count_and_page(
+    test_database_engine: Engine, test_database_url: str,
+) -> None:
+    seed_shipments(test_database_engine, 12)
+    with Session(test_database_engine) as session, session.begin():
+        session.get(Shipment, "list-0000").factory_id = FACTORY_IDS[1]
+    identity = IdentityAccessService(
+        sessionmaker(test_database_engine, expire_on_commit=False),
+        token_secret=b"list-token", phone_encryption_secret=b"list-encryption",
+        phone_digest_secret=b"list-digest",
+    )
+    admin = identity.issue_session(user_id=ADMIN_ID, terminal="mini")
+    with TestClient(
+        create_app(database_url=test_database_url, identity_service=identity)
+    ) as client:
+        client.headers["Authorization"] = f"Bearer {admin.access_token}"
+        path = "/api/v1/admin/shipments/summary"
+        result = client.get(path, params=[("factories", "S07接口工厂2")]).json()
+        assert result["total"] == 1
+        assert result["items"][0]["shipmentId"] == "list-0000"
+        params = [("factories", "S07接口工厂1"), ("factories", "S07接口工厂2"),
+                  ("factories", "S07接口工厂1"), ("sortBy", "shipmentNo"), ("page", "2")]
+        result = client.get(path, params=params).json()
+        assert result["total"] == 12
+        assert [r["shipmentId"] for r in result["items"]] == ["list-0010", "list-0011"]
+        result = client.get(path, params=params[:3] + [("dateFrom", "2026-09-03"),
+                                                     ("keyword", "发货")]).json()
+        assert result["total"] == 4
+        assert client.get(path, params={"factory": "S07接口工厂2"}).json()["total"] == 1
+        assert client.get(path, params={"factory": "S07接口工厂2",
+                                      "factories": "S07接口工厂1"}).json()["total"] == 12
+        assert client.get(path, params={"factories": "%"}).json()["total"] == 0

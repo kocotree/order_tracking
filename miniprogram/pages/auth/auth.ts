@@ -2,7 +2,6 @@ import { identityApi, wxLoginCode } from "../../api/identity";
 import { requestNotificationSubscriptions } from "../../api/notifications";
 import { isDevPreview } from "../../modules/dev-preview";
 import {
-  canRequestPhone,
   loginDestination,
   saveSession,
   updateStoredUser,
@@ -26,7 +25,8 @@ Page({
   },
 
   async identify() {
-    this.setData({ mode: "identifying", busy: true });
+    if (this.data.busy) return;
+    this.setData({ mode: "identifying", busy: true, bindingToken: "" });
     try {
       const result = await identityApi.wechatLogin(await wxLoginCode());
       if (result.status === "phone_required" && result.bindingToken) {
@@ -36,7 +36,7 @@ Page({
       void this.continueWith(result);
     } catch {
       this.setData({ mode: "bind", busy: false });
-      wx.showToast({ title: "身份识别失败，请稍后重试", icon: "none" });
+      wx.showToast({ title: "身份识别失败，请点击登录重试", icon: "none" });
     }
   },
 
@@ -48,9 +48,23 @@ Page({
     wx.showToast({ title: "请先阅读并同意用户协议和隐私政策", icon: "none" });
   },
 
-  async phoneAuthorized(event: WechatMiniprogram.ButtonGetPhoneNumber) {
-    if (!canRequestPhone(this.data.agreementAccepted, this.data.bindingToken)) {
+  async retryLogin() {
+    if (this.data.busy) return;
+    if (!this.data.agreementAccepted) {
       this.requestAgreement();
+      return;
+    }
+    await this.identify();
+  },
+
+  async phoneAuthorized(event: WechatMiniprogram.ButtonGetPhoneNumber) {
+    if (this.data.busy) return;
+    if (!this.data.agreementAccepted) {
+      this.requestAgreement();
+      return;
+    }
+    if (!this.data.bindingToken) {
+      wx.showToast({ title: "身份识别未完成，请点击登录重试", icon: "none" });
       return;
     }
     if (event.detail.errMsg !== "getPhoneNumber:ok" || !event.detail.code) {

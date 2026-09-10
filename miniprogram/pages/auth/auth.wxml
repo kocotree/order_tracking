@@ -17,22 +17,22 @@
   <view class="auth-login-main">
     <image class="auth-logo" src="/assets/logo-compact-ktk.svg" mode="aspectFit" />
     <view class="auth-copy"><text class="auth-title">跟单管理系统</text><text>查看订单、发货记录与返修进度</text></view>
-    <button wx:if="{{agreementAccepted}}" class="auth-primary-button" loading="{{busy}}" open-type="getPhoneNumber" bindgetphonenumber="phoneAuthorized">
+    <button wx:if="{{agreementAccepted && bindingToken}}" class="auth-primary-button" loading="{{busy}}" disabled="{{busy}}" open-type="getPhoneNumber" bindgetphonenumber="phoneAuthorized">
       <view class="auth-button-content">
         <view class="wechat-mark" aria-hidden="true">
           <view class="wechat-bubble wechat-bubble--back"><view class="wechat-eye"/><view class="wechat-eye"/></view>
           <view class="wechat-bubble wechat-bubble--front"><view class="wechat-eye"/><view class="wechat-eye"/></view>
         </view>
-        <text>微信授权登录</text>
+        <text>手机号快捷登录</text>
       </view>
     </button>
-    <button wx:else class="auth-primary-button" bindtap="requestAgreement">
+    <button wx:else class="auth-primary-button" bindtap="retryLogin" loading="{{busy}}" disabled="{{busy}}">
       <view class="auth-button-content">
         <view class="wechat-mark" aria-hidden="true">
           <view class="wechat-bubble wechat-bubble--back"><view class="wechat-eye"/><view class="wechat-eye"/></view>
           <view class="wechat-bubble wechat-bubble--front"><view class="wechat-eye"/><view class="wechat-eye"/></view>
         </view>
-        <text>微信授权登录</text>
+        <text>手机号快捷登录</text>
       </view>
     </button>
     <checkbox-group bindchange="agreementChanged">

@@ -9,7 +9,13 @@
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
               <input v-model="keyword" type="search" placeholder="输入关联订单或发货单号" autocomplete="off" />
             </label>
-            <label class="order-select-field shipment-factory-field"><span class="sr-only">选择工厂</span><select v-model="factoryName" @change="search"><option value="">全部工厂</option><option v-for="name in factories" :key="name" :value="name">{{ name }}</option></select></label>
+            <div class="order-multiselect shipment-factory-field">
+              <button class="order-multiselect-trigger" type="button" :aria-expanded="factoryOpen" @click="factoryOpen = !factoryOpen"><span>{{ factoryLabel }}</span><span>⌄</span></button>
+              <div v-if="factoryOpen" class="order-multiselect-menu is-open"><strong>选择工厂（可多选）</strong><input v-model="factorySearch" class="order-multiselect-search" type="search" aria-label="搜索工厂名称" placeholder="搜索工厂名称" autocomplete="off" @keydown.enter.prevent />
+                <label v-for="name in filteredFactories" :key="name" class="order-multiselect-option"><input v-model="factoryNames" type="checkbox" :value="name" /><span>{{ name }}</span></label>
+                <span v-if="!filteredFactories.length" class="order-multiselect-empty">{{ factorySearch ? "没有匹配的工厂" : "暂无工厂" }}</span>
+              </div>
+            </div>
             <label class="order-date-field"><span class="sr-only">发货开始日期</span><input v-model="dateFrom" type="date" @change="search" /></label><span class="order-date-separator">—</span><label class="order-date-field"><span class="sr-only">发货结束日期</span><input v-model="dateTo" type="date" @change="search" /></label>
             <button class="order-secondary-button" type="button" @click="reset">重置</button><button class="order-primary-button" type="submit">搜索</button>
           </div>
@@ -30,7 +36,7 @@
 
 <script setup lang="ts">
 import { useRoute } from "vue-router";
-import { onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { ApiError, shipmentApi, type ShipmentSummary } from "@/api/client";
 import NumberPagination from "@/components/NumberPagination.vue";
 import AdminShell from "@/components/AdminShell.vue";
@@ -40,7 +46,9 @@ const columns: { key: SortKey; label: string }[] = [{ key: "shipmentNo", label: 
 const route = useRoute();
 const queryDate = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value ? value : "";
 const pageItems = ref<ShipmentSummary[]>([]); const total = ref(0); const factories = ref<string[]>([]);
-const keyword = ref(""); const factoryName = ref(""); const dateFrom = ref(queryDate(route?.query.dateFrom)); const dateTo = ref(queryDate(route?.query.dateTo)); const loading = ref(true); const error = ref(""); const optionsError = ref(""); const page = ref(1); const pageSize = 10; const sortKey = ref<SortKey | null>(null); const sortDirection = ref<"asc" | "desc">("asc");
+const keyword = ref(""); const factoryNames = ref<string[]>([]); const factorySearch = ref(""); const factoryOpen = ref(false); const dateFrom = ref(queryDate(route?.query.dateFrom)); const dateTo = ref(queryDate(route?.query.dateTo)); const loading = ref(true); const error = ref(""); const optionsError = ref(""); const page = ref(1); const pageSize = 10; const sortKey = ref<SortKey | null>(null); const sortDirection = ref<"asc" | "desc">("asc");
+const filteredFactories = computed(() => factories.value.filter(name => name.includes(factorySearch.value.trim())));
+const factoryLabel = computed(() => factoryNames.value.length === 0 ? "全部工厂" : factoryNames.value.length === 1 ? factoryNames.value[0] : `已选 ${factoryNames.value.length} 个工厂`);
 const number = (value: number) => value.toLocaleString("zh-CN");
 let revision = 0;
 let active = true;
@@ -48,7 +56,7 @@ async function load() {
   const requestRevision = ++revision;
   loading.value = true; error.value = "";
   try {
-    const result = await shipmentApi.listSummary({ keyword: keyword.value.trim(), factory: factoryName.value, dateFrom: dateFrom.value, dateTo: dateTo.value, sortBy: sortKey.value || "", sortOrder: sortDirection.value, page: page.value, pageSize });
+    const result = await shipmentApi.listSummary({ keyword: keyword.value.trim(), factories: [...factoryNames.value], dateFrom: dateFrom.value, dateTo: dateTo.value, sortBy: sortKey.value || "", sortOrder: sortDirection.value, page: page.value, pageSize });
     if (!active || requestRevision !== revision) return;
     total.value = result.total;
     const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
@@ -69,9 +77,9 @@ function scheduleLoad() {
 }
 function search() { page.value = 1; scheduleLoad(); }
 function changePage(value: number) { page.value = value; scheduleLoad(); }
-function reset() { keyword.value = ""; factoryName.value = ""; dateFrom.value = ""; dateTo.value = ""; sortKey.value = null; sortDirection.value = "asc"; search(); }
+function reset() { keyword.value = ""; factoryNames.value = []; factorySearch.value = ""; dateFrom.value = ""; dateTo.value = ""; sortKey.value = null; sortDirection.value = "asc"; search(); }
 function toggleSort(field: string) { const key = field as SortKey; if (sortKey.value === key) sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc"; else { sortKey.value = key; sortDirection.value = "asc"; } search(); }
-watch([keyword, factoryName, dateFrom, dateTo], search, { flush: "sync" });
+watch([keyword, factoryNames, dateFrom, dateTo], search, { flush: "sync", deep: true });
 onMounted(() => {
   void load();
   void shipmentApi.listFactoryOptions().then(result => {

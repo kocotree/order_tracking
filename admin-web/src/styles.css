@@ -1353,3 +1353,15 @@ h1, h2, p { margin-top: 0; }
 /* Receipt feedback shares the existing import warning surface without page-state spacing. */
 .shipment-detail-page > .validation-callout { margin: 0; }
 .order-list-table td.date-summary, .dashboard-order-table td.date-summary { white-space: normal; overflow-wrap: anywhere; }
+
+/* Issue #81: factory candidate search stays inside the existing menu. */
+.order-multiselect-menu .order-multiselect-search {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font: inherit;
+}

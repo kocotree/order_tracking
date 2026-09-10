@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { contractApi, identityApi, orderApi } from "@/api/client";
+import { contractApi, identityApi, orderApi, shipmentApi } from "@/api/client";
 
 describe("orderApi", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -95,4 +95,14 @@ describe("orderApi", () => {
       "/api/v1/admin/contract-exports/export-1/download",
     );
   });
+});
+
+it("serializes multiple shipment factories as repeated parameters", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({items:[],total:0}),{status:200}));
+  await shipmentApi.listSummary({factories:["工厂甲","工厂乙"],keyword:"订单",page:2});
+  const query = new URL(String(fetchMock.mock.calls[0]?.[0]),"http://localhost").searchParams;
+  expect(query.getAll("factories")).toEqual(["工厂甲","工厂乙"]);
+  expect(query.get("keyword")).toBe("订单");
+  expect(query.get("page")).toBe("2");
+  fetchMock.mockRestore();
 });

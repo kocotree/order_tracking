@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Any
 
-from sqlalchemy import Date, DateTime, Integer, String, cast, func, select, text
+from sqlalchemy import Date, DateTime, Integer, String, bindparam, cast, func, select, text
 from sqlalchemy.orm import Session
 
 from app.db.natural_sort import natural_sort_keys
@@ -16,8 +16,8 @@ WITH visible AS (
         s.submitted_at, COALESCE(NULLIF(f.factory_name, ''), s.factory_id) AS factory_name
  FROM shipments s LEFT JOIN factories f ON f.factory_id = s.factory_id
  WHERE s.status != 'DRAFT' AND s.deleted_at IS NULL AND s.source_shipment_id IS NULL
- AND (:factory = '' OR COALESCE(NULLIF(f.factory_name, ''), s.factory_id)
-      COLLATE utf8mb4_0900_bin = :factory)
+ AND (:all_factories = 1 OR COALESCE(NULLIF(f.factory_name, ''), s.factory_id)
+      COLLATE utf8mb4_0900_bin IN :factories)
  AND (:date_from IS NULL OR COALESCE(s.business_date, '') >= :date_from)
  AND (:date_to IS NULL OR COALESCE(s.business_date, '') <= :date_to)
 ), packed AS (
@@ -73,6 +73,7 @@ def page_shipments(
     *,
     keyword: str = "",
     factory: str = "",
+    factories: list[str] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     sort_by: str = "",
@@ -80,19 +81,29 @@ def page_shipments(
     page: int = 1,
     page_size: int = 10,
 ) -> tuple[list[dict[str, Any]], int]:
+    selected_factories = list(
+        dict.fromkeys(name for name in [factory, *(factories or [])] if name)
+    )
     params = dict(
         keyword=keyword.strip().lower(),
-        factory=factory,
+        all_factories=not selected_factories,
+        factories=selected_factories,
         date_from=date_from,
         date_to=date_to,
     )
     total = int(
-        session.scalar(text(SUMMARY_CTE + f"SELECT {HINT} COUNT(*) FROM filtered"), params) or 0
+        session.scalar(
+            text(SUMMARY_CTE + f"SELECT {HINT} COUNT(*) FROM filtered").bindparams(
+                bindparam("factories", expanding=True)
+            ),
+            params,
+        ) or 0
     )
     if not total:
         return [], 0
     projection = (
         text(SUMMARY_CTE + "SELECT * FROM filtered")
+        .bindparams(bindparam("factories", expanding=True))
         .columns(
             shipment_id=String,
             shipment_no=String,

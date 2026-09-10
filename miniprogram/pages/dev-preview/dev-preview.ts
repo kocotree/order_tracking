@@ -9,7 +9,7 @@ interface PreviewItem {
 Page({
   data: {
     items: [
-      { label: "微信授权登录", description: "登录前入口页面", url: "/pages/auth/auth?preview=1" },
+      { label: "手机号快捷登录", description: "登录前入口页面", url: "/pages/auth/auth?preview=1" },
       { label: "未找到管理员申请", description: "身份未匹配状态", url: "/pages/status/status?status=unmatched&preview=1" },
       { label: "管理员申请审核中", description: "网页端申请等待审核", url: "/pages/status/status?status=pending&preview=1" },
       { label: "申请加入工厂", description: "工厂用户填写申请", url: "/pages/factory-apply/factory-apply?preview=1" },

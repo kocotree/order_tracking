@@ -5,7 +5,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -570,17 +570,12 @@ class OrderService:
                 if user.factory_id is None:
                     raise OrderPermissionDenied("factory is not bound")
                 scoped_factory = user.factory_id
-                query = (
-                    query.join(OrderLine, OrderLine.order_id == Order.order_id)
-                    .join(
-                        OrderAssignment,
-                        OrderAssignment.order_line_id == OrderLine.order_line_id,
-                    )
-                    .where(
-                        OrderAssignment.factory_id == scoped_factory,
-                        Order.lifecycle.in_(["PUBLISHED", "COMPLETED"]),
-                    )
-                    .distinct()
+                query = query.where(
+                    Order.lifecycle.in_(["PUBLISHED", "COMPLETED"]),
+                    select(OrderAssignment.order_assignment_id)
+                    .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+                    .where(OrderLine.order_id == Order.order_id,
+                           OrderAssignment.factory_id == scoped_factory).exists(),
                 )
             elif user.role == "admin":
                 if not include_drafts:
@@ -609,6 +604,13 @@ class OrderService:
                         OrderLine.properties_value_snapshot.like(pattern),
                     )
                 )
+                if scoped_factory is not None:
+                    matching_lines = matching_lines.where(
+                        select(OrderAssignment.order_assignment_id).where(
+                            OrderAssignment.order_line_id == OrderLine.order_line_id,
+                            OrderAssignment.factory_id == scoped_factory,
+                        ).exists()
+                    )
                 query = query.where(
                     or_(Order.order_no.like(pattern), Order.order_id.in_(matching_lines))
                 )
@@ -624,59 +626,27 @@ class OrderService:
                 matching_categories = select(OrderLine.order_id).where(
                     OrderLine.category_snapshot.in_(category_sources[category])
                 )
+                if scoped_factory is not None:
+                    matching_categories = matching_categories.where(
+                        select(OrderAssignment.order_assignment_id).where(
+                            OrderAssignment.order_line_id == OrderLine.order_line_id,
+                            OrderAssignment.factory_id == scoped_factory,
+                        ).exists()
+                    )
                 query = query.where(Order.order_id.in_(matching_categories))
             if status not in {"all", "草稿", "已完成", "已逾期", "未完成"}:
                 raise OrderValidationError("invalid status")
-            if user.role == "admin":
-                # EXISTS avoids duplicate orders and permits ordering by derived expressions.
-                orders, total = page_orders(
-                    session,
-                    query,
-                    today=business_today,
-                    status=status,
-                    ship_date_from=ship_date_from,
-                    ship_date_to=ship_date_to,
-                    sort_by=sort_by,
-                    page=page,
-                    page_size=page_size,
-                )
-                preloaded = self._page_snapshot_data(session, orders)
-                return [
-                    self._snapshot(session, item, business_today, preloaded=preloaded)
-                    for item in orders
-                ], total
-            orders = list(session.scalars(query))
-            snapshots = [
-                self._snapshot(session, item, business_today, factory_id=scoped_factory)
+            orders, total = page_orders(
+                session, query, today=business_today, status=status,
+                ship_date_from=ship_date_from, ship_date_to=ship_date_to,
+                sort_by=sort_by, page=page, page_size=page_size, factory_id=scoped_factory,
+            )
+            preloaded = self._page_snapshot_data(session, orders, factory_id=scoped_factory)
+            return [
+                self._snapshot(session, item, business_today,
+                               factory_id=scoped_factory, preloaded=preloaded)
                 for item in orders
-            ]
-            snapshots = [
-                item
-                for item in snapshots
-                if (status == "all" or item.display_status == status)
-                and (
-                    not (ship_date_from or ship_date_to)
-                    or any(
-                        (ship_date_from is None or value >= ship_date_from)
-                        and (ship_date_to is None or value <= ship_date_to)
-                        for value in item.contract_ship_dates
-                    )
-                )
-            ]
-            reverse = sort_by in {
-                "orderNoDesc",
-                "productNameDesc",
-                "categoryDesc",
-                "trackerDesc",
-                "factoryDesc",
-                "progressPercentDesc",
-                "shippedQuantityDesc",
-                "statusDesc",
-            }
-            snapshots.sort(key=self._sort_key(sort_by, business_today), reverse=reverse)
-            total = len(snapshots)
-            start = (page - 1) * page_size
-            return snapshots[start : start + page_size], total
+            ], total
 
     def list_audit_logs(self, *, actor_id: str, order_id: str) -> list[OrderAuditSnapshot]:
         with self._session_factory() as session:
@@ -997,6 +967,7 @@ class OrderService:
     def _page_snapshot_data(
         session: Session,
         orders: list[Order],
+        factory_id: str | None = None,
     ) -> tuple[dict[str, list[OrderLine]], dict[int, list[OrderAssignment]], dict[int, int]]:
         lines: dict[str, list[OrderLine]] = {}
         assignments: dict[int, list[OrderAssignment]] = {}
@@ -1007,6 +978,10 @@ class OrderService:
         for line in session.scalars(
             select(OrderLine)
             .where(OrderLine.order_id.in_(order_ids))
+            .where(select(OrderAssignment.order_assignment_id).where(
+                OrderAssignment.order_line_id == OrderLine.order_line_id,
+                OrderAssignment.factory_id == factory_id,
+            ).exists() if factory_id is not None else true())
             .order_by(OrderLine.order_line_id)
         ):
             lines.setdefault(line.order_id, []).append(line)
@@ -1014,6 +989,7 @@ class OrderService:
             select(OrderAssignment)
             .join(OrderLine)
             .where(OrderLine.order_id.in_(order_ids))
+            .where(OrderAssignment.factory_id == factory_id if factory_id is not None else true())
             .order_by(OrderAssignment.order_assignment_id)
         ):
             assignments.setdefault(assignment.order_line_id, []).append(assignment)
@@ -1022,6 +998,7 @@ class OrderService:
             .join(OrderAssignment)
             .join(OrderLine)
             .where(OrderLine.order_id.in_(order_ids))
+            .where(OrderAssignment.factory_id == factory_id if factory_id is not None else true())
             .group_by(QuantityLedger.order_assignment_id)
         ):
             quantities[assignment_id] = int(quantity)

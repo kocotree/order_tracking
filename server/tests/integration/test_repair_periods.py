@@ -412,3 +412,34 @@ def test_period_api_role_boundaries_and_web_history_omission(
         assert web["specs"][0]["returnedQuantity"] == 40
         assert len(web["attachments"]) == 2
         assert client.get("/api/v1/admin/repair-periods/options").json()["items"]
+
+
+def test_factory_cycle_filters_across_twenty_item_boundary(test_database_engine):
+    seed_return_repair(test_database_engine)
+    sessions = sessionmaker(test_database_engine)
+    workflow = RepairWorkflowService(sessions, file_store=FakePrivateFileStore(bucket="page-test"))
+    for index in range(23):
+        preview = workflow.create_preview(
+            content=workbook(index + 1),
+            filename="period.xlsx",
+            mime_type=XLSX_MIME,
+            uploaded_by="return-admin",
+        )
+        confirm = RepairConfirmationService(
+            sessions, clock=lambda index=index: datetime(2000 + index, 9, 1, tzinfo=UTC)
+        )
+        confirm.confirm(
+            preview_id=preview.preview_id,
+            confirmed_by="return-admin",
+            idempotency_key=f"page-{index}",
+        )
+    service = RepairPeriodService(sessions)
+    first, total = service.page(factory_id="return-factory", page=1, page_size=20)
+    second, _ = service.page(factory_id="return-factory", page=2, page_size=20)
+    assert total == 23 and len(first) == 20 and len(second) == 3
+    assert len({row["repair_id"] for row in first + second}) == 23
+    assert service.page(factory_id="return-factory", keyword="2000.8")[1] == 1
+    assert service.page(factory_id="return-factory", status="INCOMPLETE")[1] == 23
+    assert service.page(factory_id="return-factory", status="COMPLETED")[1] == 0
+    assert service.page(factory_id="different-factory")[1] == 0
+    assert service.page(factory_id="return-factory", page=3, page_size=20) == ([], 23)

@@ -1021,6 +1021,17 @@ class ShipmentService:
         with self._sessions() as session:
             return page_shipments(session, **filters)
 
+    def page_factory_shipments(self, **filters: Any) -> tuple[list[dict[str, Any]], int]:
+        from app.modules.shipments.factory_query import page_factory_shipments
+
+        if not filters.get("factory_id"):
+            raise ShipmentPermissionDenied("factory is not bound")
+        page, page_size = filters.get("page", 1), filters.get("page_size", 20)
+        if page < 1 or page_size < 1 or page_size > 100:
+            raise ShipmentValidationError("invalid pagination")
+        with self._sessions() as session:
+            return page_factory_shipments(session, **filters)
+
     def admin_shipment_factories(self) -> list[str]:
         from app.modules.shipments.list_query import shipment_factories
 

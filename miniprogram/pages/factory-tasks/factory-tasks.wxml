@@ -14,10 +14,10 @@
 
     <view class="mini-order-content factory-order-content">
       <view wx:if="{{loading}}" class="mini-empty">正在加载任务…</view>
-      <view wx:elif="{{error}}" class="mini-empty mini-error">{{error}}</view>
+      <view wx:elif="{{error && !total}}" class="mini-empty mini-error" bindtap="retry">{{error}}</view>
       <view wx:elif="{{!items.length}}" class="mini-empty"><text>暂无订单任务</text><text>{{previewMode ? '没有符合条件的预览任务' : '发布并派工后会显示在这里'}}</text></view>
       <view wx:else class="mini-order-list">
-        <text class="factory-result-summary">共 {{items.length}} 个订单任务</text>
+        <text class="factory-result-summary">共 {{total}} 个订单任务</text>
         <view wx:for="{{items}}" wx:key="orderId" class="mini-order-card factory-order-card" data-id="{{item.orderId}}" bindtap="openDetail">
           <view class="mini-card-head">
             <view class="mini-card-heading-copy"><text class="mini-card-number">{{item.orderNo}}</text><text class="mini-product-summary">{{item.productSummary}}</text></view>
@@ -44,10 +44,10 @@
     </view>
     <view class="repair-task-content">
       <view wx:if="{{loading}}" class="mini-empty">正在加载返修任务…</view>
-      <view wx:elif="{{error}}" class="mini-empty mini-error">{{error}}</view>
+      <view wx:elif="{{error && !total}}" class="mini-empty mini-error" bindtap="retry">{{error}}</view>
       <view wx:elif="{{!repairItems.length}}" class="mini-empty"><text>暂无返修任务</text><text>管理员创建返修单后会显示在这里</text></view>
       <block wx:else>
-        <text class="repair-result-summary">共 {{repairItems.length}} 个返修任务</text>
+        <text class="repair-result-summary">共 {{total}} 个返修任务</text>
         <view wx:for="{{repairItems}}" wx:key="repairId" class="repair-task-card" data-id="{{item.repairId}}" bindtap="openRepair">
           <view class="repair-task-card-head"><view><b>{{item.repairNo}}</b></view><text class="repair-task-status {{item.status === 'COMPLETED' ? 'is-completed' : ''}}">{{item.status === 'COMPLETED' ? '已完成' : '未完成'}}</text></view>
           <view class="repair-task-stats"><view><text>仓库退回</text><b>{{item.warehouseReturnQuantity}}</b></view><view><text>已返回</text><b>{{item.returnedQuantity}}</b></view><view><text>待返回</text><b class="{{item.pending > 0 ? 'is-pending' : ''}}">{{item.pending}}</b></view></view>
@@ -56,6 +56,8 @@
       </block>
     </view>
   </block>
+
+  <view wx:if="{{!loading && total}}" class="factory-page-status" bindtap="retry">{{loadingMore ? '正在加载…' : error || (hasMore ? '下滑加载更多' : '已加载全部')}}</view>
 
   <view wx:if="{{activeTab === 'orders'}}" class="factory-create-shipment-bar">
     <button class="factory-create-shipment-button" bindtap="createShipment">创建发货单</button>

@@ -55,6 +55,24 @@ def _receipt_response(value: ReceiptSnapshot) -> ReceiptResponse:
     return ReceiptResponse.model_validate(value, from_attributes=True)
 
 
+class FactoryShipmentSummary(ApiModel):
+    shipment_id: str
+    shipment_no: str | None
+    status: str
+    business_date: date | None
+    total_quantity: int
+    total_boxes: int
+    product_summary: str
+    order_summary: str
+
+
+class FactoryShipmentPage(ApiModel):
+    items: list[FactoryShipmentSummary]
+    total: int
+    page: int
+    page_size: int
+
+
 class DraftCreate(ApiModel):
     preferred_order_id: str | None = None
 
@@ -469,6 +487,25 @@ def create_shipment_router(
                 expected_version=version,
             )
         )
+
+    @router.get("/factory/shipment-page", response_model=FactoryShipmentPage,
+                tags=["shipment-factory"])
+    def factory_shipment_page(
+        keyword: str = "",
+        ship_date_from: Annotated[date | None, Query(alias="shipDateFrom")] = None,
+        ship_date_to: Annotated[date | None, Query(alias="shipDateTo")] = None,
+        page: Annotated[int, Query(ge=1)] = 1,
+        page_size: Annotated[int, Query(alias="pageSize", ge=1, le=100)] = 20,
+        authorization: str | None = Header(default=None),
+    ) -> FactoryShipmentPage:
+        actor = factory_user(authorization)
+        items, total = service.page_factory_shipments(
+            factory_id=actor.factory_id or "", keyword=keyword,
+            ship_date_from=ship_date_from, ship_date_to=ship_date_to,
+            page=page, page_size=page_size,
+        )
+        return FactoryShipmentPage(items=[FactoryShipmentSummary(**row) for row in items],
+                                   total=total, page=page, page_size=page_size)
 
     @router.get(
         "/factory/shipments", response_model=ShipmentListResponse, tags=["shipment-factory"]

@@ -564,8 +564,15 @@
             "title": "Orderquantity"
           },
           "pendingQuantity": {
-            "title": "Pendingquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pendingquantity"
           },
           "productName": {
             "anyOf": [
@@ -590,8 +597,15 @@
             "title": "Propertiesvalue"
           },
           "shippedQuantity": {
-            "title": "Shippedquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
           },
           "sourceContractShipDate": {
             "anyOf": [
@@ -749,20 +763,41 @@
             "type": "string"
           },
           "pendingQuantity": {
-            "title": "Pendingquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pendingquantity"
           },
           "shippedQuantity": {
-            "title": "Shippedquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
           },
           "status": {
             "title": "Status",
             "type": "string"
           },
           "totalQuantity": {
-            "title": "Totalquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalquantity"
           },
           "tracker": {
             "anyOf": [
@@ -2109,6 +2144,197 @@
         "title": "NotificationResponse",
         "type": "object"
       },
+      "OrderDetailResponse": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "contractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
+          },
+          "detailId": {
+            "title": "Detailid",
+            "type": "string"
+          },
+          "dispatchState": {
+            "title": "Dispatchstate",
+            "type": "string"
+          },
+          "factoryName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factoryname"
+          },
+          "matchedFactoryId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matchedfactoryid"
+          },
+          "matchedVariantId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matchedvariantid"
+          },
+          "orderQuantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderquantity"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "pendingQuantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pendingquantity"
+          },
+          "productName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productname"
+          },
+          "progressPercent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progresspercent"
+          },
+          "propertiesValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Propertiesvalue"
+          },
+          "rawFields": {
+            "additionalProperties": true,
+            "title": "Rawfields",
+            "type": "object"
+          },
+          "shippedQuantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
+          },
+          "sourceSkuId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceskuid"
+          },
+          "sourceTracker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcetracker"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "detailId",
+          "origin",
+          "sourceSkuId",
+          "productName",
+          "propertiesValue",
+          "category",
+          "factoryName",
+          "matchedVariantId",
+          "matchedFactoryId",
+          "orderQuantity",
+          "shippedQuantity",
+          "pendingQuantity",
+          "progressPercent",
+          "sourceTracker",
+          "contractShipDate",
+          "dispatchState",
+          "version",
+          "rawFields"
+        ],
+        "title": "OrderDetailResponse",
+        "type": "object"
+      },
       "OrderLineResponse": {
         "properties": {
           "assignments": {
@@ -2267,6 +2493,19 @@
             "title": "Createdat",
             "type": "string"
           },
+          "detailMode": {
+            "default": false,
+            "title": "Detailmode",
+            "type": "boolean"
+          },
+          "details": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/OrderDetailResponse"
+            },
+            "title": "Details",
+            "type": "array"
+          },
           "displayStatus": {
             "title": "Displaystatus",
             "type": "string"
@@ -2310,16 +2549,37 @@
             "type": "string"
           },
           "overQuantity": {
-            "title": "Overquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overquantity"
           },
           "pendingQuantity": {
-            "title": "Pendingquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pendingquantity"
           },
           "progressPercent": {
-            "title": "Progresspercent",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progresspercent"
           },
           "requestId": {
             "default": "",
@@ -2327,24 +2587,52 @@
             "type": "string"
           },
           "shippedQuantity": {
-            "title": "Shippedquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
           },
           "shortQuantity": {
-            "title": "Shortquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortquantity"
           },
           "source": {
             "title": "Source",
             "type": "string"
           },
           "totalQuantity": {
-            "title": "Totalquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalquantity"
           },
           "tracker": {
-            "title": "Tracker",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracker"
           },
           "updatedAt": {
             "format": "date-time",

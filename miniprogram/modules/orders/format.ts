@@ -16,8 +16,8 @@ export function formatContractShipDate(value: string | string[] | null): string 
   return Array.isArray(value) ? [...new Set(value)].sort().join("、") || "—" : value || "—";
 }
 
-export function formatQuantity(value: number): string {
-  return value.toLocaleString("zh-CN");
+export function formatQuantity(value: number | null): string {
+  return value == null ? "—" : value.toLocaleString("zh-CN");
 }
 
 export function statusTone(status: string): string {

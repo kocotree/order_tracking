@@ -114,7 +114,7 @@ it("saves detail dates before importing and surfaces failures", async () => {
   expect(wrapper.get('.detail-primary-button').attributes('disabled')).toBeUndefined();
 });
 
-it("keeps missing dates blank and locates the row when importing", async () => {
+it("keeps missing dates blank and allows importing", async () => {
   vi.spyOn(orderImportApi, "get").mockResolvedValue({ ...candidate, contractShipDates: [], lines: [{ ...candidate.lines[0], contractShipDate: null }] });
   const confirm = vi.spyOn(orderImportApi, "confirm");
   const wrapper = mount(OrderImportDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" } } } });
@@ -122,7 +122,26 @@ it("keeps missing dates blank and locates the row when importing", async () => {
   expect(wrapper.find('.validation-callout').exists()).toBe(false);
   expect((wrapper.get('input[type="date"]').element as HTMLInputElement).value).toBe("");
   await wrapper.get('.detail-primary-button').trigger('click');
-  expect(wrapper.get('[role="alert"]').text()).toContain("6970000000001");
-  expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
   expect(confirm).not.toHaveBeenCalled();
+});
+
+it("imports incomplete materials with unknown quantities and no contract date", async () => {
+  vi.spyOn(orderImportApi, "get").mockResolvedValue({ ...candidate,
+    validationState: "INVALID", validationIssues: ["FACTORY_NOT_MATCHED"],
+    totalQuantity: null, shippedQuantity: null, pendingQuantity: null,
+    lines: [{ ...candidate.lines[0], orderQuantity: null, shippedQuantity: null,
+      pendingQuantity: null, contractShipDate: null }],
+  });
+  const confirm = vi.spyOn(orderImportApi, "confirm").mockResolvedValue({ orderId: "new", requestId: "r" });
+  const wrapper = mount(OrderImportDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" } } } });
+  await flushPromises();
+  expect(wrapper.findAll('.detail-summary-number').map(cell => cell.text())).toEqual(["—", "—", "—"]);
+  expect(wrapper.get('.detail-progress').text()).toBe("—");
+  expect(wrapper.get('.detail-primary-button').attributes('disabled')).toBeUndefined();
+  await wrapper.get('.detail-primary-button').trigger('click');
+  await wrapper.get('.detail-confirm-dialog .detail-primary-button').trigger('click');
+  await flushPromises();
+  expect(confirm).toHaveBeenCalledWith("candidate-1", 1);
 });

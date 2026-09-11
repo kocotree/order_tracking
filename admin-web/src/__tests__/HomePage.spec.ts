@@ -8,7 +8,7 @@ import HomePage from "@/pages/HomePage.vue";
 
 function order(overrides: Partial<Order> = {}): Order {
   return {
-    orderId: "order-1",
+    detailMode: false, details: [], orderId: "order-1",
     orderNo: "090#",
     source: "manual",
     orderDate: "2026-08-20",

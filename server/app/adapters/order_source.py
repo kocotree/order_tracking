@@ -211,8 +211,8 @@ class AppCredentialFeishuOrderSource:
             category=cls._text(fields.get("一级分类")),
             factory_name=cls._text(fields.get("工厂")),
             order_quantity=cls._integer(fields.get("下单数")),
-            shipped_quantity=cls._integer(fields.get("出货总数")) or 0,
-            pending_quantity=cls._integer(fields.get("未出数量")) or 0,
+            shipped_quantity=cls._integer(fields.get("出货总数")),
+            pending_quantity=cls._integer(fields.get("未出数量")),
             tracker=cls._text(fields.get("跟单人员")),
             order_date=cls._date(fields.get("下单时间")),
             contract_ship_date=cls._contract_date(fields.get("合同出货时间")),
@@ -285,16 +285,10 @@ class AppCredentialFeishuOrderSource:
             number = Decimal(text.replace(",", ""))
         except InvalidOperation:
             return None
+        if not number.is_finite() or not -2147483648 <= number <= 2147483647:
+            return None
         return int(number) if number == number.to_integral_value() else None
 
-    @staticmethod
-    def _date(value: Any) -> date | None:
-        if isinstance(value, (int, float)):
-            return datetime.fromtimestamp(value / 1000, tz=UTC).astimezone(BUSINESS_TZ).date()
-        text = AppCredentialFeishuOrderSource._text(value)
-        if text is None:
-            return None
-        try:
-            return date.fromisoformat(text[:10])
-        except ValueError:
-            return None
+    @classmethod
+    def _date(cls, value: Any) -> date | None:
+        return cls._contract_date(value)

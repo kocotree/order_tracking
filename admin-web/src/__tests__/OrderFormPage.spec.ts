@@ -8,6 +8,7 @@ vi.mock("vue-router", () => ({ useRoute: () => ({ params: { orderId: "draft" } }
 afterEach(() => vi.restoreAllMocks());
 it("edits each factory date and saves it without a whole-order date", async () => {
   const order: Order = {
+    detailMode: false, details: [],
     requestId: "test", orderId: "draft", orderNo: "DATE-1", orderDate: null, source: "feishu", tracker: "松子",
     contractShipDate: "2026-09-10", contractShipDates: ["2026-09-10", "2026-09-20"],
     lifecycle: "DRAFT", displayStatus: "草稿", version: 3, totalQuantity: 100,

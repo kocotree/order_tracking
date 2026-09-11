@@ -24,6 +24,8 @@
 .dispatch-modal .dispatch-error { color:#b45309; }
 .dispatch-modal .dispatch-pass { color:#18764b; }
 .dispatch-modal p { margin:0; }
+.dispatch-modal .withdraw-field { display:grid; gap:8px; margin-top:18px; color:var(--muted); font-size:13px; font-weight:600; }
+.dispatch-modal .withdraw-field select { height:38px; padding:0 10px; border:1px solid #d3dbe6; border-radius:4px; background:white; color:var(--ink); font:inherit; }
 .dispatch-modal::backdrop { background:rgb(20 31 43 / 40%); }
 dialog.dispatch-modal { padding:0; }
 .dispatch-logs { padding:16px; color:var(--muted); font-size:13px; line-height:2; }

@@ -11,9 +11,11 @@ const rows = [
   { id:4, code:'6942649418843', name:'云朵探险家护耳帽', spec:'晨雾米L', factory:'希舟', date:'', quantity:2100, shipped:580 },
   { id:5, code:'6942649418850', name:'云朵探险家护耳帽', spec:'星夜蓝M', factory:'旭之梦', date:'2026-09-21', quantity:1800, shipped:1440 },
   { id:6, code:'6942649418867', name:'云朵探险家护耳帽', spec:'星夜蓝L', factory:'', date:'', quantity:4200, shipped:2000 },
-].map(row=>({...row, dispatched:scenario==='all'||(scenario!=='draft'&&row.id<=2), manual:new Set()}));
+].map(row=>({...row, dispatched:['all','withdrawal'].includes(scenario)||(scenario!=='draft'&&row.id<=2), manual:new Set()}));
 if(scenario==='all') rows.forEach(r=>{r.factory='希舟';r.date='2026-09-21';});
+if(scenario==='withdrawal') rows.forEach((r,index)=>{r.factory=index<4?'希舟':'旭之梦';r.date='2026-09-21';});
 const productCatalog = rows.map(({code,name,spec})=>({code,name,spec}));
+const factoriesWithShipments = scenario==='withdrawal'?new Set(['希舟']):new Set();
 const selected = new Set();
 let sort={key:'id',direction:'asc'};
 let sourceUpdated=false;
@@ -46,11 +48,11 @@ function content(){
  const headers=[['产品编码','code'],['产品名称','name'],['颜色/规格','spec'],['工厂','factory']];
  const total=rows.reduce((a,r)=>a+Number(r.quantity||0),0), shipped=rows.reduce((a,r)=>a+Number(r.shipped||0),0);
  return `<article class="order-workspace order-detail-page dispatch-page">
- <section class="section-card detail-overview-card"><header class="detail-page-header"><button class="detail-back-button" data-back>‹ 返回</button><div class="detail-title-row"><span class="status-badge is-${tone}">${label}</span><button class="detail-outline-button" disabled title="沿用已有合同资格，本示例存在已发数量">导出加工合同</button></div></header>
+ <section class="section-card detail-overview-card"><header class="detail-page-header"><button class="detail-back-button" data-back>‹ 返回</button><div class="detail-title-row"><span class="status-badge is-${tone}">${label}</span>${count?'<button class="detail-outline-button" data-withdraw>撤回派工</button>':''}<button class="detail-outline-button" disabled title="沿用已有合同资格，本示例存在已发数量">导出加工合同</button></div></header>
  <div class="detail-overview-content"><dl class="detail-summary-grid">${[['分类','帽子'],['跟单人员','松子'],['合同出货时间',[...new Set(rows.map(r=>r.date).filter(Boolean))].sort().join('、')||'—'],['订单数量',rows.every(validQuantity)?fmt(total):'—'],['已发数量',rows.every(validShipped)?fmt(shipped):'—'],['未发数量',rows.every(r=>pending(r)!==null)?fmt(rows.reduce((a,r)=>a+pending(r),0)):'—']].map(([k,v])=>`<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl></div></section>
  <section class="section-card detail-section-card"><header class="detail-section-header"><div class="dispatch-heading"><h2>订单明细</h2><span class="dispatch-count">已派工 ${count}/${rows.length} 条 · ${count===0?'未派工':hasPending?'部分派工':'全部派工'}</span></div>${hasPending?`<div class="dispatch-actions"><button class="detail-outline-button" data-update>更新未派工明细</button><button class="detail-primary-button" data-dispatch ${!selected.size?'disabled':''}>派工（已选 ${selected.size} 条）</button></div>`:''}</header>
  <div class="detail-table-scroll"><table class="dispatch-table"><colgroup>${hasPending?'<col style="width:40px">':''}<col style="width:52px"><col style="width:160px"><col><col style="width:130px"><col style="width:125px"><col style="width:90px"><col style="width:170px"><col style="width:105px"><col style="width:105px"><col style="width:95px"><col style="width:135px"></colgroup><thead><tr>${hasPending?`<th class="dispatch-check"><input type="checkbox" data-all aria-label="选择全部未派工明细" ${rows.filter(r=>!r.dispatched).every(r=>selected.has(r.id))?'checked':''}></th>`:''}<th class="dispatch-seq">序号</th>${headers.map(([title,key])=>renderSortableHeader(title,key)).join('')}<th>派工状态</th>${[['合同出货时间','date'],['下单数量','quantity'],['已发数量','shipped'],['未发数量','pending'],['发货进度','progress']].map(([title,key])=>renderSortableHeader(title,key)).join('')}</tr></thead><tbody>${sortRows(rows,sort,(r,key)=>key==='pending'?pending(r):key==='progress'?Number(r.shipped)/Number(r.quantity):r[key]).map(r=>`<tr>${hasPending?`<td class="dispatch-check">${r.dispatched?'':`<input type="checkbox" data-select="${r.id}" aria-label="选择第${r.id}条" ${selected.has(r.id)?'checked':''}>`}</td>`:''}<td class="dispatch-seq">${r.id}</td><td class="dispatch-code">${edit(r,'code')}</td><td title="${esc(r.name)}">${edit(r,'name')}</td><td>${esc(r.spec)}</td><td>${edit(r,'factory')}</td><td><span class="status-badge is-${r.dispatched?'info':'draft'}">${r.dispatched?'已派工':'未派工'}</span></td><td>${edit(r,'date','date')}</td><td>${edit(r,'quantity','number')}</td><td>${r.dispatched?fmt(r.shipped):edit(r,'shipped','number')}</td><td>${pending(r)===null?'—':fmt(pending(r))}</td><td><span class="detail-progress"><span><i style="width:${Math.min(100,Math.max(0,Number(r.shipped)/Number(r.quantity)*100))||0}%"></i></span><em>${r.quantity?Math.round(r.shipped/r.quantity*100):'—'}%</em></span></td></tr>`).join('')}</tbody></table></div></section>
- <section class="section-card"><header class="detail-section-header"><h2>关联发货单</h2></header><div class="detail-empty-row">暂无关联发货单</div></section>
+ <section class="section-card"><header class="detail-section-header"><h2>关联发货单</h2></header><div class="detail-empty-row">${scenario==='withdrawal'?'希舟 · FH20260911-001 · 已发货':'暂无关联发货单'}</div></section>
  <section class="section-card"><header class="detail-section-header"><h2>操作日志</h2></header><div class="dispatch-logs">已从飞书导入订单资料${logs.map(log=>`<br>${esc(log)}`).join('')}</div></section></article>`;
 }
 function render(){
@@ -65,14 +67,16 @@ function render(){
  updateSortHeaders(document.querySelector('.dispatch-table'),sort);
  document.querySelector('[data-update]')?.addEventListener('click',()=>updatePreview());
  document.querySelector('[data-dispatch]')?.addEventListener('click',()=>updatePreview(dispatchPreview));
+ document.querySelector('[data-withdraw]')?.addEventListener('click',withdrawPreview);
 }
-function modal(title,body,confirm,disabled=false){
+function modal(title,body,confirm,disabled=false,confirmLabel='确认'){
  const d=document.createElement('dialog');d.className='modal dispatch-modal';
- d.innerHTML=`<header><h2>${esc(title)}</h2><button aria-label="关闭" data-close>×</button></header><div class="modal-body">${body}</div><footer><button class="order-secondary-button" data-close>取消</button>${confirm?`<button class="order-primary-button" data-confirm ${disabled?'disabled':''}>确认</button>`:''}</footer>`;
+ d.innerHTML=`<header><h2>${esc(title)}</h2><button aria-label="关闭" data-close>×</button></header><div class="modal-body">${body}</div><footer><button class="order-secondary-button" data-close>取消</button>${confirm?`<button class="order-primary-button" data-confirm ${disabled?'disabled':''}>${esc(confirmLabel)}</button>`:''}</footer>`;
  document.body.append(d);d.showModal();
  d.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>d.close());
  d.querySelector('[data-confirm]')?.addEventListener('click',()=>{d.close();confirm();});
  d.addEventListener('close',()=>d.remove());
+ return d;
 }
 function updatePreview(next){
  const changes=rows.filter(r=>!r.dispatched&&!sourceUpdated&&r.id===4).flatMap(r=>[
@@ -86,5 +90,15 @@ function dispatchPreview(){
  const chosen=rows.filter(r=>selected.has(r.id)&&!r.dispatched), blocked=chosen.some(r=>issues(r).length);
  if(!chosen.length)return;
  modal('确认派工',`<p>${blocked?'所选明细存在未通过项，本次不会派工。请取消勾选或补齐资料后重试。':'所选明细校验通过。确认后对应工厂可以查看本次派工明细。'}</p><table><thead><tr><th>明细</th><th>工厂</th><th>校验结果</th></tr></thead><tbody>${chosen.map(r=>`<tr><td>第${r.id}条 · ${esc(r.spec)}</td><td>${esc(r.factory||'—')}</td><td class="${issues(r).length?'dispatch-error':'dispatch-pass'}">${esc(issues(r).join('；')||'通过')}</td></tr>`).join('')}</tbody></table>`,()=>{chosen.forEach(r=>{r.dispatched=true;selected.delete(r.id);});logs.push(`本次派工 ${chosen.length} 条明细`);render();showToast('派工成功','所选明细已派工。');},blocked);
+}
+function withdrawPreview(){
+ const activeFactories=[...new Set(rows.filter(r=>r.dispatched).map(r=>r.factory))];
+ const d=modal('撤回派工',`<p>撤回后，该工厂的明细恢复为未派工，其他工厂不受影响。</p><div class="withdraw-field"><label for="withdraw-factory">选择工厂</label><select id="withdraw-factory" data-withdraw-factory><option value="">请选择</option>${activeFactories.map(factory=>{const count=rows.filter(r=>r.dispatched&&r.factory===factory).length,blocked=factoriesWithShipments.has(factory);return `<option value="${esc(factory)}" ${blocked?'disabled':''}>${esc(factory)}（${count} 条${blocked?'，已有有效发货，不可撤回':''}）</option>`;}).join('')}</select></div>`,()=>{
+  const factory=d.querySelector('[data-withdraw-factory]').value;
+  rows.filter(r=>r.dispatched&&r.factory===factory).forEach(r=>{r.dispatched=false;});
+  selected.clear();logs.push(`撤回 ${factory} 全部派工明细`);render();showToast('撤回成功',`${factory}的派工明细已撤回。`);
+ },true,'确认撤回');
+ const select=d.querySelector('[data-withdraw-factory]'),confirm=d.querySelector('[data-confirm]');
+ select.addEventListener('change',()=>{confirm.disabled=!select.value;});
 }
 render();

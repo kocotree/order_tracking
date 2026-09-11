@@ -49,7 +49,7 @@
     }
 
     function renderLoading() {
-      return '<div class="auth-shell auth-status-page"><header class="auth-capsule-row">' + renderCapsule() + '</header><main class="auth-status-main"><div class="auth-loader"><i></i><i></i><i></i></div><h1>正在识别身份</h1><p>正在绑定微信身份与授权手机号，请稍候</p></main></div>';
+      return '<div class="auth-shell auth-status-page"><header class="auth-capsule-row">' + renderCapsule() + '</header><main class="auth-status-main"><div class="auth-loader"><i></i><i></i><i></i></div><h1>正在识别身份</h1><p>正在确认账号身份，请稍候</p></main></div>';
     }
 
     function renderApply() {

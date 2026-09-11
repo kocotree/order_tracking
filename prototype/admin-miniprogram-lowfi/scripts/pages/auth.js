@@ -6,7 +6,7 @@
       mark: "…",
       tone: "identifying",
       title: "正在识别身份",
-      description: "正在通过微信身份确认管理员账号，请稍候。",
+      description: "正在确认账号身份，请稍候。",
       note: "身份识别完成后将自动进入下一步",
     },
     unmatched: {
@@ -34,7 +34,7 @@
       mark: "退",
       tone: "logged-out",
       title: "已退出登录",
-      description: "当前登录会话已结束，微信与管理员账号的绑定仍然保留。",
+      description: "当前登录会话已结束，账号绑定仍然保留。",
       note: "重新登录不会再次授权手机号",
     },
   };

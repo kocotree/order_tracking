@@ -21,14 +21,6 @@
 .auth-copy .auth-title { color: #17664d; font-size: 60rpx; font-weight: 800; letter-spacing: 2rpx; line-height: 1.25; }
 .auth-primary-button { display: flex; width: 100%; min-height: 104rpx; align-items: center; justify-content: center; color: #fff; font-size: 32rpx; font-weight: 800; line-height: normal; background: linear-gradient(135deg,#17684f,#126047); border-radius: 26rpx; box-shadow: 0 18rpx 40rpx rgba(18,96,71,.2); }
 .auth-button-content { display: flex; align-items: center; justify-content: center; gap: 18rpx; }
-.wechat-mark { position: relative; width: 52rpx; height: 42rpx; flex: 0 0 auto; }
-.wechat-bubble { position: absolute; display: flex; align-items: flex-start; justify-content: center; gap: 8rpx; background: #fff; }
-.wechat-bubble::after { position: absolute; width: 0; height: 0; border-style: solid; content: ""; }
-.wechat-bubble--back { top: 0; left: 0; width: 34rpx; height: 29rpx; padding-top: 9rpx; border-radius: 50%; }
-.wechat-bubble--back::after { bottom: -4rpx; left: 5rpx; border-width: 6rpx 5rpx 0 0; border-color: #fff transparent transparent; transform: rotate(18deg); }
-.wechat-bubble--front { right: 0; bottom: 0; width: 31rpx; height: 26rpx; padding-top: 8rpx; border: 3rpx solid #17664d; border-radius: 50%; }
-.wechat-bubble--front::after { right: 3rpx; bottom: -5rpx; border-width: 6rpx 0 0 5rpx; border-color: #fff transparent transparent; transform: rotate(-12deg); }
-.wechat-eye { width: 4rpx; height: 4rpx; border-radius: 50%; background: #17664d; }
 .auth-agreement { display: flex; align-items: flex-start; justify-content: center; gap: 8rpx; margin-top: 28rpx; color: #656d69; font-size: 20rpx; line-height: 1.55; }
 .auth-checkbox { margin-top: -2rpx; transform: scale(.72); transform-origin: top right; }
 .auth-link { color: #2b775e; }

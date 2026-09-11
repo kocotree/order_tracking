@@ -22,7 +22,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    details = op.create_table(
         "order_details",
         sa.Column("detail_id", sa.String(length=36), nullable=False),
         sa.Column("order_id", sa.String(length=36), nullable=False),
@@ -168,12 +168,12 @@ def upgrade() -> None:
     )
     op.alter_column("orders", "tracker", existing_type=mysql.VARCHAR(length=32), nullable=True)
 
-    _backfill_legacy()
+    _backfill_legacy(details)
     # Force one full read after the 50% -> 95% rule and nullable parser change.
     op.get_bind().execute(sa.text("DELETE FROM order_import_source_cursors"))
 
 
-def _backfill_legacy() -> None:
+def _backfill_legacy(details: sa.Table) -> None:
     # Snapshot execution identities, never reconstruct historical quantities from Feishu.
     bind = op.get_bind()
     rows = (
@@ -191,40 +191,6 @@ def _backfill_legacy() -> None:
         )
         .mappings()
         .all()
-    )
-    details = sa.table(
-        "order_details",
-        *[
-            sa.column(name)
-            for name in (
-                "detail_id",
-                "order_id",
-                "origin",
-                "sort_order",
-                "source_sku_id",
-                "product_name",
-                "properties_value",
-                "category",
-                "factory_name",
-                "matched_variant_id",
-                "matched_factory_id",
-                "order_quantity",
-                "source_shipped_quantity",
-                "source_tracker",
-                "contract_ship_date",
-                "date_override_enabled",
-                "assignment_id",
-                "dispatch_state",
-                "created_at",
-                "updated_at",
-                "source_record_pk",
-                "accepted_source_hash",
-                "accepted_source_modified_at",
-                "source_contract_ship_date",
-            )
-        ],
-        sa.column("accepted_raw_fields", sa.JSON),
-        sa.column("parse_issues", sa.JSON),
     )
     for index, row in enumerate(rows, 1):
         sources = (

@@ -652,16 +652,12 @@ class OrderLine(Base):
 class OrderAssignment(Base):
     __tablename__ = "order_assignments"
     __table_args__ = (
-        UniqueConstraint("order_line_id", "factory_id", name="uq_order_assignments_line_factory"),
         CheckConstraint("assigned_quantity > 0", name="ck_order_assignments_quantity_positive"),
         CheckConstraint(
             "initial_shipped_quantity >= 0",
             name="ck_order_assignments_initial_shipped_nonnegative",
         ),
-        CheckConstraint(
-            "assigned_quantity >= initial_shipped_quantity",
-            name="ck_order_assignments_quantity_covers_initial_shipped",
-        ),
+        Index("ix_order_assignments_line_factory", "order_line_id", "factory_id"),
         Index("ix_order_assignments_factory", "factory_id", "order_line_id"),
     )
 
@@ -674,6 +670,10 @@ class OrderAssignment(Base):
     factory_id: Mapped[str] = mapped_column(
         ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
     )
+    detail_id: Mapped[str | None] = mapped_column(
+        ForeignKey("order_details.detail_id", ondelete="RESTRICT")
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     contract_ship_date: Mapped[date | None] = mapped_column(Date)
     assigned_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     initial_shipped_quantity: Mapped[int] = mapped_column(
@@ -1659,6 +1659,7 @@ class OrderDetail(Base):
     assignment_id: Mapped[int | None] = mapped_column(
         ForeignKey("order_assignments.order_assignment_id", ondelete="RESTRICT")
     )
+    dispatch_batch_id: Mapped[str | None] = mapped_column(String(36))
     dispatch_state: Mapped[str] = mapped_column(String(16), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)

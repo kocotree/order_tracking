@@ -89,6 +89,7 @@ from app.modules.orders import (
     OrderValidationError,
 )
 from app.modules.orders.source_update import OrderSourceUpdateService
+from app.modules.orders.dispatch import OrderDispatchService
 from app.modules.product_sync import ProductCatalogService
 from app.modules.repairs.confirmation import RepairConfirmationService
 from app.modules.repairs.preview import RepairPreviewService
@@ -276,6 +277,7 @@ def create_app(
             else DisabledFeishuOrderSource()
         )
     source_updates = OrderSourceUpdateService(session_factory, source=order_source)
+    dispatch_svc = OrderDispatchService(session_factory, source=order_source)
 
     if order_service is None:
         order_service = OrderService(session_factory, execution_guard=shipment_service)
@@ -318,6 +320,7 @@ def create_app(
             identity_service,
             order_import_service=order_import_service,
             source_update_service=source_updates,
+            dispatch_service=dispatch_svc,
         )
     )
     app.include_router(create_order_import_router(order_import_service, identity_service))

@@ -13,6 +13,9 @@ export type FactoryWrite = components["schemas"]["FactoryWrite"];
 export type ProductList = components["schemas"]["ProductListResponse"];
 export type ProductListItem = components["schemas"]["ProductListItemResponse"];
 export type SourcePreview = components["schemas"]["SourcePreviewResponse"];
+export type DispatchValidationItem = { detailId: string; label: string; factoryName: string; passes: boolean; issues: string[] };
+export type DispatchPreview = { previewId: string; version: number; expiresAt: string; sourceDifferences: SourceDifference[]; validations: DispatchValidationItem[]; allOk: boolean };
+export type SourceDifference = { detailId: string; label: string; field: string; before: string | number | null; after: string | number | null };
 export type Order = components["schemas"]["OrderResponse"];
 export type OrderList = components["schemas"]["OrderListResponse"];
 export type DashboardOrders = components["schemas"]["DashboardResponse"];
@@ -333,6 +336,14 @@ export const orderApi = {
   confirmSource: (orderId: string, version: number, previewId: string, key: string) =>
     request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/source-refresh/confirm`, {
       method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ version, previewId }),
+    }),
+  dispatchPreview: (orderId: string, version: number, detailIds: string[]) =>
+    request<DispatchPreview>(`/v1/admin/orders/${encodeURIComponent(orderId)}/dispatch/preview`, {
+      method: "POST", body: JSON.stringify({ version, detailIds }),
+    }),
+  dispatchConfirm: (orderId: string, version: number, previewId: string, detailIds: string[], key: string) =>
+    request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/dispatch/confirm`, {
+      method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ version, previewId, detailIds }),
     }),
   dashboard: () => request<DashboardOrders>("/v1/admin/dashboard/orders"),
   auditLogs: (orderId: string) =>

@@ -16,6 +16,7 @@ from app.modules.orders import (
     OrderSnapshot,
 )
 from app.modules.orders.source_update import OrderSourceUpdateService
+from app.modules.orders.dispatch import OrderDispatchService
 
 
 def to_camel(value: str) -> str:
@@ -74,12 +75,40 @@ class RefreshConfirmWrite(RefreshWrite):
     preview_id: str = Field(min_length=1, max_length=36)
 
 
+class DispatchPreviewWrite(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+    version: StrictInt = Field(gt=0)
+    detail_ids: list[str] = Field(min_length=1, max_length=500)
+
+
+class DispatchConfirmWrite(DispatchPreviewWrite):
+    model_config = ConfigDict(extra="forbid")
+    preview_id: str = Field(min_length=1, max_length=36)
+
+
+class DispatchValidationItem(ApiModel):
+    detail_id: str
+    label: str
+    factory_name: str
+    passes: bool
+    issues: list[str]
+
+
 class SourceDifferenceResponse(ApiModel):
     detail_id: str
     label: str
     field: str
     before: str | int | None
     after: str | int | None
+
+
+class DispatchPreviewResponse(ApiModel):
+    preview_id: str
+    version: int
+    expires_at: datetime
+    source_differences: list[SourceDifferenceResponse]
+    validations: list[DispatchValidationItem]
+    all_ok: bool
 
 
 class SourcePreviewResponse(ApiModel):
@@ -247,6 +276,7 @@ def create_order_router(
     order_import_service: OrderImportService | None = None,
     *,
     source_update_service: OrderSourceUpdateService,
+    dispatch_service: OrderDispatchService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
@@ -341,6 +371,57 @@ def create_order_router(
     ) -> OrderResponse:
         actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
         result = source_update_service.confirm(
+            actor_id=actor.user_id,
+            order_id=order_id,
+            version=payload.version,
+            preview_id=payload.preview_id,
+            idempotency_key=idempotency_key,
+            request_id=request.state.request_id,
+        )
+        return _order_response(result, request.state.request_id)
+
+    @router.post(
+        "/admin/orders/{order_id}/dispatch/preview",
+        response_model=DispatchPreviewResponse,
+        tags=["order-admin"],
+    )
+    def preview_dispatch(
+        order_id: str,
+        payload: DispatchPreviewWrite,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> DispatchPreviewResponse:
+        if dispatch_service is None:
+            raise OrderNotFound("dispatch not enabled")
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        return DispatchPreviewResponse.model_validate(
+            dispatch_service.preview(
+                actor_id=actor.user_id,
+                order_id=order_id,
+                version=payload.version,
+                detail_ids=payload.detail_ids,
+                request_id=request.state.request_id,
+            )
+        )
+
+    @router.post(
+        "/admin/orders/{order_id}/dispatch/confirm",
+        response_model=OrderResponse,
+        tags=["order-admin"],
+    )
+    def confirm_dispatch(
+        order_id: str,
+        payload: DispatchConfirmWrite,
+        request: Request,
+        idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=191),
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> OrderResponse:
+        if dispatch_service is None:
+            raise OrderNotFound("dispatch not enabled")
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        result = dispatch_service.confirm(
             actor_id=actor.user_id,
             order_id=order_id,
             version=payload.version,

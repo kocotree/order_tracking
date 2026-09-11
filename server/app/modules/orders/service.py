@@ -1049,6 +1049,7 @@ class OrderService:
                 .where(
                     OrderAssignment.order_line_id == OrderLine.order_line_id,
                     OrderAssignment.factory_id == factory_id,
+                    OrderAssignment.is_active.is_(True),
                 )
                 .exists()
                 if factory_id is not None
@@ -1061,7 +1062,11 @@ class OrderService:
             select(OrderAssignment)
             .join(OrderLine)
             .where(OrderLine.order_id.in_(order_ids))
-            .where(OrderAssignment.factory_id == factory_id if factory_id is not None else true())
+            .where(
+                (OrderAssignment.factory_id == factory_id) & OrderAssignment.is_active.is_(True)
+                if factory_id is not None
+                else true()
+            )
             .order_by(OrderAssignment.order_assignment_id)
         ):
             assignments.setdefault(assignment.order_line_id, []).append(assignment)
@@ -1070,7 +1075,11 @@ class OrderService:
             .join(OrderAssignment)
             .join(OrderLine)
             .where(OrderLine.order_id.in_(order_ids))
-            .where(OrderAssignment.factory_id == factory_id if factory_id is not None else true())
+            .where(
+                (OrderAssignment.factory_id == factory_id) & OrderAssignment.is_active.is_(True)
+                if factory_id is not None
+                else true()
+            )
             .group_by(QuantityLedger.order_assignment_id)
         ):
             quantities[assignment_id] = int(quantity)
@@ -1398,7 +1407,7 @@ class OrderService:
             session.scalars(
                 select(OrderAssignment.factory_id)
                 .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-                .where(OrderLine.order_id == order_id)
+                .where(OrderLine.order_id == order_id, OrderAssignment.is_active.is_(True))
             )
         )
 

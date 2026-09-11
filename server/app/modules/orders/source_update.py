@@ -277,7 +277,12 @@ class OrderSourceUpdateService(OrderService):
                 version=version,
                 created_at=now,
                 expires_at=now + timedelta(minutes=5),
-                payload={"versions": versions, "updates": updates, "differences": differences},
+                payload={
+                    "kind": "refresh",
+                    "versions": versions,
+                    "updates": updates,
+                    "differences": differences,
+                },
             )
             session.add(preview)
             return {
@@ -321,6 +326,7 @@ class OrderSourceUpdateService(OrderService):
                 or pending.version != version
                 or pending.consumed_at is not None
                 or pending.expires_at <= self._now()
+                or pending.payload.get("kind") != "refresh"
             ):
                 raise OrderConflict("来源预览已失效，请重新检查来源")
             detail_ids = list(pending.payload["versions"])
@@ -362,6 +368,7 @@ class OrderSourceUpdateService(OrderService):
                 or preview.version != version
                 or preview.consumed_at is not None
                 or preview.expires_at <= self._now()
+                or preview.payload.get("kind") != "refresh"
             ):
                 raise OrderConflict("来源预览已失效，请重新检查来源")
             rows = self._details(session, order_id, lock=True)

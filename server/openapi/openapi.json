@@ -1130,6 +1130,152 @@
         "title": "DetailDateWrite",
         "type": "object"
       },
+      "DispatchConfirmWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "previewId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Previewid",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "previewId"
+        ],
+        "title": "DispatchConfirmWrite",
+        "type": "object"
+      },
+      "DispatchPreviewResponse": {
+        "properties": {
+          "allOk": {
+            "default": false,
+            "title": "Allok",
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          },
+          "previewId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previewid"
+          },
+          "requiresSourceConfirmation": {
+            "default": false,
+            "title": "Requiressourceconfirmation",
+            "type": "boolean"
+          },
+          "sourcePreview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourcePreviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "validations": {
+            "items": {
+              "$ref": "#/components/schemas/DispatchValidationItem"
+            },
+            "title": "Validations",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "DispatchPreviewResponse",
+        "type": "object"
+      },
+      "DispatchPreviewWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "detailIds": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Detailids",
+            "type": "array"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "detailIds"
+        ],
+        "title": "DispatchPreviewWrite",
+        "type": "object"
+      },
+      "DispatchValidationItem": {
+        "properties": {
+          "detailId": {
+            "title": "Detailid",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "passes": {
+            "title": "Passes",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "detailId",
+          "label",
+          "factoryName",
+          "passes",
+          "issues"
+        ],
+        "title": "DispatchValidationItem",
+        "type": "object"
+      },
       "DraftBoxWrite": {
         "properties": {
           "boxNo": {
@@ -7695,6 +7841,185 @@
           }
         },
         "summary": "Save Detail Date",
+        "tags": [
+          "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/dispatch/confirm": {
+      "post": {
+        "operationId": "confirm_dispatch_api_v1_admin_orders__order_id__dispatch_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 191,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchConfirmWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Dispatch",
+        "tags": [
+          "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/dispatch/preview": {
+      "post": {
+        "operationId": "preview_dispatch_api_v1_admin_orders__order_id__dispatch_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchPreviewWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Dispatch",
         "tags": [
           "order-admin"
         ]

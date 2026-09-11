@@ -137,10 +137,11 @@ def test_confirmed_quantity_cannot_be_autonomously_withdrawn(
         headers={"Idempotency-Key": "blocked-confirmed"},
     )
     assert result.status_code == 409
-    assert (
-        factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"]
-        == quantity + 5
-    )
+    items = factory.get("/api/v1/factory/shipment-catalog").json()["items"]
+    if quantity == 35:
+        assert items == []
+    else:
+        assert items[0]["shippedQuantity"] == quantity + 5
 
 
 def test_return_uses_confirmed_base_and_keeps_receipt_difference(

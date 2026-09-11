@@ -11,8 +11,8 @@
               <span class="status-badge" :class="statusTone(order)"><i aria-hidden="true"></i>{{ order.displayStatus }}</span>
               <button v-if="order.lifecycle === 'DRAFT' && !order.detailMode" class="detail-primary-button" type="button" @click="openAction('publish')">发布订单</button>
               <button class="detail-outline-button" type="button" data-testid="contract-export-open" :disabled="!contractButtonEnabled" :title="contractButtonTitle" @click="openContractExport">导出加工合同</button>
-              <button v-if="order.lifecycle === 'PUBLISHED'" class="detail-outline-button" type="button" @click="openAction('withdraw')">撤回订单</button>
-              <button v-if="order.lifecycle === 'PUBLISHED'" class="detail-primary-button" type="button" @click="openAction('complete')">确认订单完成</button>
+              <button v-if="order.lifecycle === 'PUBLISHED' && !order.detailMode" class="detail-outline-button" type="button" @click="openAction('withdraw')">撤回订单</button>
+              <button v-if="order.lifecycle === 'PUBLISHED' && !order.detailMode" class="detail-primary-button" type="button" @click="openAction('complete')">确认订单完成</button>
               <button v-if="order.lifecycle === 'COMPLETED'" class="detail-outline-button" type="button" @click="openAction('reopen')">撤销完成</button>
             </div>
           </header>
@@ -31,15 +31,15 @@
 
         <section class="section-card detail-section-card">
           <header class="detail-section-header">
-            <div class="dispatch-heading"><h2>订单明细</h2><span class="dispatch-count">已派工 {{ dispatchedCount }}/{{ detailRows.length }} 条 · {{ dispatchProgressLabel }}</span></div>
+            <div class="dispatch-heading"><h2>订单明细</h2><span v-if="order.detailMode" class="dispatch-count">已派工 {{ dispatchedCount }}/{{ detailRows.length }} 条 · {{ dispatchProgressLabel }}</span></div>
             <div v-if="hasUnassigned" class="dispatch-actions">
-              <button class="detail-outline-button" type="button" :disabled="sourceBusy || hasUnsavedDates || sourcePreview !== null" @click="previewSource">更新未派工明细</button>
-              <button class="detail-primary-button" type="button" :disabled="!selectedDetails.size || dispatchBusy" @click="previewDispatch">派工（已选 {{ selectedDetails.size }} 条）</button>
+              <button class="detail-outline-button" type="button" :disabled="interactionBusy || hasUnsavedDates || sourcePreview !== null" @click="previewSource">更新未派工明细</button>
+              <button class="detail-primary-button" type="button" :disabled="!selectedDetails.size || interactionBusy || hasUnsavedDates || sourcePreview !== null" @click="previewDispatch">派工（已选 {{ selectedDetails.size }} 条）</button>
             </div>
           </header>
           <p v-if="sourceError" class="page-error" role="alert">{{ sourceError }}</p>
           <div class="detail-table-scroll">
-            <table class="data-grid-table dispatch-table">
+            <table class="data-grid-table product-detail-table dispatch-table" :class="{ 'has-selection': hasUnassigned }">
               <colgroup>
                 <col v-if="hasUnassigned" style="width:40px">
                 <col style="width:52px">
@@ -55,13 +55,13 @@
                 <col style="width:135px">
               </colgroup>
               <thead><tr>
-                <th v-if="hasUnassigned" class="dispatch-check"><input type="checkbox" :checked="allSelected" :disabled="dispatchBusy" aria-label="选择全部未派工明细" @change="toggleAll($event)"></th>
+                <th v-if="hasUnassigned" class="dispatch-check"><input type="checkbox" :checked="allSelected" :disabled="interactionBusy" aria-label="选择全部未派工明细" @change="toggleAll($event)"></th>
                 <th class="dispatch-seq">序号</th>
-                <th v-for="column in detailColumns" :key="column.key"><button class="data-grid-sort-button" :class="sortClass(column.key)" type="button" @click="toggleDetailSort(column.key)"><span>{{ column.label }}</span><span class="data-grid-sort-arrows" aria-hidden="true"><i class="data-grid-sort-arrow is-up"></i><i class="data-grid-sort-arrow is-down"></i></span></button></th>
+                <th v-for="column in detailColumns" :key="column.key" :class="{ 'dispatch-name-column': column.key === 'productName' }"><button class="data-grid-sort-button" :class="sortClass(column.key)" type="button" @click="toggleDetailSort(column.key)"><span>{{ column.label }}</span><span class="data-grid-sort-arrows" aria-hidden="true"><i class="data-grid-sort-arrow is-up"></i><i class="data-grid-sort-arrow is-down"></i></span></button></th>
               </tr></thead>
               <tbody><tr v-for="(row, index) in sortedDetailRows" :key="row.key">
                 <td v-if="hasUnassigned" class="dispatch-check">
-                  <input v-if="!row.dispatched" type="checkbox" :checked="selectedDetails.has(row.key)" :disabled="dispatchBusy" :aria-label="`选择第${index + 1}条`" @change="toggleRow(row.key, $event)">
+                  <input v-if="!row.dispatched" type="checkbox" :checked="selectedDetails.has(row.key)" :disabled="interactionBusy" :aria-label="`选择第${index + 1}条`" @change="toggleRow(row.key, $event)">
                 </td>
                 <td class="dispatch-seq">{{ index + 1 }}</td>
                 <td class="dispatch-code">{{ row.skuId }}</td>
@@ -69,7 +69,7 @@
                 <td>{{ row.propertiesValue }}</td>
                 <td :title="row.factoryName">{{ row.factoryName }}</td>
                 <td><span class="status-badge" :class="row.dispatched ? 'is-info' : 'is-draft'">{{ row.dispatched ? '已派工' : '未派工' }}</span></td>
-                <td><input v-if="isEditable(row.key)" class="source-contract-date" type="date" :aria-label="`第${index + 1}条合同出货时间`" :value="dateDrafts[row.key] ?? row.contractShipDate" :disabled="sourceBusy || sourcePreview !== null" @input="dateDrafts[row.key] = ($event.target as HTMLInputElement).value" @blur="saveDetailDate(row.key)"><template v-else>{{ row.contractShipDate || "—" }}</template></td>
+                <td><input v-if="isEditable(row.key)" class="source-contract-date" type="date" :aria-label="`第${index + 1}条合同出货时间`" :value="dateDrafts[row.key] ?? row.contractShipDate" :disabled="interactionBusy || sourcePreview !== null || dispatchSourcePreview !== null" @input="dateDrafts[row.key] = ($event.target as HTMLInputElement).value" @blur="saveDetailDate(row.key)"><template v-else>{{ row.contractShipDate || "—" }}</template></td>
                 <td class="detail-number">{{ number(row.orderQuantity) }}</td>
                 <td class="detail-number">{{ number(row.shippedQuantity) }}</td>
                 <td class="detail-number">{{ number(row.pendingQuantity) }}</td>
@@ -124,7 +124,7 @@
         <header><h2 id="dispatch-dialog-title">{{ dispatchStep === 'source' ? '更新未派工明细' : '确认派工' }}</h2><button type="button" aria-label="关闭" :disabled="dispatchBusy" @click="cancelDispatch">×</button></header>
         <div class="modal-body" v-if="dispatchStep === 'source'">
           <p>来源资料有变化，请确认后继续派工。已派工明细和人工填写的合同出货时间保持不变。</p>
-          <table><thead><tr><th>明细</th><th>字段</th><th>当前值</th><th>来源新值</th></tr></thead><tbody><tr v-for="(change, index) in dispatchSourceDiff" :key="index"><td>{{ change.label }}</td><td>{{ change.field }}</td><td>{{ change.before ?? '—' }}</td><td>{{ change.after ?? '—' }}</td></tr></tbody></table>
+          <table><thead><tr><th>明细</th><th>字段</th><th>当前值</th><th>来源新值</th></tr></thead><tbody><tr v-for="(change, index) in dispatchSourcePreview?.differences ?? []" :key="index"><td>{{ change.label }}</td><td>{{ change.field }}</td><td>{{ change.before ?? '—' }}</td><td>{{ change.after ?? '—' }}</td></tr></tbody></table>
         </div>
         <div class="modal-body" v-else>
           <p>{{ dispatchPreview?.allOk ? '所选明细校验通过。确认后对应工厂可以查看本次派工明细。' : '所选明细存在未通过项，本次不会派工。请取消勾选或补齐资料后重试。' }}</p>
@@ -163,7 +163,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, contractApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview, type DispatchValidationItem, type SourceDifference } from "@/api/client";
+import { ApiError, contractApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 
 const relatedShipments = ref<Shipment[]>([]);
@@ -198,10 +198,12 @@ const dispatchError = ref("");
 const dispatchPreview = ref<DispatchPreview | null>(null);
 const dispatchDialog = ref<HTMLDialogElement | null>(null);
 const dispatchStep = ref<"source" | "validate">("validate");
-const dispatchSourceDiff = ref<SourceDifference[]>([]);
+const dispatchSourcePreview = ref<SourcePreview | null>(null);
 const selectedDetails = ref(new Set<string>());
 let dispatchKey = "";
+let dispatchSourceKey = "";
 let dispatchEpoch = 0;
+const interactionBusy = computed(() => sourceBusy.value || dispatchBusy.value);
 
 const isEditable = (id: string) => order.value?.detailMode ? order.value.details.find((row) => row.detailId === id && row.dispatchState === "UNASSIGNED") : undefined;
 const hasUnassigned = computed(() => order.value?.detailMode && order.value.details.some((row) => row.dispatchState === "UNASSIGNED"));
@@ -238,7 +240,7 @@ function currentDispatch(epoch: number, id: string) { return epoch === dispatchE
 
 async function saveDetailDate(id: string) {
   const detail = isEditable(id);
-  if (!order.value || !detail || sourceBusy.value || sourcePreview.value) return;
+  if (!order.value || !detail || interactionBusy.value || sourcePreview.value || dispatchSourcePreview.value) return;
   const value = dateDrafts.value[id];
   if (value === undefined || value === (detail.contractShipDate ?? "")) return;
   const epoch = ++sourceEpoch, target = orderId;
@@ -254,7 +256,7 @@ async function saveDetailDate(id: string) {
 }
 
 async function previewSource() {
-  if (!order.value || sourceBusy.value || hasUnsavedDates.value || sourcePreview.value) return;
+  if (!order.value || interactionBusy.value || hasUnsavedDates.value || sourcePreview.value) return;
   const epoch = ++sourceEpoch, target = orderId;
   sourceBusy.value = true; sourceError.value = "";
   try {
@@ -289,15 +291,16 @@ async function confirmSource() {
 
 // Dispatch flow: preview → (source changes?) → confirm
 async function previewDispatch() {
-  if (!order.value || dispatchBusy.value || selectedDetails.value.size === 0) return;
+  if (!order.value || interactionBusy.value || hasUnsavedDates.value || sourcePreview.value || selectedDetails.value.size === 0) return;
   const epoch = ++dispatchEpoch, target = orderId;
   dispatchBusy.value = true; dispatchError.value = "";
   const detailIds = [...selectedDetails.value];
   try {
     const preview = await orderApi.dispatchPreview(target, order.value.version, detailIds);
     if (!currentDispatch(epoch, target)) return;
-    if (preview.sourceDifferences.length > 0) {
-      dispatchSourceDiff.value = preview.sourceDifferences;
+    if (preview.requiresSourceConfirmation && preview.sourcePreview) {
+      dispatchSourcePreview.value = preview.sourcePreview;
+      dispatchSourceKey = crypto.randomUUID();
       dispatchStep.value = "source";
     } else {
       dispatchPreview.value = preview;
@@ -311,28 +314,33 @@ async function previewDispatch() {
   } finally { if (currentDispatch(epoch, target)) dispatchBusy.value = false; }
 }
 
-function onDispatchClosed() { if (!dispatchDialog.value?.open) { dispatchPreview.value = null; dispatchSourceDiff.value = []; } }
+function onDispatchClosed() { if (!dispatchDialog.value?.open) { dispatchPreview.value = null; dispatchSourcePreview.value = null; } }
 function cancelDispatch(event?: Event) {
   if (dispatchBusy.value) { event?.preventDefault(); return; }
-  dispatchEpoch++; dispatchPreview.value = null; dispatchDialog.value?.close(); dispatchError.value = ""; dispatchSourceDiff.value = [];
+  dispatchEpoch++; dispatchPreview.value = null; dispatchDialog.value?.close(); dispatchError.value = ""; dispatchSourcePreview.value = null;
 }
 
 async function confirmDispatchSource() {
-  // Dispatch preview showed source changes; confirm them first (reusing source update), then re-preview
-  if (!order.value || !dispatchSourceDiff.value.length || dispatchBusy.value) return;
+  const source = dispatchSourcePreview.value;
+  if (!order.value || !source || dispatchBusy.value) return;
   const epoch = ++dispatchEpoch, target = orderId;
   dispatchBusy.value = true; dispatchError.value = "";
-  // Use source refresh to confirm the pending changes
-  // First check if there's a source preview to confirm
   try {
-    // Re-preview dispatch now that sources are confirmed
-    const detailIds = [...selectedDetails.value];
-    const preview = await orderApi.dispatchPreview(target, order.value.version, detailIds);
+    const saved = await orderApi.confirmSource(target, source.version, source.previewId, dispatchSourceKey);
     if (!currentDispatch(epoch, target)) return;
-    dispatchPreview.value = preview;
-    dispatchStep.value = "validate";
-    dispatchKey = crypto.randomUUID();
-    dispatchSourceDiff.value = [];
+    order.value = saved;
+    const detailIds = [...selectedDetails.value];
+    const preview = await orderApi.dispatchPreview(target, saved.version, detailIds);
+    if (!currentDispatch(epoch, target)) return;
+    if (preview.requiresSourceConfirmation && preview.sourcePreview) {
+      dispatchSourcePreview.value = preview.sourcePreview;
+      dispatchSourceKey = crypto.randomUUID();
+    } else {
+      dispatchSourcePreview.value = null;
+      dispatchPreview.value = preview;
+      dispatchStep.value = "validate";
+      dispatchKey = crypto.randomUUID();
+    }
   } catch (error) {
     if (currentDispatch(epoch, target)) dispatchError.value = error instanceof ApiError ? error.message : "来源更新后派工检查失败，请重试。";
   } finally { if (currentDispatch(epoch, target)) dispatchBusy.value = false; }
@@ -340,12 +348,11 @@ async function confirmDispatchSource() {
 
 async function confirmDispatchAction() {
   const preview = dispatchPreview.value;
-  if (!preview || !preview.allOk || dispatchBusy.value || !order.value) return;
+  if (!preview?.previewId || !preview.allOk || dispatchBusy.value || !order.value) return;
   const epoch = ++dispatchEpoch, target = orderId;
   dispatchBusy.value = true; dispatchError.value = "";
-  const detailIds = [...selectedDetails.value];
   try {
-    const saved = await orderApi.dispatchConfirm(target, order.value.version, preview.previewId, detailIds, dispatchKey);
+    const saved = await orderApi.dispatchConfirm(target, preview.version, preview.previewId, dispatchKey);
     if (!currentDispatch(epoch, target)) return;
     order.value = saved;
     selectedDetails.value.clear();
@@ -364,7 +371,7 @@ watch(() => route.params.orderId, () => {
   orderId = String(route.params.orderId); sourceBusy.value = false; dispatchBusy.value = false;
   sourcePreview.value = null; sourceDialog.value?.close(); sourceError.value = "";
   dispatchPreview.value = null; dispatchDialog.value?.close(); dispatchError.value = "";
-  dispatchSourceDiff.value = []; selectedDetails.value.clear();
+  dispatchSourcePreview.value = null; selectedDetails.value.clear();
   dateDrafts.value = {}; order.value = null; relatedShipments.value = []; auditLogs.value = [];
   contractFactories.value = []; pendingAction.value = null; contractDialogOpen.value = false;
   void load();
@@ -439,7 +446,7 @@ onMounted(load);
 .source-update-modal th { background: #f1f3f6; }
 
 /* Dispatch-specific styles */
-.dispatch-page .detail-section-header { height: auto; min-height: 54px; padding: 9px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.dispatch-page .detail-section-header { height: 54px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; }
 .dispatch-page .detail-section-header h2 { font-size: 18px; }
 .dispatch-heading, .dispatch-actions { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
 .dispatch-count { color: var(--muted); font-size: 13px; font-weight: 500; }
@@ -447,8 +454,11 @@ onMounted(load);
 .dispatch-table th, .dispatch-table td { box-sizing: border-box; border: 1px solid #dde1e7; padding: 0 14px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dispatch-table th { height: 40px; font-size: 13px; font-weight: 800; background: #f1f3f6; color: #37404b; }
 .dispatch-table td { height: 48px; font-weight: 700; }
-.dispatch-table .dispatch-seq { width: 52px; padding: 0 8px; text-align: center; font-weight: 600; }
-.dispatch-table .dispatch-check { width: 40px; padding: 0 8px; text-align: center; }
+.dispatch-table .dispatch-seq { width: 52px; min-width: 52px; max-width: 52px; padding: 0 8px; text-align: center; font-weight: 700; }
+.dispatch-table th.dispatch-seq { font-weight: 800; }
+.dispatch-table .dispatch-check { width: 40px; min-width: 40px; max-width: 40px; padding: 0 8px; text-align: center; }
+.dispatch-table .dispatch-name-column, .dispatch-table .dispatch-name { width: calc(100% - 1167px); }
+.dispatch-table.has-selection .dispatch-name-column, .dispatch-table.has-selection .dispatch-name { width: calc(100% - 1207px); }
 .dispatch-table input:not([type=checkbox]) { width: 100%; min-width: 0; height: 32px; padding: 0 7px; border: 1px solid #d3dbe6; border-radius: 4px; background: white; color: inherit; font: inherit; }
 .dispatch-table input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--erp-blue); }
 .dispatch-table .dispatch-code { color: var(--erp-blue-dark); font-weight: 700; }
@@ -463,4 +473,5 @@ onMounted(load);
 .dispatch-modal .dispatch-error { color: #b45309; font-weight: 700; }
 .dispatch-modal .dispatch-pass { color: #18764b; font-weight: 700; }
 .dispatch-modal p { margin: 0; }
+@media (max-width: 1100px) { .dispatch-page .detail-section-header { overflow-x: auto; gap: 24px; } }
 </style>

@@ -2,105 +2,50 @@
 
 日期：2026-09-11。关联 [执行 Issue #90](https://github.com/kocotree/order_tracking/issues/90)。
 
-## 授权与基线
+## 基线与边界
 
-用户授权按 #90 明细分批派工与工厂发货闭环本地实施，独立 worktree `/Users/wxl/Desktop/kk/order_tracking-issue-90`，分支 `codex/issue-90-detail-dispatch`，前置提交 f10a203（#89）。未使用 Playwright，未修改主工作区、#87/#88/#89 工作区。
+本地工作区为 `/Users/wxl/Desktop/kk/order_tracking-issue-90`，分支 `codex/issue-90-detail-dispatch`，前置提交 `f10a203`（#89）。本轮仅实现 #90 的明细分批派工、工厂发货闭环、派工通知和订单详情表交互；#91 的整单完成、整单撤回及配套口径未提前实现。
 
-未推送、未创建 PR、未合并、未部署、未上传小程序、未发送真实通知或修改飞书业务数据。
+未推送、未创建 PR、未合并、未部署、未上传或发布小程序，未读取或修改真实飞书业务数据，未发送真实通知。
 
-## 实现内容
+## 实现结果
 
-### 数据库迁移（20260911_0036）
+- 新增派工预览和确认接口。预览会重新读取来源、校验所选未派工明细，并在来源变化时先走 #89 的独立确认流程；确认会再次校验版本、来源和预览有效性，在单个事务内创建执行明细与派工关系。
+- 一条来源明细只创建一个派工关系；同一 SKU、同一工厂的多条来源明细可以分别派工。初始已发数量按来源值进入执行账本，允许初始已发大于下单数量，待发数量最低为零。
+- 已派工明细保留执行身份、数量账本和合同，来源更新只处理未派工明细。派工采用幂等键、行锁和唯一约束防止重复或并发写入。
+- 工厂订单、统计、日期筛选和发货选单统一按有效派工关系过滤；未派工、其他工厂和失效派工不可见，已全部发完或超发的明细不进入待发选单。
+- 派工确认按批次和工厂写入 outbox。消费时再次检查订单、批次、工厂和有效派工，只向对应工厂生成一次通知；本地仅使用模拟适配器验证。
+- 管理员订单详情支持选择未派工明细、来源差异确认、派工校验预览及确认。存在未保存的合同出货时间时阻止刷新或派工；全部派工后隐藏选择与派工操作。
+- 订单详情表按批准原型调整本页列宽和字重：序号列浏览器计算宽度 52px、左右内边距 8px，表头 800、内容 700。其他页面表格未调整。
+- 详情模式下隐藏整单完成和撤回操作，后端也拒绝这两类请求，等待 #91 实现完整规则。
 
-- 移除 `ck_order_assignments_quantity_covers_initial_shipped` 约束（允许超发派工）
-- 将 `uq_order_assignments_line_factory` 从唯一约束改为普通索引（允许同SKU/工厂不同来源明细独立派工）
-- `order_assignments` 新增 `detail_id` FK（unique, nullable）、`is_active` boolean（default true）
-- `order_details` 新增 `dispatch_batch_id`（用于通知批次分组）
-- 有损回滚防护：存在新派工数据时拒绝回退
+## 迁移
 
-### 后端 - 派工服务（`server/app/modules/orders/dispatch.py`）
+迁移 `20260911_0036`：
 
-`OrderDispatchService` 继承 `OrderService`：
+- 移除“派工数量必须覆盖初始已发数量”的约束；
+- 将订单明细与工厂的唯一约束改为普通索引；
+- 为派工关系增加来源明细唯一关联和有效标记；
+- 为来源明细增加派工批次标识；
+- 存在来源或派工资料时，在删除字段前拒绝有损降级。
 
-- `preview()`：选择未派工明细 → 读取最新来源 → 来源差异检测 → 逐行校验（产品匹配、工厂/账号启用、日期必填、数量有效、跟单一致性）→ 生成五分钟有效预览
-- `confirm()`：重新读取来源 → 串行锁订单+明细 → 逐行校验 → 创建/更新 OrderLine → 创建 OrderAssignment（含 detail_id、is_active、initial_shipped） → 关联 detail → 首派 DRAFT→PUBLISHED → 锁定订单跟单人 → 写入 outbox → 幂等
-- 复用 `source_update._read()` 的来源读取能力（通过独立 `OrderDispatchSourceRead` 类桥接，避免多重继承）
-- `_dispatch_snapshot()`：混合已派工（执行数量）和未派工（来源数量）明细的完整快照
+迁移已在隔离的本地 MySQL 8 数据库从空库升级到最新版本，并覆盖有数据降级保护；未在共享测试或生产数据库执行。
 
-### API 端点（`server/app/api/orders.py`）
+## 本地验证
 
-| 路径 | 行为 |
-|---|---|
-| `POST /admin/orders/{id}/dispatch/preview` | 派工前来源检查与校验预览 |
-| `POST /admin/orders/{id}/dispatch/confirm` | 整批确认派工，要求 Idempotency-Key |
+- 后端 #90 核心派工测试：18 条通过；覆盖来源确认、数量账本、权限隔离、事务回滚、版本与幂等、并发、通知和迁移保护。
+- 与 #89 来源更新、既有收货撤回及迁移相关的定向回归：19 条通过。
+- 后端完整回归：422 条通过、1 条因未配置隔离 OSS 桶而跳过。
+- 管理员网页：104 条组件测试通过，TypeScript、ESLint 和 Vite 构建通过。
+- 小程序：100 条测试通过，TypeScript、ESLint 和构建通过。
+- MyPy、Ruff 和 OpenAPI 生成一致性检查通过。
+- 使用 Playwright CLI 和本机 Edge 对照批准原型：1920px 下各列计算宽度一致；1000px 下横向滚动正常；验证合同出货时间保存、选择派工及全部派工后的只读状态。
 
-### 工厂侧查询更新
+本地检查不等于远程 CI、上线或业务验收。
 
-- `shipments/service.py`：发货选单、订单可见性查询添加 `is_active.is_(True)` 过滤
-- `orders/service.py`：`_page_snapshot_data` 三处查询、`_factory_ids` 添加 `is_active.is_(True)` 过滤
-- 确保工厂只能获取本厂有效派工；未派工行/跨厂ID/失效ID不可越权
+## 剩余边界
 
-### 管理员网页（`admin-web/src/pages/OrderDetailPage.vue`）
-
-- 明细表新增复选框列（仅未派工行、全选控制）
-- 新增"派工状态"列（已派工/未派工标签）
-- 标题行新增派工进度展示（已派工 X/Y 条 · 未派工/部分派工/全部派工）
-- 右侧新增"更新未派工明细""派工（已选 N 条）"按钮
-- 全部派工后隐藏选择列和两按钮
-- 派工流程：先展示来源变化确认弹窗 → 再展示逐行校验结果弹窗
-- 列宽按批准原型：序号52px（左右8px）、选择40px、表头800/内容700
-- 合同导出按 #87 规则：有工厂已派工即可导出，不再要求 shippedQuantity===0
-- API 客户端新增 dispatch、SourceDifference、DispatchValidationItem 类型
-
-### 通知 outbox
-
-- 派工确认时按 factory 写入 `OutboxMessage`（event_type: `order_detail_dispatched`）
-- 使用模拟适配器验证；不发送真实通知
-
-## 文件清单
-
-| 文件 | 变更 |
-|---|---|
-| `server/migrations/versions/20260911_0036_dispatch_support.py` | 新增迁移 |
-| `server/app/db/models.py` | OrderAssignment 加 detail_id/is_active，OrderDetail 加 dispatch_batch_id |
-| `server/app/modules/orders/dispatch.py` | 新增派工服务（~870行） |
-| `server/app/api/orders.py` | 新增 dispatch 端点及请求/响应模型 |
-| `server/app/main.py` | 初始化 DispatchService 并传入路由 |
-| `server/app/modules/orders/service.py` | 工厂侧查询加 is_active 过滤 |
-| `server/app/modules/shipments/service.py` | 发货选单查询加 is_active 过滤 |
-| `admin-web/src/api/client.ts` | 新增 dispatch API 方法及类型 |
-| `admin-web/src/pages/OrderDetailPage.vue` | 重写明细表及派工交互 |
-
-## 验证
-
-- ✅ 后端模块导入通过（dispatch.py, orders API）
-- ✅ admin-web TypeScript 类型检查通过
-- ✅ admin-web production 构建通过（vite build）
-- ⚠️ 后端测试因未配置 `ORDER_TRACKING_TEST_DATABASE_URL` 无法运行
-- ⚠️ 小程序类型检查因未安装 TypeScript 无法运行（预存问题）
-- ⚠️ 迁移未在真实 MySQL 上运行验证
-
-## 留给 #91 的边界
-
-#91 负责：
-- 管理员订单列表/首页/日期筛选的混合口径（来源+执行）
-- 整单撤回（设置 is_active=false、回退 detail dispatch_state）
-- 确认订单完成（全部已派且逐条交足的条件）
-- 合同导出资格更新
-- 到期提醒仅有效已派且欠量行
-- 完整迁移核对与回归
-- 小程序端的 dispatch_state 字段消费更新
-
-#90 不包含以上内容。#91 实施前不应开放本分支的部分派工写入路径。
-
-## 未验证项目
-
-- 远程 CI（GitHub Actions）
-- 测试部署/共享测试环境
-- MySQL 8 迁移执行
-- 真实浏览器视觉对照
-- 微信开发者工具/真机
-- 真实飞书来源读取
-- 真实通知外发
-
-本地测试及构建通过不代表上线或业务验收。
+- #91：整单完成、整单撤回、合同与提醒等配套口径及四项整体回归；
+- 真实飞书来源读取、真实通知外发；
+- 微信开发者工具和真机验收；
+- GitHub Actions、共享测试和生产迁移部署。

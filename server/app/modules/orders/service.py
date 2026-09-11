@@ -395,6 +395,8 @@ class OrderService:
             order = self._locked_order(session, order_id)
             if order.lifecycle != "PUBLISHED":
                 raise OrderConflict("only published orders can be withdrawn")
+            if order.detail_mode:
+                raise OrderConflict("明细派工订单暂不支持整单撤回，待后续版本接入")
             if self._execution_guard.has_valid_shipments(order_id=order_id):
                 raise OrderConflict("order has valid shipments")
             factory_ids = self._factory_ids(session, order_id)
@@ -531,6 +533,7 @@ class OrderService:
                 .where(
                     OrderLine.order_id == order_id,
                     OrderAssignment.factory_id == user.factory_id,
+                    OrderAssignment.is_active.is_(True),
                 )
                 .limit(1)
             )
@@ -606,6 +609,7 @@ class OrderService:
                     .where(
                         OrderLine.order_id == Order.order_id,
                         OrderAssignment.factory_id == scoped_factory,
+                        OrderAssignment.is_active.is_(True),
                     )
                     .exists(),
                 )
@@ -622,6 +626,7 @@ class OrderService:
                         .where(
                             OrderLine.order_id == Order.order_id,
                             OrderAssignment.factory_id.in_(selected_factory_ids),
+                            OrderAssignment.is_active.is_(True),
                         )
                         .exists()
                     )
@@ -642,6 +647,7 @@ class OrderService:
                         .where(
                             OrderAssignment.order_line_id == OrderLine.order_line_id,
                             OrderAssignment.factory_id == scoped_factory,
+                            OrderAssignment.is_active.is_(True),
                         )
                         .exists()
                     )
@@ -666,6 +672,7 @@ class OrderService:
                         .where(
                             OrderAssignment.order_line_id == OrderLine.order_line_id,
                             OrderAssignment.factory_id == scoped_factory,
+                            OrderAssignment.is_active.is_(True),
                         )
                         .exists()
                     )
@@ -739,12 +746,21 @@ class OrderService:
             "order.draft_updated": "更新订单草稿",
             "order.detail_date_updated": "保存未派工明细合同出货时间",
             "order.source_refreshed": "确认更新未派工明细来源资料",
+            "order.detail_dispatched": "明细派工",
             "order.published": "发布订单",
             "order.withdrawn": "撤回订单",
             "order.deleted": "删除订单",
             "order.completed": "确认订单完成",
             "order.reopened": "撤销订单完成",
         }
+        if action == "order.detail_dispatched":
+            count = changes.get("detailIds")
+            names = changes.get("factoryNames")
+            suffix = ""
+            if isinstance(names, list) and names:
+                suffix = "，工厂 " + "、".join(str(name) for name in names)
+            if isinstance(count, list):
+                return f"明细派工 {len(count)} 条{suffix}"
         return labels.get(action, action)
 
     def _set_completion(
@@ -770,6 +786,10 @@ class OrderService:
             target = "COMPLETED" if action == "COMPLETE" else "PUBLISHED"
             if order.lifecycle != expected:
                 raise OrderConflict("order lifecycle changed")
+            if order.detail_mode:
+                raise OrderConflict(
+                    "明细派工订单的完成确认待后续版本接入逐条校验，暂不支持整单完成"
+                )
             if action == "COMPLETE" and self._execution_guard.has_pending_void_requests(
                 order_id=order_id
             ):
@@ -1133,7 +1153,9 @@ class OrderService:
                 )
             )
             if factory_id is not None:
-                assignments = [item for item in assignments if item.factory_id == factory_id]
+                assignments = [
+                    item for item in assignments if item.factory_id == factory_id and item.is_active
+                ]
                 if not assignments:
                     continue
                 visible_quantity = sum(item.assigned_quantity for item in assignments)
@@ -1258,7 +1280,6 @@ class OrderService:
     def _source_snapshot(
         self, session: Session, order: Order, rows: list[OrderDetail] | None = None
     ) -> OrderSnapshot:
-        # This slice only imports unassigned source rows. Execution is introduced in #90.
         if rows is None:
             rows = list(
                 session.scalars(
@@ -1267,9 +1288,45 @@ class OrderService:
                     .order_by(OrderDetail.sort_order, OrderDetail.detail_id)
                 )
             )
+        ordered = sorted(rows, key=lambda detail: (detail.sort_order, detail.detail_id))
+        # Assigned details report execution quantities: the fixed initial
+        # baseline plus the system ledger. Unassigned details report the
+        # accepted source values. Both use the same per-detail pending floor
+        # of zero, so over-shipment never offsets another detail's shortfall.
+        assignment_ids = [row.assignment_id for row in ordered if row.assignment_id]
+        assignments: dict[int, OrderAssignment] = {}
+        ledger_totals: dict[int, int] = {}
+        if assignment_ids:
+            assignments = {
+                item.order_assignment_id: item
+                for item in session.scalars(
+                    select(OrderAssignment).where(
+                        OrderAssignment.order_assignment_id.in_(assignment_ids)
+                    )
+                )
+            }
+            for assignment_id, delta in session.execute(
+                select(
+                    QuantityLedger.order_assignment_id,
+                    func.sum(QuantityLedger.quantity_delta),
+                )
+                .where(QuantityLedger.order_assignment_id.in_(assignment_ids))
+                .group_by(QuantityLedger.order_assignment_id)
+            ):
+                ledger_totals[assignment_id] = int(delta)
         details = []
-        for row in sorted(rows, key=lambda detail: (detail.sort_order, detail.detail_id)):
-            quantity, shipped = row.order_quantity, row.source_shipped_quantity
+        for row in ordered:
+            assignment = (
+                assignments.get(row.assignment_id) if row.assignment_id is not None else None
+            )
+            if row.dispatch_state == "ASSIGNED" and assignment is not None and assignment.is_active:
+                quantity: int | None = assignment.assigned_quantity
+                shipped: int | None = assignment.initial_shipped_quantity + ledger_totals.get(
+                    assignment.order_assignment_id, 0
+                )
+            else:
+                quantity = row.order_quantity
+                shipped = row.source_shipped_quantity
             valid = quantity is not None and quantity > 0 and shipped is not None and shipped >= 0
             pending = (
                 max(quantity - shipped, 0)
@@ -1278,7 +1335,7 @@ class OrderService:
             )
             progress = (
                 round(shipped * 100 / quantity)
-                if valid and quantity and shipped is not None
+                if valid and quantity is not None and quantity and shipped is not None
                 else None
             )
             details.append(

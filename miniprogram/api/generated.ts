@@ -501,6 +501,40 @@ export interface paths {
         patch: operations["save_detail_date_api_v1_admin_orders__order_id__details__detail_id__contract_date_patch"];
         trace?: never;
     };
+    "/api/v1/admin/orders/{order_id}/dispatch/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Dispatch */
+        post: operations["confirm_dispatch_api_v1_admin_orders__order_id__dispatch_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/dispatch/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Dispatch */
+        post: operations["preview_dispatch_api_v1_admin_orders__order_id__dispatch_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/orders/{order_id}/publish": {
         parameters: {
             query?: never;
@@ -2009,6 +2043,55 @@ export interface components {
             detailVersion: number;
             /** Version */
             version: number;
+        };
+        /** DispatchConfirmWrite */
+        DispatchConfirmWrite: {
+            /** Previewid */
+            previewId: string;
+            /** Version */
+            version: number;
+        };
+        /** DispatchPreviewResponse */
+        DispatchPreviewResponse: {
+            /**
+             * Allok
+             * @default false
+             */
+            allOk: boolean;
+            /** Expiresat */
+            expiresAt?: string | null;
+            /** Previewid */
+            previewId?: string | null;
+            /**
+             * Requiressourceconfirmation
+             * @default false
+             */
+            requiresSourceConfirmation: boolean;
+            sourcePreview?: components["schemas"]["SourcePreviewResponse"] | null;
+            /** Validations */
+            validations?: components["schemas"]["DispatchValidationItem"][];
+            /** Version */
+            version: number;
+        };
+        /** DispatchPreviewWrite */
+        DispatchPreviewWrite: {
+            /** Detailids */
+            detailIds: string[];
+            /** Version */
+            version: number;
+        };
+        /** DispatchValidationItem */
+        DispatchValidationItem: {
+            /** Detailid */
+            detailId: string;
+            /** Factoryname */
+            factoryName: string;
+            /** Issues */
+            issues: string[];
+            /** Label */
+            label: string;
+            /** Passes */
+            passes: boolean;
         };
         /** DraftBoxWrite */
         DraftBoxWrite: {
@@ -4554,6 +4637,85 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_dispatch_api_v1_admin_orders__order_id__dispatch_confirm_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispatchConfirmWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_dispatch_api_v1_admin_orders__order_id__dispatch_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispatchPreviewWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispatchPreviewResponse"];
                 };
             };
             /** @description Validation Error */

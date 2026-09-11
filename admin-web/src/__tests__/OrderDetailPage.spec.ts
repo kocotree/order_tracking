@@ -41,17 +41,17 @@ describe("order detail prototype alignment", () => {
     const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
     await flushPromises();
     const productTable = wrapper.get(".product-detail-table");
-    expect(productTable.findAll("thead th")).toHaveLength(10);
+    expect(productTable.findAll("thead th")).toHaveLength(11);
     expect(productTable.findAll("thead th").map((cell) => cell.text())).not.toContain("图片");
     for (const row of productTable.findAll("tbody tr")) {
-      expect(row.findAll("td")).toHaveLength(10);
+      expect(row.findAll("td")).toHaveLength(11);
     }
 
 
     expect(wrapper.attributes("data-title")).toBe("订单详情 · 092#");
     expect(wrapper.findAll(".detail-summary-grid > div")).toHaveLength(6);
-    expect(wrapper.findAll(".product-detail-table th")).toHaveLength(10);
-    expect(wrapper.findAll(".product-detail-table .data-grid-sort-button")).toHaveLength(9);
+    expect(wrapper.findAll(".product-detail-table th")).toHaveLength(11);
+    expect(wrapper.findAll(".product-detail-table .data-grid-sort-button")).toHaveLength(10);
     expect(wrapper.text()).not.toContain("编辑草稿");
     expect(wrapper.text()).not.toContain("删除订单");
     const contractButton = wrapper.find('[data-testid="contract-export-open"]');
@@ -185,8 +185,8 @@ it("allows only the source detail contract date without exposing whole-order pub
   const table = wrapper.get('.product-detail-table');
   expect(table.text()).toContain("RAW-SKU");
   expect(table.text()).toContain("未匹配厂");
-  expect(table.findAll('input, select')).toHaveLength(1);
-  expect(table.get('input').attributes('type')).toBe('date');
+  expect(table.findAll('input:not([type="checkbox"]), select')).toHaveLength(1);
+  expect(table.get('input[type="date"]').attributes('type')).toBe('date');
   expect(wrapper.text()).not.toContain("发布订单");
   expect(wrapper.findAll('.detail-summary-number').map(cell => cell.text())).toEqual(["—", "—", "—"]);
 });
@@ -206,6 +206,7 @@ const mountSource = () => mount(OrderDetailPage, { global: { stubs: {
   AdminShell: { template: "<div><slot /></div>" }, RouterLink: true,
 } } });
 const updateButton = (wrapper: ReturnType<typeof mountSource>) => wrapper.findAll('button').find(b => b.text() === '更新未派工明细')!;
+const dispatchButton = (wrapper: ReturnType<typeof mountSource>) => wrapper.findAll('button').find(b => b.text().startsWith('派工（'))!;
 
 it("preserves failed date input and prevents refresh until the save succeeds", async () => {
   vi.spyOn(orderApi, "get").mockResolvedValue(sourceOrder);
@@ -262,5 +263,61 @@ it("does not expose source refresh or date inputs for assigned details", async (
   const wrapper = mountSource(); await flushPromises();
   expect(wrapper.find('input[type="date"]').exists()).toBe(false);
   expect(updateButton(wrapper)).toBeUndefined();
+  wrapper.unmount();
+});
+
+it("confirms changed sources independently before dispatching the selected details", async () => {
+  vi.spyOn(orderApi, "get").mockResolvedValue(sourceOrder);
+  const updatedOrder = {
+    ...sourceOrder,
+    version: 2,
+    details: [{ ...sourceOrder.details[0], shippedQuantity: 20, pendingQuantity: 80, version: 2 }],
+  };
+  const dispatchedOrder = {
+    ...updatedOrder,
+    version: 3,
+    lifecycle: "PUBLISHED" as const,
+    details: [{ ...updatedOrder.details[0], dispatchState: "ASSIGNED" }],
+  };
+  const preview = vi.spyOn(orderApi, "dispatchPreview")
+    .mockResolvedValueOnce({
+      previewId: null,
+      version: 1,
+      expiresAt: null,
+      requiresSourceConfirmation: true,
+      sourcePreview: sourceDiff,
+      validations: [],
+      allOk: false,
+    })
+    .mockResolvedValueOnce({
+      previewId: "dispatch-90",
+      version: 2,
+      expiresAt: "2026-09-11T12:05:00Z",
+      requiresSourceConfirmation: false,
+      sourcePreview: null,
+      validations: [{ detailId: "source-89", label: "第1条 · 蓝色", factoryName: "测试厂", passes: true, issues: [] }],
+      allOk: true,
+    });
+  const confirmSource = vi.spyOn(orderApi, "confirmSource").mockResolvedValue(updatedOrder);
+  const confirmDispatch = vi.spyOn(orderApi, "dispatchConfirm").mockResolvedValue(dispatchedOrder);
+
+  const wrapper = mountSource();
+  await flushPromises();
+  await wrapper.get('input[aria-label="选择第1条"]').setValue(true);
+  await dispatchButton(wrapper).trigger("click");
+  await flushPromises();
+
+  expect(wrapper.get(".dispatch-modal").text()).toContain("来源资料有变化");
+  await wrapper.get(".dispatch-modal .order-primary-button").trigger("click");
+  await flushPromises();
+
+  expect(confirmSource).toHaveBeenCalledWith("order-1", 1, "preview89", expect.any(String));
+  expect(preview).toHaveBeenLastCalledWith("order-1", 2, ["source-89"]);
+  expect(wrapper.get(".dispatch-modal").text()).toContain("所选明细校验通过");
+
+  await wrapper.get(".dispatch-modal .order-primary-button").trigger("click");
+  await flushPromises();
+  expect(confirmDispatch).toHaveBeenCalledWith("order-1", 2, "dispatch-90", expect.any(String));
+  expect(wrapper.text()).toContain("全部派工");
   wrapper.unmount();
 });

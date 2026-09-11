@@ -26,6 +26,7 @@ def display_status(today: date, factory_id: str | None = None) -> ColumnElement[
         .join(OrderAssignment, OrderAssignment.order_line_id == OrderLine.order_line_id)
         .outerjoin(ledger, ledger.c.order_assignment_id == OrderAssignment.order_assignment_id)
         .where(
+            OrderAssignment.is_active.is_(True),
             OrderAssignment.contract_ship_date < today,
             OrderAssignment.assigned_quantity
             > OrderAssignment.initial_shipped_quantity + func.coalesce(ledger.c.quantity, 0),
@@ -62,6 +63,7 @@ def page_orders(
             .where(
                 OrderAssignment.order_line_id == OrderLine.order_line_id,
                 OrderAssignment.factory_id == factory_id,
+                OrderAssignment.is_active.is_(True),
             )
             .correlate(OrderLine)
             .exists()
@@ -74,7 +76,10 @@ def page_orders(
     dates = (
         select(OrderAssignment.contract_ship_date)
         .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-        .where(OrderLine.order_id == Order.order_id)
+        .where(
+            OrderLine.order_id == Order.order_id,
+            OrderAssignment.is_active.is_(True),
+        )
         .correlate(Order)
     )
     if factory_id is not None:
@@ -173,7 +178,10 @@ def page_orders(
                 .label("position"),
             )
             .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-            .where(OrderAssignment.factory_id == factory_id if factory_id is not None else true())
+            .where(
+                OrderAssignment.is_active.is_(True),
+                OrderAssignment.factory_id == factory_id if factory_id is not None else true(),
+            )
             .subquery("names")
         )
         names = (
@@ -217,7 +225,10 @@ def page_orders(
                 ledger_totals,
                 ledger_totals.c.order_assignment_id == OrderAssignment.order_assignment_id,
             )
-            .where(OrderAssignment.factory_id == factory_id if factory_id is not None else true())
+            .where(
+                OrderAssignment.is_active.is_(True),
+                OrderAssignment.factory_id == factory_id if factory_id is not None else true(),
+            )
             .group_by(OrderLine.order_id)
             .subquery()
         )

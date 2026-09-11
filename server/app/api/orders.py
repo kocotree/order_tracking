@@ -15,8 +15,8 @@ from app.modules.orders import (
     OrderService,
     OrderSnapshot,
 )
-from app.modules.orders.source_update import OrderSourceUpdateService
 from app.modules.orders.dispatch import OrderDispatchService
+from app.modules.orders.source_update import OrderSourceUpdateService
 
 
 def to_camel(value: str) -> str:
@@ -81,7 +81,7 @@ class DispatchPreviewWrite(ApiModel):
     detail_ids: list[str] = Field(min_length=1, max_length=500)
 
 
-class DispatchConfirmWrite(DispatchPreviewWrite):
+class DispatchConfirmWrite(VersionWrite):
     model_config = ConfigDict(extra="forbid")
     preview_id: str = Field(min_length=1, max_length=36)
 
@@ -102,20 +102,21 @@ class SourceDifferenceResponse(ApiModel):
     after: str | int | None
 
 
-class DispatchPreviewResponse(ApiModel):
-    preview_id: str
-    version: int
-    expires_at: datetime
-    source_differences: list[SourceDifferenceResponse]
-    validations: list[DispatchValidationItem]
-    all_ok: bool
-
-
 class SourcePreviewResponse(ApiModel):
     preview_id: str
     version: int
     expires_at: datetime
     differences: list[SourceDifferenceResponse]
+
+
+class DispatchPreviewResponse(ApiModel):
+    preview_id: str | None = None
+    version: int
+    expires_at: datetime | None = None
+    requires_source_confirmation: bool = False
+    source_preview: SourcePreviewResponse | None = None
+    validations: list[DispatchValidationItem] = Field(default_factory=list)
+    all_ok: bool = False
 
 
 class ReopenWrite(ApiModel):
@@ -332,7 +333,6 @@ def create_order_router(
         )
         return _order_response(result, request.state.request_id)
 
-
     @router.post(
         "/admin/orders/{order_id}/source-refresh/preview",
         response_model=SourcePreviewResponse,
@@ -354,7 +354,6 @@ def create_order_router(
                 request_id=request.state.request_id,
             )
         )
-
 
     @router.post(
         "/admin/orders/{order_id}/source-refresh/confirm",
@@ -396,7 +395,7 @@ def create_order_router(
             raise OrderNotFound("dispatch not enabled")
         actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
         return DispatchPreviewResponse.model_validate(
-            dispatch_service.preview(
+            dispatch_service.dispatch_preview(
                 actor_id=actor.user_id,
                 order_id=order_id,
                 version=payload.version,
@@ -421,7 +420,7 @@ def create_order_router(
         if dispatch_service is None:
             raise OrderNotFound("dispatch not enabled")
         actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
-        result = dispatch_service.confirm(
+        result = dispatch_service.dispatch_confirm(
             actor_id=actor.user_id,
             order_id=order_id,
             version=payload.version,

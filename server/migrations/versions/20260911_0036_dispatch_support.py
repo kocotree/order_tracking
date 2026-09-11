@@ -19,79 +19,66 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # 1. Remove over-shipment blocker — allow initial_shipped > assigned_quantity.
-    with op.batch_alter_table("order_assignments", schema=None) as batch_op:
-        batch_op.drop_constraint(
-            "ck_order_assignments_quantity_covers_initial_shipped", type_="check"
-        )
-
-    # 2. Allow same SKU/factory from different source details — unique → index.
-    with op.batch_alter_table("order_assignments", schema=None) as batch_op:
-        batch_op.drop_constraint("uq_order_assignments_line_factory", type_="unique")
-        batch_op.create_index(
-            "ix_order_assignments_line_factory",
-            ["order_line_id", "factory_id"],
-        )
-
+    op.execute(
+        "ALTER TABLE order_assignments "
+        "DROP CHECK ck_order_assignments_quantity_covers_initial_shipped"
+    )
+    # 2. Allow same SKU/factory from different source details — unique key to index.
+    #    Create the replacement index first: MySQL refuses to drop the unique key
+    #    while a foreign key still needs it as the backing index.
+    op.create_index(
+        "ix_order_assignments_line_factory",
+        "order_assignments",
+        ["order_line_id", "factory_id"],
+    )
+    op.drop_index("uq_order_assignments_line_factory", table_name="order_assignments")
     # 3. Link assignment back to its source detail.
-    with op.batch_alter_table("order_assignments", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column("detail_id", sa.String(36), nullable=True)
-        )
-        batch_op.create_unique_constraint(
-            "uq_order_assignments_detail", ["detail_id"]
-        )
-        batch_op.create_foreign_key(
-            "fk_order_assignments_detail",
-            "order_details",
-            ["detail_id"],
-            ["detail_id"],
-            ondelete="RESTRICT",
-        )
-
-    # 4. Mark an assignment as active/inactive (withdraw preserves history).
-    with op.batch_alter_table("order_assignments", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column(
-                "is_active",
-                sa.Boolean,
-                nullable=False,
-                server_default="1",
-            )
-        )
-
+    op.add_column("order_assignments", sa.Column("detail_id", sa.String(36), nullable=True))
+    op.create_unique_constraint("uq_order_assignments_detail", "order_assignments", ["detail_id"])
+    op.create_foreign_key(
+        "fk_order_assignments_detail",
+        "order_assignments",
+        "order_details",
+        ["detail_id"],
+        ["detail_id"],
+        ondelete="RESTRICT",
+    )
+    # 4. Mark an assignment active/inactive (withdraw preserves history).
+    op.add_column(
+        "order_assignments",
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default="1"),
+    )
     # 5. Batch tracking on order_details (for notification grouping).
-    with op.batch_alter_table("order_details", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column("dispatch_batch_id", sa.String(36), nullable=True)
-        )
+    op.add_column("order_details", sa.Column("dispatch_batch_id", sa.String(36), nullable=True))
 
 
 def downgrade() -> None:
-    # Guard: reject downgrade when new-style dispatch data may exist.
     conn = op.get_bind()
     new_assignments = conn.execute(
         sa.text("SELECT 1 FROM order_assignments WHERE detail_id IS NOT NULL LIMIT 1")
     ).fetchone()
-    if new_assignments:
-        raise RuntimeError(
-            "New dispatch assignments with detail_id exist; "
-            "backup, drop, and restore with old structure manually."
-        )
-
-    with op.batch_alter_table("order_details", schema=None) as batch_op:
-        batch_op.drop_column("dispatch_batch_id")
-
-    with op.batch_alter_table("order_assignments", schema=None) as batch_op:
-        batch_op.drop_column("is_active")
-        batch_op.drop_constraint("fk_order_assignments_detail", type_="foreignkey")
-        batch_op.drop_constraint("uq_order_assignments_detail", type_="unique")
-        batch_op.drop_column("detail_id")
-        batch_op.drop_index("ix_order_assignments_line_factory")
-        batch_op.create_unique_constraint(
-            "uq_order_assignments_line_factory",
-            ["order_line_id", "factory_id"],
-        )
-        batch_op.create_check_constraint(
-            "ck_order_assignments_quantity_covers_initial_shipped",
-            "assigned_quantity >= initial_shipped_quantity",
-        )
+    source_data = (
+        conn.execute(
+            sa.text("SELECT 1 FROM orders WHERE detail_mode = 1 OR tracker IS NULL LIMIT 1")
+        ).fetchone()
+        or conn.execute(sa.text("SELECT 1 FROM order_import_candidates LIMIT 1")).fetchone()
+        or conn.execute(
+            sa.text("SELECT 1 FROM order_details WHERE origin <> 'legacy' LIMIT 1")
+        ).fetchone()
+    )
+    if new_assignments or source_data:
+        raise RuntimeError("存在新来源或派工资料，拒绝有损回滚；请按已审核备份恢复方案处理")
+    op.drop_column("order_details", "dispatch_batch_id")
+    op.drop_column("order_assignments", "is_active")
+    op.drop_constraint("fk_order_assignments_detail", "order_assignments", type_="foreignkey")
+    op.drop_constraint("uq_order_assignments_detail", "order_assignments", type_="unique")
+    op.drop_column("order_assignments", "detail_id")
+    op.create_unique_constraint(
+        "uq_order_assignments_line_factory", "order_assignments", ["order_line_id", "factory_id"]
+    )
+    op.drop_index("ix_order_assignments_line_factory", table_name="order_assignments")
+    op.create_check_constraint(
+        "ck_order_assignments_quantity_covers_initial_shipped",
+        "order_assignments",
+        "assigned_quantity >= initial_shipped_quantity",
+    )

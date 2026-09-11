@@ -171,6 +171,8 @@ class NotificationsAuditService:
             message.attempts += 1
             if message.event_type == "order_published":
                 self._consume_order_published(session, message)
+            elif message.event_type == "order_detail_dispatched":
+                self._consume_order_detail_dispatched(session, message)
             elif message.event_type in {"order_withdrawn", "order_deleted"}:
                 self._consume_order_unpublished(session, message)
             elif message.event_type == "shipment.submitted":
@@ -867,6 +869,63 @@ class NotificationsAuditService:
                         available_at=message.locked_at or utc_now(),
                     )
                 )
+
+    def _consume_order_detail_dispatched(
+        self, session: Session, message: OutboxMessage
+    ) -> None:
+        """Turn a detail-dispatch outbox event into factory notifications.
+
+        The event payload fixes the batch scope (assignment ids, dates and
+        quantities); the consumer never re-expands it to the whole order, so
+        a later dispatch of the same order cannot leak into this batch.
+        """
+        order = session.get(Order, str(message.payload["orderId"]))
+        if order is None or order.deleted_at is not None or order.lifecycle != "PUBLISHED":
+            return
+        factory_id = str(message.payload["factoryId"])
+        assignment_ids = [int(value) for value in message.payload.get("assignmentIds", [])]
+        if not assignment_ids:
+            return
+        # Verify the batch is still active at consume time; a withdrawn
+        # batch must not notify.
+        still_active = session.scalar(
+            select(OrderAssignment.order_assignment_id)
+            .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+            .where(
+                OrderAssignment.order_assignment_id.in_(assignment_ids),
+                OrderAssignment.factory_id == factory_id,
+                OrderAssignment.is_active.is_(True),
+                OrderLine.order_id == order.order_id,
+            )
+            .limit(1)
+        )
+        if still_active is None:
+            return
+        line_count = len(message.payload.get("lines", []))
+        summary = f"订单 {order.order_no} 新派工 {line_count} 条明细，请查看本厂任务"
+        for user in self._enabled_factory_users(session, factory_id):
+            self._notify_user(
+                session,
+                message=message,
+                user_id=user.user_id,
+                category="NEW_ORDER",
+                target_type="factory_task",
+                target_id=order.order_id,
+                title="新订单任务",
+                summary=summary,
+                target_path=(
+                    "/pages/factory-task-detail/factory-task-detail"
+                    f"?orderId={order.order_id}"
+                ),
+                channel="wechat",
+                template_key="factory_status",
+                template_data={
+                    "thing1": "跟单管理系统",
+                    "character_string2": order.order_no,
+                    "phrase3": "新订单",
+                    "time4": _wechat_time(message.locked_at or utc_now()),
+                },
+            )
 
     def _consume_order_unpublished(self, session: Session, message: OutboxMessage) -> None:
         order = session.get(Order, str(message.payload["orderId"]))

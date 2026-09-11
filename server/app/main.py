@@ -88,8 +88,8 @@ from app.modules.orders import (
     OrderService,
     OrderValidationError,
 )
-from app.modules.orders.source_update import OrderSourceUpdateService
 from app.modules.orders.dispatch import OrderDispatchService
+from app.modules.orders.source_update import OrderSourceUpdateService
 from app.modules.product_sync import ProductCatalogService
 from app.modules.repairs.confirmation import RepairConfirmationService
 from app.modules.repairs.preview import RepairPreviewService

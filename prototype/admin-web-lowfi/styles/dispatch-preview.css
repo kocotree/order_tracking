@@ -1,0 +1,42 @@
+.dispatch-page { display:grid; gap:14px; }
+.dispatch-page .detail-summary-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.dispatch-page .detail-summary-grid>div:nth-child(3n) { border-right:0; }
+.dispatch-page .detail-summary-grid>div:nth-child(n+4) { border-bottom:0; }
+.dispatch-page .detail-section-header { height:54px; padding:0 16px; }
+.dispatch-page .detail-section-header h2 { font-size:18px; }
+.dispatch-heading, .dispatch-actions { display:flex; align-items:center; gap:14px; white-space:nowrap; }
+.dispatch-count { color:var(--muted); font-size:13px; font-weight:500; }
+.dispatch-table { width:100%; min-width:1550px; table-layout:fixed; border-collapse:collapse; font-size:14px; }
+.dispatch-table th,.dispatch-table td { box-sizing:border-box; border:1px solid #dde1e7; padding:0 14px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dispatch-table th { height:40px; font-size:13px; font-weight:800; background:#f1f3f6; color:#37404b; }
+.dispatch-table td { height:48px; }
+.dispatch-table .dispatch-seq { width:52px; padding:0 8px; text-align:center; font-weight:600; }
+.dispatch-table .dispatch-check { width:40px; padding:0 8px; text-align:center; }
+.dispatch-table input:not([type=checkbox]),.dispatch-table select { width:100%; min-width:0; height:32px; padding:0 7px; border:1px solid #d3dbe6; border-radius:4px; background:white; color:inherit; font:inherit; }
+.dispatch-table input[type=checkbox] { width:15px; height:15px; accent-color:var(--erp-blue); }
+.dispatch-table .dispatch-code { color:var(--erp-blue-dark); font-weight:700; }
+.dispatch-page .detail-title-row { gap:12px; }
+.dispatch-modal { width:min(880px,calc(100vw - 40px)); }
+.dispatch-modal .modal-body { max-height:65vh; overflow:auto; }
+.dispatch-modal table { width:100%; border-collapse:collapse; margin-top:16px; font-size:14px; }
+.dispatch-modal th,.dispatch-modal td { padding:12px; border:1px solid #dde1e7; text-align:left; }
+.dispatch-modal th { background:#f1f3f6; }
+.dispatch-modal .dispatch-error { color:#b45309; }
+.dispatch-modal .dispatch-pass { color:#18764b; }
+.dispatch-modal p { margin:0; }
+.dispatch-modal::backdrop { background:rgb(20 31 43 / 40%); }
+dialog.dispatch-modal { padding:0; }
+.dispatch-logs { padding:16px; color:var(--muted); font-size:13px; line-height:2; }
+.dispatch-page .detail-progress { display:flex; align-items:center; gap:8px; }
+.dispatch-page .detail-progress>span { width:70px; height:7px; border-radius:4px; background:#e7edf4; overflow:hidden; }
+.dispatch-page .detail-progress i { display:block; height:100%; background:#4a90ed; }
+.dispatch-page .detail-progress em { font-style:normal; font-size:12px; }
+@media(max-width:1100px) { .dispatch-page .detail-section-header { overflow-x:auto; gap:24px; } }
+
+/* Issue #87：仅订单详情明细表加粗，列宽保持评审原型。 */
+.dispatch-page .dispatch-table th,
+.dispatch-page .dispatch-table th button { font-weight:800; }
+.dispatch-page .dispatch-table td,
+.dispatch-page .dispatch-table td input,
+.dispatch-page .dispatch-table td .status-badge,
+.dispatch-page .dispatch-table td em { font-weight:700; }

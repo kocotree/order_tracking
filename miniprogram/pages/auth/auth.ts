@@ -68,7 +68,7 @@ Page({
       return;
     }
     if (event.detail.errMsg !== "getPhoneNumber:ok" || !event.detail.code) {
-      wx.showToast({ title: "未取得手机号授权", icon: "none" });
+      wx.showToast({ title: "请使用手机号快捷登录", icon: "none" });
       return;
     }
     this.setData({ busy: true });

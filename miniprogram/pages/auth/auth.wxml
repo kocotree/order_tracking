@@ -6,7 +6,7 @@
     <view class="auth-status-mark auth-status-mark--identifying">…</view>
     <text class="auth-eyebrow">管理员入口</text>
     <text class="auth-title">正在识别身份</text>
-    <text class="auth-description">正在通过微信身份确认管理员账号，请稍候。</text>
+    <text class="auth-description">正在确认账号身份，请稍候。</text>
     <text class="auth-note">身份识别完成后将自动进入下一步</text>
   </view>
 </view>
@@ -19,19 +19,11 @@
     <view class="auth-copy"><text class="auth-title">跟单管理系统</text><text>查看订单、发货记录与返修进度</text></view>
     <button wx:if="{{agreementAccepted && bindingToken}}" class="auth-primary-button" loading="{{busy}}" disabled="{{busy}}" open-type="getPhoneNumber" bindgetphonenumber="phoneAuthorized">
       <view class="auth-button-content">
-        <view class="wechat-mark" aria-hidden="true">
-          <view class="wechat-bubble wechat-bubble--back"><view class="wechat-eye"/><view class="wechat-eye"/></view>
-          <view class="wechat-bubble wechat-bubble--front"><view class="wechat-eye"/><view class="wechat-eye"/></view>
-        </view>
         <text>手机号快捷登录</text>
       </view>
     </button>
     <button wx:else class="auth-primary-button" bindtap="retryLogin" loading="{{busy}}" disabled="{{busy}}">
       <view class="auth-button-content">
-        <view class="wechat-mark" aria-hidden="true">
-          <view class="wechat-bubble wechat-bubble--back"><view class="wechat-eye"/><view class="wechat-eye"/></view>
-          <view class="wechat-bubble wechat-bubble--front"><view class="wechat-eye"/><view class="wechat-eye"/></view>
-        </view>
         <text>手机号快捷登录</text>
       </view>
     </button>

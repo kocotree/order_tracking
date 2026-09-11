@@ -170,6 +170,13 @@ def test_upgrade_preserves_execution_ids_and_unassigned_legacy_drafts(
                         )
                     )
         command.upgrade(config, "head")
+        # Only the draft assignment activity marker changes; all original facts stay intact.
+        for row in before["order_assignments"]:
+            if row["order_assignment_id"] == draft.lines[0].assignments[0].assignment_id:
+                before["order_assignments"] = [
+                    dict(item, is_active=0) if item == row else item
+                    for item in before["order_assignments"]
+                ]
         with test_database_engine.connect() as connection:
             for table in tables:
                 assert (

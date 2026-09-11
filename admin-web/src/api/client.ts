@@ -345,7 +345,10 @@ export const orderApi = {
     request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/dispatch/confirm`, {
       method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ version, previewId }),
     }),
-  dashboard: () => request<DashboardOrders>("/v1/admin/dashboard/orders"),
+  dashboard: (params: { keyword?: string; sortBy?: string } = {}) => {
+    const query = new URLSearchParams({ keyword: params.keyword ?? "", sortBy: params.sortBy ?? "updatedDesc" });
+    return request<DashboardOrders>(`/v1/admin/dashboard/orders?${query}`);
+  },
   auditLogs: (orderId: string) =>
     request<AuditLogList>(`/v1/admin/orders/${encodeURIComponent(orderId)}/audit-logs`),
   createDraft: (payload: DraftCreate) =>
@@ -361,10 +364,12 @@ export const orderApi = {
       headers: idempotencyHeaders(),
       body: JSON.stringify({ version }),
     }),
-  withdraw: (orderId: string) =>
-    request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/withdraw`, {
+  withdrawalFactories: (orderId: string) => request<{ factoryId: string; factoryName: string; detailCount: number; blocked: boolean }[]>(`/v1/admin/orders/${encodeURIComponent(orderId)}/dispatch/factories`),
+  withdrawFactory: (orderId: string, factoryId: string, version: number, key: string) =>
+    request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/dispatch/withdraw`, {
       method: "POST",
-      headers: idempotencyHeaders(),
+      headers: { "Idempotency-Key": key },
+      body: JSON.stringify({ factoryId, version }),
     }),
   delete: (orderId: string) =>
     request<void>(`/v1/admin/orders/${encodeURIComponent(orderId)}`, {

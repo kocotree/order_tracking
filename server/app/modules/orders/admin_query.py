@@ -6,8 +6,50 @@ from typing import Any
 from sqlalchemy import Select, case, func, literal_column, select, true
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy.sql.selectable import Subquery
 
-from app.db.models import Order, OrderAssignment, OrderLine, QuantityLedger
+from app.db.models import Order, OrderAssignment, OrderDetail, OrderLine, QuantityLedger
+
+
+def source_rows() -> Subquery:
+    """One current row per source detail, with execution quantities only while assigned."""
+    ledger = (
+        select(
+            QuantityLedger.order_assignment_id.label("assignment_id"),
+            func.sum(QuantityLedger.quantity_delta).label("quantity"),
+        )
+        .group_by(QuantityLedger.order_assignment_id)
+        .subquery()
+    )
+    active = (OrderDetail.dispatch_state == "ASSIGNED") & OrderAssignment.is_active.is_(True)
+    return (
+        select(
+            OrderDetail.order_id,
+            OrderDetail.detail_id,
+            OrderDetail.sort_order,
+            OrderDetail.product_name,
+            OrderDetail.properties_value,
+            OrderDetail.category,
+            OrderDetail.factory_name,
+            OrderDetail.matched_factory_id.label("factory_id"),
+            OrderDetail.contract_ship_date,
+            case(
+                (active, OrderAssignment.assigned_quantity), else_=OrderDetail.order_quantity
+            ).label("quantity"),
+            case(
+                (
+                    active,
+                    OrderAssignment.initial_shipped_quantity + func.coalesce(ledger.c.quantity, 0),
+                ),
+                else_=OrderDetail.source_shipped_quantity,
+            ).label("shipped"),
+        )
+        .outerjoin(
+            OrderAssignment, OrderAssignment.order_assignment_id == OrderDetail.assignment_id
+        )
+        .outerjoin(ledger, ledger.c.assignment_id == OrderAssignment.order_assignment_id)
+        .subquery("source_rows")
+    )
 
 
 def display_status(today: date, factory_id: str | None = None) -> ColumnElement[str]:
@@ -34,7 +76,18 @@ def display_status(today: date, factory_id: str | None = None) -> ColumnElement[
     )
     if factory_id is not None:
         overdue_orders = overdue_orders.where(OrderAssignment.factory_id == factory_id)
-    overdue = Order.order_id.in_(overdue_orders)
+    overdue: ColumnElement[bool] = Order.order_id.in_(overdue_orders)
+    if factory_id is None:
+        rows = source_rows()
+        source_overdue = Order.order_id.in_(
+            select(rows.c.order_id).where(
+                rows.c.contract_ship_date < today,
+                (rows.c.quantity.is_(None))
+                | (rows.c.shipped.is_(None))
+                | (rows.c.quantity > rows.c.shipped),
+            )
+        )
+        overdue = case((Order.detail_mode.is_(True), source_overdue), else_=overdue)
     return case(
         (Order.lifecycle == "DRAFT", "草稿"),
         (Order.lifecycle == "COMPLETED", "已完成"),
@@ -84,6 +137,10 @@ def page_orders(
     )
     if factory_id is not None:
         dates = dates.where(OrderAssignment.factory_id == factory_id)
+    rows = source_rows()
+    source_dates = (
+        select(rows.c.contract_ship_date).where(rows.c.order_id == Order.order_id).correlate(Order)
+    )
     if ship_date_from or ship_date_to:
         matching_dates = dates
         if ship_date_from:
@@ -94,13 +151,45 @@ def page_orders(
             matching_dates = matching_dates.where(
                 OrderAssignment.contract_ship_date <= ship_date_to
             )
-        query = query.where(matching_dates.exists())
-    first_date = dates.with_only_columns(
+        source_matching = source_dates
+        if ship_date_from:
+            source_matching = source_matching.where(rows.c.contract_ship_date >= ship_date_from)
+        if ship_date_to:
+            source_matching = source_matching.where(rows.c.contract_ship_date <= ship_date_to)
+        query = query.where(
+            case(
+                (Order.detail_mode.is_(True), source_matching.exists()),
+                else_=matching_dates.exists(),
+            )
+            if factory_id is None
+            else matching_dates.exists()
+        )
+    first_date: ColumnElement[Any] = dates.with_only_columns(
         func.min(OrderAssignment.contract_ship_date)
     ).scalar_subquery()
-    last_date = dates.with_only_columns(
+    last_date: ColumnElement[Any] = dates.with_only_columns(
         func.max(OrderAssignment.contract_ship_date)
     ).scalar_subquery()
+
+    if factory_id is None:
+        first_date = case(
+            (
+                Order.detail_mode.is_(True),
+                source_dates.with_only_columns(
+                    func.min(rows.c.contract_ship_date)
+                ).scalar_subquery(),
+            ),
+            else_=first_date,
+        )
+        last_date = case(
+            (
+                Order.detail_mode.is_(True),
+                source_dates.with_only_columns(
+                    func.max(rows.c.contract_ship_date)
+                ).scalar_subquery(),
+            ),
+            else_=last_date,
+        )
 
     def string_key(value: Any) -> ColumnElement[Any]:
         return func.coalesce(value, "").collate("utf8mb4_0900_bin")
@@ -282,6 +371,62 @@ def page_orders(
             ),
             func.coalesce(first_date, date.max),
             order_no,
+        ]
+        reverse = False
+    if factory_id is None and normalized in {
+        "productName",
+        "factory",
+        "category",
+        "shippedQuantity",
+        "progressPercent",
+    }:
+        source_query = select(rows).where(rows.c.order_id == Order.order_id).correlate(Order)
+        source_value: ColumnElement[Any]
+        if normalized in {"productName", "factory"}:
+            column = "product_name" if normalized == "productName" else "factory_name"
+            source_value = source_query.with_only_columns(
+                func.group_concat(
+                    literal_column(
+                        f"DISTINCT source_rows.{column} ORDER BY source_rows.sort_order, "
+                        "source_rows.detail_id SEPARATOR '、'"
+                    )
+                )
+            ).scalar_subquery()
+            source_value = string_key(source_value)
+        elif normalized == "category":
+            clothes = source_query.where(rows.c.category.in_(["童装春夏", "童装秋冬"])).exists()
+            hats = source_query.where(
+                rows.c.category != "", rows.c.category.not_in(["童装春夏", "童装秋冬"])
+            ).exists()
+            source_value = string_key(
+                case((clothes & hats, "服装、帽子"), (clothes, "服装"), (hats, "帽子"), else_="")
+            )
+        else:
+
+            def nullable_sum(column: Any) -> Any:
+                return source_query.with_only_columns(
+                    case((func.count(column) == func.count(), func.sum(column)), else_=None)
+                ).scalar_subquery()
+
+            shipped_source = nullable_sum(rows.c.shipped)
+            quantity_source = nullable_sum(rows.c.quantity)
+            if normalized == "shippedQuantity":
+                source_value = shipped_source
+            else:
+                denominator = func.nullif(quantity_source, 0)
+                numerator = shipped_source * 100
+                lower = numerator.op("DIV")(denominator)
+                twice_remainder = (numerator - lower * denominator) * 2
+                source_value = lower + case(
+                    (twice_remainder > denominator, 1),
+                    (twice_remainder == denominator, func.abs(func.mod(lower, 2))),
+                    else_=0,
+                )
+        value = case((Order.detail_mode.is_(True), source_value), else_=keys[0])
+        keys = [
+            value.is_(None),
+            value.desc() if reverse else value.asc(),
+            order_no.desc() if reverse else order_no,
         ]
         reverse = False
     if reverse:

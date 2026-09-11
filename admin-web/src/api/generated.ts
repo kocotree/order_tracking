@@ -518,6 +518,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/orders/{order_id}/dispatch/factories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Withdrawal Factories */
+        get: operations["withdrawal_factories_api_v1_admin_orders__order_id__dispatch_factories_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/orders/{order_id}/dispatch/preview": {
         parameters: {
             query?: never;
@@ -529,6 +546,23 @@ export interface paths {
         put?: never;
         /** Preview Dispatch */
         post: operations["preview_dispatch_api_v1_admin_orders__order_id__dispatch_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/dispatch/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw Factory */
+        post: operations["withdraw_factory_api_v1_admin_orders__order_id__dispatch_withdraw_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -597,23 +631,6 @@ export interface paths {
         put?: never;
         /** Preview Source */
         post: operations["preview_source_api_v1_admin_orders__order_id__source_refresh_preview_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/orders/{order_id}/withdraw": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Withdraw */
-        post: operations["withdraw_api_v1_admin_orders__order_id__withdraw_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2034,6 +2051,8 @@ export interface components {
             requestId: string;
             /** Todayshipments */
             todayShipments: number;
+            /** Totalorders */
+            totalOrders: number;
         };
         /** DetailDateWrite */
         DetailDateWrite: {
@@ -2336,6 +2355,13 @@ export interface components {
              * @default
              */
             legalRepresentative: string;
+            /** Version */
+            version: number;
+        };
+        /** FactoryWithdrawalWrite */
+        FactoryWithdrawalWrite: {
+            /** Factoryid */
+            factoryId: string;
             /** Version */
             version: number;
         };
@@ -3435,6 +3461,17 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** WithdrawalFactoryResponse */
+        WithdrawalFactoryResponse: {
+            /** Blocked */
+            blocked: boolean;
+            /** Detailcount */
+            detailCount: number;
+            /** Factoryid */
+            factoryId: string;
+            /** Factoryname */
+            factoryName: string;
+        };
         /** DraftCreate */
         app__api__orders__DraftCreate: {
             /** Lines */
@@ -3541,7 +3578,10 @@ export interface operations {
     };
     dashboard_api_v1_admin_dashboard_orders_get: {
         parameters: {
-            query?: never;
+            query?: {
+                keyword?: string;
+                sortBy?: string;
+            };
             header?: never;
             path?: never;
             cookie?: {
@@ -4690,6 +4730,39 @@ export interface operations {
             };
         };
     };
+    withdrawal_factories_api_v1_admin_orders__order_id__dispatch_factories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WithdrawalFactoryResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     preview_dispatch_api_v1_admin_orders__order_id__dispatch_preview_post: {
         parameters: {
             query?: never;
@@ -4716,6 +4789,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DispatchPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_factory_api_v1_admin_orders__order_id__dispatch_withdraw_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactoryWithdrawalWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4875,42 +4988,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourcePreviewResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    withdraw_api_v1_admin_orders__order_id__withdraw_post: {
-        parameters: {
-            query?: never;
-            header: {
-                "Idempotency-Key": string;
-                "x-csrf-token"?: string | null;
-            };
-            path: {
-                order_id: string;
-            };
-            cookie?: {
-                ot_web_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrderResponse"];
                 };
             };
             /** @description Validation Error */

@@ -137,7 +137,13 @@ class OrderSourceUpdateService(OrderService):
             return self._source_snapshot(session, order, rows)
 
     def _read(
-        self, order_id: str, actor_id: str, version: int, detail_ids: list[str] | None
+        self,
+        order_id: str,
+        actor_id: str,
+        version: int,
+        detail_ids: list[str] | None,
+        *,
+        allow_legacy: bool = False,
     ) -> tuple[dict[str, int], dict[str, SourceOrderRow]]:
         # Close this transaction before making any network request.
         with self._session_factory() as session:
@@ -155,21 +161,41 @@ class OrderSourceUpdateService(OrderService):
                 raise OrderConflict("没有可更新的未派工明细")
             identities = {}
             versions = {}
+            legacy = {}
             for row in selected:
                 source = (
                     session.get(OrderImportSourceRecord, row.source_record_pk)
                     if row.source_record_pk
                     else None
                 )
+                if source is None and row.origin == "legacy" and allow_legacy:
+                    legacy[row.detail_id] = SourceOrderRow(
+                        row.detail_id,
+                        order.order_no,
+                        row.source_sku_id,
+                        row.product_name,
+                        row.properties_value,
+                        row.category,
+                        row.factory_name,
+                        row.order_quantity,
+                        row.source_shipped_quantity,
+                        None,
+                        row.source_tracker,
+                        None,
+                        row.contract_ship_date,
+                        row.accepted_raw_fields,
+                    )
+                    versions[row.detail_id] = row.version
+                    continue
                 if source is None or source.source_scope != self._source.source_scope:
                     raise OrderConflict("明细没有可靠的来源关联，不能更新")
                 identities[source.source_record_id] = (row.detail_id, source.source_detail_id)
                 versions[row.detail_id] = row.version
             order_no = order.order_no
-        fetched = self._source.read_records(list(identities))
+        fetched = self._source.read_records(list(identities)) if identities else []
         if len(fetched) != len(identities) or {r.record_id for r in fetched} != set(identities):
             raise OrderConflict("来源明细缺失或重复，原资料保持不变")
-        result = {}
+        result = dict(legacy)
         for fetched_row in fetched:
             detail_id, source_detail_id = identities[fetched_row.record_id]
             if (
@@ -182,6 +208,12 @@ class OrderSourceUpdateService(OrderService):
     @staticmethod
     def _values(session: Session, row: SourceOrderRow, detail: OrderDetail) -> dict[str, Any]:
         variant, factory, issues = OrderImportService.match_source_row(session, row)
+        if detail.origin == "legacy" and detail.source_record_pk is None:
+            values = {key: getattr(detail, key) for key in FIELDS}
+            return {
+                key: value.isoformat() if isinstance(value, date) else value
+                for key, value in values.items()
+            }
         source_date = row.contract_ship_date
         effective_date = (
             detail.contract_ship_date
@@ -221,8 +253,11 @@ class OrderSourceUpdateService(OrderService):
         version: int,
         request_id: str,
         detail_ids: list[str] | None = None,
+        allow_legacy: bool = False,
     ) -> dict[str, Any]:
-        versions, fetched = self._read(order_id, actor_id, version, detail_ids)
+        versions, fetched = self._read(
+            order_id, actor_id, version, detail_ids, allow_legacy=allow_legacy
+        )
         with self._session_factory() as session, session.begin():
             self._check(session, actor_id, order_id, version, lock=True)
             rows = self._details(session, order_id, lock=True)

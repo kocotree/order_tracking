@@ -11,8 +11,8 @@
               <span class="status-badge" :class="statusTone(order)"><i aria-hidden="true"></i>{{ order.displayStatus }}</span>
               <button v-if="order.lifecycle === 'DRAFT' && !order.detailMode" class="detail-primary-button" type="button" @click="openAction('publish')">发布订单</button>
               <button class="detail-outline-button" type="button" data-testid="contract-export-open" :disabled="!contractButtonEnabled" :title="contractButtonTitle" @click="openContractExport">导出加工合同</button>
-              <button v-if="order.lifecycle === 'PUBLISHED' && !order.detailMode" class="detail-outline-button" type="button" @click="openAction('withdraw')">撤回订单</button>
-              <button v-if="order.lifecycle === 'PUBLISHED' && !order.detailMode" class="detail-primary-button" type="button" @click="openAction('complete')">确认订单完成</button>
+              <button v-if="order.lifecycle !== 'DRAFT'" class="detail-outline-button" type="button" :disabled="interactionBusy || hasUnsavedDates" @click="openWithdrawal">撤回派工</button>
+              <button v-if="order.lifecycle === 'PUBLISHED'" class="detail-primary-button" type="button" :disabled="!canComplete || interactionBusy" @click="openAction('complete')">确认订单完成</button>
               <button v-if="order.lifecycle === 'COMPLETED'" class="detail-outline-button" type="button" @click="openAction('reopen')">撤销完成</button>
             </div>
           </header>
@@ -138,6 +138,16 @@
         </footer>
       </dialog>
 
+      <dialog ref="withdrawalDialog" class="modal dispatch-modal" aria-labelledby="withdrawal-title" @cancel="closeWithdrawal">
+        <header><h2 id="withdrawal-title">撤回派工</h2><button type="button" aria-label="关闭" :disabled="withdrawalBusy" @click="closeWithdrawal">×</button></header>
+        <div class="modal-body">
+          <p>撤回后，该工厂的明细恢复为未派工，其他工厂不受影响</p>
+          <div class="withdraw-field"><label for="withdraw-factory">选择工厂</label><select id="withdraw-factory" v-model="withdrawalFactory" :disabled="withdrawalBusy"><option value="">请选择</option><option v-for="factory in withdrawalFactories" :key="factory.factoryId" :value="factory.factoryId" :disabled="factory.blocked">{{ factory.factoryName }}（{{ factory.detailCount }} 条{{ factory.blocked ? '，已有有效发货，不可撤回' : '' }}）</option></select></div>
+          <p v-if="withdrawalError" class="page-error" role="alert">{{ withdrawalError }}</p>
+        </div>
+        <footer><button class="order-secondary-button" type="button" :disabled="withdrawalBusy" @click="closeWithdrawal">取消</button><button class="order-primary-button" type="button" :disabled="withdrawalBusy || !withdrawalFactory" @click="confirmWithdrawal">确认撤回</button></footer>
+      </dialog>
+
       <div v-if="pendingAction && order" class="modal-backdrop" role="dialog" aria-modal="true">
         <!-- existing action modal unchanged -->
         <section class="modal action-modal"><header><h2>{{ modalTitle }}</h2><button type="button" @click="pendingAction = null">×</button></header><div class="modal-body"><p>{{ modalDescription }}</p><dl v-if="pendingAction === 'complete'" class="completion-summary"><div><dt>订单数量</dt><dd>{{ number(order.totalQuantity) }}</dd></div><div><dt>已发数量</dt><dd>{{ number(order.shippedQuantity) }}</dd></div><div><dt>未发数量</dt><dd>{{ number(order.pendingQuantity) }}</dd></div></dl><label v-if="pendingAction === 'reopen'" class="reopen-field">撤销原因<textarea v-model="reopenReason" maxlength="500" placeholder="请填写撤销完成原因"></textarea></label><p v-if="actionError" class="page-error">{{ actionError }}</p></div><footer><button class="order-secondary-button" type="button" @click="pendingAction = null">取消</button><button class="order-primary-button" type="button" :disabled="acting || (pendingAction === 'reopen' && !reopenReason.trim())" @click="confirmAction">{{ acting ? '处理中…' : '确认' }}</button></footer></section>
@@ -176,12 +186,47 @@ async function loadShipments() {
   finally { if (target === orderId) shipmentsLoading.value = false; }
 }
 
-type Action = "publish" | "withdraw" | "delete" | "complete" | "reopen";
+type Action = "publish" | "delete" | "complete" | "reopen";
 type DetailSortKey = "skuId" | "productName" | "propertiesValue" | "factoryName" | "dispatched" | "contractShipDate" | "orderQuantity" | "shippedQuantity" | "pendingQuantity" | "progressPercent";
 type DetailRow = { key: string; skuId: string; productName: string; propertiesValue: string; factoryName: string; dispatched: boolean; contractShipDate: string; orderQuantity: number | null; shippedQuantity: number | null; pendingQuantity: number | null; progressPercent: number | null };
 const detailColumns: { key: DetailSortKey; label: string }[] = [{ key: "skuId", label: "产品编码" }, { key: "productName", label: "产品名称" }, { key: "propertiesValue", label: "颜色/规格" }, { key: "factoryName", label: "工厂" }, { key: "dispatched", label: "派工状态" }, { key: "contractShipDate", label: "合同出货时间" }, { key: "orderQuantity", label: "下单数量" }, { key: "shippedQuantity", label: "已发数量" }, { key: "pendingQuantity", label: "未发数量" }, { key: "progressPercent", label: "发货进度" }];
 const route = useRoute(); const router = useRouter(); let orderId = String(route.params.orderId);
 const order = ref<Order | null>(null); const loading = ref(true); const errorMessage = ref(""); const pendingAction = ref<Action | null>(null); const reopenReason = ref(""); const actionError = ref(""); const acting = ref(false); const detailSortKey = ref<DetailSortKey | null>(null); const detailSortOrder = ref<"asc" | "desc">("asc");
+
+const withdrawalDialog = ref<HTMLDialogElement | null>(null);
+const withdrawalFactories = ref<Awaited<ReturnType<typeof orderApi.withdrawalFactories>>>([]);
+const withdrawalFactory = ref("");
+const withdrawalBusy = ref(false);
+const withdrawalError = ref("");
+let withdrawalKey = "";
+const canComplete = computed(() => detailRows.value.length > 0 && detailRows.value.every(row => row.dispatched && row.pendingQuantity === 0));
+async function openWithdrawal() {
+  if (!order.value || interactionBusy.value || hasUnsavedDates.value) return;
+  const target = orderId;
+  withdrawalFactory.value = ""; withdrawalError.value = ""; withdrawalFactories.value = [];
+  withdrawalKey = crypto.randomUUID(); withdrawalBusy.value = true;
+  withdrawalDialog.value?.showModal();
+  try { const result = await orderApi.withdrawalFactories(target); if (target === orderId) withdrawalFactories.value = result; }
+  catch (error) { if (target === orderId) withdrawalError.value = error instanceof ApiError ? error.message : "工厂列表加载失败，请关闭后重试"; }
+  finally { if (target === orderId) withdrawalBusy.value = false; }
+}
+function closeWithdrawal(event?: Event) {
+  if (withdrawalBusy.value) { event?.preventDefault(); return; }
+  withdrawalDialog.value?.close();
+}
+async function confirmWithdrawal() {
+  if (!order.value || withdrawalBusy.value || !withdrawalFactory.value) return;
+  const target = orderId;
+  withdrawalBusy.value = true; withdrawalError.value = "";
+  try {
+    const saved = await orderApi.withdrawFactory(target, withdrawalFactory.value, order.value.version, withdrawalKey);
+    if (target !== orderId) return;
+    order.value = saved; selectedDetails.value.clear(); dateDrafts.value = {};
+    withdrawalDialog.value?.close();
+    await Promise.all([loadAudit(), loadContracts()]);
+  } catch (error) { if (target === orderId) withdrawalError.value = error instanceof ApiError ? error.message : "撤回失败，请重试"; }
+  finally { if (target === orderId) withdrawalBusy.value = false; }
+}
 
 // Source update state
 const sourceBusy = ref(false);
@@ -203,7 +248,7 @@ const selectedDetails = ref(new Set<string>());
 let dispatchKey = "";
 let dispatchSourceKey = "";
 let dispatchEpoch = 0;
-const interactionBusy = computed(() => sourceBusy.value || dispatchBusy.value);
+const interactionBusy = computed(() => sourceBusy.value || dispatchBusy.value || withdrawalBusy.value || acting.value);
 
 const isEditable = (id: string) => order.value?.detailMode ? order.value.details.find((row) => row.detailId === id && row.dispatchState === "UNASSIGNED") : undefined;
 const hasUnassigned = computed(() => order.value?.detailMode && order.value.details.some((row) => row.dispatchState === "UNASSIGNED"));
@@ -373,6 +418,7 @@ watch(() => route.params.orderId, () => {
   dispatchPreview.value = null; dispatchDialog.value?.close(); dispatchError.value = "";
   dispatchSourcePreview.value = null; selectedDetails.value.clear();
   dateDrafts.value = {}; order.value = null; relatedShipments.value = []; auditLogs.value = [];
+  withdrawalDialog.value?.close(); withdrawalBusy.value = false;
   contractFactories.value = []; pendingAction.value = null; contractDialogOpen.value = false;
   void load();
 });
@@ -382,8 +428,8 @@ const contractFactories = ref<ContractFactoryStatus[]>([]); const loadingContrac
 const number = (value: number | null) => value == null ? "—" : value.toLocaleString("zh-CN");
 const dateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
 const pageTitle = computed(() => order.value ? `订单详情 · ${order.value.orderNo}` : "订单详情");
-const contractButtonEnabled = computed(() => order.value?.lifecycle === "PUBLISHED" && contractFactories.value.length > 0 && !loadingContracts.value);
-const contractButtonTitle = computed(() => order.value?.lifecycle === "DRAFT" ? "请先发布订单后再导出加工合同" : order.value?.lifecycle !== "PUBLISHED" ? "只有已发布订单才能导出加工合同" : contractFactories.value.length === 0 ? "订单尚未派工，不能导出加工合同" : "导出加工合同");
+const contractButtonEnabled = computed(() => order.value?.lifecycle !== "DRAFT" && contractFactories.value.length > 0 && !loadingContracts.value);
+const contractButtonTitle = computed(() => order.value?.lifecycle === "DRAFT" || contractFactories.value.length === 0 ? "订单尚未派工，不能导出加工合同" : "导出加工合同");
 const categories = computed(() => { const values = [...new Set((order.value?.detailMode ? order.value.details : order.value?.lines)?.map((line) => line.category?.trim()).filter((value): value is string => Boolean(value)) ?? [])]; return values.length ? values : ["未分类"]; });
 const detailRows = computed(() => {
   const rows: DetailRow[] = order.value?.detailMode
@@ -394,8 +440,8 @@ const detailRows = computed(() => {
   return rows;
 });
 const sortedDetailRows = computed(() => { const key = detailSortKey.value; if (!key) return detailRows.value; const direction = detailSortOrder.value === "asc" ? 1 : -1; return [...detailRows.value].sort((left, right) => { const a = left[key]; const b = right[key]; if (typeof a === "boolean" && typeof b === "boolean") return (a === b ? 0 : a ? 1 : -1) * direction; return String(a).localeCompare(String(b), "zh-CN", { numeric: true }) * direction; }); });
-const modalTitle = computed(() => ({ publish: "发布订单", withdraw: "撤回订单", delete: "删除订单", complete: "确认订单完成", reopen: "撤销完成" }[pendingAction.value ?? "publish"]));
-const modalDescription = computed(() => pendingAction.value === "publish" ? "发布后工厂将看到各自派工任务，确认发布？" : pendingAction.value === "withdraw" ? "撤回后订单恢复为草稿，工厂任务将不可见。" : pendingAction.value === "delete" ? "删除后订单不再出现在订单列表和工厂任务中。" : pendingAction.value === "complete" ? "请核对数量摘要。完成状态不会根据发货数量自动产生。" : "撤销后订单恢复为正式订单，并按当前日期重新计算状态。" );
+const modalTitle = computed(() => ({ publish: "发布订单", delete: "删除订单", complete: "确认订单完成", reopen: "撤销完成" }[pendingAction.value ?? "publish"]));
+const modalDescription = computed(() => pendingAction.value === "publish" ? "发布后工厂将看到各自派工任务，确认发布？" : pendingAction.value === "delete" ? "删除后订单不再出现在订单列表和工厂任务中。" : pendingAction.value === "complete" ? "请核对数量摘要。完成状态不会根据发货数量自动产生。" : "撤销后订单恢复为正式订单，并按当前日期重新计算状态。" );
 function statusTone(value: Order) { return value.lifecycle === "DRAFT" ? "is-draft" : value.displayStatus === "已逾期" ? "is-danger" : value.lifecycle === "COMPLETED" ? "is-success" : "is-info"; }
 function isQuantityRollback(action: string) { return action === "shipment_void_approved" || action === "shipment_line_returned"; }
 function sourceTerminalLabel(source: string | null) { const labels: Record<string, string> = { web: "管理员网页", "admin-web": "管理员网页", web_admin: "管理员网页", "admin-mini": "管理员小程序", "factory-mini": "工厂小程序" }; return source ? (labels[source] || source) : "系统"; }
@@ -410,7 +456,7 @@ async function loadAudit() {
   catch { /* Order writes have already succeeded; log reload does not change their result. */ }
 }
 async function loadContracts() {
-  if (order.value?.lifecycle !== "PUBLISHED") { contractFactories.value = []; return; }
+  if (!order.value || order.value.lifecycle === "DRAFT") { contractFactories.value = []; return; }
   const target = orderId; loadingContracts.value = true;
   try { const result = await contractApi.list(target); if (target === orderId) contractFactories.value = result.items; }
   catch (error) { if (target === orderId) contractError.value = error instanceof ApiError ? error.message : "合同状态加载失败"; }
@@ -432,11 +478,14 @@ function selectContractFactory(factory: ContractFactoryStatus) { selectedContrac
 function openContractExport() { if (!order.value) return; contractError.value = ""; contractDialogOpen.value = true; if (contractFactories.value.length === 1) selectContractFactory(contractFactories.value[0]); else selectedContractFactory.value = null; }
 function closeContractExport() { contractDialogOpen.value = false; selectedContractFactory.value = null; contractError.value = ""; }
 async function confirmContractExport() { const factory = selectedContractFactory.value; if (!factory || !contractSigningDate.value) return; exportingContract.value = true; contractError.value = ""; try { const exported = await contractApi.export(orderId, factory.factoryId, contractSigningDate.value); await contractApi.download(exported); closeContractExport(); await loadContracts(); } catch (error) { contractError.value = error instanceof ApiError ? error.message : "加工合同导出失败"; } finally { exportingContract.value = false; } }
-async function confirmAction() { if (!order.value || !pendingAction.value) return; acting.value = true; actionError.value = ""; try { const action = pendingAction.value; if (action === "delete") { await orderApi.delete(orderId); await router.replace("/orders"); return; } if (action === "publish") await orderApi.publish(orderId, order.value.version); if (action === "withdraw") await orderApi.withdraw(orderId); if (action === "complete") await orderApi.complete(orderId); if (action === "reopen") await orderApi.reopen(orderId, reopenReason.value); pendingAction.value = null; await load(); } catch (error) { actionError.value = error instanceof ApiError ? error.message : "订单操作失败"; } finally { acting.value = false; } }
+async function confirmAction() { if (!order.value || !pendingAction.value) return; acting.value = true; actionError.value = ""; try { const action = pendingAction.value; if (action === "delete") { await orderApi.delete(orderId); await router.replace("/orders"); return; } if (action === "publish") await orderApi.publish(orderId, order.value.version); if (action === "complete") await orderApi.complete(orderId); if (action === "reopen") await orderApi.reopen(orderId, reopenReason.value); pendingAction.value = null; await load(); } catch (error) { actionError.value = error instanceof ApiError ? error.message : "订单操作失败"; } finally { acting.value = false; } }
 onMounted(load);
 </script>
 
 <style scoped>
+.withdraw-field { display: grid; gap: 8px; margin-top: 18px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.withdraw-field select { height: 38px; padding: 0 10px; border: 1px solid #d3dbe6; border-radius: 4px; background: white; color: var(--ink); font: inherit; }
+
 .source-contract-date { width: 100%; min-width: 0; height: 32px; padding: 0 7px; border: 1px solid #d3dbe6; border-radius: 4px; background: white; color: inherit; font: inherit; }
 .source-update-modal { width: min(880px, calc(100vw - 40px)); padding: 0; }
 .source-update-modal::backdrop { background: rgb(20 31 43 / 40%); }

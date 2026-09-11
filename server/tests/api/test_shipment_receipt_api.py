@@ -312,7 +312,16 @@ def test_receipt_rejects_changed_item_set_and_stale_confirmation(
 
 def test_short_receipt_reopens_completed_order_and_preserves_initial_baseline(
     receipt_clients: tuple[TestClient, TestClient, str],
+    test_database_engine: Engine,
 ) -> None:
+    from sqlalchemy import select
+
+    from app.db.models import OrderAssignment, OrderLine
+
+    # 5 initial + 30 system shipped: complete only after every line is fulfilled.
+    with Session(test_database_engine) as session, session.begin():
+        session.scalar(select(OrderLine).where(OrderLine.order_id == ORDER_ID)).order_quantity = 35
+        session.scalar(select(OrderAssignment)).assigned_quantity = 35
     admin, factory, shipment_id = receipt_clients
     url = f"/api/v1/admin/shipments/{shipment_id}"
     assert admin.post(f"/api/v1/admin/orders/{ORDER_ID}/complete").status_code == 200

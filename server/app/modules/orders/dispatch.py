@@ -96,6 +96,7 @@ class OrderDispatchService(OrderSourceUpdateService):
             version=version,
             request_id=request_id,
             detail_ids=detail_ids,
+            allow_legacy=True,
         )
         if source_preview["differences"]:
             # The admin must accept the source update first (independent
@@ -197,7 +198,7 @@ class OrderDispatchService(OrderSourceUpdateService):
         from app.adapters.errors import ExternalAdapterUnavailable
 
         try:
-            _, fetched = self._read(order_id, actor_id, version, detail_ids)
+            _, fetched = self._read(order_id, actor_id, version, detail_ids, allow_legacy=True)
         except (OrderConflict, ExternalAdapterUnavailable):
             # A competing retry may have committed during the source read.
             with self._session_factory() as session:

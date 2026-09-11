@@ -2,6 +2,18 @@
 
 核对日期：2026-09-08；代码基线：本地 `3b2c90d`；业务基线：V1.60。本文解释调用方法，不另维护请求字段副本，不证明线上部署版本。
 
+## Issue #88–#91 本地实现增量（2026-09-11）
+
+来源明细订单导入只生成宽松草稿，不能走下文旧人工草稿的整单保存／发布接口。未派工日期使用 `PATCH /admin/orders/{order_id}/details/{detail_id}/contract-date`；更新先调用 `source-refresh/preview`，有差异独立确认 `source-refresh/confirm`，再使用 `dispatch/preview` 和 `dispatch/confirm` 派工（均为订单下的 POST，前缀 `/api/v1`）。取消派工不撤销已确认的来源更新。
+
+旧 `POST /admin/orders/{order_id}/withdraw` 已移除。按工厂撤回先 GET `dispatch/factories` 获取当前派工及禁止原因标记，再 POST `dispatch/withdraw`，只带工厂和订单版本、CSRF、幂等键；无原因字段或二次确认。所选工厂有有效系统发货时返回冲突，其他工厂不受影响。接口具体字段以 OpenAPI 为准。
+
+完成接口仍由管理员手动调用，全部明细有效派工且逐条交足才成功。合同允许部分派工及已有发货，首次仅包含所选厂有效派工，重复导出保留首次快照。管理员列表按完整来源与有效执行口径先筛选、排序、计数后分页；工厂接口只包含本厂有效派工。
+
+首页 `GET /api/v1/admin/dashboard/orders` 包含草稿，支持 `keyword` 和与订单列表相同的 `sortBy`；在完整集合上查询后返回前十条 `recentOrders` 和匹配总数 `totalOrders`，统计卡片仍是全局口径。
+
+本段覆盖下文旧流程中相冲突的范围，验证与未上线边界见 [#91 实施记录](issue-91-本地实施与验证.md)。
+
 ## Issue #65 本地实现增量（2026-09-09）
 
 新增 `POST /api/v1/factory/shipments/{id}/withdraw`，必填原因、原单版本和幂等键；成功即撤回并冲销数量。通过 `GET /api/v1/factory/shipments/{id}/withdraw-draft` 恢复该单的共享编辑草稿，仅该轮提交人和撤回人可用。沿用草稿保存、附件和提交接口；撤回草稿的附件修改和重新提交也必须带版本。版本过期返回 409，客户端不得自动覆盖。

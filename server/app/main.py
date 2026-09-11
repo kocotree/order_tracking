@@ -293,7 +293,6 @@ def create_app(
                 image_loader=lambda object_key: private_file_store.get(object_key=object_key),
             ),
             file_store=private_file_store,
-            execution_guard=shipment_service,
         )
     if local_demo_enabled:
         seed_local_demo_products(session_factory)

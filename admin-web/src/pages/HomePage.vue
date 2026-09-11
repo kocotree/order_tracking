@@ -14,7 +14,7 @@
       </section>
 
       <div v-if="appliedKeyword" class="dashboard-search-summary" role="status">
-        “{{ appliedKeyword }}”找到 {{ displayedOrders.length }} 个订单。
+        “{{ appliedKeyword }}”找到 {{ dashboard?.totalOrders ?? 0 }} 个订单。
       </div>
 
       <div class="dashboard-overview">
@@ -136,54 +136,45 @@ function displayCategories(order: Order) {
   return ["服装", "帽子"].filter((item): item is "服装" | "帽子" => categories.has(item as "服装" | "帽子"));
 }
 
-function sortValue(order: Order, key: SortKey): string | number {
-  const values: Record<SortKey, string | number> = {
-    orderNo: order.orderNo,
-    productName: productSummary(order),
-    category: displayCategories(order).join("、"),
-    tracker: order.tracker ?? "",
-    factory: factorySummary(order),
-    contractShipDate: (sortDirection.value === "desc" ? order.contractShipDates.at(-1) : order.contractShipDates[0]) ?? "",
-    progressPercent: order.progressPercent ?? -1,
-    quantity: order.shippedQuantity ?? -1,
-    status: order.displayStatus,
-  };
-  return values[key];
+const displayedOrders = computed(() => (dashboard.value?.recentOrders ?? []).slice(0, 10));
+let loadVersion = 0;
+async function loadDashboard() {
+  const version = ++loadVersion;
+  loading.value = true;
+  errorMessage.value = "";
+  const key = sortKey.value === "quantity" ? "shippedQuantity" : sortKey.value;
+  try {
+    const result = await orderApi.dashboard({
+      keyword: appliedKeyword.value,
+      sortBy: key ? `${key}${sortDirection.value === "asc" ? "Asc" : "Desc"}` : "updatedDesc",
+    });
+    if (version === loadVersion) dashboard.value = result;
+  } catch (error) {
+    if (version === loadVersion) errorMessage.value = error instanceof ApiError ? error.message : "订单看板加载失败";
+  } finally {
+    if (version === loadVersion) loading.value = false;
+  }
 }
-
-const displayedOrders = computed(() => {
-  const normalizedKeyword = appliedKeyword.value.toLocaleLowerCase("zh-CN");
-  const orders = [...(dashboard.value?.recentOrders ?? [])].filter((item) => {
-    if (!normalizedKeyword) return true;
-    return [item.orderNo, ...item.lines.map((line) => line.productName)].some((value) => value.toLocaleLowerCase("zh-CN").includes(normalizedKeyword));
-  });
-  if (!sortKey.value) return orders.slice(0, 10);
-  const direction = sortDirection.value === "asc" ? 1 : -1;
-  return orders.sort((left, right) => {
-    if (sortKey.value === "contractShipDate" && (!left.contractShipDates.length || !right.contractShipDates.length)) return Number(!left.contractShipDates.length) - Number(!right.contractShipDates.length);
-    const leftValue = sortValue(left, sortKey.value as SortKey);
-    const rightValue = sortValue(right, sortKey.value as SortKey);
-    if (typeof leftValue === "number" && typeof rightValue === "number") return (leftValue - rightValue) * direction;
-    return String(leftValue).localeCompare(String(rightValue), "zh-CN", { numeric: true }) * direction;
-  }).slice(0, 10);
-});
 
 function applySearch() {
   appliedKeyword.value = keyword.value.trim();
+  void loadDashboard();
 }
 
 function clearSearch() {
   keyword.value = "";
   appliedKeyword.value = "";
+  void loadDashboard();
 }
 
 function toggleSort(key: SortKey) {
   if (sortKey.value === key) {
     sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
-    return;
+  } else {
+    sortKey.value = key;
+    sortDirection.value = "asc";
   }
-  sortKey.value = key;
-  sortDirection.value = "asc";
+  void loadDashboard();
 }
 
 function shanghaiToday() {
@@ -197,16 +188,8 @@ async function openNotification(item:NotificationItem) {
   await router.push({ path:item.targetPath, query:{ notificationReturnTo:route.fullPath } });
 }
 
-onMounted(async () => {
+onMounted(() => {
   void notificationStore.refresh().catch(() => undefined);
-  try {
-    const dashboardResult = await orderApi.dashboard();
-    dashboard.value = dashboardResult;
-
-  } catch (error) {
-    errorMessage.value = error instanceof ApiError ? error.message : "订单看板加载失败";
-  } finally {
-    loading.value = false;
-  }
+  void loadDashboard();
 });
 </script>

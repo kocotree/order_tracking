@@ -86,6 +86,18 @@ class DispatchConfirmWrite(VersionWrite):
     preview_id: str = Field(min_length=1, max_length=36)
 
 
+class FactoryWithdrawalWrite(VersionWrite):
+    model_config = ConfigDict(extra="forbid")
+    factory_id: str = Field(min_length=1, max_length=36)
+
+
+class WithdrawalFactoryResponse(ApiModel):
+    factory_id: str
+    factory_name: str
+    detail_count: int
+    blocked: bool
+
+
 class DispatchValidationItem(ApiModel):
     detail_id: str
     label: str
@@ -221,6 +233,7 @@ class OrderListResponse(ApiModel):
 
 
 class DashboardResponse(ApiModel):
+    total_orders: int
     overdue_orders: int
     pending_import_orders: int
     today_shipments: int
@@ -504,20 +517,37 @@ def create_order_router(
     def transition_actor(ot_web_session: str | None, x_csrf_token: str | None) -> UserSnapshot:
         return web_admin(ot_web_session, x_csrf_token, require_csrf=True)
 
+    @router.get(
+        "/admin/orders/{order_id}/dispatch/factories",
+        response_model=list[WithdrawalFactoryResponse],
+        tags=["order-admin"],
+    )
+    def withdrawal_factories(
+        order_id: str, ot_web_session: str | None = Cookie(default=None)
+    ) -> list[WithdrawalFactoryResponse]:
+        actor = web_admin(ot_web_session, None, require_csrf=False)
+        return [
+            WithdrawalFactoryResponse(**item)
+            for item in service.withdrawal_factories(actor_id=actor.user_id, order_id=order_id)
+        ]
+
     @router.post(
-        "/admin/orders/{order_id}/withdraw",
+        "/admin/orders/{order_id}/dispatch/withdraw",
         response_model=OrderResponse,
         tags=["order-admin"],
     )
-    def withdraw(
+    def withdraw_factory(
         order_id: str,
+        body: FactoryWithdrawalWrite,
         request: Request,
         idempotency_key: str = Header(alias="Idempotency-Key"),
         ot_web_session: str | None = Cookie(default=None),
         x_csrf_token: str | None = Header(default=None),
     ) -> OrderResponse:
         actor = transition_actor(ot_web_session, x_csrf_token)
-        result = service.withdraw(
+        result = service.withdraw_factory(
+            factory_id=body.factory_id,
+            version=body.version,
             actor_id=actor.user_id,
             order_id=order_id,
             request_id=request.state.request_id,
@@ -653,17 +683,21 @@ def create_order_router(
     )
     def dashboard(
         request: Request,
+        keyword: str = "",
+        sort_by: Annotated[str, Query(alias="sortBy")] = "updatedDesc",
         ot_web_session: str | None = Cookie(default=None),
     ) -> DashboardResponse:
         actor = web_admin(ot_web_session)
-        items, _ = service.list_visible(
+        items, total = service.list_visible(
             actor_id=actor.user_id,
-            include_drafts=False,
+            include_drafts=True,
+            keyword=keyword,
             page_size=10,
-            sort_by="updatedDesc",
+            sort_by=sort_by,
         )
         overdue, shipments = service.dashboard_counts(actor_id=actor.user_id)
         return DashboardResponse(
+            total_orders=total,
             overdue_orders=overdue,
             pending_import_orders=(
                 order_import_service.pending_count(actor_id=actor.user_id)

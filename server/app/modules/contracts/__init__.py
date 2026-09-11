@@ -8,7 +8,6 @@ from app.modules.contracts.service import (
     ContractPermissionDenied,
     ContractService,
     ContractValidationError,
-    EmptyContractExecutionGuard,
 )
 
 __all__ = [
@@ -21,5 +20,4 @@ __all__ = [
     "ContractPermissionDenied",
     "ContractService",
     "ContractValidationError",
-    "EmptyContractExecutionGuard",
 ]

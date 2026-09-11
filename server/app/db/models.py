@@ -652,7 +652,7 @@ class OrderLine(Base):
 class OrderAssignment(Base):
     __tablename__ = "order_assignments"
     __table_args__ = (
-        UniqueConstraint("detail_id", name="uq_order_assignments_detail"),
+        Index("ix_order_assignments_detail", "detail_id"),
         CheckConstraint("assigned_quantity > 0", name="ck_order_assignments_quantity_positive"),
         CheckConstraint(
             "initial_shipped_quantity >= 0",

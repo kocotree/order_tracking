@@ -1084,9 +1084,14 @@
           "todayShipments": {
             "title": "Todayshipments",
             "type": "integer"
+          },
+          "totalOrders": {
+            "title": "Totalorders",
+            "type": "integer"
           }
         },
         "required": [
+          "totalOrders",
           "overdueOrders",
           "pendingImportOrders",
           "todayShipments",
@@ -1964,6 +1969,28 @@
           "factoryCode"
         ],
         "title": "FactoryUpdate",
+        "type": "object"
+      },
+      "FactoryWithdrawalWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "factoryId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "factoryId"
+        ],
+        "title": "FactoryWithdrawalWrite",
         "type": "object"
       },
       "FactoryWrite": {
@@ -5086,6 +5113,34 @@
         "title": "WithdrawWrite",
         "type": "object"
       },
+      "WithdrawalFactoryResponse": {
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "detailCount": {
+            "title": "Detailcount",
+            "type": "integer"
+          },
+          "factoryId": {
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "factoryId",
+          "factoryName",
+          "detailCount",
+          "blocked"
+        ],
+        "title": "WithdrawalFactoryResponse",
+        "type": "object"
+      },
       "app__api__orders__DraftCreate": {
         "additionalProperties": false,
         "properties": {
@@ -5381,6 +5436,26 @@
       "get": {
         "operationId": "dashboard_api_v1_admin_dashboard_orders_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Keyword",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "required": false,
+            "schema": {
+              "default": "updatedDesc",
+              "title": "Sortby",
+              "type": "string"
+            }
+          },
           {
             "in": "cookie",
             "name": "ot_web_session",
@@ -7941,6 +8016,68 @@
         ]
       }
     },
+    "/api/v1/admin/orders/{order_id}/dispatch/factories": {
+      "get": {
+        "operationId": "withdrawal_factories_api_v1_admin_orders__order_id__dispatch_factories_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WithdrawalFactoryResponse"
+                  },
+                  "title": "Response Withdrawal Factories Api V1 Admin Orders  Order Id  Dispatch Factories Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdrawal Factories",
+        "tags": [
+          "order-admin"
+        ]
+      }
+    },
     "/api/v1/admin/orders/{order_id}/dispatch/preview": {
       "post": {
         "operationId": "preview_dispatch_api_v1_admin_orders__order_id__dispatch_preview_post",
@@ -8020,6 +8157,99 @@
           }
         },
         "summary": "Preview Dispatch",
+        "tags": [
+          "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/dispatch/withdraw": {
+      "post": {
+        "operationId": "withdraw_factory_api_v1_admin_orders__order_id__dispatch_withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactoryWithdrawalWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw Factory",
         "tags": [
           "order-admin"
         ]
@@ -8385,89 +8615,6 @@
           }
         },
         "summary": "Preview Source",
-        "tags": [
-          "order-admin"
-        ]
-      }
-    },
-    "/api/v1/admin/orders/{order_id}/withdraw": {
-      "post": {
-        "operationId": "withdraw_api_v1_admin_orders__order_id__withdraw_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "order_id",
-            "required": true,
-            "schema": {
-              "title": "Order Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": true,
-            "schema": {
-              "title": "Idempotency-Key",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-csrf-token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Csrf-Token"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "ot_web_session",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Ot Web Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrderResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Withdraw",
         "tags": [
           "order-admin"
         ]

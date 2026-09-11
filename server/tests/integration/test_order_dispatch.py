@@ -793,46 +793,6 @@ def test_dispatch_notification_skips_invalidated_task(
         assert session.scalar(select(Notification)) is None
 
 
-def test_detail_mode_order_cannot_complete_or_withdraw(test_database_engine: Engine):
-    sessions, source, order_id = setup_dispatch_order(test_database_engine)
-    service = OrderDispatchService(sessions, source=source)
-    args = dict(actor_id="admin-order-import", order_id=order_id, request_id="t90")
-    order = service.get(order_id=order_id)
-
-    # Dispatch first to make it PUBLISHED.
-    preview = service.dispatch_preview(
-        **args,
-        version=order.version,
-        detail_ids=[order.details[0].detail_id],
-    )
-    result = service.dispatch_confirm(
-        **args,
-        version=order.version,
-        preview_id=preview["preview_id"],
-        idempotency_key="guard",
-    )
-    assert result.lifecycle == "PUBLISHED"
-
-    # Complete → blocked.
-    from app.modules.orders import OrderService
-
-    order_svc = OrderService(sessions)
-    with pytest.raises(OrderConflict, match="暂不支持"):
-        order_svc.complete(
-            actor_id="admin-order-import",
-            order_id=order_id,
-            request_id="t90",
-            idempotency_key="complete",
-        )
-    # Withdraw → blocked.
-    with pytest.raises(OrderConflict, match="暂不支持"):
-        order_svc.withdraw(
-            actor_id="admin-order-import",
-            order_id=order_id,
-            request_id="t90",
-            idempotency_key="withdraw",
-        )
-
 
 def test_migration_downgrade_rejects_dispatch_assignments(
     test_database_engine: Engine,

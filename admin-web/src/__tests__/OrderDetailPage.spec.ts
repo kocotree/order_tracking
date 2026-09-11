@@ -56,7 +56,7 @@ describe("order detail prototype alignment", () => {
     expect(wrapper.text()).not.toContain("删除订单");
     const contractButton = wrapper.find('[data-testid="contract-export-open"]');
     expect(contractButton.attributes("disabled")).toBeDefined();
-    expect(contractButton.attributes("title")).toContain("请先发布订单");
+    expect(contractButton.attributes("title")).toContain("订单尚未派工");
     expect(wrapper.text()).not.toContain("工厂派工与进度");
     expect(wrapper.text()).toContain("操作记录（1）");
     expect(wrapper.find(".order-audit-list").exists()).toBe(false);
@@ -319,5 +319,35 @@ it("confirms changed sources independently before dispatching the selected detai
   await flushPromises();
   expect(confirmDispatch).toHaveBeenCalledWith("order-1", 2, "dispatch-90", expect.any(String));
   expect(wrapper.text()).toContain("全部派工");
+  wrapper.unmount();
+});
+
+it("withdraws one factory without a reason or second confirmation and refreshes the detail", async () => {
+  const published = { ...sourceOrder, lifecycle: "PUBLISHED" as const, displayStatus: "未完成",
+    details: [{ ...sourceOrder.details[0], dispatchState: "ASSIGNED", matchedFactoryId: "factory-1" }] };
+  vi.spyOn(orderApi, "get").mockResolvedValue(published);
+  vi.spyOn(contractApi, "list").mockResolvedValue({ items: [], requestId: "contract" });
+  vi.spyOn(orderApi, "withdrawalFactories").mockResolvedValue([
+    { factoryId: "factory-1", factoryName: "测试厂", detailCount: 1, blocked: false },
+    { factoryId: "factory-2", factoryName: "已发工厂", detailCount: 2, blocked: true },
+  ]);
+  const withdraw = vi.spyOn(orderApi, "withdrawFactory").mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValueOnce({ ...sourceOrder, version: 2 });
+  const wrapper = mountSource(); await flushPromises();
+  expect(wrapper.text()).not.toContain("撤回订单");
+  expect(wrapper.findAll('button').find(b => b.text() === '确认订单完成')!.attributes('disabled')).toBeDefined();
+  await wrapper.findAll('button').find(b => b.text() === '撤回派工')!.trigger('click'); await flushPromises();
+  const dialog = wrapper.get('dialog[aria-labelledby="withdrawal-title"]');
+  expect(dialog.findAll('input, textarea')).toHaveLength(0);
+  expect(dialog.get('option[value="factory-2"]').attributes('disabled')).toBeDefined();
+  expect(dialog.get('.order-primary-button').attributes('disabled')).toBeDefined();
+  await dialog.get('select').setValue('factory-1');
+  await dialog.get('.order-primary-button').trigger('click'); await flushPromises();
+  expect(dialog.text()).toContain('撤回失败');
+  await dialog.get('.order-primary-button').trigger('click'); await flushPromises();
+  expect(withdraw.mock.calls[0]).toEqual(withdraw.mock.calls[1]);
+  expect(withdraw).toHaveBeenLastCalledWith('order-1', 'factory-1', 1, expect.any(String));
+  expect(dialog.attributes('open')).toBeUndefined();
+  expect(wrapper.get('.product-detail-table tbody').text()).toContain('未派工');
   wrapper.unmount();
 });

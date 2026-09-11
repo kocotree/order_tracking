@@ -30,11 +30,12 @@
         </section>
 
         <section class="section-card detail-section-card">
-          <header class="detail-section-header"><h2>订单明细</h2></header>
+          <header class="detail-section-header"><h2>订单明细</h2><button v-if="hasUnassigned" class="detail-outline-button" type="button" :disabled="sourceBusy || hasUnsavedDates || sourcePreview !== null" @click="previewSource">更新未派工明细</button></header>
+          <p v-if="sourceError" class="page-error" role="alert">{{ sourceError }}</p>
           <div class="detail-table-scroll">
             <table class="data-grid-table detail-data-table product-detail-table">
               <thead><tr><th class="detail-sequence-column">序号</th><th v-for="column in detailColumns" :key="column.key"><button class="data-grid-sort-button" :class="sortClass(column.key)" type="button" @click="toggleDetailSort(column.key)"><span>{{ column.label }}</span><span class="data-grid-sort-arrows" aria-hidden="true"><i class="data-grid-sort-arrow is-up"></i><i class="data-grid-sort-arrow is-down"></i></span></button></th></tr></thead>
-              <tbody><tr v-for="(row, index) in sortedDetailRows" :key="row.key"><td class="detail-sequence-cell">{{ index + 1 }}</td><td class="detail-code">{{ row.skuId }}</td><td class="detail-product-name">{{ row.productName }}</td><td>{{ row.propertiesValue }}</td><td :title="row.factoryName">{{ row.factoryName }}</td><td>{{ row.contractShipDate || "—" }}</td><td class="detail-number">{{ number(row.orderQuantity) }}</td><td class="detail-number">{{ number(row.shippedQuantity) }}</td><td class="detail-number">{{ number(row.pendingQuantity) }}</td><td><span class="detail-progress"><span><i :style="{ width: `${Math.min(row.progressPercent ?? 0, 100)}%` }"></i></span><em>{{ row.progressPercent == null ? "—" : `${row.progressPercent}%` }}</em></span></td></tr></tbody>
+              <tbody><tr v-for="(row, index) in sortedDetailRows" :key="row.key"><td class="detail-sequence-cell">{{ index + 1 }}</td><td class="detail-code">{{ row.skuId }}</td><td class="detail-product-name">{{ row.productName }}</td><td>{{ row.propertiesValue }}</td><td :title="row.factoryName">{{ row.factoryName }}</td><td><input v-if="editableDetail(row.key)" class="source-contract-date" type="date" :aria-label="`第${index + 1}条合同出货时间`" :value="dateDrafts[row.key] ?? row.contractShipDate" :disabled="sourceBusy || sourcePreview !== null" @input="dateDrafts[row.key] = ($event.target as HTMLInputElement).value" @blur="saveDetailDate(row.key)" /><template v-else>{{ row.contractShipDate || "—" }}</template></td><td class="detail-number">{{ number(row.orderQuantity) }}</td><td class="detail-number">{{ number(row.shippedQuantity) }}</td><td class="detail-number">{{ number(row.pendingQuantity) }}</td><td><span class="detail-progress"><span><i :style="{ width: `${Math.min(row.progressPercent ?? 0, 100)}%` }"></i></span><em>{{ row.progressPercent == null ? "—" : `${row.progressPercent}%` }}</em></span></td></tr></tbody>
             </table>
           </div>
         </section>
@@ -70,6 +71,16 @@
 
       </template>
 
+      <dialog ref="sourceDialog" class="modal source-update-modal" aria-labelledby="source-update-title" @cancel="cancelSource" @close="onSourceClosed">
+        <header><h2 id="source-update-title">更新未派工明细</h2><button type="button" aria-label="关闭" :disabled="sourceBusy" @click="cancelSource">×</button></header>
+        <div class="modal-body">
+          <p>{{ sourcePreview?.differences.length ? '来源资料有变化，请确认后更新。已派工明细和人工填写的合同出货时间保持不变。' : '未派工明细没有可更新的来源变化，人工填写的合同出货时间已保留。' }}</p>
+          <table v-if="sourcePreview?.differences.length"><thead><tr><th>明细</th><th>字段</th><th>当前值</th><th>来源新值</th></tr></thead><tbody><tr v-for="(change, index) in sourcePreview.differences" :key="index"><td>{{ change.label }}</td><td>{{ change.field }}</td><td>{{ change.before ?? '—' }}</td><td>{{ change.after ?? '—' }}</td></tr></tbody></table>
+          <p v-if="sourceError" class="page-error" role="alert">{{ sourceError }}</p>
+        </div>
+        <footer><button class="order-secondary-button" type="button" :disabled="sourceBusy" @click="cancelSource">取消</button><button v-if="sourcePreview?.differences.length" class="order-primary-button" type="button" :disabled="sourceBusy" @click="confirmSource">{{ sourceBusy ? '更新中…' : '确认' }}</button></footer>
+      </dialog>
+
       <div v-if="pendingAction && order" class="modal-backdrop" role="dialog" aria-modal="true"><section class="modal action-modal"><header><h2>{{ modalTitle }}</h2><button type="button" @click="pendingAction = null">×</button></header><div class="modal-body"><p>{{ modalDescription }}</p><dl v-if="pendingAction === 'complete'" class="completion-summary"><div><dt>订单数量</dt><dd>{{ number(order.totalQuantity) }}</dd></div><div><dt>已发数量</dt><dd>{{ number(order.shippedQuantity) }}</dd></div><div><dt>未发数量</dt><dd>{{ number(order.pendingQuantity) }}</dd></div></dl><label v-if="pendingAction === 'reopen'" class="reopen-field">撤销原因<textarea v-model="reopenReason" maxlength="500" placeholder="请填写撤销完成原因"></textarea></label><p v-if="actionError" class="page-error">{{ actionError }}</p></div><footer><button class="order-secondary-button" type="button" @click="pendingAction = null">取消</button><button class="order-primary-button" type="button" :disabled="acting || (pendingAction === 'reopen' && !reopenReason.trim())" @click="confirmAction">{{ acting ? '处理中…' : '确认' }}</button></footer></section></div>
 
       <div v-if="contractDialogOpen && order" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="contract-export-title">
@@ -96,22 +107,95 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, contractApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type ContractFactoryStatus, type Order } from "@/api/client";
+import { ApiError, contractApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type ContractFactoryStatus, type Order, type SourcePreview } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 
 const relatedShipments = ref<Shipment[]>([]);
 const shipmentsLoading = ref(false);
 const shipmentsError = ref("");
-async function loadShipments() { shipmentsLoading.value = true; shipmentsError.value = ""; try { relatedShipments.value = (await shipmentApi.list(orderId)).items; } catch { shipmentsError.value = "关联发货单加载失败，请刷新重试"; } finally { shipmentsLoading.value = false; } }
+async function loadShipments() {
+  const target = orderId; shipmentsLoading.value = true; shipmentsError.value = "";
+  try { const result = await shipmentApi.list(target); if (target === orderId) relatedShipments.value = result.items; }
+  catch { if (target === orderId) shipmentsError.value = "关联发货单加载失败，请刷新重试"; }
+  finally { if (target === orderId) shipmentsLoading.value = false; }
+}
 
 type Action = "publish" | "withdraw" | "delete" | "complete" | "reopen";
 type DetailSortKey = "skuId" | "productName" | "propertiesValue" | "factoryName" | "contractShipDate" | "orderQuantity" | "shippedQuantity" | "pendingQuantity" | "progressPercent";
 type DetailRow = { key: string; skuId: string; productName: string; propertiesValue: string; factoryName: string; contractShipDate: string; orderQuantity: number | null; shippedQuantity: number | null; pendingQuantity: number | null; progressPercent: number | null };
 const detailColumns: { key: DetailSortKey; label: string }[] = [{ key: "skuId", label: "产品编码" }, { key: "productName", label: "产品名称" }, { key: "propertiesValue", label: "颜色/规格" }, { key: "factoryName", label: "工厂" }, { key: "contractShipDate", label: "合同出货时间" }, { key: "orderQuantity", label: "下单数量" }, { key: "shippedQuantity", label: "已发数量" }, { key: "pendingQuantity", label: "未发数量" }, { key: "progressPercent", label: "发货进度" }];
-const route = useRoute(); const router = useRouter(); const orderId = String(route.params.orderId);
+const route = useRoute(); const router = useRouter(); let orderId = String(route.params.orderId);
 const order = ref<Order | null>(null); const loading = ref(true); const errorMessage = ref(""); const pendingAction = ref<Action | null>(null); const reopenReason = ref(""); const actionError = ref(""); const acting = ref(false); const detailSortKey = ref<DetailSortKey | null>(null); const detailSortOrder = ref<"asc" | "desc">("asc");
+const sourceBusy = ref(false);
+const sourceError = ref("");
+const dateDrafts = ref<Record<string, string>>({});
+const sourcePreview = ref<SourcePreview | null>(null);
+const sourceDialog = ref<HTMLDialogElement | null>(null);
+let sourceEpoch = 0;
+let sourceKey = "";
+const editableDetail = (id: string) => order.value?.detailMode ? order.value.details.find((row) => row.detailId === id && row.dispatchState === "UNASSIGNED") : undefined;
+const hasUnassigned = computed(() => order.value?.detailMode && order.value.details.some((row) => row.dispatchState === "UNASSIGNED"));
+const hasUnsavedDates = computed(() => Object.entries(dateDrafts.value).some(([id, value]) => value !== (editableDetail(id)?.contractShipDate ?? "")));
+function currentSource(epoch: number, id: string) { return epoch === sourceEpoch && String(route.params.orderId) === id; }
+async function saveDetailDate(id: string) {
+  const detail = editableDetail(id);
+  if (!order.value || !detail || sourceBusy.value || sourcePreview.value) return;
+  const value = dateDrafts.value[id];
+  if (value === undefined || value === (detail.contractShipDate ?? "")) return;
+  const epoch = ++sourceEpoch, target = orderId;
+  sourceBusy.value = true; sourceError.value = "";
+  try {
+    const saved = await orderApi.saveDetailDate(target, id, order.value.version, detail.version, value || null);
+    if (!currentSource(epoch, target)) return;
+    order.value = saved; delete dateDrafts.value[id];
+    void loadAudit();
+  } catch (error) {
+    if (currentSource(epoch, target)) sourceError.value = error instanceof ApiError ? `${error.message}；日期尚未保存，请重试，版本冲突时刷新页面。` : "日期保存失败，输入已保留，请重新聚焦后离开输入框重试。";
+  } finally { if (currentSource(epoch, target)) sourceBusy.value = false; }
+}
+async function previewSource() {
+  if (!order.value || sourceBusy.value || hasUnsavedDates.value || sourcePreview.value) return;
+  const epoch = ++sourceEpoch, target = orderId;
+  sourceBusy.value = true; sourceError.value = "";
+  try {
+    const preview = await orderApi.previewSource(target, order.value.version);
+    if (!currentSource(epoch, target)) return;
+    sourcePreview.value = preview; sourceKey = crypto.randomUUID();
+    await nextTick();
+    if (currentSource(epoch, target)) sourceDialog.value?.showModal();
+  } catch (error) {
+    if (currentSource(epoch, target)) sourceError.value = error instanceof ApiError ? error.message : "来源读取失败，原资料保持不变，请重试。";
+  } finally { if (currentSource(epoch, target)) sourceBusy.value = false; }
+}
+function onSourceClosed() { if (!sourceDialog.value?.open) sourcePreview.value = null; }
+function cancelSource(event?: Event) {
+  if (sourceBusy.value) { event?.preventDefault(); return; }
+  sourceEpoch++; sourcePreview.value = null; sourceDialog.value?.close(); sourceError.value = "";
+}
+async function confirmSource() {
+  const preview = sourcePreview.value;
+  if (!preview || sourceBusy.value) return;
+  const epoch = ++sourceEpoch, target = orderId;
+  sourceBusy.value = true; sourceError.value = "";
+  try {
+    const saved = await orderApi.confirmSource(target, preview.version, preview.previewId, sourceKey);
+    if (!currentSource(epoch, target)) return;
+    order.value = saved; sourcePreview.value = null; sourceDialog.value?.close();
+    void loadAudit();
+  } catch (error) {
+    if (currentSource(epoch, target)) sourceError.value = error instanceof ApiError ? error.message : "来源更新失败，请重试。";
+  } finally { if (currentSource(epoch, target)) sourceBusy.value = false; }
+}
+onUnmounted(() => { sourceEpoch++; });
+watch(() => route.params.orderId, () => {
+  sourceEpoch++; orderId = String(route.params.orderId); sourceBusy.value = false;
+  sourcePreview.value = null; sourceDialog.value?.close(); sourceError.value = "";
+  dateDrafts.value = {}; order.value = null; relatedShipments.value = []; auditLogs.value = [];
+  contractFactories.value = []; pendingAction.value = null; contractDialogOpen.value = false;
+  void load();
+});
 const auditLogs = ref<AuditLogList["items"]>([]);
 const auditExpanded = ref(false);
 const contractFactories = ref<ContractFactoryStatus[]>([]); const loadingContracts = ref(false); const contractDialogOpen = ref(false); const selectedContractFactory = ref<ContractFactoryStatus | null>(null); const contractSigningDate = ref(""); const contractError = ref(""); const exportingContract = ref(false);
@@ -133,8 +217,29 @@ function sortClass(key: DetailSortKey) { return { "is-sorted": detailSortKey.val
 function openAction(action: Action) { pendingAction.value = action; reopenReason.value = ""; actionError.value = ""; }
 function localDate() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`; }
 function contractReadyLabel(factory: ContractFactoryStatus) { const labels: Record<string, string> = { factoryCode: "工厂代码", legalName: "单位全称", address: "单位地址", legalRepresentative: "法定代表人" }; return factory.contractReady ? "完整" : `缺少：${factory.missingContractFields.map((field) => labels[field] || field).join("、")}`; }
-async function loadContracts() { if (order.value?.lifecycle !== "PUBLISHED") { contractFactories.value = []; return; } loadingContracts.value = true; try { contractFactories.value = (await contractApi.list(orderId)).items; } catch (error) { contractError.value = error instanceof ApiError ? error.message : "合同状态加载失败"; } finally { loadingContracts.value = false; } }
-async function load() { loading.value = true; try { order.value = await orderApi.get(orderId); await loadShipments(); auditLogs.value = (await orderApi.auditLogs(orderId)).items; await loadContracts(); } catch (error) { errorMessage.value = error instanceof ApiError && error.status === 404 && route.query.notificationReturnTo ? "内容已不可查看" : error instanceof ApiError ? error.message : "订单详情加载失败"; } finally { loading.value = false; } }
+async function loadAudit() {
+  const target = orderId;
+  try { const result = await orderApi.auditLogs(target); if (target === orderId) auditLogs.value = result.items; }
+  catch { /* Order writes have already succeeded; log reload does not change their result. */ }
+}
+async function loadContracts() {
+  if (order.value?.lifecycle !== "PUBLISHED") { contractFactories.value = []; return; }
+  const target = orderId; loadingContracts.value = true;
+  try { const result = await contractApi.list(target); if (target === orderId) contractFactories.value = result.items; }
+  catch (error) { if (target === orderId) contractError.value = error instanceof ApiError ? error.message : "合同状态加载失败"; }
+  finally { if (target === orderId) loadingContracts.value = false; }
+}
+async function load() {
+  const target = orderId; loading.value = true; errorMessage.value = "";
+  try {
+    const result = await orderApi.get(target);
+    if (target !== orderId) return;
+    order.value = result;
+    await Promise.all([loadShipments(), loadAudit(), loadContracts()]);
+  } catch (error) {
+    if (target === orderId) errorMessage.value = error instanceof ApiError && error.status === 404 && route.query?.notificationReturnTo ? "内容已不可查看" : error instanceof ApiError ? error.message : "订单详情加载失败";
+  } finally { if (target === orderId) loading.value = false; }
+}
 function goBack() { return router.push(typeof route.query.notificationReturnTo === "string" ? route.query.notificationReturnTo : "/orders"); }
 function selectContractFactory(factory: ContractFactoryStatus) { selectedContractFactory.value = factory; contractSigningDate.value = factory.signingDate || localDate(); contractError.value = ""; }
 function openContractExport() { if (!order.value || (order.value.shippedQuantity ?? 0) > 0) return; contractError.value = ""; contractDialogOpen.value = true; if (contractFactories.value.length === 1) selectContractFactory(contractFactories.value[0]); else selectedContractFactory.value = null; }
@@ -143,3 +248,13 @@ async function confirmContractExport() { const factory = selectedContractFactory
 async function confirmAction() { if (!order.value || !pendingAction.value) return; acting.value = true; actionError.value = ""; try { const action = pendingAction.value; if (action === "delete") { await orderApi.delete(orderId); await router.replace("/orders"); return; } if (action === "publish") await orderApi.publish(orderId, order.value.version); if (action === "withdraw") await orderApi.withdraw(orderId); if (action === "complete") await orderApi.complete(orderId); if (action === "reopen") await orderApi.reopen(orderId, reopenReason.value); pendingAction.value = null; await load(); } catch (error) { actionError.value = error instanceof ApiError ? error.message : "订单操作失败"; } finally { acting.value = false; } }
 onMounted(load);
 </script>
+
+<style scoped>
+.source-contract-date { width: 100%; min-width: 0; height: 32px; padding: 0 7px; border: 1px solid #d3dbe6; border-radius: 4px; background: white; color: inherit; font: inherit; }
+.source-update-modal { width: min(880px, calc(100vw - 40px)); padding: 0; }
+.source-update-modal::backdrop { background: rgb(20 31 43 / 40%); }
+.source-update-modal .modal-body { max-height: 65vh; overflow: auto; }
+.source-update-modal table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
+.source-update-modal th, .source-update-modal td { padding: 12px; border: 1px solid #dde1e7; text-align: left; }
+.source-update-modal th { background: #f1f3f6; }
+</style>

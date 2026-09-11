@@ -1373,6 +1373,8 @@ class IdempotencyRecord(Base):
     scope: Mapped[str] = mapped_column(String(100), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(191), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="in_progress")
+    request_hash: Mapped[str | None] = mapped_column(String(64))
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6),
         nullable=False,
@@ -1661,3 +1663,16 @@ class OrderDetail(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class OrderChangePreview(Base):
+    __tablename__ = "order_change_previews"
+
+    preview_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.order_id"), nullable=False)
+    actor_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))

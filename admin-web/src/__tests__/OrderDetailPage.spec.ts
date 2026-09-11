@@ -10,6 +10,7 @@ vi.mock("vue-router", () => ({
 }));
 
 const sampleOrder = {
+    detailMode: false, details: [],
   orderId: "order-1", orderNo: "092#", source: "manual", orderDate: "2026-08-22", tracker: "青椒",
   contractShipDates: ["2026-09-15"], contractShipDate: "2026-09-15", lifecycle: "DRAFT", displayStatus: "草稿", version: 1,
   totalQuantity: 400, shippedQuantity: 0, pendingQuantity: 400, overQuantity: 0, shortQuantity: 0, progressPercent: 0,
@@ -162,4 +163,23 @@ describe("related shipments", () => {
     expect(wrapper.get(".related-shipment-table tbody td").attributes("colspan")).toBe("4");
     expect(wrapper.get(".related-shipment-table tbody").text()).toBe("当前订单暂无关联发货单");
   });
+});
+
+it("shows imported source details read-only without exposing whole-order publishing", async () => {
+  vi.spyOn(orderApi, "get").mockResolvedValue({ ...sampleOrder, source: "feishu", detailMode: true,
+    tracker: null, totalQuantity: null, shippedQuantity: null, pendingQuantity: null, lines: [], factoryProgress: [],
+    details: [{ detailId: "source-1", origin: "feishu", sourceSkuId: "RAW-SKU", productName: "未匹配产品",
+      propertiesValue: "蓝色", category: "帽子", factoryName: "未匹配厂", matchedVariantId: null,
+      matchedFactoryId: null, orderQuantity: null, shippedQuantity: null, pendingQuantity: null,
+      progressPercent: null, sourceTracker: null, contractShipDate: null, dispatchState: "UNASSIGNED",
+      version: 1, rawFields: { "下单数": "待补" } }],
+  });
+  const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: true } } });
+  await flushPromises();
+  const table = wrapper.get('.product-detail-table');
+  expect(table.text()).toContain("RAW-SKU");
+  expect(table.text()).toContain("未匹配厂");
+  expect(table.findAll('input, select')).toHaveLength(0);
+  expect(wrapper.text()).not.toContain("发布订单");
+  expect(wrapper.findAll('.detail-summary-number').map(cell => cell.text())).toEqual(["—", "—", "—"]);
 });

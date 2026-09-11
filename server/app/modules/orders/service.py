@@ -16,6 +16,7 @@ from app.db.models import (
     Order,
     OrderAssignment,
     OrderCompletionRecord,
+    OrderDetail,
     OrderLine,
     OutboxMessage,
     Product,
@@ -124,23 +125,47 @@ class FactoryProgressSnapshot:
 
 
 @dataclass(frozen=True)
+class DetailSnapshot:
+    detail_id: str
+    origin: str
+    source_sku_id: str | None
+    product_name: str | None
+    properties_value: str | None
+    category: str | None
+    factory_name: str | None
+    matched_variant_id: str | None
+    matched_factory_id: str | None
+    order_quantity: int | None
+    shipped_quantity: int | None
+    pending_quantity: int | None
+    progress_percent: int | None
+    source_tracker: str | None
+    contract_ship_date: date | None
+    dispatch_state: str
+    version: int
+    raw_fields: dict[str, object]
+
+
+@dataclass(frozen=True)
 class OrderSnapshot:
     order_id: str
     order_no: str
     source: str
     order_date: date | None
-    tracker: str
+    tracker: str | None
     contract_ship_date: date | None
     contract_ship_dates: list[date]
     lifecycle: str
     display_status: str
     version: int
-    total_quantity: int
-    shipped_quantity: int
-    pending_quantity: int
-    over_quantity: int
-    short_quantity: int
-    progress_percent: int
+    total_quantity: int | None
+    shipped_quantity: int | None
+    pending_quantity: int | None
+    over_quantity: int | None
+    short_quantity: int | None
+    progress_percent: int | None
+    detail_mode: bool
+    details: list[DetailSnapshot]
     lines: list[LineSnapshot]
     factory_progress: list[FactoryProgressSnapshot]
     validation_issues: list[str]
@@ -275,6 +300,8 @@ class OrderService:
                 order = self._locked_order(session, order_id)
                 if order.lifecycle != "DRAFT" or order.version != version:
                     raise OrderConflict("order state or version changed")
+                if order.detail_mode:
+                    raise OrderConflict("来源明细只允许单独保存合同出货时间")
                 order.order_no = normalized_order_no
                 order.order_date = order_date
                 order.tracker = tracker
@@ -319,6 +346,8 @@ class OrderService:
             order = self._locked_order(session, order_id)
             if order.lifecycle != "DRAFT" or order.version != version:
                 raise OrderConflict("order state or version changed")
+            if order.detail_mode:
+                raise OrderConflict("请使用明细派工，不能整单发布来源草稿")
             factory_ids = self._validate_publish(session, order)
             before_version = order.version
             order.lifecycle = "PUBLISHED"
@@ -574,8 +603,11 @@ class OrderService:
                     Order.lifecycle.in_(["PUBLISHED", "COMPLETED"]),
                     select(OrderAssignment.order_assignment_id)
                     .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-                    .where(OrderLine.order_id == Order.order_id,
-                           OrderAssignment.factory_id == scoped_factory).exists(),
+                    .where(
+                        OrderLine.order_id == Order.order_id,
+                        OrderAssignment.factory_id == scoped_factory,
+                    )
+                    .exists(),
                 )
             elif user.role == "admin":
                 if not include_drafts:
@@ -606,10 +638,12 @@ class OrderService:
                 )
                 if scoped_factory is not None:
                     matching_lines = matching_lines.where(
-                        select(OrderAssignment.order_assignment_id).where(
+                        select(OrderAssignment.order_assignment_id)
+                        .where(
                             OrderAssignment.order_line_id == OrderLine.order_line_id,
                             OrderAssignment.factory_id == scoped_factory,
-                        ).exists()
+                        )
+                        .exists()
                     )
                 query = query.where(
                     or_(Order.order_no.like(pattern), Order.order_id.in_(matching_lines))
@@ -628,23 +662,33 @@ class OrderService:
                 )
                 if scoped_factory is not None:
                     matching_categories = matching_categories.where(
-                        select(OrderAssignment.order_assignment_id).where(
+                        select(OrderAssignment.order_assignment_id)
+                        .where(
                             OrderAssignment.order_line_id == OrderLine.order_line_id,
                             OrderAssignment.factory_id == scoped_factory,
-                        ).exists()
+                        )
+                        .exists()
                     )
                 query = query.where(Order.order_id.in_(matching_categories))
             if status not in {"all", "草稿", "已完成", "已逾期", "未完成"}:
                 raise OrderValidationError("invalid status")
             orders, total = page_orders(
-                session, query, today=business_today, status=status,
-                ship_date_from=ship_date_from, ship_date_to=ship_date_to,
-                sort_by=sort_by, page=page, page_size=page_size, factory_id=scoped_factory,
+                session,
+                query,
+                today=business_today,
+                status=status,
+                ship_date_from=ship_date_from,
+                ship_date_to=ship_date_to,
+                sort_by=sort_by,
+                page=page,
+                page_size=page_size,
+                factory_id=scoped_factory,
             )
             preloaded = self._page_snapshot_data(session, orders, factory_id=scoped_factory)
             return [
-                self._snapshot(session, item, business_today,
-                               factory_id=scoped_factory, preloaded=preloaded)
+                self._snapshot(
+                    session, item, business_today, factory_id=scoped_factory, preloaded=preloaded
+                )
                 for item in orders
             ], total
 
@@ -790,6 +834,12 @@ class OrderService:
         }
         existing_line_ids = select(OrderLine.order_line_id).where(
             OrderLine.order_id == order.order_id
+        )
+        session.execute(
+            delete(OrderDetail).where(
+                OrderDetail.order_id == order.order_id,
+                OrderDetail.origin == "legacy",
+            )
         )
         session.execute(
             delete(OrderAssignment).where(OrderAssignment.order_line_id.in_(existing_line_ids))
@@ -968,20 +1018,40 @@ class OrderService:
         session: Session,
         orders: list[Order],
         factory_id: str | None = None,
-    ) -> tuple[dict[str, list[OrderLine]], dict[int, list[OrderAssignment]], dict[int, int]]:
+    ) -> tuple[
+        dict[str, list[OrderLine]],
+        dict[int, list[OrderAssignment]],
+        dict[int, int],
+        dict[str, list[OrderDetail]],
+    ]:
         lines: dict[str, list[OrderLine]] = {}
         assignments: dict[int, list[OrderAssignment]] = {}
         quantities: dict[int, int] = {}
+        details: dict[str, list[OrderDetail]] = {}
         if not orders:
-            return lines, assignments, quantities
+            return lines, assignments, quantities, details
+        source_order_ids = [item.order_id for item in orders if item.detail_mode]
+        if source_order_ids and factory_id is None:
+            for detail in session.scalars(
+                select(OrderDetail)
+                .where(OrderDetail.order_id.in_(source_order_ids))
+                .order_by(OrderDetail.sort_order, OrderDetail.detail_id)
+            ):
+                details.setdefault(detail.order_id, []).append(detail)
         order_ids = [item.order_id for item in orders]
         for line in session.scalars(
             select(OrderLine)
             .where(OrderLine.order_id.in_(order_ids))
-            .where(select(OrderAssignment.order_assignment_id).where(
-                OrderAssignment.order_line_id == OrderLine.order_line_id,
-                OrderAssignment.factory_id == factory_id,
-            ).exists() if factory_id is not None else true())
+            .where(
+                select(OrderAssignment.order_assignment_id)
+                .where(
+                    OrderAssignment.order_line_id == OrderLine.order_line_id,
+                    OrderAssignment.factory_id == factory_id,
+                )
+                .exists()
+                if factory_id is not None
+                else true()
+            )
             .order_by(OrderLine.order_line_id)
         ):
             lines.setdefault(line.order_id, []).append(line)
@@ -1002,7 +1072,7 @@ class OrderService:
             .group_by(QuantityLedger.order_assignment_id)
         ):
             quantities[assignment_id] = int(quantity)
-        return lines, assignments, quantities
+        return lines, assignments, quantities, details
 
     def _snapshot(
         self,
@@ -1012,10 +1082,19 @@ class OrderService:
         *,
         factory_id: str | None = None,
         preloaded: tuple[
-            dict[str, list[OrderLine]], dict[int, list[OrderAssignment]], dict[int, int]
+            dict[str, list[OrderLine]],
+            dict[int, list[OrderAssignment]],
+            dict[int, int],
+            dict[str, list[OrderDetail]],
         ]
         | None = None,
     ) -> OrderSnapshot:
+        if order.detail_mode and factory_id is None:
+            return self._source_snapshot(
+                session,
+                order,
+                preloaded[3].get(order.order_id, []) if preloaded is not None else None,
+            )
         rows = (
             preloaded[0].get(order.order_id, [])
             if preloaded is not None
@@ -1156,9 +1235,107 @@ class OrderService:
             over_quantity=total_over,
             short_quantity=total_pending,
             progress_percent=round(total_shipped * 100 / total) if total else 0,
+            detail_mode=order.detail_mode,
+            details=[],
             lines=line_snapshots,
             factory_progress=factory_progress,
             validation_issues=validation_issues,
+            created_at=order.created_at,
+            updated_at=order.updated_at,
+        )
+
+    def _source_snapshot(
+        self, session: Session, order: Order, rows: list[OrderDetail] | None = None
+    ) -> OrderSnapshot:
+        # This slice only imports unassigned source rows. Execution is introduced in #90.
+        if rows is None:
+            rows = list(
+                session.scalars(
+                    select(OrderDetail)
+                    .where(OrderDetail.order_id == order.order_id)
+                    .order_by(OrderDetail.sort_order, OrderDetail.detail_id)
+                )
+            )
+        details = []
+        for row in rows:
+            quantity, shipped = row.order_quantity, row.source_shipped_quantity
+            valid = quantity is not None and quantity > 0 and shipped is not None and shipped >= 0
+            pending = (
+                max(quantity - shipped, 0)
+                if valid and quantity is not None and shipped is not None
+                else None
+            )
+            progress = (
+                round(shipped * 100 / quantity)
+                if valid and quantity and shipped is not None
+                else None
+            )
+            details.append(
+                DetailSnapshot(
+                    detail_id=row.detail_id,
+                    origin=row.origin,
+                    source_sku_id=row.source_sku_id,
+                    product_name=row.product_name,
+                    properties_value=row.properties_value,
+                    category=row.category,
+                    factory_name=row.factory_name,
+                    matched_variant_id=row.matched_variant_id,
+                    matched_factory_id=row.matched_factory_id,
+                    order_quantity=quantity,
+                    shipped_quantity=shipped,
+                    pending_quantity=pending,
+                    progress_percent=progress,
+                    source_tracker=row.source_tracker,
+                    contract_ship_date=row.contract_ship_date,
+                    dispatch_state=row.dispatch_state,
+                    version=row.version,
+                    raw_fields=row.accepted_raw_fields,
+                )
+            )
+
+        def total(values: list[int | None]) -> int | None:
+            return (
+                None
+                if any(value is None for value in values)
+                else sum(value for value in values if value is not None)
+            )
+
+        quantity = total([item.order_quantity for item in details])
+        shipped = total([item.shipped_quantity for item in details])
+        pending = total([item.pending_quantity for item in details])
+        over = total(
+            [
+                max(item.shipped_quantity - item.order_quantity, 0)
+                if item.shipped_quantity is not None and item.order_quantity is not None
+                else None
+                for item in details
+            ]
+        )
+        dates = sorted({item.contract_ship_date for item in details if item.contract_ship_date})
+        return OrderSnapshot(
+            order_id=order.order_id,
+            order_no=order.order_no,
+            source=order.source,
+            order_date=order.order_date,
+            tracker=order.tracker,
+            contract_ship_date=dates[0] if dates else None,
+            contract_ship_dates=dates,
+            lifecycle=order.lifecycle,
+            display_status=self._display_status(order, False),
+            version=order.version,
+            total_quantity=quantity,
+            shipped_quantity=shipped,
+            pending_quantity=pending,
+            over_quantity=over,
+            short_quantity=pending,
+            progress_percent=round(shipped * 100 / quantity)
+            if quantity and shipped is not None
+            else None,
+            detail_mode=True,
+            details=details,
+            lines=[],
+            factory_progress=[],
+            validation_issues=[],
             created_at=order.created_at,
             updated_at=order.updated_at,
         )

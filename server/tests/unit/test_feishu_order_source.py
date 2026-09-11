@@ -202,3 +202,33 @@ def test_source_reads_contract_formula_without_plan_date(
     row = list(source.read_pages())[0][0]
     assert row.contract_ship_date == (date.fromisoformat(expected) if expected else None)
     assert "合同出货时间" in row.raw_fields
+
+
+@pytest.mark.parametrize(
+    "raw", [None, "", "错误", "1.5", True, "Infinity", "NaN", "2147483648", ["1", "2"]]
+)
+def test_invalid_source_quantities_remain_unknown(raw: object) -> None:
+    row = AppCredentialFeishuOrderSource._parse_record(
+        {
+            "record_id": "raw-quantity",
+            "last_modified_time": 1788486123000,
+            "fields": {"订单编号": "RAW", "下单数": raw, "出货总数": raw, "未出数量": raw},
+        }
+    )
+    assert row.order_quantity is None
+    assert row.shipped_quantity is None
+    assert row.pending_quantity is None
+    assert row.raw_fields["出货总数"] == raw
+
+
+@pytest.mark.parametrize("raw", [True, "invalid", "Infinity", 10**30])
+def test_invalid_order_date_does_not_abort_source_read(raw: object) -> None:
+    row = AppCredentialFeishuOrderSource._parse_record(
+        {
+            "record_id": "raw-date",
+            "last_modified_time": 1788486123000,
+            "fields": {"订单编号": "RAW", "下单时间": raw},
+        }
+    )
+    assert row.order_date is None
+    assert row.raw_fields["下单时间"] == raw

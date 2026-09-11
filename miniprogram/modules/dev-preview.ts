@@ -79,6 +79,7 @@ export function previewOrder(factoryOnly = false): Order {
     overQuantity: 0, shortQuantity: quantity, progressPercent: 0,
   };
   return {
+    detailMode: false, details: [],
     orderId: "preview-order", orderNo: "E81", source: "manual",
     orderDate: "2026-08-21", tracker: "松子", contractShipDates: ["2026-08-30"], contractShipDate: "2026-08-30",
     lifecycle: "PUBLISHED", displayStatus: "未完成", version: 2,

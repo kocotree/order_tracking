@@ -12,6 +12,7 @@ from app.db.models import (
     Factory,
     Order,
     OrderAssignment,
+    OrderDetail,
     OrderImportCandidate,
     OrderImportCandidateLine,
     OrderImportRun,
@@ -50,6 +51,8 @@ def _clean_import_data(engine: Engine) -> None:
             if imported_order_ids
             else []
         )
+        if imported_order_ids:
+            session.execute(delete(OrderDetail).where(OrderDetail.order_id.in_(imported_order_ids)))
         if imported_line_ids:
             session.execute(
                 delete(OrderAssignment).where(OrderAssignment.order_line_id.in_(imported_line_ids))
@@ -396,7 +399,7 @@ def test_ready_candidate_imports_atomic_feishu_draft(
         assert candidate is not None
         assert candidate.status == "IMPORTED"
         assert candidate.imported_order_id == order_id
-        assert session.query(OrderLine).filter_by(order_id=order_id).one().order_quantity == 100
+        assert session.query(OrderDetail).filter_by(order_id=order_id).one().order_quantity == 100
         assert (
             session.query(AuditLog).filter_by(action="order_import.candidate_imported").count() == 1
         )
@@ -514,7 +517,7 @@ def test_partial_shipment_threshold_imports_whole_order_and_saves_history_baseli
 
     with Session(test_database_engine) as session:
         candidates = {item.order_no: item for item in session.query(OrderImportCandidate).all()}
-        assert set(candidates) == {"E-LT", "E-MIX"}
+        assert set(candidates) == {"E-LT", "E-MIX", "E-EQ", "E-GT"}
         assert candidates["E-LT"].validation_state == "READY"
         assert candidates["E-LT"].order_date is None
         mixed = candidates["E-MIX"]
@@ -539,7 +542,13 @@ def test_partial_shipment_threshold_imports_whole_order_and_saves_history_baseli
             )
         )
         assert order is not None
-        assert [item.initial_shipped_quantity for item in assignments] == [80, 20]
+        assert assignments == []
+        details = session.scalars(
+            select(OrderDetail)
+            .where(OrderDetail.order_id == order_id)
+            .order_by(OrderDetail.sort_order)
+        ).all()
+        assert [item.source_shipped_quantity for item in details] == [80, 20]
         order_service = OrderService(
             sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
         )
@@ -551,7 +560,7 @@ def test_partial_shipment_threshold_imports_whole_order_and_saves_history_baseli
     assert snapshot.shipped_quantity == 100
     assert snapshot.pending_quantity == 100
     assert snapshot.progress_percent == 50
-    assert [line.shipped_quantity for line in snapshot.lines] == [80, 20]
+    assert [line.shipped_quantity for line in snapshot.details] == [80, 20]
 
     with Session(test_database_engine) as session:
         empty_date_candidate_id = session.scalar(
@@ -693,7 +702,7 @@ def test_run_aggregates_eligible_partial_candidate_and_excludes_finished_order(
             session.scalar(
                 select(OrderImportCandidate).where(OrderImportCandidate.order_no == "E101")
             )
-            is None
+            is not None
         )
 
     _clean_import_data(test_database_engine)
@@ -1071,7 +1080,7 @@ def test_incremental_change_does_not_overwrite_imported_source_snapshot(
         source_record = (
             session.query(OrderImportSourceRecord).filter_by(source_record_id="rec-frozen").one()
         )
-        order_line = session.query(OrderLine).filter_by(order_id=order_id).one()
+        order_line = session.query(OrderDetail).filter_by(order_id=order_id).one()
         assert source_record.raw_fields == {"version": 1}
         assert source_record.source_modified_at == datetime(2026, 9, 4, 1, 0)
         assert order_line.order_quantity == 100
@@ -1114,7 +1123,7 @@ def test_worker_retries_before_releasing_failed_import_run(
     _clean_import_data(test_database_engine)
 
 
-def test_detail_dates_convert_once_preserve_override_and_block_missing(
+def test_detail_dates_convert_once_preserve_override_and_import_missing(
     test_database_engine: Engine,
 ) -> None:
     from dataclasses import replace
@@ -1183,15 +1192,20 @@ def test_detail_dates_convert_once_preserve_override_and_block_missing(
         request_id="clear-date",
     )
     assert "INCONSISTENT_CONTRACT_SHIP_DATE" not in cleared.validation_issues
-    with pytest.raises(ValueError, match="合同出货时间"):
-        service.confirm_candidate(
-            actor_id="admin-order-import",
-            candidate_id=cleared.candidate_id,
-            request_id="confirm-empty",
-        )
+    order_id = service.confirm_candidate(
+        actor_id="admin-order-import",
+        candidate_id=cleared.candidate_id,
+        request_id="confirm-empty",
+    )
+    imported = OrderService(sessions).get(order_id=order_id)
+    assert imported.details[0].contract_ship_date is None
+    with Session(test_database_engine) as session:
+        assert session.scalar(
+            select(OrderDetail).where(OrderDetail.order_id == order_id)
+        ).date_override_enabled
 
 
-def test_same_sku_factory_conflicts_blank_then_import_one_assignment(
+def test_same_sku_factory_keeps_independent_source_dates(
     test_database_engine: Engine,
 ) -> None:
     from dataclasses import replace
@@ -1223,7 +1237,10 @@ def test_same_sku_factory_conflicts_blank_then_import_one_assignment(
     )
     candidate = service.list_candidates(actor_id="admin-order-import")[0][0]
     assert candidate.validation_issues == []
-    assert all(line.contract_ship_date is None for line in candidate.lines)
+    assert [line.contract_ship_date for line in candidate.lines] == [
+        date(2026, 12, 27),
+        date(2026, 12, 28),
+    ]
     saved = service.save_candidate_date(
         actor_id="admin-order-import",
         candidate_id=candidate.candidate_id,
@@ -1232,7 +1249,10 @@ def test_same_sku_factory_conflicts_blank_then_import_one_assignment(
         contract_ship_date=date(2027, 1, 2),
         request_id="resolve-conflict",
     )
-    assert all(line.contract_ship_date == date(2027, 1, 2) for line in saved.lines)
+    assert [line.contract_ship_date for line in saved.lines] == [
+        date(2027, 1, 2),
+        date(2026, 12, 28),
+    ]
     order_id = service.confirm_candidate(
         actor_id="admin-order-import",
         candidate_id=candidate.candidate_id,
@@ -1240,10 +1260,10 @@ def test_same_sku_factory_conflicts_blank_then_import_one_assignment(
         request_id="import-conflict",
     )
     order = OrderService(sessions).get(order_id=order_id)
-    assert order.contract_ship_dates == [date(2027, 1, 2)]
-    assert len(order.lines) == 1 and len(order.lines[0].assignments) == 1
-    assert order.lines[0].assignments[0].assigned_quantity == 200
-    assert order.lines[0].assignments[0].contract_ship_date == date(2027, 1, 2)
+    assert order.contract_ship_dates == [date(2026, 12, 28), date(2027, 1, 2)]
+    assert order.lines == []
+    assert [item.order_quantity for item in order.details] == [100, 100]
+    assert len({item.detail_id for item in order.details}) == 2
 
 
 def test_candidate_date_api_authorization_version_and_import_lock(
@@ -1637,3 +1657,353 @@ def test_candidate_sort_uses_full_ordered_line_string(
         assert total == 2
         assert items[0].order_no == expected
         assert len(items[0].lines) == 50
+
+
+def test_candidate_threshold_is_per_detail_strictly_below_95_percent(
+    test_database_engine: Engine,
+) -> None:
+    from dataclasses import replace
+
+    _seed_import_dependencies(test_database_engine)
+    service = OrderImportService(sessionmaker(test_database_engine, expire_on_commit=False))
+    base = SourceOrderRow(
+        "threshold",
+        "THRESHOLD",
+        "6970000000001",
+        "测试童帽",
+        "蓝色 / 120",
+        "童帽春夏",
+        "测试工厂",
+        10000,
+        9499,
+        501,
+        "松子",
+        None,
+        None,
+        {},
+    )
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="threshold")
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[
+            base,
+            replace(base, record_id="over", shipped_quantity=11000),
+            replace(base, record_id="equal", order_no="EQUAL", shipped_quantity=9500),
+            replace(base, record_id="above", order_no="ABOVE", shipped_quantity=9999),
+        ],
+    )
+    items, count = service.list_candidates(actor_id="admin-order-import")
+    assert count == 1
+    assert items[0].order_no == "THRESHOLD"
+    assert [line.shipped_quantity for line in items[0].lines] == [9499, 11000]
+
+
+def test_incomplete_source_import_keeps_raw_details_and_blocks_old_dispatch(
+    test_database_engine: Engine,
+) -> None:
+    from dataclasses import replace
+
+    from app.modules.orders import AssignmentInput, DraftLineInput
+    from app.modules.orders.service import OrderConflict, OrderNotFound
+
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    row = SourceOrderRow(
+        "raw-1",
+        "RAW-ORDER",
+        None,
+        "未匹配产品",
+        "未知规格",
+        None,
+        "未匹配工厂",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        {"下单数": "待核对", "出货总数": "未知", "工厂": "未匹配工厂"},
+    )
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="raw")
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[
+            row,
+            replace(row, record_id="raw-2", order_quantity=100, shipped_quantity=115),
+        ],
+    )
+    candidate = service.list_candidates(actor_id="admin-order-import")[0][0]
+    assert candidate.total_quantity is None
+    assert candidate.shipped_quantity is None
+    assert candidate.pending_quantity is None
+    order_id = service.confirm_candidate(
+        actor_id="admin-order-import",
+        candidate_id=candidate.candidate_id,
+        version=candidate.version,
+        request_id="raw-confirm",
+    )
+    orders = OrderService(sessions)
+    order = orders.get_visible(actor_id="admin-order-import", order_id=order_id)
+    assert order.lifecycle == "DRAFT" and order.lines == []
+    assert order.total_quantity is None and order.tracker is None
+    assert len(order.details) == 2
+    assert order.details[0].raw_fields == row.raw_fields
+    assert order.details[0].order_quantity is None
+    assert order.details[1].shipped_quantity == 115
+    assert order.details[1].pending_quantity == 0
+    assert order.details[1].dispatch_state == "UNASSIGNED"
+    with pytest.raises(OrderNotFound):
+        orders.get_visible(actor_id="factory-import-user", order_id=order_id)
+    with pytest.raises(OrderConflict, match="明细派工"):
+        orders.publish(
+            actor_id="admin-order-import",
+            order_id=order_id,
+            version=order.version,
+            request_id="blocked",
+            idempotency_key="blocked",
+        )
+    with pytest.raises(OrderConflict, match="来源明细"):
+        orders.save_draft(
+            actor_id="admin-order-import",
+            order_id=order_id,
+            version=order.version,
+            order_no="RAW-ORDER",
+            order_date=None,
+            tracker="松子",
+            lines=[DraftLineInput("variant-import", 100, [AssignmentInput("factory-import", 100)])],
+            request_id="blocked-save",
+        )
+    assert (
+        service.confirm_candidate(
+            actor_id="admin-order-import",
+            candidate_id=candidate.candidate_id,
+            version=candidate.version,
+            request_id="repeat",
+        )
+        == order_id
+    )
+    assert len(orders.get(order_id=order_id).details) == 2
+
+
+@pytest.mark.parametrize(
+    "quantity,shipped",
+    [
+        (None, 0),
+        (0, 0),
+        (-1, 0),
+        (True, 0),
+        (1.5, 0),
+        (2147483648, 0),
+        (100, None),
+        (100, -1),
+        (100, True),
+        (100, 1.5),
+        (100, 2147483648),
+    ],
+)
+def test_invalid_quantities_are_candidates_and_never_become_zero(
+    test_database_engine: Engine,
+    quantity: object,
+    shipped: object,
+) -> None:
+    _seed_import_dependencies(test_database_engine)
+    service = OrderImportService(sessionmaker(test_database_engine, expire_on_commit=False))
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="invalid-values")
+    row = SourceOrderRow(
+        "invalid-values",
+        "INVALID",
+        None,
+        None,
+        None,
+        None,
+        None,
+        quantity,
+        shipped,
+        None,
+        None,
+        None,
+        None,
+        {"下单数": quantity, "出货总数": shipped},
+    )
+    service.process_run(run_id=run.run_id, pages_read=1, rows=[row])
+    candidates, count = service.list_candidates(actor_id="admin-order-import")
+    assert count == 1
+    line = candidates[0].lines[0]
+    assert line.pending_quantity is None
+    if quantity != 100:
+        assert line.order_quantity is None
+    else:
+        assert line.shipped_quantity is None
+    order_id = service.confirm_candidate(
+        actor_id="admin-order-import",
+        candidate_id=candidates[0].candidate_id,
+        request_id="invalid-confirm",
+    )
+    detail = (
+        OrderService(sessionmaker(test_database_engine, expire_on_commit=False))
+        .get(order_id=order_id)
+        .details[0]
+    )
+    assert detail.raw_fields == row.raw_fields
+
+
+def test_failed_detail_write_rolls_back_order_and_candidate(test_database_engine: Engine) -> None:
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="atomic")
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[
+            SourceOrderRow(
+                "atomic",
+                "ATOMIC",
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                {"下单数": "待核对"},
+            )
+        ],
+    )
+    candidate = service.list_candidates(actor_id="admin-order-import")[0][0]
+
+    def unavailable(*args: object) -> None:
+        raise RuntimeError("simulated storage failure")
+
+    event.listen(OrderDetail, "before_insert", unavailable)
+    try:
+        with pytest.raises(RuntimeError, match="storage failure"):
+            service.confirm_candidate(
+                actor_id="admin-order-import",
+                candidate_id=candidate.candidate_id,
+                request_id="fail-import",
+            )
+    finally:
+        event.remove(OrderDetail, "before_insert", unavailable)
+    assert (
+        service.get_candidate(
+            actor_id="admin-order-import", candidate_id=candidate.candidate_id
+        ).status
+        == "PENDING"
+    )
+    assert (
+        OrderService(sessions).list_visible(actor_id="admin-order-import", include_drafts=True)[1]
+        == 0
+    )
+    order_id = service.confirm_candidate(
+        actor_id="admin-order-import",
+        candidate_id=candidate.candidate_id,
+        request_id="retry-import",
+    )
+    assert len(OrderService(sessions).get(order_id=order_id).details) == 1
+
+
+def test_missing_source_identity_or_order_does_not_create_guess_order(
+    test_database_engine: Engine,
+) -> None:
+    from dataclasses import replace
+
+    _seed_import_dependencies(test_database_engine)
+    service = OrderImportService(sessionmaker(test_database_engine, expire_on_commit=False))
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="identity")
+    row = SourceOrderRow(
+        "", "UNKNOWN", None, None, None, None, None, 100, 0, 100, None, None, None, {}
+    )
+    result = service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[row, replace(row, record_id="no-order", order_no=None)],
+    )
+    assert result.failed_records == 2
+    assert service.list_candidates(actor_id="admin-order-import")[1] == 0
+
+
+def test_source_draft_api_preserves_nulls_and_rejects_old_writes(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="relaxed-api")
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[
+            SourceOrderRow(
+                "relaxed-api",
+                "RELAXED-API",
+                None,
+                "未匹配产品",
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                {"出货总数": "未知"},
+            )
+        ],
+    )
+    candidate = service.list_candidates(actor_id="admin-order-import")[0][0]
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"local-api-test",
+        phone_encryption_secret=b"local-api-test",
+        phone_digest_secret=b"local-api-test",
+    )
+    admin = identity.issue_session(user_id="admin-order-import", terminal="web")
+    factory = identity.issue_session(user_id="factory-import-user", terminal="web")
+    app = create_app(
+        database_url=test_database_url, identity_service=identity, order_import_service=service
+    )
+    headers = {"X-CSRF-Token": admin.csrf_token, "Idempotency-Key": "relaxed-import"}
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("ot_web_session", admin.access_token)
+        response = client.post(
+            f"/api/v1/admin/import-candidates/{candidate.candidate_id}/confirm", headers=headers
+        )
+        assert response.status_code == 200
+        order_id = response.json()["orderId"]
+        detail = client.get(f"/api/v1/orders/{order_id}").json()
+        assert detail["totalQuantity"] is None and detail["tracker"] is None
+        assert detail["details"][0]["rawFields"] == {"出货总数": "未知"}
+        assert detail["lines"] == []
+        published = client.post(
+            f"/api/v1/admin/orders/{order_id}/publish", json={"version": 1}, headers=headers
+        )
+        assert published.status_code == 409
+        saved = client.put(
+            f"/api/v1/admin/orders/{order_id}",
+            headers=headers,
+            json={
+                "version": 1,
+                "orderNo": "RELAXED-API",
+                "tracker": "松子",
+                "lines": [
+                    {
+                        "variantId": "variant-import",
+                        "orderQuantity": 100,
+                        "assignments": [{"factoryId": "factory-import", "quantity": 100}],
+                    }
+                ],
+            },
+        )
+        assert saved.status_code == 409
+        client.cookies.set("ot_web_session", factory.access_token)
+        assert client.get(f"/api/v1/orders/{order_id}").status_code == 404

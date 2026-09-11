@@ -1799,13 +1799,13 @@ export interface components {
             /** Orderquantity */
             orderQuantity: number | null;
             /** Pendingquantity */
-            pendingQuantity: number;
+            pendingQuantity: number | null;
             /** Productname */
             productName: string | null;
             /** Propertiesvalue */
             propertiesValue: string | null;
             /** Shippedquantity */
-            shippedQuantity: number;
+            shippedQuantity: number | null;
             /** Sourcecontractshipdate */
             sourceContractShipDate: string | null;
             /** Sourceskuid */
@@ -1845,13 +1845,13 @@ export interface components {
             /** Orderno */
             orderNo: string;
             /** Pendingquantity */
-            pendingQuantity: number;
+            pendingQuantity: number | null;
             /** Shippedquantity */
-            shippedQuantity: number;
+            shippedQuantity: number | null;
             /** Status */
             status: string;
             /** Totalquantity */
-            totalQuantity: number;
+            totalQuantity: number | null;
             /** Tracker */
             tracker: string | null;
             /**
@@ -2332,6 +2332,47 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** OrderDetailResponse */
+        OrderDetailResponse: {
+            /** Category */
+            category: string | null;
+            /** Contractshipdate */
+            contractShipDate: string | null;
+            /** Detailid */
+            detailId: string;
+            /** Dispatchstate */
+            dispatchState: string;
+            /** Factoryname */
+            factoryName: string | null;
+            /** Matchedfactoryid */
+            matchedFactoryId: string | null;
+            /** Matchedvariantid */
+            matchedVariantId: string | null;
+            /** Orderquantity */
+            orderQuantity: number | null;
+            /** Origin */
+            origin: string;
+            /** Pendingquantity */
+            pendingQuantity: number | null;
+            /** Productname */
+            productName: string | null;
+            /** Progresspercent */
+            progressPercent: number | null;
+            /** Propertiesvalue */
+            propertiesValue: string | null;
+            /** Rawfields */
+            rawFields: {
+                [key: string]: unknown;
+            };
+            /** Shippedquantity */
+            shippedQuantity: number | null;
+            /** Sourceskuid */
+            sourceSkuId: string | null;
+            /** Sourcetracker */
+            sourceTracker: string | null;
+            /** Version */
+            version: number;
+        };
         /** OrderLineResponse */
         OrderLineResponse: {
             /** Assignments */
@@ -2387,6 +2428,16 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+            /**
+             * Detailmode
+             * @default false
+             */
+            detailMode: boolean;
+            /**
+             * Details
+             * @default []
+             */
+            details: components["schemas"]["OrderDetailResponse"][];
             /** Displaystatus */
             displayStatus: string;
             /** Factoryprogress */
@@ -2402,26 +2453,26 @@ export interface components {
             /** Orderno */
             orderNo: string;
             /** Overquantity */
-            overQuantity: number;
+            overQuantity: number | null;
             /** Pendingquantity */
-            pendingQuantity: number;
+            pendingQuantity: number | null;
             /** Progresspercent */
-            progressPercent: number;
+            progressPercent: number | null;
             /**
              * Requestid
              * @default
              */
             requestId: string;
             /** Shippedquantity */
-            shippedQuantity: number;
+            shippedQuantity: number | null;
             /** Shortquantity */
-            shortQuantity: number;
+            shortQuantity: number | null;
             /** Source */
             source: string;
             /** Totalquantity */
-            totalQuantity: number;
+            totalQuantity: number | null;
             /** Tracker */
-            tracker: string;
+            tracker: string | null;
             /**
              * Updatedat
              * Format: date-time

@@ -75,7 +75,7 @@
                 <td><span class="dashboard-tracker-tag">{{ item.tracker }}</span></td>
                 <td>{{ factorySummary(item) }}</td>
                 <td class="date-summary" :title="item.contractShipDates.join('、')">{{ item.contractShipDates.join("、") || "—" }}</td>
-                <td><div class="dashboard-progress-cell"><span><i :style="{ width: `${item.progressPercent}%` }"></i></span><em>{{ item.progressPercent }}%</em></div></td>
+                <td><div class="dashboard-progress-cell"><span><i :style="{ width: `${Math.min(item.progressPercent ?? 0, 100)}%` }"></i></span><em>{{ item.progressPercent == null ? "—" : `${item.progressPercent}%` }}</em></div></td>
                 <td>{{ number(item.shippedQuantity) }} / {{ number(item.totalQuantity) }}</td>
                 <td><span class="order-status" :data-status="item.displayStatus">{{ item.displayStatus }}</span></td>
               </tr>
@@ -123,13 +123,13 @@ const appliedKeyword = ref("");
 const sortKey = ref<SortKey | null>(null);
 const sortDirection = ref<"asc" | "desc">("asc");
 
-const number = (value: number) => value.toLocaleString("zh-CN");
-const productSummary = (order: Order) => [...new Set(order.lines.map((item) => item.productName))].join("、") || "—";
-const factorySummary = (order: Order) => [...new Set(order.factoryProgress.map((item) => item.factoryName))].join("、") || "—";
+const number = (value: number | null) => value == null ? "—" : value.toLocaleString("zh-CN");
+const productSummary = (order: Order) => [...new Set((order.detailMode ? order.details : order.lines).map((item) => item.productName).filter(Boolean))].join("、") || "—";
+const factorySummary = (order: Order) => [...new Set((order.detailMode ? order.details : order.factoryProgress).map((item) => item.factoryName))].join("、") || "—";
 
 function displayCategories(order: Order) {
   const categories = new Set<"服装" | "帽子">();
-  for (const line of order.lines) {
+  for (const line of (order.detailMode ? order.details : order.lines)) {
     if (!line.category) continue;
     categories.add(line.category === "童装春夏" || line.category === "童装秋冬" ? "服装" : "帽子");
   }
@@ -141,11 +141,11 @@ function sortValue(order: Order, key: SortKey): string | number {
     orderNo: order.orderNo,
     productName: productSummary(order),
     category: displayCategories(order).join("、"),
-    tracker: order.tracker,
+    tracker: order.tracker ?? "",
     factory: factorySummary(order),
     contractShipDate: (sortDirection.value === "desc" ? order.contractShipDates.at(-1) : order.contractShipDates[0]) ?? "",
-    progressPercent: order.progressPercent,
-    quantity: order.shippedQuantity,
+    progressPercent: order.progressPercent ?? -1,
+    quantity: order.shippedQuantity ?? -1,
     status: order.displayStatus,
   };
   return values[key];

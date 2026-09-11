@@ -104,6 +104,27 @@ class FactoryProgressResponse(ApiModel):
     progress_percent: int
 
 
+class OrderDetailResponse(ApiModel):
+    detail_id: str
+    origin: str
+    source_sku_id: str | None
+    product_name: str | None
+    properties_value: str | None
+    category: str | None
+    factory_name: str | None
+    matched_variant_id: str | None
+    matched_factory_id: str | None
+    order_quantity: int | None
+    shipped_quantity: int | None
+    pending_quantity: int | None
+    progress_percent: int | None
+    source_tracker: str | None
+    contract_ship_date: date | None
+    dispatch_state: str
+    version: int
+    raw_fields: dict[str, object]
+
+
 class OrderResponse(ApiModel):
     contract_ship_date: date | None
     contract_ship_dates: list[date]
@@ -111,16 +132,18 @@ class OrderResponse(ApiModel):
     order_no: str
     source: str
     order_date: date | None
-    tracker: str
+    tracker: str | None
     lifecycle: str
     display_status: str
     version: int
-    total_quantity: int
-    shipped_quantity: int
-    pending_quantity: int
-    over_quantity: int
-    short_quantity: int
-    progress_percent: int
+    total_quantity: int | None
+    shipped_quantity: int | None
+    pending_quantity: int | None
+    over_quantity: int | None
+    short_quantity: int | None
+    progress_percent: int | None
+    detail_mode: bool = False
+    details: list[OrderDetailResponse] = []
     lines: list[OrderLineResponse]
     factory_progress: list[FactoryProgressResponse]
     validation_issues: list[str]

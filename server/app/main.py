@@ -52,6 +52,7 @@ from app.local_demo import (
     LocalDemoFeishuIdentity,
     LocalDemoWechatIdentity,
     create_local_demo_router,
+    local_demo_order_source,
 )
 from app.logging import StructuredLogger, configure_uvicorn_access_log_redaction
 from app.modules.contracts import (
@@ -253,6 +254,8 @@ def create_app(
             ),
             file_store=private_file_store,
         )
+    if order_source is None and local_demo_enabled:
+        order_source = local_demo_order_source(session_factory)
     if order_source is None:
         order_source = (
             AppCredentialFeishuOrderSource(

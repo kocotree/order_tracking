@@ -2,7 +2,7 @@ import { useRoute } from "vue-router";
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { contractApi, orderApi, shipmentApi, type Shipment, type Order } from "@/api/client";
+import { ApiError, contractApi, orderApi, shipmentApi, type Shipment, type Order } from "@/api/client";
 import OrderDetailPage from "@/pages/OrderDetailPage.vue";
 
 vi.mock("vue-router", async () => {
@@ -207,6 +207,17 @@ const mountSource = () => mount(OrderDetailPage, { global: { stubs: {
 } } });
 const updateButton = (wrapper: ReturnType<typeof mountSource>) => wrapper.findAll('button').find(b => b.text() === '更新未派工明细')!;
 const dispatchButton = (wrapper: ReturnType<typeof mountSource>) => wrapper.findAll('button').find(b => b.text().startsWith('派工（'))!;
+
+it("shows a dispatch preview failure on the page before any dialog opens", async () => {
+  vi.spyOn(orderApi, "get").mockResolvedValue(sourceOrder);
+  vi.spyOn(orderApi, "dispatchPreview").mockRejectedValue(new ApiError(409, "conflict", "明细没有可靠的来源关联，不能更新"));
+  const wrapper = mountSource(); await flushPromises();
+  await wrapper.get('input[aria-label="选择第1条"]').setValue(true);
+  await dispatchButton(wrapper).trigger("click"); await flushPromises();
+  expect(wrapper.get('.detail-section-card > [role="alert"]').text()).toContain("明细没有可靠的来源关联");
+  expect(dispatchButton(wrapper).attributes("disabled")).toBeUndefined();
+  wrapper.unmount();
+});
 
 it("preserves failed date input and prevents refresh until the save succeeds", async () => {
   vi.spyOn(orderApi, "get").mockResolvedValue(sourceOrder);

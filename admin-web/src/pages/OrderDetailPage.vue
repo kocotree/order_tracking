@@ -38,6 +38,7 @@
             </div>
           </header>
           <p v-if="sourceError" class="page-error" role="alert">{{ sourceError }}</p>
+          <p v-if="dispatchError" class="page-error" role="alert">{{ dispatchError }}</p>
           <div class="detail-table-scroll">
             <table class="data-grid-table product-detail-table dispatch-table" :class="{ 'has-selection': hasUnassigned }">
               <colgroup>

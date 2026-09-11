@@ -3,14 +3,33 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.identity import ExternalIdentityUnavailable, FeishuProfile
+from app.adapters.order_source import FakeFeishuOrderSource
 from app.adapters.wechat import WechatProfile, WechatUnavailable
+from app.db.models import OrderImportSourceRecord
+from app.modules.order_import import OrderImportService
 
 LOCAL_DEMO_FEISHU_SCOPE = "local-demo/feishu"
 LOCAL_DEMO_WECHAT_SCOPE = "local-demo/wechat"
 LOCAL_DEMO_PHONE = "10000000000"
 LOCAL_DEMO_SUPER_PHONE = "10000000001"
+
+
+def local_demo_order_source(session_factory: sessionmaker[Session]) -> FakeFeishuOrderSource:
+    """Replay only explicitly seeded demo source snapshots, never real Feishu records."""
+    with session_factory() as session:
+        rows = session.scalars(
+            select(OrderImportSourceRecord).where(
+                OrderImportSourceRecord.source_scope == "local-demo-import",
+                OrderImportSourceRecord.normalized_fields.is_not(None),
+            )
+        )
+        source = FakeFeishuOrderSource([[OrderImportService._source_row(row) for row in rows]])
+    source.source_scope = "local-demo-import"
+    return source
 
 
 class LocalDemoFeishuIdentity:

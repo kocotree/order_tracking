@@ -14,6 +14,34 @@ ACTOR = "admin-order-import"
 NOW = datetime(2026, 9, 11, tzinfo=UTC)
 
 
+def test_local_demo_wires_saved_demo_source_for_dispatch(test_database_engine: Engine, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.db.models import OrderImportSourceRecord
+    from app.main import create_app
+    from app.modules.identity_access import IdentityAccessService
+
+    sessions, _, oid = setup_dispatch_order(test_database_engine)
+    with sessions() as session, session.begin():
+        for record in session.scalars(select(OrderImportSourceRecord)):
+            record.source_scope = "local-demo-import"
+    monkeypatch.setenv("ORDER_TRACKING_APP_ENV", "local_demo")
+    identity = IdentityAccessService(sessions)
+    web = identity.issue_session(user_id=ACTOR, terminal="web")
+    app = create_app(identity_service=identity)
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("ot_web_session", web.access_token)
+        client.cookies.set("ot_csrf", web.csrf_token or "")
+        order = client.get(f"/api/v1/orders/{oid}").json()
+        result = client.post(
+            f"/api/v1/admin/orders/{oid}/dispatch/preview",
+            json={"version": order["version"], "detailIds": [order["details"][0]["detailId"]]},
+            headers={"X-CSRF-Token": web.csrf_token or ""},
+        )
+        assert result.status_code == 200
+        assert result.json()["allOk"] is True
+
+
 def dispatch(service, order_id, ids, key):
     order = service.get(order_id=order_id)
     args = dict(actor_id=ACTOR, order_id=order_id, version=order.version, request_id=key)

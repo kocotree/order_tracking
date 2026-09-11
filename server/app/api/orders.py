@@ -15,6 +15,7 @@ from app.modules.orders import (
     OrderService,
     OrderSnapshot,
 )
+from app.modules.orders.source_update import OrderSourceUpdateService
 
 
 def to_camel(value: str) -> str:
@@ -57,6 +58,35 @@ class DraftUpdate(ApiModel):
 
 class VersionWrite(ApiModel):
     version: StrictInt = Field(gt=0)
+
+
+class DetailDateWrite(VersionWrite):
+    model_config = ConfigDict(extra="forbid")
+    detail_version: StrictInt = Field(gt=0)
+    contract_ship_date: date | None
+
+
+class RefreshWrite(VersionWrite):
+    model_config = ConfigDict(extra="forbid")
+
+
+class RefreshConfirmWrite(RefreshWrite):
+    preview_id: str = Field(min_length=1, max_length=36)
+
+
+class SourceDifferenceResponse(ApiModel):
+    detail_id: str
+    label: str
+    field: str
+    before: str | int | None
+    after: str | int | None
+
+
+class SourcePreviewResponse(ApiModel):
+    preview_id: str
+    version: int
+    expires_at: datetime
+    differences: list[SourceDifferenceResponse]
 
 
 class ReopenWrite(ApiModel):
@@ -215,6 +245,8 @@ def create_order_router(
     service: OrderService,
     identity: IdentityAccessService,
     order_import_service: OrderImportService | None = None,
+    *,
+    source_update_service: OrderSourceUpdateService,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
@@ -244,6 +276,79 @@ def create_order_router(
             if token:
                 return identity.authenticate_session(token=token, terminal="mini"), "mini"
         raise SessionInvalid("session is missing")
+
+    @router.patch(
+        "/admin/orders/{order_id}/details/{detail_id}/contract-date",
+        response_model=OrderResponse,
+        tags=["order-admin"],
+    )
+    def save_detail_date(
+        order_id: str,
+        detail_id: str,
+        payload: DetailDateWrite,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> OrderResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        result = source_update_service.save_date(
+            actor_id=actor.user_id,
+            order_id=order_id,
+            detail_id=detail_id,
+            version=payload.version,
+            detail_version=payload.detail_version,
+            contract_ship_date=payload.contract_ship_date,
+            request_id=request.state.request_id,
+        )
+        return _order_response(result, request.state.request_id)
+
+
+    @router.post(
+        "/admin/orders/{order_id}/source-refresh/preview",
+        response_model=SourcePreviewResponse,
+        tags=["order-admin"],
+    )
+    def preview_source(
+        order_id: str,
+        payload: RefreshWrite,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> SourcePreviewResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        return SourcePreviewResponse.model_validate(
+            source_update_service.preview(
+                actor_id=actor.user_id,
+                order_id=order_id,
+                version=payload.version,
+                request_id=request.state.request_id,
+            )
+        )
+
+
+    @router.post(
+        "/admin/orders/{order_id}/source-refresh/confirm",
+        response_model=OrderResponse,
+        tags=["order-admin"],
+    )
+    def confirm_source(
+        order_id: str,
+        payload: RefreshConfirmWrite,
+        request: Request,
+        idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=191),
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> OrderResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        result = source_update_service.confirm(
+            actor_id=actor.user_id,
+            order_id=order_id,
+            version=payload.version,
+            preview_id=payload.preview_id,
+            idempotency_key=idempotency_key,
+            request_id=request.state.request_id,
+        )
+        return _order_response(result, request.state.request_id)
 
     @router.post(
         "/admin/orders",

@@ -232,3 +232,37 @@ def test_invalid_order_date_does_not_abort_source_read(raw: object) -> None:
     )
     assert row.order_date is None
     assert row.raw_fields["下单时间"] == raw
+
+
+def test_known_record_read_uses_only_requested_ids(monkeypatch: Any) -> None:
+    client = _Client()
+    original_get = client.get
+
+    def get(path: str, **kwargs: object) -> _Response:
+        if path.endswith("/fields"):
+            return original_get(path, **kwargs)
+        client.requests.append((path, kwargs))
+        return _Response(
+            {
+                "code": 0,
+                "data": {
+                    "record": {
+                        "record_id": path.rsplit("/", 1)[-1],
+                        "last_modified_time": 1788486123000,
+                        "fields": {"订单编号": "89#", "合同出货时间": "2026-12-31"},
+                    }
+                },
+            }
+        )
+
+    client.get = get
+    monkeypatch.setattr(order_source_module.httpx, "Client", lambda **_kwargs: client)
+    source = AppCredentialFeishuOrderSource(
+        FeishuOrderSourceConfig(
+            app_id="app", app_secret="fake", app_token="base", table_id="table", view_id="view"
+        )
+    )
+    rows = source.read_records(["rec89", "rec90"])
+    assert [r.record_id for r in rows] == ["rec89", "rec90"]
+    assert all(path.endswith(("/fields", "/rec89", "/rec90")) for path, _ in client.requests)
+    assert client.requests[-1][1]["params"] == {"automatic_fields": "true"}

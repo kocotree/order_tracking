@@ -236,6 +236,11 @@ def test_downgrade_refuses_new_source_data_before_altering_schema(
         )
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", test_database_url)
-    with pytest.raises(RuntimeError, match="拒绝有损回滚"):
-        command.downgrade(config, "20260909_0033")
-    assert OrderService(sessionmaker(test_database_engine)).get(order_id="new-source").detail_mode
+    try:
+        with pytest.raises(RuntimeError, match="拒绝有损回滚"):
+            command.downgrade(config, "20260909_0033")
+        service = OrderService(sessionmaker(test_database_engine))
+        assert service.get(order_id="new-source").detail_mode
+    finally:
+        # Later reversible migrations may already have run before 0034 rejects the downgrade.
+        command.upgrade(config, "head")

@@ -484,6 +484,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/orders/{order_id}/details/{detail_id}/contract-date": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Save Detail Date */
+        patch: operations["save_detail_date_api_v1_admin_orders__order_id__details__detail_id__contract_date_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/orders/{order_id}/publish": {
         parameters: {
             query?: never;
@@ -512,6 +529,40 @@ export interface paths {
         put?: never;
         /** Reopen */
         post: operations["reopen_api_v1_admin_orders__order_id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/source-refresh/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Source */
+        post: operations["confirm_source_api_v1_admin_orders__order_id__source_refresh_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/source-refresh/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Source */
+        post: operations["preview_source_api_v1_admin_orders__order_id__source_refresh_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1950,6 +2001,15 @@ export interface components {
             /** Todayshipments */
             todayShipments: number;
         };
+        /** DetailDateWrite */
+        DetailDateWrite: {
+            /** Contractshipdate */
+            contractShipDate: string | null;
+            /** Detailversion */
+            detailVersion: number;
+            /** Version */
+            version: number;
+        };
         /** DraftBoxWrite */
         DraftBoxWrite: {
             /** Boxno */
@@ -2540,6 +2600,18 @@ export interface components {
         ReceiptSave: {
             /** Items */
             items: components["schemas"]["ReceiptItemWrite"][];
+            /** Version */
+            version: number;
+        };
+        /** RefreshConfirmWrite */
+        RefreshConfirmWrite: {
+            /** Previewid */
+            previewId: string;
+            /** Version */
+            version: number;
+        };
+        /** RefreshWrite */
+        RefreshWrite: {
             /** Version */
             version: number;
         };
@@ -3172,6 +3244,33 @@ export interface components {
             shipmentId: string;
             /** Status */
             status: string;
+        };
+        /** SourceDifferenceResponse */
+        SourceDifferenceResponse: {
+            /** After */
+            after: string | number | null;
+            /** Before */
+            before: string | number | null;
+            /** Detailid */
+            detailId: string;
+            /** Field */
+            field: string;
+            /** Label */
+            label: string;
+        };
+        /** SourcePreviewResponse */
+        SourcePreviewResponse: {
+            /** Differences */
+            differences: components["schemas"]["SourceDifferenceResponse"][];
+            /**
+             * Expiresat
+             * Format: date-time
+             */
+            expiresAt: string;
+            /** Previewid */
+            previewId: string;
+            /** Version */
+            version: number;
         };
         /** UnreadCountResponse */
         UnreadCountResponse: {
@@ -4428,6 +4527,46 @@ export interface operations {
             };
         };
     };
+    save_detail_date_api_v1_admin_orders__order_id__details__detail_id__contract_date_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+                detail_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetailDateWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     publish_api_v1_admin_orders__order_id__publish_post: {
         parameters: {
             query?: never;
@@ -4495,6 +4634,85 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_source_api_v1_admin_orders__order_id__source_refresh_confirm_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshConfirmWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_source_api_v1_admin_orders__order_id__source_refresh_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourcePreviewResponse"];
                 };
             };
             /** @description Validation Error */

@@ -737,6 +737,8 @@ class OrderService:
         labels = {
             "order.draft_created": "创建订单草稿",
             "order.draft_updated": "更新订单草稿",
+            "order.detail_date_updated": "保存未派工明细合同出货时间",
+            "order.source_refreshed": "确认更新未派工明细来源资料",
             "order.published": "发布订单",
             "order.withdrawn": "撤回订单",
             "order.deleted": "删除订单",
@@ -1257,7 +1259,7 @@ class OrderService:
                 )
             )
         details = []
-        for row in rows:
+        for row in sorted(rows, key=lambda detail: (detail.sort_order, detail.detail_id)):
             quantity, shipped = row.order_quantity, row.source_shipped_quantity
             valid = quantity is not None and quantity > 0 and shipped is not None and shipped >= 0
             pending = (

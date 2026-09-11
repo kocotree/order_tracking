@@ -1061,6 +1061,55 @@ class OrderImportService:
         return True
 
     @staticmethod
+    def match_source_row(
+        session: Session, row: SourceOrderRow
+    ) -> tuple[ProductVariant | None, Factory | None, list[str]]:
+        line_issues: list[str] = []
+        variant = session.scalar(
+            select(ProductVariant)
+            .join(Product, Product.product_id == ProductVariant.product_id)
+            .where(
+                ProductVariant.source_sku_id == (row.source_sku_id or "").strip(),
+                ProductVariant.properties_value == (row.properties_value or "").strip(),
+                ProductVariant.is_available.is_(True),
+                Product.name == (row.product_name or "").strip(),
+                Product.is_available.is_(True),
+            )
+        )
+        if variant is None:
+            line_issues.append("PRODUCT_VARIANT_NOT_MATCHED")
+        factory = session.scalar(
+            select(Factory).where(
+                Factory.factory_name == (row.factory_name or "").strip(),
+                Factory.is_enabled.is_(True),
+            )
+        )
+        if factory is None:
+            line_issues.append("FACTORY_NOT_MATCHED")
+        elif (
+            session.scalar(
+                select(User.user_id)
+                .where(
+                    User.factory_id == factory.factory_id,
+                    User.role == "factory",
+                    User.is_enabled.is_(True),
+                )
+                .limit(1)
+            )
+            is None
+        ):
+            line_issues.append("FACTORY_HAS_NO_ENABLED_USER")
+        if (
+            row.order_quantity is None
+            or isinstance(row.order_quantity, bool)
+            or row.order_quantity <= 0
+        ):
+            line_issues.append("INVALID_ORDER_QUANTITY")
+        if row.shipped_quantity is None or row.shipped_quantity < 0:
+            line_issues.append("INVALID_INITIAL_SHIPPED_QUANTITY")
+        return variant, factory, line_issues
+
+    @staticmethod
     def _normalized_source_fields(row: SourceOrderRow) -> dict[str, object]:
         return {
             "contractDateMappingVersion": 3,
@@ -1193,50 +1242,8 @@ class OrderImportService:
         )
         candidate.source_record_count = len(rows)
         for row, source in group:
-            line_issues: list[str] = []
-            variant = session.scalar(
-                select(ProductVariant)
-                .join(Product, Product.product_id == ProductVariant.product_id)
-                .where(
-                    ProductVariant.source_sku_id == (row.source_sku_id or "").strip(),
-                    ProductVariant.properties_value == (row.properties_value or "").strip(),
-                    ProductVariant.is_available.is_(True),
-                    Product.name == (row.product_name or "").strip(),
-                    Product.is_available.is_(True),
-                )
-            )
-            if variant is None:
-                line_issues.append("PRODUCT_VARIANT_NOT_MATCHED")
+            variant, factory, line_issues = self.match_source_row(session, row)
             product = session.get(Product, variant.product_id) if variant else None
-            factory = session.scalar(
-                select(Factory).where(
-                    Factory.factory_name == (row.factory_name or "").strip(),
-                    Factory.is_enabled.is_(True),
-                )
-            )
-            if factory is None:
-                line_issues.append("FACTORY_NOT_MATCHED")
-            elif (
-                session.scalar(
-                    select(User.user_id)
-                    .where(
-                        User.factory_id == factory.factory_id,
-                        User.role == "factory",
-                        User.is_enabled.is_(True),
-                    )
-                    .limit(1)
-                )
-                is None
-            ):
-                line_issues.append("FACTORY_HAS_NO_ENABLED_USER")
-            if (
-                row.order_quantity is None
-                or isinstance(row.order_quantity, bool)
-                or row.order_quantity <= 0
-            ):
-                line_issues.append("INVALID_ORDER_QUANTITY")
-            if row.shipped_quantity is None or row.shipped_quantity < 0:
-                line_issues.append("INVALID_INITIAL_SHIPPED_QUANTITY")
             issues.extend(line_issues)
             candidate_line = OrderImportCandidateLine(
                 candidate_id=candidate.candidate_id,

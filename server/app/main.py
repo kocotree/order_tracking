@@ -19,6 +19,12 @@ from app.adapters.identity import (
     FeishuIdentity,
     FeishuIdentityConfig,
 )
+from app.adapters.order_source import (
+    AppCredentialFeishuOrderSource,
+    DisabledFeishuOrderSource,
+    FeishuOrderSource,
+    FeishuOrderSourceConfig,
+)
 from app.adapters.private_files import (
     AliyunOssPrivateFileStore,
     DisabledPrivateFileStore,
@@ -82,6 +88,7 @@ from app.modules.orders import (
     OrderService,
     OrderValidationError,
 )
+from app.modules.orders.source_update import OrderSourceUpdateService
 from app.modules.product_sync import ProductCatalogService
 from app.modules.repairs.confirmation import RepairConfirmationService
 from app.modules.repairs.preview import RepairPreviewService
@@ -108,6 +115,7 @@ def create_app(
     factory_service: FactoryAccessService | None = None,
     product_service: ProductCatalogService | None = None,
     order_service: OrderService | None = None,
+    order_source: FeishuOrderSource | None = None,
     order_import_service: OrderImportService | None = None,
     contract_service: ContractService | None = None,
     shipment_service: ShipmentService | None = None,
@@ -244,6 +252,31 @@ def create_app(
             ),
             file_store=private_file_store,
         )
+    if order_source is None:
+        order_source = (
+            AppCredentialFeishuOrderSource(
+                FeishuOrderSourceConfig(
+                    app_id=settings.feishu_order_app_id,
+                    app_secret=settings.feishu_order_app_secret,
+                    app_token=settings.feishu_order_app_token,
+                    table_id=settings.feishu_order_table_id,
+                    view_id=settings.feishu_order_view_id,
+                )
+            )
+            if not local_demo_enabled
+            and all(
+                [
+                    settings.feishu_order_app_id,
+                    settings.feishu_order_app_secret,
+                    settings.feishu_order_app_token,
+                    settings.feishu_order_table_id,
+                    settings.feishu_order_view_id,
+                ]
+            )
+            else DisabledFeishuOrderSource()
+        )
+    source_updates = OrderSourceUpdateService(session_factory, source=order_source)
+
     if order_service is None:
         order_service = OrderService(session_factory, execution_guard=shipment_service)
     if order_import_service is None:
@@ -281,7 +314,10 @@ def create_app(
     )
     app.include_router(
         create_order_router(
-            order_service, identity_service, order_import_service=order_import_service
+            order_service,
+            identity_service,
+            order_import_service=order_import_service,
+            source_update_service=source_updates,
         )
     )
     app.include_router(create_order_import_router(order_import_service, identity_service))

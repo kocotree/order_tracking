@@ -497,12 +497,12 @@ class OrderImportCandidate(Base):
     date_overrides: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     source_record_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     order_date: Mapped[date | None] = mapped_column(Date)
-    tracker: Mapped[str | None] = mapped_column(String(32))
+    tracker: Mapped[str | None] = mapped_column(Text)
     contract_ship_date: Mapped[date | None] = mapped_column(Date)
-    category: Mapped[str | None] = mapped_column(String(100))
-    total_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    shipped_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    pending_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    category: Mapped[str | None] = mapped_column(Text)
+    total_quantity: Mapped[int | None] = mapped_column(BigInteger)
+    shipped_quantity: Mapped[int | None] = mapped_column(BigInteger)
+    pending_quantity: Mapped[int | None] = mapped_column(BigInteger)
     imported_order_id: Mapped[str | None] = mapped_column(
         ForeignKey("orders.order_id", ondelete="RESTRICT")
     )
@@ -538,14 +538,14 @@ class OrderImportCandidateLine(Base):
         ForeignKey("order_import_source_records.source_record_pk", ondelete="RESTRICT"),
         nullable=False,
     )
-    source_sku_id: Mapped[str | None] = mapped_column(String(100))
-    product_name: Mapped[str | None] = mapped_column(String(255))
-    properties_value: Mapped[str | None] = mapped_column(String(255))
-    category: Mapped[str | None] = mapped_column(String(100))
-    factory_name: Mapped[str | None] = mapped_column(String(100))
+    source_sku_id: Mapped[str | None] = mapped_column(Text)
+    product_name: Mapped[str | None] = mapped_column(Text)
+    properties_value: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(Text)
+    factory_name: Mapped[str | None] = mapped_column(Text)
     order_quantity: Mapped[int | None] = mapped_column(Integer)
-    shipped_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    pending_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    shipped_quantity: Mapped[int | None] = mapped_column(BigInteger)
+    pending_quantity: Mapped[int | None] = mapped_column(BigInteger)
     matched_variant_id: Mapped[str | None] = mapped_column(
         ForeignKey("product_variants.variant_id", ondelete="RESTRICT")
     )
@@ -590,7 +590,9 @@ class Order(Base):
     order_no: Mapped[str] = mapped_column(String(100), nullable=False)
     source: Mapped[str] = mapped_column(String(32), nullable=False)
     order_date: Mapped[date | None] = mapped_column(Date)
-    tracker: Mapped[str] = mapped_column(String(32), nullable=False)
+    tracker: Mapped[str | None] = mapped_column(String(32))
+    tracker_locked_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    detail_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
     contract_ship_date: Mapped[date | None] = mapped_column(Date)
     lifecycle: Mapped[str] = mapped_column(String(32), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
@@ -650,16 +652,13 @@ class OrderLine(Base):
 class OrderAssignment(Base):
     __tablename__ = "order_assignments"
     __table_args__ = (
-        UniqueConstraint("order_line_id", "factory_id", name="uq_order_assignments_line_factory"),
+        Index("ix_order_assignments_detail", "detail_id"),
         CheckConstraint("assigned_quantity > 0", name="ck_order_assignments_quantity_positive"),
         CheckConstraint(
             "initial_shipped_quantity >= 0",
             name="ck_order_assignments_initial_shipped_nonnegative",
         ),
-        CheckConstraint(
-            "assigned_quantity >= initial_shipped_quantity",
-            name="ck_order_assignments_quantity_covers_initial_shipped",
-        ),
+        Index("ix_order_assignments_line_factory", "order_line_id", "factory_id"),
         Index("ix_order_assignments_factory", "factory_id", "order_line_id"),
     )
 
@@ -672,6 +671,10 @@ class OrderAssignment(Base):
     factory_id: Mapped[str] = mapped_column(
         ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
     )
+    detail_id: Mapped[str | None] = mapped_column(
+        ForeignKey("order_details.detail_id", ondelete="RESTRICT")
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     contract_ship_date: Mapped[date | None] = mapped_column(Date)
     assigned_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     initial_shipped_quantity: Mapped[int] = mapped_column(
@@ -1371,6 +1374,8 @@ class IdempotencyRecord(Base):
     scope: Mapped[str] = mapped_column(String(100), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(191), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="in_progress")
+    request_hash: Mapped[str | None] = mapped_column(String(64))
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6),
         nullable=False,
@@ -1610,3 +1615,66 @@ class RepairPeriodDraft(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     entries: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     submission_key: Mapped[str] = mapped_column(String(36), nullable=False)
+
+
+class OrderDetail(Base):
+    """Accepted source material, independent of executable assignments."""
+
+    __tablename__ = "order_details"
+    __table_args__ = (
+        UniqueConstraint("source_record_pk", name="uq_order_details_source"),
+        UniqueConstraint("assignment_id", name="uq_order_details_assignment"),
+        Index("ix_order_details_order", "order_id", "sort_order"),
+    )
+
+    detail_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    order_id: Mapped[str] = mapped_column(
+        ForeignKey("orders.order_id", ondelete="RESTRICT"), nullable=False
+    )
+    source_record_pk: Mapped[int | None] = mapped_column(
+        ForeignKey("order_import_source_records.source_record_pk", ondelete="RESTRICT")
+    )
+    origin: Mapped[str] = mapped_column(String(16), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    accepted_raw_fields: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    accepted_source_modified_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    accepted_source_hash: Mapped[str | None] = mapped_column(String(64))
+    source_sku_id: Mapped[str | None] = mapped_column(Text)
+    product_name: Mapped[str | None] = mapped_column(Text)
+    properties_value: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(Text)
+    factory_name: Mapped[str | None] = mapped_column(Text)
+    matched_variant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("product_variants.variant_id", ondelete="RESTRICT")
+    )
+    matched_factory_id: Mapped[str | None] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT")
+    )
+    order_quantity: Mapped[int | None] = mapped_column(Integer)
+    source_shipped_quantity: Mapped[int | None] = mapped_column(Integer)
+    source_tracker: Mapped[str | None] = mapped_column(Text)
+    source_contract_ship_date: Mapped[date | None] = mapped_column(Date)
+    contract_ship_date: Mapped[date | None] = mapped_column(Date)
+    date_override_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    parse_issues: Mapped[list[Any]] = mapped_column(JSON, nullable=False)
+    assignment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("order_assignments.order_assignment_id", ondelete="RESTRICT")
+    )
+    dispatch_batch_id: Mapped[str | None] = mapped_column(String(36))
+    dispatch_state: Mapped[str] = mapped_column(String(16), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class OrderChangePreview(Base):
+    __tablename__ = "order_change_previews"
+
+    preview_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.order_id"), nullable=False)
+    actor_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))

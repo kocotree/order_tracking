@@ -2,6 +2,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
@@ -14,6 +15,8 @@ from app.db.models import (
     AuditLog,
     BackgroundJob,
     Factory,
+    Order,
+    OrderDetail,
     OrderImportCandidate,
     OrderImportCandidateLine,
     OrderImportRun,
@@ -24,12 +27,7 @@ from app.db.models import (
     ProductVariant,
     User,
 )
-from app.modules.orders.service import (
-    TRACKERS,
-    AssignmentInput,
-    DraftLineInput,
-    OrderService,
-)
+from app.modules.orders.service import TRACKERS
 
 ACTIVE_KEY = "feishu-order-import"
 LOCAL_DEPENDENCY_ISSUES = frozenset(
@@ -76,8 +74,8 @@ class CandidateLineSnapshot:
     category: str | None
     factory_name: str | None
     order_quantity: int | None
-    shipped_quantity: int
-    pending_quantity: int
+    shipped_quantity: int | None
+    pending_quantity: int | None
     validation_issues: list[str]
 
 
@@ -94,9 +92,9 @@ class CandidateSnapshot:
     tracker: str | None
     contract_ship_date: date | None
     category: str | None
-    total_quantity: int
-    shipped_quantity: int
-    pending_quantity: int
+    total_quantity: int | None
+    shipped_quantity: int | None
+    pending_quantity: int | None
     imported_order_id: str | None
     lines: list[CandidateLineSnapshot]
     updated_at: datetime
@@ -126,8 +124,8 @@ class SourceOrderRow:
     category: str | None
     factory_name: str | None
     order_quantity: int | None
-    shipped_quantity: int
-    pending_quantity: int
+    shipped_quantity: int | None
+    pending_quantity: int | None
     tracker: str | None
     order_date: date | None
     contract_ship_date: date | None
@@ -145,7 +143,6 @@ class OrderImportService:
     ) -> None:
         self._session_factory = session_factory
         self._clock = clock
-        self._orders = OrderService(session_factory, clock=clock)
 
     def create_or_reuse_run(
         self, *, actor_id: str, request_id: str, idempotency_key: str | None = None
@@ -237,7 +234,9 @@ class OrderImportService:
             failed = 0
             for row in rows:
                 normalized_order_no = (row.order_no or "").strip().upper() or None
-                if not row.record_id:
+                if normalized_order_no and len(normalized_order_no) > 100:
+                    normalized_order_no = None
+                if not row.record_id.strip() or len(row.record_id) > 100:
                     failed += 1
                     continue
                 if row.record_id in seen_record_ids:
@@ -290,13 +289,16 @@ class OrderImportService:
                                 and (source.normalized_fields or {}).get(
                                     "contractDateMappingVersion"
                                 )
-                                == 2
+                                == 3
                             )
                         )
                     ):
                         skipped += 1
                         continue
-                    if source.normalized_fields == normalized_fields:
+                    if (
+                        source.normalized_fields == normalized_fields
+                        and source.raw_fields == row.raw_fields
+                    ):
                         source.source_detail_id = row.source_detail_id
                         source.raw_fields = row.raw_fields
                         source.source_modified_at = row.source_modified_at
@@ -351,7 +353,7 @@ class OrderImportService:
                     if candidate is not None and candidate.status == "PENDING":
                         self._delete_pending_candidate(session, candidate)
                     continue
-                if not any(self._is_below_half(row) for row, _ in group):
+                if not any(self._needs_import(row) for row, _ in group):
                     if candidate is not None and candidate.status == "PENDING":
                         self._delete_pending_candidate(session, candidate)
                     skipped += accepted_by_order.get(order_no, 0)
@@ -706,13 +708,13 @@ class OrderImportService:
             )
             if line is None:
                 raise ValueError("candidate line changed; reload before saving")
-            key = self._date_key(line.source_sku_id, line.factory_name)
+            key = f"source:{line.source_record_pk}"
             candidate.date_overrides = {
                 **candidate.date_overrides,
                 key: contract_ship_date.isoformat() if contract_ship_date else None,
             }
             for item in rows:
-                if self._date_key(item.source_sku_id, item.factory_name) == key:
+                if item.source_record_pk == line.source_record_pk:
                     item.contract_ship_date = contract_ship_date
             candidate.validation_state = (
                 "READY"
@@ -745,55 +747,90 @@ class OrderImportService:
         try:
             with self._session_factory() as session, session.begin():
                 self._require_admin(session, actor_id)
-                candidate = self._locked_pending_candidate(session, candidate_id)
+                candidate = session.scalar(
+                    select(OrderImportCandidate)
+                    .where(OrderImportCandidate.candidate_id == candidate_id)
+                    .with_for_update()
+                )
+                if candidate is None:
+                    raise ValueError("pending candidate not found")
+                if candidate.status == "IMPORTED" and candidate.imported_order_id:
+                    return candidate.imported_order_id
+                if candidate.status != "PENDING":
+                    raise ValueError("pending candidate not found")
                 if version is not None and candidate.version != version:
                     raise ValueError("candidate version changed; reload before importing")
-                rows = list(
-                    session.scalars(
-                        select(OrderImportCandidateLine)
-                        .where(OrderImportCandidateLine.candidate_id == candidate_id)
-                        .order_by(OrderImportCandidateLine.candidate_line_id)
+                rows = self._candidate_lines(session, candidate_id)
+                if not rows or len(rows) != candidate.source_record_count:
+                    raise ValueError("candidate source details are incomplete")
+                session.add(
+                    Order(
+                        order_id=order_id,
+                        order_no=candidate.order_no,
+                        source="feishu",
+                        detail_mode=True,
+                        order_date=candidate.order_date,
+                        tracker=candidate.tracker if candidate.tracker in TRACKERS else None,
+                        lifecycle="DRAFT",
+                        created_by=actor_id,
+                        updated_by=actor_id,
+                        created_at=now,
+                        updated_at=now,
                     )
                 )
-                missing = [
-                    str(index)
-                    for index, line in enumerate(rows, 1)
-                    if line.contract_ship_date is None
-                ]
-                if missing:
-                    raise ValueError(f"请填写第 {'、'.join(missing)} 条明细的合同出货时间")
-                if candidate.validation_state != "READY":
-                    raise ValueError("candidate is not ready")
-                if candidate.tracker is None or not rows:
-                    raise ValueError("candidate is incomplete")
-                self._validate_candidate_for_confirm(session, candidate, rows)
-                lines = [
-                    DraftLineInput(
-                        variant_id=self._required(line.matched_variant_id),
-                        order_quantity=self._required_quantity(line.order_quantity),
-                        assignments=[
-                            AssignmentInput(
-                                factory_id=self._required(line.matched_factory_id),
-                                quantity=self._required_quantity(line.order_quantity),
-                                initial_shipped_quantity=line.shipped_quantity,
-                                contract_ship_date=line.contract_ship_date,
-                            )
-                        ],
+                session.flush()
+                for index, line in enumerate(rows, 1):
+                    source = session.get(OrderImportSourceRecord, line.source_record_pk)
+                    if (
+                        source is None
+                        or not source.source_record_id.strip()
+                        or source.order_no != candidate.order_no
+                    ):
+                        raise ValueError("candidate source identity changed")
+                    fields = source.normalized_fields or {}
+                    if fields.get("contractDateMappingVersion") != 3:
+                        raise ValueError("来源解析规则已更新，请先重新获取飞书订单再导入")
+                    date_key = f"source:{source.source_record_pk}"
+                    old_date_key = self._date_key(line.source_sku_id, line.factory_name)
+                    session.add(
+                        OrderDetail(
+                            detail_id=str(uuid4()),
+                            order_id=order_id,
+                            origin="feishu",
+                            source_record_pk=source.source_record_pk,
+                            sort_order=index,
+                            accepted_raw_fields=source.raw_fields,
+                            accepted_source_modified_at=source.source_modified_at,
+                            accepted_source_hash=sha256(
+                                json.dumps(
+                                    source.raw_fields,
+                                    sort_keys=True,
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                ).encode()
+                            ).hexdigest(),
+                            source_sku_id=line.source_sku_id,
+                            product_name=line.product_name,
+                            properties_value=line.properties_value,
+                            category=line.category,
+                            factory_name=line.factory_name,
+                            matched_variant_id=line.matched_variant_id,
+                            matched_factory_id=line.matched_factory_id,
+                            order_quantity=line.order_quantity,
+                            source_shipped_quantity=line.shipped_quantity,
+                            source_tracker=fields.get("tracker"),
+                            source_contract_ship_date=line.source_contract_ship_date,
+                            contract_ship_date=line.contract_ship_date,
+                            date_override_enabled=(
+                                date_key in candidate.date_overrides
+                                or old_date_key in candidate.date_overrides
+                            ),
+                            parse_issues=line.validation_issues,
+                            dispatch_state="UNASSIGNED",
+                            created_at=now,
+                            updated_at=now,
+                        )
                     )
-                    for line in rows
-                ]
-                self._orders.create_draft_in_session(
-                    session,
-                    actor_id=actor_id,
-                    order_id=order_id,
-                    order_no=candidate.order_no,
-                    order_date=candidate.order_date,
-                    tracker=candidate.tracker,
-                    lines=lines,
-                    source="feishu",
-                    request_id=request_id,
-                    now=now,
-                )
                 candidate.status = "IMPORTED"
                 candidate.imported_order_id = order_id
                 candidate.imported_by = actor_id
@@ -809,7 +846,7 @@ class OrderImportService:
                 )
                 total = candidate.total_quantity
                 initial = candidate.shipped_quantity
-                pending = max(total - initial, 0)
+                pending = candidate.pending_quantity
                 session.add(
                     AuditLog(
                         request_id=request_id,
@@ -822,9 +859,9 @@ class OrderImportService:
                             "pendingQuantity": pending,
                             "content": (
                                 "从飞书导入订单："
-                                f"订单数量 {total:,}，"
-                                f"初始已发数量 {initial:,}，"
-                                f"未发数量 {pending:,}。"
+                                f"订单数量 {total if total is not None else '—'}，"
+                                f"初始已发数量 {initial if initial is not None else '—'}，"
+                                f"未发数量 {pending if pending is not None else '—'}。"
                             ),
                         },
                         actor_id=actor_id,
@@ -1024,18 +1061,67 @@ class OrderImportService:
         return True
 
     @staticmethod
+    def match_source_row(
+        session: Session, row: SourceOrderRow
+    ) -> tuple[ProductVariant | None, Factory | None, list[str]]:
+        line_issues: list[str] = []
+        variant = session.scalar(
+            select(ProductVariant)
+            .join(Product, Product.product_id == ProductVariant.product_id)
+            .where(
+                ProductVariant.source_sku_id == (row.source_sku_id or "").strip(),
+                ProductVariant.properties_value == (row.properties_value or "").strip(),
+                ProductVariant.is_available.is_(True),
+                Product.name == (row.product_name or "").strip(),
+                Product.is_available.is_(True),
+            )
+        )
+        if variant is None:
+            line_issues.append("PRODUCT_VARIANT_NOT_MATCHED")
+        factory = session.scalar(
+            select(Factory).where(
+                Factory.factory_name == (row.factory_name or "").strip(),
+                Factory.is_enabled.is_(True),
+            )
+        )
+        if factory is None:
+            line_issues.append("FACTORY_NOT_MATCHED")
+        elif (
+            session.scalar(
+                select(User.user_id)
+                .where(
+                    User.factory_id == factory.factory_id,
+                    User.role == "factory",
+                    User.is_enabled.is_(True),
+                )
+                .limit(1)
+            )
+            is None
+        ):
+            line_issues.append("FACTORY_HAS_NO_ENABLED_USER")
+        if (
+            row.order_quantity is None
+            or isinstance(row.order_quantity, bool)
+            or row.order_quantity <= 0
+        ):
+            line_issues.append("INVALID_ORDER_QUANTITY")
+        if row.shipped_quantity is None or row.shipped_quantity < 0:
+            line_issues.append("INVALID_INITIAL_SHIPPED_QUANTITY")
+        return variant, factory, line_issues
+
+    @staticmethod
     def _normalized_source_fields(row: SourceOrderRow) -> dict[str, object]:
         return {
-            "contractDateMappingVersion": 2,
+            "contractDateMappingVersion": 3,
             "orderNo": row.order_no,
             "sourceSkuId": row.source_sku_id,
             "productName": row.product_name,
             "propertiesValue": row.properties_value,
             "category": row.category,
             "factoryName": row.factory_name,
-            "orderQuantity": row.order_quantity,
-            "shippedQuantity": row.shipped_quantity,
-            "pendingQuantity": row.pending_quantity,
+            "orderQuantity": OrderImportService._quantity(row.order_quantity, minimum=1),
+            "shippedQuantity": OrderImportService._quantity(row.shipped_quantity),
+            "pendingQuantity": OrderImportService._quantity(row.pending_quantity),
             "tracker": row.tracker,
             "orderDate": row.order_date.isoformat() if row.order_date else None,
             "contractShipDate": (
@@ -1080,8 +1166,8 @@ class OrderImportService:
                 if isinstance(fields.get("orderQuantity"), int)
                 else None
             ),
-            shipped_quantity=int(fields.get("shippedQuantity") or 0),
-            pending_quantity=int(fields.get("pendingQuantity") or 0),
+            shipped_quantity=fields.get("shippedQuantity"),
+            pending_quantity=fields.get("pendingQuantity"),
             tracker=fields.get("tracker") if isinstance(fields.get("tracker"), str) else None,
             order_date=date.fromisoformat(order_date) if isinstance(order_date, str) else None,
             contract_ship_date=(
@@ -1120,18 +1206,19 @@ class OrderImportService:
         issues: list[str] = []
         tracker = self._unique_value([row.tracker for row in rows])
         order_date = next((row.order_date for row in rows if row.order_date is not None), None)
-        group_dates: dict[str, list[date | None]] = {}
-        for row in rows:
-            group_dates.setdefault(self._date_key(row.source_sku_id, row.factory_name), []).append(
-                row.contract_ship_date
-            )
-        effective_dates: dict[str, date | None] = {}
-        for key, values in group_dates.items():
-            original = self._unique_value([value for value in values])
-            override = candidate.date_overrides.get(key)
-            effective_dates[key] = (
-                (date.fromisoformat(override) if isinstance(override, str) else None)
-                if key in candidate.date_overrides
+        effective_dates: dict[int, date | None] = {}
+        for row, source in group:
+            key = f"source:{source.source_record_pk}"
+            old_key = self._date_key(row.source_sku_id, row.factory_name)
+            override_key = key if key in candidate.date_overrides else old_key
+            original = row.contract_ship_date
+            effective_dates[source.source_record_pk] = (
+                (
+                    date.fromisoformat(candidate.date_overrides[override_key])
+                    if isinstance(candidate.date_overrides.get(override_key), str)
+                    else None
+                )
+                if override_key in candidate.date_overrides
                 else (
                     original - timedelta(days=4) if original and original >= date(1, 1, 5) else None
                 )
@@ -1148,67 +1235,21 @@ class OrderImportService:
             if categories
             else None
         )
-        candidate.total_quantity = sum(row.order_quantity or 0 for row in rows)
-        candidate.shipped_quantity = sum(row.shipped_quantity for row in rows)
-        candidate.pending_quantity = sum(
-            max((row.order_quantity or 0) - row.shipped_quantity, 0) for row in rows
+        candidate.total_quantity = self._nullable_sum([row.order_quantity for row in rows])
+        candidate.shipped_quantity = self._nullable_sum([row.shipped_quantity for row in rows])
+        candidate.pending_quantity = self._nullable_sum(
+            [self._pending(row.order_quantity, row.shipped_quantity) for row in rows]
         )
         candidate.source_record_count = len(rows)
         for row, source in group:
-            line_issues: list[str] = []
-            variant = session.scalar(
-                select(ProductVariant)
-                .join(Product, Product.product_id == ProductVariant.product_id)
-                .where(
-                    ProductVariant.source_sku_id == (row.source_sku_id or "").strip(),
-                    ProductVariant.properties_value == (row.properties_value or "").strip(),
-                    ProductVariant.is_available.is_(True),
-                    Product.name == (row.product_name or "").strip(),
-                    Product.is_available.is_(True),
-                )
-            )
-            if variant is None:
-                line_issues.append("PRODUCT_VARIANT_NOT_MATCHED")
+            variant, factory, line_issues = self.match_source_row(session, row)
             product = session.get(Product, variant.product_id) if variant else None
-            factory = session.scalar(
-                select(Factory).where(
-                    Factory.factory_name == (row.factory_name or "").strip(),
-                    Factory.is_enabled.is_(True),
-                )
-            )
-            if factory is None:
-                line_issues.append("FACTORY_NOT_MATCHED")
-            elif (
-                session.scalar(
-                    select(User.user_id)
-                    .where(
-                        User.factory_id == factory.factory_id,
-                        User.role == "factory",
-                        User.is_enabled.is_(True),
-                    )
-                    .limit(1)
-                )
-                is None
-            ):
-                line_issues.append("FACTORY_HAS_NO_ENABLED_USER")
-            if (
-                row.order_quantity is None
-                or isinstance(row.order_quantity, bool)
-                or row.order_quantity <= 0
-            ):
-                line_issues.append("INVALID_ORDER_QUANTITY")
-            elif row.shipped_quantity < 0:
-                line_issues.append("INVALID_INITIAL_SHIPPED_QUANTITY")
-            elif row.shipped_quantity > row.order_quantity:
-                line_issues.append("INITIAL_SHIPPED_EXCEEDS_ORDER_QUANTITY")
             issues.extend(line_issues)
             candidate_line = OrderImportCandidateLine(
                 candidate_id=candidate.candidate_id,
                 source_record_pk=source.source_record_pk,
                 source_contract_ship_date=row.contract_ship_date,
-                contract_ship_date=effective_dates[
-                    self._date_key(row.source_sku_id, row.factory_name)
-                ],
+                contract_ship_date=effective_dates[source.source_record_pk],
                 source_sku_id=row.source_sku_id,
                 product_name=row.product_name,
                 properties_value=row.properties_value,
@@ -1216,7 +1257,7 @@ class OrderImportService:
                 factory_name=row.factory_name,
                 order_quantity=row.order_quantity,
                 shipped_quantity=row.shipped_quantity,
-                pending_quantity=max((row.order_quantity or 0) - row.shipped_quantity, 0),
+                pending_quantity=self._pending(row.order_quantity, row.shipped_quantity),
                 matched_variant_id=variant.variant_id if variant else None,
                 matched_factory_id=factory.factory_id if factory else None,
                 image_object_key_snapshot=(
@@ -1369,58 +1410,6 @@ class OrderImportService:
         )
 
     @staticmethod
-    def _required(value: str | None) -> str:
-        if value is None:
-            raise ValueError("candidate match is missing")
-        return value
-
-    @staticmethod
-    def _required_quantity(value: int | None) -> int:
-        if value is None or value <= 0:
-            raise ValueError("candidate quantity is invalid")
-        return value
-
-    @staticmethod
-    def _validate_candidate_for_confirm(
-        session: Session,
-        candidate: OrderImportCandidate,
-        rows: list[OrderImportCandidateLine],
-    ) -> None:
-        if candidate.validation_issues or candidate.tracker not in TRACKERS:
-            raise ValueError("candidate is not ready")
-        for line in rows:
-            variant = session.get(ProductVariant, line.matched_variant_id)
-            product = session.get(Product, variant.product_id) if variant else None
-            factory = session.get(Factory, line.matched_factory_id)
-            factory_user = (
-                session.scalar(
-                    select(User.user_id)
-                    .where(
-                        User.factory_id == factory.factory_id,
-                        User.role == "factory",
-                        User.is_enabled.is_(True),
-                    )
-                    .limit(1)
-                )
-                if factory
-                else None
-            )
-            if (
-                variant is None
-                or product is None
-                or not variant.is_available
-                or not product.is_available
-                or variant.source_sku_id != (line.source_sku_id or "").strip()
-                or variant.properties_value != (line.properties_value or "").strip()
-                or product.name != (line.product_name or "").strip()
-                or factory is None
-                or not factory.is_enabled
-                or factory.factory_name != (line.factory_name or "").strip()
-                or factory_user is None
-            ):
-                raise ValueError("candidate dependencies changed")
-
-    @staticmethod
     def _unique_value(values: list[object | None]):  # type: ignore[no-untyped-def]
         if not values or any(value is None for value in values):
             return None
@@ -1428,11 +1417,32 @@ class OrderImportService:
         return next(iter(unique)) if len(unique) == 1 else None
 
     @staticmethod
-    def _is_below_half(row: SourceOrderRow) -> bool:
+    def _quantity(value: object, *, minimum: int = 0) -> int | None:
+        return value if type(value) is int and minimum <= value <= 2147483647 else None
+
+    @staticmethod
+    def _nullable_sum(values: list[int | None]) -> int | None:
+        return (
+            None
+            if any(value is None for value in values)
+            else sum(value for value in values if value is not None)
+        )
+
+    @staticmethod
+    def _pending(quantity: int | None, shipped: int | None) -> int | None:
+        if quantity is None or shipped is None or quantity <= 0 or shipped < 0:
+            return None
+        return max(quantity - shipped, 0)
+
+    @staticmethod
+    def _needs_import(row: SourceOrderRow) -> bool:
         quantity = row.order_quantity
         if quantity is None or type(quantity) is not int or quantity <= 0:
             return True
-        return row.shipped_quantity * 2 < quantity
+        shipped = row.shipped_quantity
+        if type(shipped) is not int or shipped < 0:
+            return True
+        return shipped * 100 < quantity * 95
 
     @staticmethod
     def _snapshot(run: OrderImportRun) -> ImportRunSnapshot:

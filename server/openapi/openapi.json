@@ -564,8 +564,15 @@
             "title": "Orderquantity"
           },
           "pendingQuantity": {
-            "title": "Pendingquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pendingquantity"
           },
           "productName": {
             "anyOf": [
@@ -590,8 +597,15 @@
             "title": "Propertiesvalue"
           },
           "shippedQuantity": {
-            "title": "Shippedquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
           },
           "sourceContractShipDate": {
             "anyOf": [
@@ -749,20 +763,41 @@
             "type": "string"
           },
           "pendingQuantity": {
-            "title": "Pendingquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pendingquantity"
           },
           "shippedQuantity": {
-            "title": "Shippedquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
           },
           "status": {
             "title": "Status",
             "type": "string"
           },
           "totalQuantity": {
-            "title": "Totalquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalquantity"
           },
           "tracker": {
             "anyOf": [
@@ -1049,9 +1084,14 @@
           "todayShipments": {
             "title": "Todayshipments",
             "type": "integer"
+          },
+          "totalOrders": {
+            "title": "Totalorders",
+            "type": "integer"
           }
         },
         "required": [
+          "totalOrders",
           "overdueOrders",
           "pendingImportOrders",
           "todayShipments",
@@ -1059,6 +1099,186 @@
           "requestId"
         ],
         "title": "DashboardResponse",
+        "type": "object"
+      },
+      "DetailDateWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "contractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
+          },
+          "detailVersion": {
+            "exclusiveMinimum": 0.0,
+            "title": "Detailversion",
+            "type": "integer"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "detailVersion",
+          "contractShipDate"
+        ],
+        "title": "DetailDateWrite",
+        "type": "object"
+      },
+      "DispatchConfirmWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "previewId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Previewid",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "previewId"
+        ],
+        "title": "DispatchConfirmWrite",
+        "type": "object"
+      },
+      "DispatchPreviewResponse": {
+        "properties": {
+          "allOk": {
+            "default": false,
+            "title": "Allok",
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          },
+          "previewId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previewid"
+          },
+          "requiresSourceConfirmation": {
+            "default": false,
+            "title": "Requiressourceconfirmation",
+            "type": "boolean"
+          },
+          "sourcePreview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourcePreviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "validations": {
+            "items": {
+              "$ref": "#/components/schemas/DispatchValidationItem"
+            },
+            "title": "Validations",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "DispatchPreviewResponse",
+        "type": "object"
+      },
+      "DispatchPreviewWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "detailIds": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Detailids",
+            "type": "array"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "detailIds"
+        ],
+        "title": "DispatchPreviewWrite",
+        "type": "object"
+      },
+      "DispatchValidationItem": {
+        "properties": {
+          "detailId": {
+            "title": "Detailid",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "passes": {
+            "title": "Passes",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "detailId",
+          "label",
+          "factoryName",
+          "passes",
+          "issues"
+        ],
+        "title": "DispatchValidationItem",
         "type": "object"
       },
       "DraftBoxWrite": {
@@ -1751,6 +1971,28 @@
         "title": "FactoryUpdate",
         "type": "object"
       },
+      "FactoryWithdrawalWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "factoryId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "factoryId"
+        ],
+        "title": "FactoryWithdrawalWrite",
+        "type": "object"
+      },
       "FactoryWrite": {
         "properties": {
           "address": {
@@ -2109,6 +2351,197 @@
         "title": "NotificationResponse",
         "type": "object"
       },
+      "OrderDetailResponse": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "contractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
+          },
+          "detailId": {
+            "title": "Detailid",
+            "type": "string"
+          },
+          "dispatchState": {
+            "title": "Dispatchstate",
+            "type": "string"
+          },
+          "factoryName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factoryname"
+          },
+          "matchedFactoryId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matchedfactoryid"
+          },
+          "matchedVariantId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matchedvariantid"
+          },
+          "orderQuantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderquantity"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "pendingQuantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pendingquantity"
+          },
+          "productName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productname"
+          },
+          "progressPercent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progresspercent"
+          },
+          "propertiesValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Propertiesvalue"
+          },
+          "rawFields": {
+            "additionalProperties": true,
+            "title": "Rawfields",
+            "type": "object"
+          },
+          "shippedQuantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
+          },
+          "sourceSkuId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceskuid"
+          },
+          "sourceTracker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcetracker"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "detailId",
+          "origin",
+          "sourceSkuId",
+          "productName",
+          "propertiesValue",
+          "category",
+          "factoryName",
+          "matchedVariantId",
+          "matchedFactoryId",
+          "orderQuantity",
+          "shippedQuantity",
+          "pendingQuantity",
+          "progressPercent",
+          "sourceTracker",
+          "contractShipDate",
+          "dispatchState",
+          "version",
+          "rawFields"
+        ],
+        "title": "OrderDetailResponse",
+        "type": "object"
+      },
       "OrderLineResponse": {
         "properties": {
           "assignments": {
@@ -2267,6 +2700,19 @@
             "title": "Createdat",
             "type": "string"
           },
+          "detailMode": {
+            "default": false,
+            "title": "Detailmode",
+            "type": "boolean"
+          },
+          "details": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/OrderDetailResponse"
+            },
+            "title": "Details",
+            "type": "array"
+          },
           "displayStatus": {
             "title": "Displaystatus",
             "type": "string"
@@ -2310,16 +2756,37 @@
             "type": "string"
           },
           "overQuantity": {
-            "title": "Overquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overquantity"
           },
           "pendingQuantity": {
-            "title": "Pendingquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pendingquantity"
           },
           "progressPercent": {
-            "title": "Progresspercent",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progresspercent"
           },
           "requestId": {
             "default": "",
@@ -2327,24 +2794,52 @@
             "type": "string"
           },
           "shippedQuantity": {
-            "title": "Shippedquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
           },
           "shortQuantity": {
-            "title": "Shortquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortquantity"
           },
           "source": {
             "title": "Source",
             "type": "string"
           },
           "totalQuantity": {
-            "title": "Totalquantity",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalquantity"
           },
           "tracker": {
-            "title": "Tracker",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracker"
           },
           "updatedAt": {
             "format": "date-time",
@@ -2575,6 +3070,43 @@
           "items"
         ],
         "title": "ReceiptSave",
+        "type": "object"
+      },
+      "RefreshConfirmWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "previewId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Previewid",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "previewId"
+        ],
+        "title": "RefreshConfirmWrite",
+        "type": "object"
+      },
+      "RefreshWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "RefreshWrite",
         "type": "object"
       },
       "RejectFactoryApplication": {
@@ -4222,6 +4754,91 @@
         "title": "ShipmentVoidRequestResponse",
         "type": "object"
       },
+      "SourceDifferenceResponse": {
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "detailId": {
+            "title": "Detailid",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detailId",
+          "label",
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "SourceDifferenceResponse",
+        "type": "object"
+      },
+      "SourcePreviewResponse": {
+        "properties": {
+          "differences": {
+            "items": {
+              "$ref": "#/components/schemas/SourceDifferenceResponse"
+            },
+            "title": "Differences",
+            "type": "array"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "previewId": {
+            "title": "Previewid",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "previewId",
+          "version",
+          "expiresAt",
+          "differences"
+        ],
+        "title": "SourcePreviewResponse",
+        "type": "object"
+      },
       "UnreadCountResponse": {
         "properties": {
           "count": {
@@ -4494,6 +5111,34 @@
           "version"
         ],
         "title": "WithdrawWrite",
+        "type": "object"
+      },
+      "WithdrawalFactoryResponse": {
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "detailCount": {
+            "title": "Detailcount",
+            "type": "integer"
+          },
+          "factoryId": {
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "factoryId",
+          "factoryName",
+          "detailCount",
+          "blocked"
+        ],
+        "title": "WithdrawalFactoryResponse",
         "type": "object"
       },
       "app__api__orders__DraftCreate": {
@@ -4791,6 +5436,26 @@
       "get": {
         "operationId": "dashboard_api_v1_admin_dashboard_orders_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Keyword",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "required": false,
+            "schema": {
+              "default": "updatedDesc",
+              "title": "Sortby",
+              "type": "string"
+            }
+          },
           {
             "in": "cookie",
             "name": "ot_web_session",
@@ -7163,6 +7828,433 @@
         ]
       }
     },
+    "/api/v1/admin/orders/{order_id}/details/{detail_id}/contract-date": {
+      "patch": {
+        "operationId": "save_detail_date_api_v1_admin_orders__order_id__details__detail_id__contract_date_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "detail_id",
+            "required": true,
+            "schema": {
+              "title": "Detail Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetailDateWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Detail Date",
+        "tags": [
+          "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/dispatch/confirm": {
+      "post": {
+        "operationId": "confirm_dispatch_api_v1_admin_orders__order_id__dispatch_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 191,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchConfirmWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Dispatch",
+        "tags": [
+          "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/dispatch/factories": {
+      "get": {
+        "operationId": "withdrawal_factories_api_v1_admin_orders__order_id__dispatch_factories_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WithdrawalFactoryResponse"
+                  },
+                  "title": "Response Withdrawal Factories Api V1 Admin Orders  Order Id  Dispatch Factories Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdrawal Factories",
+        "tags": [
+          "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/dispatch/preview": {
+      "post": {
+        "operationId": "preview_dispatch_api_v1_admin_orders__order_id__dispatch_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchPreviewWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Dispatch",
+        "tags": [
+          "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/dispatch/withdraw": {
+      "post": {
+        "operationId": "withdraw_factory_api_v1_admin_orders__order_id__dispatch_withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactoryWithdrawalWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw Factory",
+        "tags": [
+          "order-admin"
+        ]
+      }
+    },
     "/api/v1/admin/orders/{order_id}/publish": {
       "post": {
         "operationId": "publish_api_v1_admin_orders__order_id__publish_post",
@@ -7349,9 +8441,9 @@
         ]
       }
     },
-    "/api/v1/admin/orders/{order_id}/withdraw": {
+    "/api/v1/admin/orders/{order_id}/source-refresh/confirm": {
       "post": {
-        "operationId": "withdraw_api_v1_admin_orders__order_id__withdraw_post",
+        "operationId": "confirm_source_api_v1_admin_orders__order_id__source_refresh_confirm_post",
         "parameters": [
           {
             "in": "path",
@@ -7367,6 +8459,8 @@
             "name": "Idempotency-Key",
             "required": true,
             "schema": {
+              "maxLength": 191,
+              "minLength": 1,
               "title": "Idempotency-Key",
               "type": "string"
             }
@@ -7404,6 +8498,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshConfirmWrite"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -7426,7 +8530,91 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Withdraw",
+        "summary": "Confirm Source",
+        "tags": [
+          "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/source-refresh/preview": {
+      "post": {
+        "operationId": "preview_source_api_v1_admin_orders__order_id__source_refresh_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcePreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Source",
         "tags": [
           "order-admin"
         ]

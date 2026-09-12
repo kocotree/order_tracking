@@ -5,9 +5,10 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import func, or_, select, true, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.adapters.notifications import (
     DeliveryRequest,
@@ -171,7 +172,9 @@ class NotificationsAuditService:
             message.attempts += 1
             if message.event_type == "order_published":
                 self._consume_order_published(session, message)
-            elif message.event_type in {"order_withdrawn", "order_deleted"}:
+            elif message.event_type == "order_detail_dispatched":
+                self._consume_order_detail_dispatched(session, message)
+            elif message.event_type == "order_deleted":
                 self._consume_order_unpublished(session, message)
             elif message.event_type == "shipment.submitted":
                 self._consume_shipment_submitted(session, message)
@@ -240,6 +243,15 @@ class NotificationsAuditService:
                     message.last_error_code = "recipient_factory_changed"
                     message.last_error_summary = "接收账号工厂归属已变化，已跳过收货通知"
                     return True
+            if message.event_type in {
+                "order.due_reminder",
+                "order_detail_dispatched",
+            } and not self._recheck_order_delivery(session, message, recipient):
+                message.status = "completed"
+                message.completed_at = current
+                message.last_error_code = "task_or_permission_changed"
+                message.last_error_summary = "派工、数量或接收权限已变化，跳过外部通知"
+                return True
             message.status = "processing"
             message.locked_by = worker_id
             message.locked_at = current
@@ -357,6 +369,104 @@ class NotificationsAuditService:
             )
             return int(result.rowcount or 0)
 
+    @staticmethod
+    def _pending_assignment() -> ColumnElement[bool]:
+        return OrderAssignment.assigned_quantity > OrderAssignment.initial_shipped_quantity + (
+            select(func.coalesce(func.sum(QuantityLedger.quantity_delta), 0))
+            .where(QuantityLedger.order_assignment_id == OrderAssignment.order_assignment_id)
+            .correlate(OrderAssignment)
+            .scalar_subquery()
+        )
+
+    @classmethod
+    def _due_scope(
+        cls,
+        session: Session,
+        orders: list[Order],
+        due_date: date,
+        node: str,
+        factory_id: str | None = None,
+    ) -> dict[str, Any]:
+        ids = list(
+            session.scalars(
+                select(OrderAssignment.order_assignment_id)
+                .join(OrderLine)
+                .where(
+                    OrderLine.order_id.in_([order.order_id for order in orders]),
+                    OrderAssignment.is_active.is_(True),
+                    OrderAssignment.contract_ship_date == due_date,
+                    cls._pending_assignment(),
+                    OrderAssignment.factory_id == factory_id if factory_id is not None else true(),
+                )
+            )
+        )
+        return {"assignmentIds": ids, "dueDate": due_date.isoformat(), "node": node}
+
+    def _recheck_order_delivery(self, session: Session, message: OutboxMessage, user: User) -> bool:
+        scope = message.payload.get("eligibility", {})
+        if message.event_type == "order_detail_dispatched":
+            event = session.get(OutboxMessage, message.source_event_id)
+            if (
+                event is None
+                or user.role != "factory"
+                or user.factory_id != event.payload.get("factoryId")
+            ):
+                return False
+            scope = event.payload
+        ids = scope.get("assignmentIds", [])
+        if not ids:
+            return False
+        query = (
+            select(OrderAssignment, Order)
+            .select_from(OrderAssignment)
+            .join(OrderLine)
+            .join(Order)
+            .where(
+                OrderAssignment.order_assignment_id.in_(ids),
+                OrderAssignment.is_active.is_(True),
+                Order.deleted_at.is_(None),
+                Order.lifecycle == "PUBLISHED",
+            )
+        )
+        due = message.event_type == "order.due_reminder"
+        if due:
+            query = query.where(
+                OrderAssignment.contract_ship_date == date.fromisoformat(scope["dueDate"]),
+                self._pending_assignment(),
+            )
+        rows = session.execute(query).all()
+        allowed_ids, orders = [], {}
+        name = (user.feishu_display_name or "").split("&")[-1]
+        for assignment, order in rows:
+            allowed = (
+                user.role == "factory"
+                and user.factory_id == assignment.factory_id
+                and message.channel == "wechat"
+            )
+            if due and user.role == "admin" and message.channel == "feishu":
+                allowed = name == order.tracker or (
+                    scope["node"] == "D-3" and name in {"煎饼", "核桃"}
+                )
+            if allowed:
+                allowed_ids.append(assignment.order_assignment_id)
+                orders[order.order_id] = order
+        if not allowed_ids:
+            return False
+        if due and message.channel == "feishu":
+            payload = dict(message.payload)
+            payload["cardRows"] = list(
+                self._due_card_rows(
+                    session,
+                    sorted(orders.values(), key=lambda order: (order.order_no, order.order_id)),
+                    date.fromisoformat(scope["dueDate"]),
+                    allowed_ids,
+                )
+            )
+            if payload["cardRows"] != message.payload.get("cardRows"):
+                payload["summary"] = f"今天有 {len(orders)} 个订单需要跟进"
+            message.payload = payload
+        return True
+
     def scan_due_reminders(self, *, business_date: date, now: datetime | None = None) -> int:
         created = 0
         current = now or utc_now()
@@ -378,6 +488,7 @@ class NotificationsAuditService:
                 .where(
                     Order.lifecycle == "PUBLISHED",
                     Order.deleted_at.is_(None),
+                    OrderAssignment.is_active.is_(True),
                     OrderAssignment.contract_ship_date.in_(
                         [business_date + timedelta(days=n) for n in (10, 5, 3, 0)]
                     ),
@@ -473,6 +584,7 @@ class NotificationsAuditService:
                     )
                     .where(
                         OrderLine.order_id == order.order_id,
+                        OrderAssignment.is_active.is_(True),
                         OrderAssignment.contract_ship_date == due_date,
                         OrderAssignment.assigned_quantity
                         > OrderAssignment.initial_shipped_quantity
@@ -543,6 +655,9 @@ class NotificationsAuditService:
                                 f"delivery:due:{order.order_id}:{due_date.isoformat()}:{node}:{user.user_id}:wechat"
                             ),
                             available_at=current,
+                            eligibility=self._due_scope(
+                                session, [order], due_date, node, user.factory_id
+                            ),
                             template_data={
                                 "character_string1": order.order_no,
                                 "thing5": (f"合同出货时间{due_date.isoformat()}"),
@@ -605,6 +720,12 @@ class NotificationsAuditService:
                         ),
                         dedupe_key=dedupe_key,
                         available_at=current,
+                        eligibility=self._due_scope(
+                            session,
+                            page_orders,
+                            business_date + timedelta(days=0 if node == "D0" else int(node[2:])),
+                            node,
+                        ),
                         card_rows=self._due_card_rows(
                             session,
                             page_orders,
@@ -615,7 +736,10 @@ class NotificationsAuditService:
 
     @staticmethod
     def _due_card_rows(
-        session: Session, orders: list[Order], due_date: date
+        session: Session,
+        orders: list[Order],
+        due_date: date,
+        assignment_ids: list[int] | None = None,
     ) -> tuple[dict[str, str], ...]:
         rows: list[dict[str, str]] = []
         for order in orders:
@@ -629,6 +753,10 @@ class NotificationsAuditService:
                 .join(Factory, Factory.factory_id == OrderAssignment.factory_id)
                 .where(
                     OrderLine.order_id == order.order_id,
+                    OrderAssignment.order_assignment_id.in_(assignment_ids)
+                    if assignment_ids is not None
+                    else true(),
+                    OrderAssignment.is_active.is_(True),
                     OrderAssignment.contract_ship_date == due_date,
                     OrderAssignment.assigned_quantity
                     > OrderAssignment.initial_shipped_quantity
@@ -868,11 +996,68 @@ class NotificationsAuditService:
                     )
                 )
 
+    def _consume_order_detail_dispatched(
+        self, session: Session, message: OutboxMessage
+    ) -> None:
+        """Turn a detail-dispatch outbox event into factory notifications.
+
+        The event payload fixes the batch scope (assignment ids, dates and
+        quantities); the consumer never re-expands it to the whole order, so
+        a later dispatch of the same order cannot leak into this batch.
+        """
+        order = session.get(Order, str(message.payload["orderId"]))
+        if order is None or order.deleted_at is not None or order.lifecycle != "PUBLISHED":
+            return
+        factory_id = str(message.payload["factoryId"])
+        assignment_ids = [int(value) for value in message.payload.get("assignmentIds", [])]
+        if not assignment_ids:
+            return
+        # Verify the batch is still active at consume time; a withdrawn
+        # batch must not notify.
+        still_active = session.scalar(
+            select(OrderAssignment.order_assignment_id)
+            .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+            .where(
+                OrderAssignment.order_assignment_id.in_(assignment_ids),
+                OrderAssignment.factory_id == factory_id,
+                OrderAssignment.is_active.is_(True),
+                OrderLine.order_id == order.order_id,
+            )
+            .limit(1)
+        )
+        if still_active is None:
+            return
+        line_count = len(message.payload.get("lines", []))
+        summary = f"订单 {order.order_no} 新派工 {line_count} 条明细，请查看本厂任务"
+        for user in self._enabled_factory_users(session, factory_id):
+            self._notify_user(
+                session,
+                message=message,
+                user_id=user.user_id,
+                category="NEW_ORDER",
+                target_type="factory_task",
+                target_id=order.order_id,
+                title="新订单任务",
+                summary=summary,
+                target_path=(
+                    "/pages/factory-task-detail/factory-task-detail"
+                    f"?orderId={order.order_id}"
+                ),
+                channel="wechat",
+                template_key="factory_status",
+                template_data={
+                    "thing1": "跟单管理系统",
+                    "character_string2": order.order_no,
+                    "phrase3": "新订单",
+                    "time4": _wechat_time(message.locked_at or utc_now()),
+                },
+            )
+
     def _consume_order_unpublished(self, session: Session, message: OutboxMessage) -> None:
         order = session.get(Order, str(message.payload["orderId"]))
         if order is None:
             return
-        title = "订单任务已撤回" if message.event_type == "order_withdrawn" else "订单任务已删除"
+        title = "订单任务已删除"
         for user in self._enabled_factory_users(session, str(message.payload["factoryId"])):
             self._notify_user(
                 session,
@@ -890,7 +1075,7 @@ class NotificationsAuditService:
                     "thing1": "跟单管理系统",
                     "character_string2": order.order_no,
                     "phrase3": (
-                        "已撤回" if message.event_type == "order_withdrawn" else "已删除"
+                        "已删除"
                     ),
                     "time4": _wechat_time(message.locked_at or utc_now()),
                 },
@@ -1405,6 +1590,7 @@ class NotificationsAuditService:
         available_at: datetime,
         template_data: dict[str, str] | None = None,
         card_rows: tuple[dict[str, str], ...] | None = None,
+        eligibility: dict[str, Any] | None = None,
     ) -> None:
         session.add(
             OutboxMessage(
@@ -1421,6 +1607,7 @@ class NotificationsAuditService:
                     "targetPath": target_path,
                     "templateData": template_data or {},
                     "cardRows": list(card_rows or ()),
+                    "eligibility": eligibility or {},
                 },
                 message_kind="delivery",
                 channel=channel,

@@ -43,7 +43,7 @@ afterEach(() => {
 });
 
 describe("pending order import page", () => {
-  it("shows confirmed filters and only selects ready pending candidates", async () => {
+  it("shows confirmed filters and selects pending candidates even with incomplete materials", async () => {
     vi.spyOn(orderImportApi, "latestRun").mockResolvedValue(null);
     const list = vi.spyOn(orderImportApi, "list").mockResolvedValue({ items: [candidate, { ...candidate, candidateId: "candidate-2", orderNo: "E101", validationState: "INVALID", validationIssues: ["FACTORY_NOT_MATCHED"] }], total: 2, page: 1, pageSize: 10, requestId: "request" });
     const wrapper = mount(OrderImportPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { template: "<a><slot /></a>" } } } });
@@ -53,7 +53,7 @@ describe("pending order import page", () => {
     expect(wrapper.text()).toContain("获取飞书新订单");
     expect(wrapper.text()).toContain("每页展示 10 条待导入订单");
     expect(wrapper.findAll("tbody input[type=checkbox]")[0].attributes("disabled")).toBeUndefined();
-    expect(wrapper.findAll("tbody input[type=checkbox]")[1].attributes("disabled")).toBeDefined();
+    expect(wrapper.findAll("tbody input[type=checkbox]")[1].attributes("disabled")).toBeUndefined();
 
     await wrapper.get(".import-category-filter").setValue("帽子");
     await wrapper.get(".import-search-form").trigger("submit");

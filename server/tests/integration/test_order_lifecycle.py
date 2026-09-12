@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
 
 import pytest
-from sqlalchemy import Engine, delete
+from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import (
@@ -140,13 +140,6 @@ def _seed_order_dependencies(engine: Engine) -> tuple[str, str, str, str]:
             )
         )
     return admin_id, factory_a_id, factory_b_id, variant_id
-
-
-@pytest.fixture(autouse=True)
-def clean_order_test_data(test_database_engine: Engine):  # type: ignore[no-untyped-def]
-    _clean_order_tables(test_database_engine)
-    yield
-    _clean_order_tables(test_database_engine)
 
 
 def test_admin_creates_and_publishes_complete_multi_factory_draft(
@@ -411,6 +404,9 @@ def test_withdraw_complete_reopen_delete_and_factory_visibility(
     assert [item.factory_id for item in factory_view.factory_progress] == [factory_a_id]
     assert factory_b_id not in repr(factory_view)
 
+    with Session(test_database_engine) as session, session.begin():
+        for assignment in session.scalars(select(OrderAssignment)):
+            assignment.initial_shipped_quantity = assignment.assigned_quantity
     completed = service.complete(
         actor_id=admin_id,
         order_id=draft.order_id,
@@ -433,16 +429,27 @@ def test_withdraw_complete_reopen_delete_and_factory_visibility(
         request_id="req-life-reopen",
         idempotency_key="life-reopen",
     )
-    assert reopened.display_status == "已逾期"
+    assert reopened.display_status == "未完成"
     with Session(test_database_engine) as session:
         records = session.query(OrderCompletionRecord).order_by(OrderCompletionRecord.record_id)
         assert [item.action for item in records] == ["COMPLETE", "REOPEN"]
 
-    withdrawn = service.withdraw(
+    partial = service.withdraw_factory(
         actor_id=admin_id,
         order_id=draft.order_id,
-        request_id="req-life-withdraw",
-        idempotency_key="life-withdraw",
+        factory_id=factory_a_id,
+        version=reopened.version,
+        request_id="withdraw-a",
+        idempotency_key="withdraw-a",
+    )
+    assert partial.lifecycle == "PUBLISHED"
+    withdrawn = service.withdraw_factory(
+        actor_id=admin_id,
+        order_id=draft.order_id,
+        factory_id=factory_b_id,
+        version=partial.version,
+        request_id="withdraw-b",
+        idempotency_key="withdraw-b",
     )
     assert withdrawn.lifecycle == "DRAFT"
     with pytest.raises(OrderNotFound):
@@ -528,13 +535,6 @@ def test_execution_guard_blocks_withdraw_delete_and_complete(
         sessions, execution_guard=ConfigurableExecutionGuard(shipments=True)
     )
     with pytest.raises(OrderConflict):
-        shipped_service.withdraw(
-            actor_id=admin_id,
-            order_id=draft.order_id,
-            request_id="req-guard-withdraw",
-            idempotency_key="guard-withdraw",
-        )
-    with pytest.raises(OrderConflict):
         shipped_service.delete(
             actor_id=admin_id,
             order_id=draft.order_id,
@@ -612,6 +612,9 @@ def test_assignment_dates_scope_overdue_filter_sort_and_published_lock(
             lines=[DraftLineInput(variant, 100, [])],
             request_id="edit-published",
         )
+    with Session(test_database_engine) as session, session.begin():
+        for assignment in session.scalars(select(OrderAssignment)):
+            assignment.initial_shipped_quantity = assignment.assigned_quantity
     completed = service.complete(
         actor_id=admin,
         order_id=order.order_id,

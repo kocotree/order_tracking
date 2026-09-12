@@ -614,8 +614,13 @@ class ShipmentService:
                 .outerjoin(ledger, ledger.c.assignment_id == OrderAssignment.order_assignment_id)
                 .where(
                     OrderAssignment.factory_id == factory_id,
+                    OrderAssignment.is_active.is_(True),
                     Order.lifecycle == "PUBLISHED",
                     Order.deleted_at.is_(None),
+                    # Fully shipped details no longer enter the shipment catalog.
+                    OrderAssignment.assigned_quantity
+                    > OrderAssignment.initial_shipped_quantity
+                    + func.coalesce(ledger.c.quantity, 0),
                 )
                 .order_by(
                     OrderAssignment.contract_ship_date.is_(None),
@@ -1994,6 +1999,7 @@ class ShipmentService:
                 Order.lifecycle == "PUBLISHED",
                 Order.deleted_at.is_(None),
                 OrderAssignment.factory_id == factory_id,
+                OrderAssignment.is_active.is_(True),
             )
             .limit(1)
         )
@@ -2069,6 +2075,7 @@ class ShipmentService:
             .where(
                 OrderAssignment.order_assignment_id.in_(assignment_ids),
                 OrderAssignment.factory_id == factory_id,
+                OrderAssignment.is_active.is_(True),
                 Order.deleted_at.is_(None),
             )
         )

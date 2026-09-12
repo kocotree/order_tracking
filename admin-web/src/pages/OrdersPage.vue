@@ -96,7 +96,7 @@
                 <td><span class="tracker-tag" :data-tracker="item.tracker">{{ item.tracker }}</span></td>
                 <td>{{ factorySummary(item) }}</td>
                 <td class="date-summary" :title="item.contractShipDates.join('、')">{{ item.contractShipDates.join("、") || "—" }}</td>
-                <td><div class="list-progress-line"><span class="progress-track"><span class="progress-bar" :style="{ width: `${item.progressPercent}%` }"></span></span><span class="list-progress-percent">{{ item.progressPercent }}%</span></div></td>
+                <td><div class="list-progress-line"><span class="progress-track"><span class="progress-bar" :style="{ width: `${Math.min(item.progressPercent ?? 0, 100)}%` }"></span></span><span class="list-progress-percent">{{ item.progressPercent == null ? "—" : `${item.progressPercent}%` }}</span></div></td>
                 <td class="order-shipment-count">{{ number(item.shippedQuantity) }} / {{ number(item.totalQuantity) }}</td>
                 <td><span class="status-badge" :class="statusTone(item)">{{ item.displayStatus }}</span></td>
                 <td><div class="order-row-actions"><RouterLink class="order-view-button" :to="`/orders/${item.orderId}`">详情</RouterLink><button v-if="item.lifecycle === 'DRAFT'" class="order-delete-button" type="button" @click="deleteTarget = item">删除</button></div></td>
@@ -164,13 +164,13 @@ const deleteTarget = ref<Order | null>(null);
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
 const factoryLabel = computed(() => factoryIds.value.length === 0 ? "全部工厂" : factoryIds.value.length === 1 ? factories.value.find((item) => item.factoryId === factoryIds.value[0])?.factoryName ?? "已选 1 个工厂" : `已选 ${factoryIds.value.length} 个工厂`);
 const trackerLabel = computed(() => selectedTrackers.value.length === 0 ? "全部跟单人员" : selectedTrackers.value.length === 1 ? selectedTrackers.value[0] : `已选 ${selectedTrackers.value.length} 位跟单人员`);
-const number = (value: number) => value.toLocaleString("zh-CN");
-const productSummary = (order: Order) => [...new Set(order.lines.map((line) => line.productName))].join("、") || "—";
-const factorySummary = (order: Order) => [...new Set(order.factoryProgress.map((row) => row.factoryName))].join("、") || "—";
+const number = (value: number | null) => value == null ? "—" : value.toLocaleString("zh-CN");
+const productSummary = (order: Order) => [...new Set((order.detailMode ? order.details : order.lines).map((line) => line.productName).filter(Boolean))].join("、") || "—";
+const factorySummary = (order: Order) => [...new Set((order.detailMode ? order.details : order.factoryProgress).map((row) => row.factoryName))].join("、") || "—";
 
 function displayCategories(order: Order) {
   const values = new Set<"服装" | "帽子">();
-  for (const line of order.lines) {
+  for (const line of (order.detailMode ? order.details : order.lines)) {
     if (!line.category) continue;
     values.add(line.category === "童装春夏" || line.category === "童装秋冬" ? "服装" : "帽子");
   }

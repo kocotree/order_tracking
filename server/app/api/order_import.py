@@ -40,8 +40,8 @@ class CandidateLineResponse(ApiModel):
     category: str | None
     factory_name: str | None
     order_quantity: int | None
-    shipped_quantity: int
-    pending_quantity: int
+    shipped_quantity: int | None
+    pending_quantity: int | None
     validation_issues: list[str]
 
 
@@ -57,9 +57,9 @@ class CandidateResponse(ApiModel):
     tracker: str | None
     contract_ship_date: date | None
     category: str | None
-    total_quantity: int
-    shipped_quantity: int
-    pending_quantity: int
+    total_quantity: int | None
+    shipped_quantity: int | None
+    pending_quantity: int | None
     imported_order_id: str | None
     lines: list[CandidateLineResponse]
     updated_at: datetime

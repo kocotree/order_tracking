@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from typing import Any, Protocol
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -18,6 +19,8 @@ class FeishuOrderSource(Protocol):
     @property
     def source_scope(self) -> str: ...
 
+    def read_records(self, record_ids: list[str]) -> list[SourceOrderRow]: ...
+
     def read_pages(
         self, *, modified_since: datetime | None = None
     ) -> Iterable[list[SourceOrderRow]]: ...
@@ -25,6 +28,9 @@ class FeishuOrderSource(Protocol):
 
 class DisabledFeishuOrderSource:
     source_scope = "unconfigured-feishu-order-source"
+
+    def read_records(self, record_ids: list[str]) -> list[SourceOrderRow]:
+        raise ExternalAdapterUnavailable("feishu_order_source_not_configured")
 
     def read_pages(
         self, *, modified_since: datetime | None = None
@@ -40,6 +46,9 @@ class FakeFeishuOrderSource:
         self._fail_on_page = fail_on_page
         self.source_scope = "fake-feishu-order-source"
         self.modified_since_requests: list[datetime | None] = []
+
+    def read_records(self, record_ids: list[str]) -> list[SourceOrderRow]:
+        return [row for page in self.read_pages() for row in page if row.record_id in record_ids]
 
     def read_pages(
         self, *, modified_since: datetime | None = None
@@ -69,6 +78,40 @@ class AppCredentialFeishuOrderSource:
         self._config = config
         scope = f"{config.app_token}:{config.table_id}:{config.view_id}".encode()
         self.source_scope = f"feishu:{sha256(scope).hexdigest()[:32]}"
+
+    def read_records(self, record_ids: list[str]) -> list[SourceOrderRow]:
+        try:
+            with httpx.Client(base_url=self._config.base_url, timeout=30) as client:
+                response = client.post(
+                    "/open-apis/auth/v3/tenant_access_token/internal",
+                    json={
+                        "app_id": self._config.app_id,
+                        "app_secret": self._config.app_secret,
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+                token = payload.get("tenant_access_token")
+                if payload.get("code") != 0 or not isinstance(token, str):
+                    raise ExternalAdapterUnavailable("feishu_app_auth_failed")
+                headers = {"Authorization": f"Bearer {token}"}
+                self._validate_fields(client, headers)
+                rows = []
+                for record_id in record_ids:
+                    response = client.get(
+                        f"/open-apis/bitable/v1/apps/{self._config.app_token}"
+                        f"/tables/{self._config.table_id}/records/{quote(record_id, safe='')}",
+                        params={"automatic_fields": "true"},
+                        headers=headers,
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    if payload.get("code") != 0:
+                        raise ExternalAdapterUnavailable("feishu_source_record_missing")
+                    rows.append(self._parse_record(payload["data"]["record"]))
+                return rows
+        except (httpx.HTTPError, ValueError, TypeError, KeyError) as error:
+            raise ExternalAdapterUnavailable("feishu_order_source_unavailable") from error
 
     def read_pages(
         self, *, modified_since: datetime | None = None
@@ -211,8 +254,8 @@ class AppCredentialFeishuOrderSource:
             category=cls._text(fields.get("一级分类")),
             factory_name=cls._text(fields.get("工厂")),
             order_quantity=cls._integer(fields.get("下单数")),
-            shipped_quantity=cls._integer(fields.get("出货总数")) or 0,
-            pending_quantity=cls._integer(fields.get("未出数量")) or 0,
+            shipped_quantity=cls._integer(fields.get("出货总数")),
+            pending_quantity=cls._integer(fields.get("未出数量")),
             tracker=cls._text(fields.get("跟单人员")),
             order_date=cls._date(fields.get("下单时间")),
             contract_ship_date=cls._contract_date(fields.get("合同出货时间")),
@@ -285,16 +328,10 @@ class AppCredentialFeishuOrderSource:
             number = Decimal(text.replace(",", ""))
         except InvalidOperation:
             return None
+        if not number.is_finite() or not -2147483648 <= number <= 2147483647:
+            return None
         return int(number) if number == number.to_integral_value() else None
 
-    @staticmethod
-    def _date(value: Any) -> date | None:
-        if isinstance(value, (int, float)):
-            return datetime.fromtimestamp(value / 1000, tz=UTC).astimezone(BUSINESS_TZ).date()
-        text = AppCredentialFeishuOrderSource._text(value)
-        if text is None:
-            return None
-        try:
-            return date.fromisoformat(text[:10])
-        except ValueError:
-            return None
+    @classmethod
+    def _date(cls, value: Any) -> date | None:
+        return cls._contract_date(value)

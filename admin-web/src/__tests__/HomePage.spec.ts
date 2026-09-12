@@ -8,7 +8,7 @@ import HomePage from "@/pages/HomePage.vue";
 
 function order(overrides: Partial<Order> = {}): Order {
   return {
-    orderId: "order-1",
+    detailMode: false, details: [], orderId: "order-1",
     orderNo: "090#",
     source: "manual",
     orderDate: "2026-08-20",
@@ -64,7 +64,8 @@ describe("order dashboard prototype alignment", () => {
         { ...order().lines[0], orderLineId: 2, variantId: "variant-2", skuId: "SKU-2", productName: "轻量防晒帽", category: "童帽秋冬" },
       ],
     });
-    vi.spyOn(orderApi, "dashboard").mockResolvedValue({
+    const dashboardMock = vi.spyOn(orderApi, "dashboard").mockResolvedValue({
+      totalOrders: 2,
       overdueOrders: 1,
       pendingImportOrders: 0,
       todayShipments: 0,
@@ -88,15 +89,24 @@ describe("order dashboard prototype alignment", () => {
     expect(wrapper.findAll('[data-category="服装"]')).toHaveLength(2);
     expect(wrapper.findAll('[data-category="帽子"]')).toHaveLength(1);
 
+    dashboardMock.mockResolvedValueOnce({ totalOrders: 0, recentOrders: [], overdueOrders: 1, pendingImportOrders: 0, todayShipments: 0, requestId: "search" });
     await wrapper.get('.dashboard-search-field input').setValue("蓝色");
     await wrapper.get('.dashboard-search-form').trigger("submit");
+    await flushPromises();
+    expect(dashboardMock).toHaveBeenLastCalledWith({ keyword: "蓝色", sortBy: "updatedDesc" });
     expect(wrapper.text()).toContain("找到 0 个订单");
 
     await wrapper.get('.dashboard-search-clear').trigger("click");
+    await flushPromises();
+    dashboardMock.mockResolvedValueOnce({ totalOrders: 2, recentOrders: [mixedOrder, order()], overdueOrders: 1, pendingImportOrders: 0, todayShipments: 0, requestId: "sort" });
     const orderNumberHeader = wrapper.findAll('.data-grid-sort-button').find((item) => item.text().includes("订单编号"));
     await orderNumberHeader?.trigger("click");
+    await flushPromises();
+    expect(dashboardMock).toHaveBeenLastCalledWith({ keyword: "", sortBy: "orderNoAsc" });
     expect(wrapper.findAll("tbody tr")[0].text()).toContain("078#");
     await orderNumberHeader?.trigger("click");
+    await flushPromises();
+    expect(dashboardMock).toHaveBeenLastCalledWith({ keyword: "", sortBy: "orderNoDesc" });
     expect(wrapper.findAll("tbody tr")[0].text()).toContain("090#");
   });
 });
@@ -125,7 +135,7 @@ it("links statistics to Shanghai today and overdue filters, and requests unread 
 });
 
 it("limits the dashboard to ten rows and keeps the all-orders link without pagination", async () => {
-  vi.spyOn(orderApi, "dashboard").mockResolvedValue({ recentOrders: Array.from({ length: 15 }, (_, index) => order({ orderId: `order-${index}` })), overdueOrders: 0, pendingImportOrders: 0, todayShipments: 0, requestId: "test" });
+  vi.spyOn(orderApi, "dashboard").mockResolvedValue({ totalOrders: 15, recentOrders: Array.from({ length: 15 }, (_, index) => order({ orderId: `order-${index}` })), overdueOrders: 0, pendingImportOrders: 0, todayShipments: 0, requestId: "test" });
   vi.spyOn(notificationApi, "unreadCount").mockResolvedValue({ count: 0, requestId: "test" });
   vi.spyOn(notificationApi, "list").mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 3, requestId: "test" });
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/", component: HomePage }, { path: "/:pathMatch(.*)*", component: { template: "<div/>" } }] });

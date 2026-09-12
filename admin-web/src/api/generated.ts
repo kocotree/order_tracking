@@ -484,6 +484,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/orders/{order_id}/details/{detail_id}/contract-date": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Save Detail Date */
+        patch: operations["save_detail_date_api_v1_admin_orders__order_id__details__detail_id__contract_date_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/dispatch/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Dispatch */
+        post: operations["confirm_dispatch_api_v1_admin_orders__order_id__dispatch_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/dispatch/factories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Withdrawal Factories */
+        get: operations["withdrawal_factories_api_v1_admin_orders__order_id__dispatch_factories_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/dispatch/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Dispatch */
+        post: operations["preview_dispatch_api_v1_admin_orders__order_id__dispatch_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/dispatch/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw Factory */
+        post: operations["withdraw_factory_api_v1_admin_orders__order_id__dispatch_withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/orders/{order_id}/publish": {
         parameters: {
             query?: never;
@@ -518,7 +603,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/orders/{order_id}/withdraw": {
+    "/api/v1/admin/orders/{order_id}/source-refresh/confirm": {
         parameters: {
             query?: never;
             header?: never;
@@ -527,8 +612,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Withdraw */
-        post: operations["withdraw_api_v1_admin_orders__order_id__withdraw_post"];
+        /** Confirm Source */
+        post: operations["confirm_source_api_v1_admin_orders__order_id__source_refresh_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/source-refresh/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Source */
+        post: operations["preview_source_api_v1_admin_orders__order_id__source_refresh_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1799,13 +1901,13 @@ export interface components {
             /** Orderquantity */
             orderQuantity: number | null;
             /** Pendingquantity */
-            pendingQuantity: number;
+            pendingQuantity: number | null;
             /** Productname */
             productName: string | null;
             /** Propertiesvalue */
             propertiesValue: string | null;
             /** Shippedquantity */
-            shippedQuantity: number;
+            shippedQuantity: number | null;
             /** Sourcecontractshipdate */
             sourceContractShipDate: string | null;
             /** Sourceskuid */
@@ -1845,13 +1947,13 @@ export interface components {
             /** Orderno */
             orderNo: string;
             /** Pendingquantity */
-            pendingQuantity: number;
+            pendingQuantity: number | null;
             /** Shippedquantity */
-            shippedQuantity: number;
+            shippedQuantity: number | null;
             /** Status */
             status: string;
             /** Totalquantity */
-            totalQuantity: number;
+            totalQuantity: number | null;
             /** Tracker */
             tracker: string | null;
             /**
@@ -1949,6 +2051,66 @@ export interface components {
             requestId: string;
             /** Todayshipments */
             todayShipments: number;
+            /** Totalorders */
+            totalOrders: number;
+        };
+        /** DetailDateWrite */
+        DetailDateWrite: {
+            /** Contractshipdate */
+            contractShipDate: string | null;
+            /** Detailversion */
+            detailVersion: number;
+            /** Version */
+            version: number;
+        };
+        /** DispatchConfirmWrite */
+        DispatchConfirmWrite: {
+            /** Previewid */
+            previewId: string;
+            /** Version */
+            version: number;
+        };
+        /** DispatchPreviewResponse */
+        DispatchPreviewResponse: {
+            /**
+             * Allok
+             * @default false
+             */
+            allOk: boolean;
+            /** Expiresat */
+            expiresAt?: string | null;
+            /** Previewid */
+            previewId?: string | null;
+            /**
+             * Requiressourceconfirmation
+             * @default false
+             */
+            requiresSourceConfirmation: boolean;
+            sourcePreview?: components["schemas"]["SourcePreviewResponse"] | null;
+            /** Validations */
+            validations?: components["schemas"]["DispatchValidationItem"][];
+            /** Version */
+            version: number;
+        };
+        /** DispatchPreviewWrite */
+        DispatchPreviewWrite: {
+            /** Detailids */
+            detailIds: string[];
+            /** Version */
+            version: number;
+        };
+        /** DispatchValidationItem */
+        DispatchValidationItem: {
+            /** Detailid */
+            detailId: string;
+            /** Factoryname */
+            factoryName: string;
+            /** Issues */
+            issues: string[];
+            /** Label */
+            label: string;
+            /** Passes */
+            passes: boolean;
         };
         /** DraftBoxWrite */
         DraftBoxWrite: {
@@ -2196,6 +2358,13 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** FactoryWithdrawalWrite */
+        FactoryWithdrawalWrite: {
+            /** Factoryid */
+            factoryId: string;
+            /** Version */
+            version: number;
+        };
         /** FactoryWrite */
         FactoryWrite: {
             /**
@@ -2332,6 +2501,47 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** OrderDetailResponse */
+        OrderDetailResponse: {
+            /** Category */
+            category: string | null;
+            /** Contractshipdate */
+            contractShipDate: string | null;
+            /** Detailid */
+            detailId: string;
+            /** Dispatchstate */
+            dispatchState: string;
+            /** Factoryname */
+            factoryName: string | null;
+            /** Matchedfactoryid */
+            matchedFactoryId: string | null;
+            /** Matchedvariantid */
+            matchedVariantId: string | null;
+            /** Orderquantity */
+            orderQuantity: number | null;
+            /** Origin */
+            origin: string;
+            /** Pendingquantity */
+            pendingQuantity: number | null;
+            /** Productname */
+            productName: string | null;
+            /** Progresspercent */
+            progressPercent: number | null;
+            /** Propertiesvalue */
+            propertiesValue: string | null;
+            /** Rawfields */
+            rawFields: {
+                [key: string]: unknown;
+            };
+            /** Shippedquantity */
+            shippedQuantity: number | null;
+            /** Sourceskuid */
+            sourceSkuId: string | null;
+            /** Sourcetracker */
+            sourceTracker: string | null;
+            /** Version */
+            version: number;
+        };
         /** OrderLineResponse */
         OrderLineResponse: {
             /** Assignments */
@@ -2387,6 +2597,16 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+            /**
+             * Detailmode
+             * @default false
+             */
+            detailMode: boolean;
+            /**
+             * Details
+             * @default []
+             */
+            details: components["schemas"]["OrderDetailResponse"][];
             /** Displaystatus */
             displayStatus: string;
             /** Factoryprogress */
@@ -2402,26 +2622,26 @@ export interface components {
             /** Orderno */
             orderNo: string;
             /** Overquantity */
-            overQuantity: number;
+            overQuantity: number | null;
             /** Pendingquantity */
-            pendingQuantity: number;
+            pendingQuantity: number | null;
             /** Progresspercent */
-            progressPercent: number;
+            progressPercent: number | null;
             /**
              * Requestid
              * @default
              */
             requestId: string;
             /** Shippedquantity */
-            shippedQuantity: number;
+            shippedQuantity: number | null;
             /** Shortquantity */
-            shortQuantity: number;
+            shortQuantity: number | null;
             /** Source */
             source: string;
             /** Totalquantity */
-            totalQuantity: number;
+            totalQuantity: number | null;
             /** Tracker */
-            tracker: string;
+            tracker: string | null;
             /**
              * Updatedat
              * Format: date-time
@@ -2489,6 +2709,18 @@ export interface components {
         ReceiptSave: {
             /** Items */
             items: components["schemas"]["ReceiptItemWrite"][];
+            /** Version */
+            version: number;
+        };
+        /** RefreshConfirmWrite */
+        RefreshConfirmWrite: {
+            /** Previewid */
+            previewId: string;
+            /** Version */
+            version: number;
+        };
+        /** RefreshWrite */
+        RefreshWrite: {
             /** Version */
             version: number;
         };
@@ -3122,6 +3354,33 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** SourceDifferenceResponse */
+        SourceDifferenceResponse: {
+            /** After */
+            after: string | number | null;
+            /** Before */
+            before: string | number | null;
+            /** Detailid */
+            detailId: string;
+            /** Field */
+            field: string;
+            /** Label */
+            label: string;
+        };
+        /** SourcePreviewResponse */
+        SourcePreviewResponse: {
+            /** Differences */
+            differences: components["schemas"]["SourceDifferenceResponse"][];
+            /**
+             * Expiresat
+             * Format: date-time
+             */
+            expiresAt: string;
+            /** Previewid */
+            previewId: string;
+            /** Version */
+            version: number;
+        };
         /** UnreadCountResponse */
         UnreadCountResponse: {
             /** Count */
@@ -3201,6 +3460,17 @@ export interface components {
             reason: string;
             /** Version */
             version: number;
+        };
+        /** WithdrawalFactoryResponse */
+        WithdrawalFactoryResponse: {
+            /** Blocked */
+            blocked: boolean;
+            /** Detailcount */
+            detailCount: number;
+            /** Factoryid */
+            factoryId: string;
+            /** Factoryname */
+            factoryName: string;
         };
         /** DraftCreate */
         app__api__orders__DraftCreate: {
@@ -3308,7 +3578,10 @@ export interface operations {
     };
     dashboard_api_v1_admin_dashboard_orders_get: {
         parameters: {
-            query?: never;
+            query?: {
+                keyword?: string;
+                sortBy?: string;
+            };
             header?: never;
             path?: never;
             cookie?: {
@@ -4377,6 +4650,198 @@ export interface operations {
             };
         };
     };
+    save_detail_date_api_v1_admin_orders__order_id__details__detail_id__contract_date_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+                detail_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetailDateWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_dispatch_api_v1_admin_orders__order_id__dispatch_confirm_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispatchConfirmWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdrawal_factories_api_v1_admin_orders__order_id__dispatch_factories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WithdrawalFactoryResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_dispatch_api_v1_admin_orders__order_id__dispatch_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispatchPreviewWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispatchPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_factory_api_v1_admin_orders__order_id__dispatch_withdraw_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactoryWithdrawalWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     publish_api_v1_admin_orders__order_id__publish_post: {
         parameters: {
             query?: never;
@@ -4457,7 +4922,7 @@ export interface operations {
             };
         };
     };
-    withdraw_api_v1_admin_orders__order_id__withdraw_post: {
+    confirm_source_api_v1_admin_orders__order_id__source_refresh_confirm_post: {
         parameters: {
             query?: never;
             header: {
@@ -4471,7 +4936,11 @@ export interface operations {
                 ot_web_session?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshConfirmWrite"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -4480,6 +4949,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_source_api_v1_admin_orders__order_id__source_refresh_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourcePreviewResponse"];
                 };
             };
             /** @description Validation Error */

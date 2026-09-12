@@ -4,7 +4,7 @@
       <header class="page-heading">
         <div><button class="back-link" type="button" @click="$router.back()">‹ 返回</button><h1>{{ isEdit ? '编辑草稿' : '手工新建订单' }}</h1><p>保存草稿后工厂不可见，发布前再校验完整派工。</p></div>
       </header>
-      <form class="section-card order-form" @submit.prevent="save">
+      <form v-if="!sourceReadOnly" class="section-card order-form" @submit.prevent="save">
         <section><header class="section-heading"><h2>基本信息</h2></header><div class="form-grid">
           <label>订单编号<input v-model.trim="form.orderNo" maxlength="100" placeholder="例如 E81" /></label>
           <label>订单日期<input v-model="form.orderDate" type="date" /></label>
@@ -46,6 +46,7 @@ import AdminShell from "@/components/AdminShell.vue";
 
 type AssignmentForm = { key: string; factoryId: string; quantity: number; contractShipDate: string };
 type LineForm = { key: string; variantId: string; orderQuantity: number; assignments: AssignmentForm[] };
+const sourceReadOnly = ref(false);
 const trackers = ["烧麦", "松子", "橄榄", "大葱", "青椒"];
 const route = useRoute(); const router = useRouter(); const orderId = typeof route.params.orderId === "string" ? route.params.orderId : ""; const isEdit = Boolean(orderId);
 const products = ref<ProductListItem[]>([]); const factories = ref<Factory[]>([]); const saving = ref(false); const errorMessage = ref(""); const version = ref(0);
@@ -74,8 +75,8 @@ onMounted(async () => {
   const [productResult, factoryResult] = await Promise.all([identityApi.listProducts({ pageSize: 100 }), identityApi.listFactories()]); products.value = productResult.items; factories.value = factoryResult.items;
   if (!isEdit) return;
   try {
-    const order = await orderApi.get(orderId); if (order.lifecycle !== "DRAFT") { errorMessage.value = "只有草稿可以编辑"; return; }
-    form.orderNo = order.orderNo; form.orderDate = order.orderDate ?? ""; form.tracker = order.tracker; version.value = order.version;
+    const order = await orderApi.get(orderId); if (order.detailMode) { sourceReadOnly.value = true; await router.replace(`/orders/${orderId}`); return; } if (order.lifecycle !== "DRAFT") { errorMessage.value = "只有草稿可以编辑"; return; }
+    form.orderNo = order.orderNo; form.orderDate = order.orderDate ?? ""; form.tracker = order.tracker ?? ""; version.value = order.version;
     form.lines = order.lines.map((line) => ({ key: key(), variantId: line.variantId, orderQuantity: line.orderQuantity, assignments: line.assignments.map((item) => ({ key: key(), factoryId: item.factoryId, quantity: item.assignedQuantity, contractShipDate: item.contractShipDate ?? "" })) }));
   } catch (error) { errorMessage.value = error instanceof ApiError ? error.message : "草稿加载失败"; }
 });

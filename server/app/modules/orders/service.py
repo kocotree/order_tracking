@@ -5,9 +5,10 @@ from typing import Any, Protocol
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, func, or_, select, true
+from sqlalchemy import case, delete, func, or_, select, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.models import (
     AuditLog,
@@ -16,12 +17,14 @@ from app.db.models import (
     Order,
     OrderAssignment,
     OrderCompletionRecord,
+    OrderDetail,
     OrderLine,
     OutboxMessage,
     Product,
     ProductVariant,
     QuantityLedger,
     Shipment,
+    ShipmentLine,
     User,
 )
 from app.modules.orders.admin_query import display_status, page_orders
@@ -124,23 +127,47 @@ class FactoryProgressSnapshot:
 
 
 @dataclass(frozen=True)
+class DetailSnapshot:
+    detail_id: str
+    origin: str
+    source_sku_id: str | None
+    product_name: str | None
+    properties_value: str | None
+    category: str | None
+    factory_name: str | None
+    matched_variant_id: str | None
+    matched_factory_id: str | None
+    order_quantity: int | None
+    shipped_quantity: int | None
+    pending_quantity: int | None
+    progress_percent: int | None
+    source_tracker: str | None
+    contract_ship_date: date | None
+    dispatch_state: str
+    version: int
+    raw_fields: dict[str, object]
+
+
+@dataclass(frozen=True)
 class OrderSnapshot:
     order_id: str
     order_no: str
     source: str
     order_date: date | None
-    tracker: str
+    tracker: str | None
     contract_ship_date: date | None
     contract_ship_dates: list[date]
     lifecycle: str
     display_status: str
     version: int
-    total_quantity: int
-    shipped_quantity: int
-    pending_quantity: int
-    over_quantity: int
-    short_quantity: int
-    progress_percent: int
+    total_quantity: int | None
+    shipped_quantity: int | None
+    pending_quantity: int | None
+    over_quantity: int | None
+    short_quantity: int | None
+    progress_percent: int | None
+    detail_mode: bool
+    details: list[DetailSnapshot]
     lines: list[LineSnapshot]
     factory_progress: list[FactoryProgressSnapshot]
     validation_issues: list[str]
@@ -275,6 +302,8 @@ class OrderService:
                 order = self._locked_order(session, order_id)
                 if order.lifecycle != "DRAFT" or order.version != version:
                     raise OrderConflict("order state or version changed")
+                if order.detail_mode:
+                    raise OrderConflict("来源明细只允许单独保存合同出货时间")
                 order.order_no = normalized_order_no
                 order.order_date = order_date
                 order.tracker = tracker
@@ -319,7 +348,13 @@ class OrderService:
             order = self._locked_order(session, order_id)
             if order.lifecycle != "DRAFT" or order.version != version:
                 raise OrderConflict("order state or version changed")
+            if order.detail_mode:
+                raise OrderConflict("请使用明细派工，不能整单发布来源草稿")
             factory_ids = self._validate_publish(session, order)
+            for assignment in session.scalars(
+                select(OrderAssignment).join(OrderLine).where(OrderLine.order_id == order_id)
+            ):
+                assignment.is_active = True
             before_version = order.version
             order.lifecycle = "PUBLISHED"
             order.version += 1
@@ -347,51 +382,220 @@ class OrderService:
             session.flush()
             return self._snapshot(session, order, self._business_today())
 
-    def withdraw(
+    def withdrawal_factories(self, *, actor_id: str, order_id: str) -> list[dict[str, Any]]:
+        with self._session_factory() as session:
+            self._require_admin(session, actor_id)
+            order = self._require_order(session, order_id)
+            if order.lifecycle == "DRAFT":
+                return []
+            assignments = list(
+                session.scalars(
+                    select(OrderAssignment)
+                    .join(OrderLine)
+                    .where(
+                        OrderLine.order_id == order_id,
+                        OrderAssignment.is_active.is_(True),
+                    )
+                    .order_by(OrderAssignment.order_assignment_id)
+                )
+            )
+            result: dict[str, dict[str, Any]] = {}
+            for assignment in assignments:
+                if assignment.factory_id not in result:
+                    result[assignment.factory_id] = {
+                        "factory_id": assignment.factory_id,
+                        "factory_name": assignment.factory_name_snapshot,
+                        "detail_count": 0,
+                        "blocked": self._factory_has_shipments(
+                            session, order_id, assignment.factory_id
+                        ),
+                    }
+                result[assignment.factory_id]["detail_count"] += 1
+            return list(result.values())
+
+    @staticmethod
+    def _factory_has_shipments(session: Session, order_id: str, factory_id: str) -> bool:
+        return (
+            session.scalar(
+                select(ShipmentLine.line_id)
+                .join(OrderAssignment)
+                .join(OrderLine)
+                .join(Shipment, Shipment.shipment_id == ShipmentLine.shipment_id)
+                .where(
+                    OrderLine.order_id == order_id,
+                    OrderAssignment.factory_id == factory_id,
+                    Shipment.status.in_(["SHIPPED", "VOID_PENDING"]),
+                    Shipment.source_shipment_id.is_(None),
+                    Shipment.deleted_at.is_(None),
+                )
+                .limit(1)
+                .with_for_update()
+            )
+            is not None
+        )
+
+    def _ensure_source_details(self, session: Session, order: Order, now: datetime) -> None:
+        if order.detail_mode:
+            return
+        existing = {
+            row.assignment_id: row
+            for row in session.scalars(
+                select(OrderDetail).where(OrderDetail.order_id == order.order_id)
+            )
+            if row.assignment_id is not None
+        }
+        for index, (assignment, line) in enumerate(
+            session.execute(
+                select(OrderAssignment, OrderLine)
+                .join(OrderLine)
+                .where(OrderLine.order_id == order.order_id)
+                .order_by(OrderAssignment.order_assignment_id)
+                .with_for_update()
+            ),
+            1,
+        ):
+            detail = existing.get(assignment.order_assignment_id)
+            if detail is None:
+                detail = OrderDetail(
+                    detail_id=str(uuid4()),
+                    order_id=order.order_id,
+                    origin="legacy",
+                    sort_order=index,
+                    accepted_raw_fields={},
+                    parse_issues=[],
+                    date_override_enabled=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(detail)
+            detail.source_sku_id = line.sku_id_snapshot
+            detail.product_name = line.product_name_snapshot
+            detail.properties_value = line.properties_value_snapshot
+            detail.category = line.category_snapshot
+            detail.factory_name = assignment.factory_name_snapshot
+            detail.matched_factory_id = assignment.factory_id
+            detail.matched_variant_id = line.product_variant_id
+            detail.order_quantity = assignment.assigned_quantity
+            detail.source_shipped_quantity = assignment.initial_shipped_quantity
+            detail.source_tracker = order.tracker
+            detail.contract_ship_date = assignment.contract_ship_date
+            detail.assignment_id = assignment.order_assignment_id
+            detail.dispatch_state = "ASSIGNED" if assignment.is_active else "UNASSIGNED"
+            session.flush()
+            assignment.detail_id = detail.detail_id
+        order.detail_mode = True
+        order.tracker_locked_at = now
+        session.flush()
+
+    def withdraw_factory(
         self,
         *,
         actor_id: str,
         order_id: str,
+        factory_id: str,
+        version: int,
         request_id: str,
         idempotency_key: str,
     ) -> OrderSnapshot:
+        import json
+
+        from pydantic import TypeAdapter
+
+        adapter = TypeAdapter(OrderSnapshot)
+        if not idempotency_key.strip() or len(idempotency_key) > 191:
+            raise OrderValidationError("请提供有效的幂等标识")
+        scope = f"order.withdraw_factory:{actor_id}:{order_id}"
+        request_hash = f"{factory_id}:{version}"
         now = self._now()
         with self._session_factory() as session, session.begin():
+            session.get(User, actor_id, with_for_update=True)
             self._require_admin(session, actor_id)
-            scope = f"order.withdraw:{order_id}"
-            if self._idempotency_exists(session, scope=scope, key=idempotency_key):
-                return self._snapshot(
-                    session, self._require_order(session, order_id), self._business_today()
-                )
             order = self._locked_order(session, order_id)
-            if order.lifecycle != "PUBLISHED":
-                raise OrderConflict("only published orders can be withdrawn")
-            if self._execution_guard.has_valid_shipments(order_id=order_id):
-                raise OrderConflict("order has valid shipments")
-            factory_ids = self._factory_ids(session, order_id)
-            order.lifecycle = "DRAFT"
+            repeated = session.scalar(
+                select(IdempotencyRecord)
+                .where(
+                    IdempotencyRecord.scope == scope,
+                    IdempotencyRecord.idempotency_key == idempotency_key,
+                )
+                .with_for_update()
+            )
+            if repeated:
+                if repeated.request_hash != request_hash:
+                    raise OrderConflict("同一幂等标识不能用于不同撤回")
+                return adapter.validate_python(repeated.result)
+            if order.version != version or order.lifecycle not in {"PUBLISHED", "COMPLETED"}:
+                raise OrderConflict("订单状态或版本已变化，请重新加载")
+            self._ensure_source_details(session, order, now)
+            details = list(
+                session.scalars(
+                    select(OrderDetail)
+                    .where(OrderDetail.order_id == order_id)
+                    .order_by(OrderDetail.detail_id)
+                    .with_for_update()
+                )
+            )
+            assignments = list(
+                session.scalars(
+                    select(OrderAssignment)
+                    .join(OrderLine)
+                    .where(
+                        OrderLine.order_id == order_id,
+                        OrderAssignment.factory_id == factory_id,
+                        OrderAssignment.is_active.is_(True),
+                    )
+                    .order_by(OrderAssignment.order_assignment_id)
+                    .with_for_update()
+                )
+            )
+            if not assignments:
+                raise OrderConflict("所选工厂没有有效派工")
+            if self._factory_has_shipments(session, order_id, factory_id):
+                raise OrderConflict("所选工厂已有有效系统发货，不可撤回")
+            ids = {item.order_assignment_id for item in assignments}
+            for item in assignments:
+                item.is_active = False
+                item.updated_at = now
+            for detail in details:
+                if detail.assignment_id in ids:
+                    detail.dispatch_state = "UNASSIGNED"
+                    detail.assignment_id = None
+                    detail.dispatch_batch_id = None
+                    detail.version += 1
+                    detail.updated_at = now
+            session.flush()
+            before = order.lifecycle
+            order.lifecycle = "PUBLISHED" if self._factory_ids(session, order_id) else "DRAFT"
+            order.completed_at = None
+            order.completed_by = None
             order.version += 1
             order.updated_at = now
             order.updated_by = actor_id
-            self._add_idempotency(session, scope=scope, key=idempotency_key)
-            self._add_factory_events(
-                session,
-                order_id=order_id,
-                factory_ids=factory_ids,
-                event_type="order_withdrawn",
-                event_version=order.version,
-                now=now,
-            )
             self._add_audit(
                 session,
                 request_id=request_id,
-                action="order.withdrawn",
+                action="order.factory_withdrawn",
                 order_id=order_id,
                 actor_id=actor_id,
-                changes={"before": "PUBLISHED", "after": "DRAFT"},
+                changes={
+                    "factoryId": factory_id,
+                    "factoryName": assignments[0].factory_name_snapshot,
+                    "assignmentIds": sorted(ids),
+                    "before": before,
+                    "after": order.lifecycle,
+                },
             )
             session.flush()
-            return self._snapshot(session, order, self._business_today())
+            result = self._snapshot(session, order, self._business_today())
+            session.add(
+                IdempotencyRecord(
+                    scope=scope,
+                    idempotency_key=idempotency_key,
+                    status="completed",
+                    request_hash=request_hash,
+                    result=json.loads(adapter.dump_json(result)),
+                )
+            )
+            return result
 
     def delete(
         self,
@@ -502,6 +706,7 @@ class OrderService:
                 .where(
                     OrderLine.order_id == order_id,
                     OrderAssignment.factory_id == user.factory_id,
+                    OrderAssignment.is_active.is_(True),
                 )
                 .limit(1)
             )
@@ -574,8 +779,12 @@ class OrderService:
                     Order.lifecycle.in_(["PUBLISHED", "COMPLETED"]),
                     select(OrderAssignment.order_assignment_id)
                     .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-                    .where(OrderLine.order_id == Order.order_id,
-                           OrderAssignment.factory_id == scoped_factory).exists(),
+                    .where(
+                        OrderLine.order_id == Order.order_id,
+                        OrderAssignment.factory_id == scoped_factory,
+                        OrderAssignment.is_active.is_(True),
+                    )
+                    .exists(),
                 )
             elif user.role == "admin":
                 if not include_drafts:
@@ -590,10 +799,21 @@ class OrderService:
                         .where(
                             OrderLine.order_id == Order.order_id,
                             OrderAssignment.factory_id.in_(selected_factory_ids),
+                            OrderAssignment.is_active.is_(True),
                         )
                         .exists()
                     )
-                    query = query.where(matching_factories)
+                    source_match = (
+                        select(OrderDetail.detail_id)
+                        .where(
+                            OrderDetail.order_id == Order.order_id,
+                            OrderDetail.matched_factory_id.in_(selected_factory_ids),
+                        )
+                        .exists()
+                    )
+                    query = query.where(
+                        case((Order.detail_mode.is_(True), source_match), else_=matching_factories)
+                    )
             else:
                 raise OrderPermissionDenied("order access is not available")
             if keyword.strip():
@@ -606,14 +826,29 @@ class OrderService:
                 )
                 if scoped_factory is not None:
                     matching_lines = matching_lines.where(
-                        select(OrderAssignment.order_assignment_id).where(
+                        select(OrderAssignment.order_assignment_id)
+                        .where(
                             OrderAssignment.order_line_id == OrderLine.order_line_id,
                             OrderAssignment.factory_id == scoped_factory,
-                        ).exists()
+                            OrderAssignment.is_active.is_(True),
+                        )
+                        .exists()
                     )
-                query = query.where(
-                    or_(Order.order_no.like(pattern), Order.order_id.in_(matching_lines))
-                )
+                matched: ColumnElement[bool] = Order.order_id.in_(matching_lines)
+                if scoped_factory is None:
+                    source_match = (
+                        select(OrderDetail.detail_id)
+                        .where(
+                            OrderDetail.order_id == Order.order_id,
+                            or_(
+                                OrderDetail.product_name.like(pattern),
+                                OrderDetail.properties_value.like(pattern),
+                            ),
+                        )
+                        .exists()
+                    )
+                    matched = case((Order.detail_mode.is_(True), source_match), else_=matched)
+                query = query.where(or_(Order.order_no.like(pattern), matched))
             if trackers:
                 query = query.where(Order.tracker.in_(trackers))
             if category:
@@ -628,23 +863,48 @@ class OrderService:
                 )
                 if scoped_factory is not None:
                     matching_categories = matching_categories.where(
-                        select(OrderAssignment.order_assignment_id).where(
+                        select(OrderAssignment.order_assignment_id)
+                        .where(
                             OrderAssignment.order_line_id == OrderLine.order_line_id,
                             OrderAssignment.factory_id == scoped_factory,
-                        ).exists()
+                            OrderAssignment.is_active.is_(True),
+                        )
+                        .exists()
                     )
-                query = query.where(Order.order_id.in_(matching_categories))
+                matched = Order.order_id.in_(matching_categories)
+                if scoped_factory is None:
+                    matched = case(
+                        (
+                            Order.detail_mode.is_(True),
+                            select(OrderDetail.detail_id)
+                            .where(
+                                OrderDetail.order_id == Order.order_id,
+                                OrderDetail.category.in_(category_sources[category]),
+                            )
+                            .exists(),
+                        ),
+                        else_=matched,
+                    )
+                query = query.where(matched)
             if status not in {"all", "草稿", "已完成", "已逾期", "未完成"}:
                 raise OrderValidationError("invalid status")
             orders, total = page_orders(
-                session, query, today=business_today, status=status,
-                ship_date_from=ship_date_from, ship_date_to=ship_date_to,
-                sort_by=sort_by, page=page, page_size=page_size, factory_id=scoped_factory,
+                session,
+                query,
+                today=business_today,
+                status=status,
+                ship_date_from=ship_date_from,
+                ship_date_to=ship_date_to,
+                sort_by=sort_by,
+                page=page,
+                page_size=page_size,
+                factory_id=scoped_factory,
             )
             preloaded = self._page_snapshot_data(session, orders, factory_id=scoped_factory)
             return [
-                self._snapshot(session, item, business_today,
-                               factory_id=scoped_factory, preloaded=preloaded)
+                self._snapshot(
+                    session, item, business_today, factory_id=scoped_factory, preloaded=preloaded
+                )
                 for item in orders
             ], total
 
@@ -693,12 +953,23 @@ class OrderService:
         labels = {
             "order.draft_created": "创建订单草稿",
             "order.draft_updated": "更新订单草稿",
+            "order.detail_date_updated": "保存未派工明细合同出货时间",
+            "order.source_refreshed": "确认更新未派工明细来源资料",
+            "order.detail_dispatched": "明细派工",
             "order.published": "发布订单",
-            "order.withdrawn": "撤回订单",
+            "order.factory_withdrawn": f"撤回 {changes.get('factoryName', '')} 全部派工明细",
             "order.deleted": "删除订单",
             "order.completed": "确认订单完成",
             "order.reopened": "撤销订单完成",
         }
+        if action == "order.detail_dispatched":
+            count = changes.get("detailIds")
+            names = changes.get("factoryNames")
+            suffix = ""
+            if isinstance(names, list) and names:
+                suffix = "，工厂 " + "、".join(str(name) for name in names)
+            if isinstance(count, list):
+                return f"明细派工 {len(count)} 条{suffix}"
         return labels.get(action, action)
 
     def _set_completion(
@@ -714,16 +985,34 @@ class OrderService:
         now = self._now()
         scope = f"order.{action.lower()}:{order_id}"
         with self._session_factory() as session, session.begin():
+            session.get(User, actor_id, with_for_update=True)
             self._require_admin(session, actor_id)
+            order = self._locked_order(session, order_id)
             if self._idempotency_exists(session, scope=scope, key=idempotency_key):
                 return self._snapshot(
                     session, self._require_order(session, order_id), self._business_today()
                 )
-            order = self._locked_order(session, order_id)
             expected = "PUBLISHED" if action == "COMPLETE" else "COMPLETED"
             target = "COMPLETED" if action == "COMPLETE" else "PUBLISHED"
             if order.lifecycle != expected:
                 raise OrderConflict("order lifecycle changed")
+            if action == "COMPLETE":
+                snapshot = self._snapshot(session, order, self._business_today())
+                if order.detail_mode:
+                    ready = bool(snapshot.details) and all(
+                        item.dispatch_state == "ASSIGNED" and item.pending_quantity == 0
+                        for item in snapshot.details
+                    )
+                else:
+                    ready = bool(snapshot.lines) and all(
+                        line.assignments
+                        and sum(a.assigned_quantity for a in line.assignments)
+                        == line.order_quantity
+                        and all(a.pending_quantity == 0 for a in line.assignments)
+                        for line in snapshot.lines
+                    )
+                if not ready:
+                    raise OrderConflict("必须全部明细已派工且逐条交足，才能确认订单完成")
             if action == "COMPLETE" and self._execution_guard.has_pending_void_requests(
                 order_id=order_id
             ):
@@ -790,6 +1079,12 @@ class OrderService:
         }
         existing_line_ids = select(OrderLine.order_line_id).where(
             OrderLine.order_id == order.order_id
+        )
+        session.execute(
+            delete(OrderDetail).where(
+                OrderDetail.order_id == order.order_id,
+                OrderDetail.origin == "legacy",
+            )
         )
         session.execute(
             delete(OrderAssignment).where(OrderAssignment.order_line_id.in_(existing_line_ids))
@@ -968,20 +1263,41 @@ class OrderService:
         session: Session,
         orders: list[Order],
         factory_id: str | None = None,
-    ) -> tuple[dict[str, list[OrderLine]], dict[int, list[OrderAssignment]], dict[int, int]]:
+    ) -> tuple[
+        dict[str, list[OrderLine]],
+        dict[int, list[OrderAssignment]],
+        dict[int, int],
+        dict[str, list[OrderDetail]],
+    ]:
         lines: dict[str, list[OrderLine]] = {}
         assignments: dict[int, list[OrderAssignment]] = {}
         quantities: dict[int, int] = {}
+        details: dict[str, list[OrderDetail]] = {}
         if not orders:
-            return lines, assignments, quantities
+            return lines, assignments, quantities, details
+        source_order_ids = [item.order_id for item in orders if item.detail_mode]
+        if source_order_ids and factory_id is None:
+            for detail in session.scalars(
+                select(OrderDetail)
+                .where(OrderDetail.order_id.in_(source_order_ids))
+                .order_by(OrderDetail.sort_order, OrderDetail.detail_id)
+            ):
+                details.setdefault(detail.order_id, []).append(detail)
         order_ids = [item.order_id for item in orders]
         for line in session.scalars(
             select(OrderLine)
             .where(OrderLine.order_id.in_(order_ids))
-            .where(select(OrderAssignment.order_assignment_id).where(
-                OrderAssignment.order_line_id == OrderLine.order_line_id,
-                OrderAssignment.factory_id == factory_id,
-            ).exists() if factory_id is not None else true())
+            .where(
+                select(OrderAssignment.order_assignment_id)
+                .where(
+                    OrderAssignment.order_line_id == OrderLine.order_line_id,
+                    OrderAssignment.factory_id == factory_id,
+                    OrderAssignment.is_active.is_(True),
+                )
+                .exists()
+                if factory_id is not None
+                else true()
+            )
             .order_by(OrderLine.order_line_id)
         ):
             lines.setdefault(line.order_id, []).append(line)
@@ -989,7 +1305,11 @@ class OrderService:
             select(OrderAssignment)
             .join(OrderLine)
             .where(OrderLine.order_id.in_(order_ids))
-            .where(OrderAssignment.factory_id == factory_id if factory_id is not None else true())
+            .where(
+                (OrderAssignment.factory_id == factory_id) & OrderAssignment.is_active.is_(True)
+                if factory_id is not None
+                else true()
+            )
             .order_by(OrderAssignment.order_assignment_id)
         ):
             assignments.setdefault(assignment.order_line_id, []).append(assignment)
@@ -998,11 +1318,15 @@ class OrderService:
             .join(OrderAssignment)
             .join(OrderLine)
             .where(OrderLine.order_id.in_(order_ids))
-            .where(OrderAssignment.factory_id == factory_id if factory_id is not None else true())
+            .where(
+                (OrderAssignment.factory_id == factory_id) & OrderAssignment.is_active.is_(True)
+                if factory_id is not None
+                else true()
+            )
             .group_by(QuantityLedger.order_assignment_id)
         ):
             quantities[assignment_id] = int(quantity)
-        return lines, assignments, quantities
+        return lines, assignments, quantities, details
 
     def _snapshot(
         self,
@@ -1012,10 +1336,21 @@ class OrderService:
         *,
         factory_id: str | None = None,
         preloaded: tuple[
-            dict[str, list[OrderLine]], dict[int, list[OrderAssignment]], dict[int, int]
+            dict[str, list[OrderLine]],
+            dict[int, list[OrderAssignment]],
+            dict[int, int],
+            dict[str, list[OrderDetail]],
         ]
         | None = None,
     ) -> OrderSnapshot:
+        if order.detail_mode and factory_id is None:
+            return self._source_snapshot(
+                session,
+                order,
+                preloaded[3].get(order.order_id, []) if preloaded is not None else None,
+                today=today,
+                preloaded=preloaded,
+            )
         rows = (
             preloaded[0].get(order.order_id, [])
             if preloaded is not None
@@ -1028,7 +1363,7 @@ class OrderService:
             )
         )
         line_snapshots: list[LineSnapshot] = []
-        factory_totals: dict[str, tuple[str, int, int]] = {}
+        factory_totals: dict[str, tuple[str, int, int, int]] = {}
         validation_issues: list[str] = []
         for line in rows:
             assignments = (
@@ -1042,8 +1377,15 @@ class OrderService:
                     )
                 )
             )
+            assignments = [
+                item
+                for item in assignments
+                if item.is_active or order.lifecycle == "DRAFT" and not order.detail_mode
+            ]
             if factory_id is not None:
-                assignments = [item for item in assignments if item.factory_id == factory_id]
+                assignments = [
+                    item for item in assignments if item.factory_id == factory_id and item.is_active
+                ]
                 if not assignments:
                     continue
                 visible_quantity = sum(item.assigned_quantity for item in assignments)
@@ -1088,9 +1430,12 @@ class OrderService:
                     item.factory_name_snapshot,
                     item.assigned_quantity + (current[1] if current else 0),
                     shipped + (current[2] if current else 0),
+                    pending + (current[3] if current else 0),
                 )
             line_shipped = sum(item.shipped_quantity for item in assignment_snapshots)
-            line_pending = max(visible_quantity - line_shipped, 0)
+            line_pending = sum(item.pending_quantity for item in assignment_snapshots) + max(
+                visible_quantity - sum(item.assigned_quantity for item in assignment_snapshots), 0
+            )
             line_over = max(line_shipped - visible_quantity, 0)
             line_snapshots.append(
                 LineSnapshot(
@@ -1114,7 +1459,7 @@ class OrderService:
             )
         total = sum(item.order_quantity for item in line_snapshots)
         total_shipped = sum(item.shipped_quantity for item in line_snapshots)
-        total_pending = max(total - total_shipped, 0)
+        total_pending = sum(item.pending_quantity for item in line_snapshots)
         total_over = max(total_shipped - total, 0)
         factory_progress = [
             FactoryProgressSnapshot(
@@ -1122,9 +1467,9 @@ class OrderService:
                 factory_name=value[0],
                 order_quantity=value[1],
                 shipped_quantity=value[2],
-                pending_quantity=max(value[1] - value[2], 0),
+                pending_quantity=value[3],
                 over_quantity=max(value[2] - value[1], 0),
-                short_quantity=max(value[1] - value[2], 0),
+                short_quantity=value[3],
                 progress_percent=round(value[2] * 100 / value[1]) if value[1] else 0,
             )
             for key, value in sorted(factory_totals.items())
@@ -1156,6 +1501,8 @@ class OrderService:
             over_quantity=total_over,
             short_quantity=total_pending,
             progress_percent=round(total_shipped * 100 / total) if total else 0,
+            detail_mode=order.detail_mode,
+            details=[],
             lines=line_snapshots,
             factory_progress=factory_progress,
             validation_issues=validation_issues,
@@ -1163,43 +1510,169 @@ class OrderService:
             updated_at=order.updated_at,
         )
 
+    def _source_snapshot(
+        self,
+        session: Session,
+        order: Order,
+        rows: list[OrderDetail] | None = None,
+        *,
+        today: date | None = None,
+        preloaded: Any = None,
+    ) -> OrderSnapshot:
+        if rows is None:
+            rows = list(
+                session.scalars(
+                    select(OrderDetail)
+                    .where(OrderDetail.order_id == order.order_id)
+                    .order_by(OrderDetail.sort_order, OrderDetail.detail_id)
+                )
+            )
+        ordered = sorted(rows, key=lambda detail: (detail.sort_order, detail.detail_id))
+        # Assigned details report execution quantities: the fixed initial
+        # baseline plus the system ledger. Unassigned details report the
+        # accepted source values. Both use the same per-detail pending floor
+        # of zero, so over-shipment never offsets another detail's shortfall.
+        assignment_ids = [row.assignment_id for row in ordered if row.assignment_id]
+        assignments: dict[int, OrderAssignment] = {}
+        ledger_totals: dict[int, int] = {}
+        if preloaded is not None:
+            assignments = {
+                a.order_assignment_id: a for group in preloaded[1].values() for a in group
+            }
+            ledger_totals = preloaded[2]
+        elif assignment_ids:
+            assignments = {
+                item.order_assignment_id: item
+                for item in session.scalars(
+                    select(OrderAssignment).where(
+                        OrderAssignment.order_assignment_id.in_(assignment_ids)
+                    )
+                )
+            }
+            for assignment_id, delta in session.execute(
+                select(
+                    QuantityLedger.order_assignment_id,
+                    func.sum(QuantityLedger.quantity_delta),
+                )
+                .where(QuantityLedger.order_assignment_id.in_(assignment_ids))
+                .group_by(QuantityLedger.order_assignment_id)
+            ):
+                ledger_totals[assignment_id] = int(delta)
+        details = []
+        for row in ordered:
+            assignment = (
+                assignments.get(row.assignment_id) if row.assignment_id is not None else None
+            )
+            active = (
+                row.dispatch_state == "ASSIGNED" and assignment is not None and assignment.is_active
+            )
+            if active and assignment is not None:
+                quantity: int | None = assignment.assigned_quantity
+                shipped: int | None = assignment.initial_shipped_quantity + ledger_totals.get(
+                    assignment.order_assignment_id, 0
+                )
+            else:
+                quantity = row.order_quantity
+                shipped = row.source_shipped_quantity
+            valid = quantity is not None and quantity > 0 and shipped is not None and shipped >= 0
+            pending = (
+                max(quantity - shipped, 0)
+                if valid and quantity is not None and shipped is not None
+                else None
+            )
+            progress = (
+                round(shipped * 100 / quantity)
+                if valid and quantity is not None and quantity and shipped is not None
+                else None
+            )
+            details.append(
+                DetailSnapshot(
+                    detail_id=row.detail_id,
+                    origin=row.origin,
+                    source_sku_id=row.source_sku_id,
+                    product_name=row.product_name,
+                    properties_value=row.properties_value,
+                    category=row.category,
+                    factory_name=row.factory_name,
+                    matched_variant_id=row.matched_variant_id,
+                    matched_factory_id=row.matched_factory_id,
+                    order_quantity=quantity,
+                    shipped_quantity=shipped,
+                    pending_quantity=pending,
+                    progress_percent=progress,
+                    source_tracker=row.source_tracker,
+                    contract_ship_date=row.contract_ship_date,
+                    dispatch_state="ASSIGNED" if active else "UNASSIGNED",
+                    version=row.version,
+                    raw_fields=row.accepted_raw_fields,
+                )
+            )
+
+        def total(values: list[int | None]) -> int | None:
+            return (
+                None
+                if any(value is None for value in values)
+                else sum(value for value in values if value is not None)
+            )
+
+        quantity = total([item.order_quantity for item in details])
+        shipped = total([item.shipped_quantity for item in details])
+        pending = total([item.pending_quantity for item in details])
+        over = total(
+            [
+                max(item.shipped_quantity - item.order_quantity, 0)
+                if item.shipped_quantity is not None and item.order_quantity is not None
+                else None
+                for item in details
+            ]
+        )
+        dates = sorted({item.contract_ship_date for item in details if item.contract_ship_date})
+        return OrderSnapshot(
+            order_id=order.order_id,
+            order_no=order.order_no,
+            source=order.source,
+            order_date=order.order_date,
+            tracker=order.tracker,
+            contract_ship_date=dates[0] if dates else None,
+            contract_ship_dates=dates,
+            lifecycle=order.lifecycle,
+            display_status=self._display_status(
+                order,
+                any(
+                    item.pending_quantity != 0
+                    and item.contract_ship_date is not None
+                    and item.contract_ship_date < (today or self._business_today())
+                    for item in details
+                ),
+            ),
+            version=order.version,
+            total_quantity=quantity,
+            shipped_quantity=shipped,
+            pending_quantity=pending,
+            over_quantity=over,
+            short_quantity=pending,
+            progress_percent=round(shipped * 100 / quantity)
+            if quantity and shipped is not None
+            else None,
+            detail_mode=True,
+            details=details,
+            lines=[],
+            factory_progress=[],
+            validation_issues=[],
+            created_at=order.created_at,
+            updated_at=order.updated_at,
+        )
+
     def _quantity_summary(self, session: Session, order_id: str) -> dict[str, int]:
-        total = int(
-            session.scalar(
-                select(func.coalesce(func.sum(OrderLine.order_quantity), 0)).where(
-                    OrderLine.order_id == order_id
-                )
-            )
-            or 0
+        snapshot = self._snapshot(
+            session, self._require_order(session, order_id), self._business_today()
         )
-        initial_shipped = int(
-            session.scalar(
-                select(func.coalesce(func.sum(OrderAssignment.initial_shipped_quantity), 0))
-                .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-                .where(OrderLine.order_id == order_id)
-            )
-            or 0
-        )
-        system_shipped = int(
-            session.scalar(
-                select(func.coalesce(func.sum(QuantityLedger.quantity_delta), 0))
-                .join(
-                    OrderAssignment,
-                    OrderAssignment.order_assignment_id == QuantityLedger.order_assignment_id,
-                )
-                .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-                .where(OrderLine.order_id == order_id)
-            )
-            or 0
-        )
-        shipped = initial_shipped + system_shipped
-        pending = max(total - shipped, 0)
         return {
-            "orderQuantity": total,
-            "shippedQuantity": shipped,
-            "pendingQuantity": pending,
-            "overQuantity": max(shipped - total, 0),
-            "shortQuantity": pending,
+            "orderQuantity": snapshot.total_quantity or 0,
+            "shippedQuantity": snapshot.shipped_quantity or 0,
+            "pendingQuantity": snapshot.pending_quantity or 0,
+            "overQuantity": snapshot.over_quantity or 0,
+            "shortQuantity": snapshot.short_quantity or 0,
         }
 
     @staticmethod
@@ -1219,7 +1692,7 @@ class OrderService:
             session.scalars(
                 select(OrderAssignment.factory_id)
                 .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-                .where(OrderLine.order_id == order_id)
+                .where(OrderLine.order_id == order_id, OrderAssignment.is_active.is_(True))
             )
         )
 

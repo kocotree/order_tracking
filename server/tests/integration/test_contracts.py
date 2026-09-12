@@ -220,7 +220,7 @@ def test_published_order_lists_factory_as_ready_for_first_contract_export(
         _clean(test_database_engine)
 
 
-def test_initial_shipped_quantity_makes_contract_ineligible(
+def test_initial_shipped_quantity_does_not_block_contract(
     test_database_engine: Engine,
 ) -> None:
     _clean(test_database_engine)
@@ -234,8 +234,8 @@ def test_initial_shipped_quantity_makes_contract_ineligible(
     )
     try:
         state = service.list_for_order(actor_id=ADMIN_ID, order_id=ORDER_ID)[0]
-        assert state.eligible is False
-        assert state.ineligible_reason == "order_has_shipments"
+        assert state.eligible is True
+        assert state.ineligible_reason is None
     finally:
         _clean(test_database_engine)
 

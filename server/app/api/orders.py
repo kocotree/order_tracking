@@ -15,6 +15,8 @@ from app.modules.orders import (
     OrderService,
     OrderSnapshot,
 )
+from app.modules.orders.dispatch import OrderDispatchService
+from app.modules.orders.source_update import OrderSourceUpdateService
 
 
 def to_camel(value: str) -> str:
@@ -57,6 +59,76 @@ class DraftUpdate(ApiModel):
 
 class VersionWrite(ApiModel):
     version: StrictInt = Field(gt=0)
+
+
+class DetailDateWrite(VersionWrite):
+    model_config = ConfigDict(extra="forbid")
+    detail_version: StrictInt = Field(gt=0)
+    contract_ship_date: date | None
+
+
+class RefreshWrite(VersionWrite):
+    model_config = ConfigDict(extra="forbid")
+
+
+class RefreshConfirmWrite(RefreshWrite):
+    preview_id: str = Field(min_length=1, max_length=36)
+
+
+class DispatchPreviewWrite(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+    version: StrictInt = Field(gt=0)
+    detail_ids: list[str] = Field(min_length=1, max_length=500)
+
+
+class DispatchConfirmWrite(VersionWrite):
+    model_config = ConfigDict(extra="forbid")
+    preview_id: str = Field(min_length=1, max_length=36)
+
+
+class FactoryWithdrawalWrite(VersionWrite):
+    model_config = ConfigDict(extra="forbid")
+    factory_id: str = Field(min_length=1, max_length=36)
+
+
+class WithdrawalFactoryResponse(ApiModel):
+    factory_id: str
+    factory_name: str
+    detail_count: int
+    blocked: bool
+
+
+class DispatchValidationItem(ApiModel):
+    detail_id: str
+    label: str
+    factory_name: str
+    passes: bool
+    issues: list[str]
+
+
+class SourceDifferenceResponse(ApiModel):
+    detail_id: str
+    label: str
+    field: str
+    before: str | int | None
+    after: str | int | None
+
+
+class SourcePreviewResponse(ApiModel):
+    preview_id: str
+    version: int
+    expires_at: datetime
+    differences: list[SourceDifferenceResponse]
+
+
+class DispatchPreviewResponse(ApiModel):
+    preview_id: str | None = None
+    version: int
+    expires_at: datetime | None = None
+    requires_source_confirmation: bool = False
+    source_preview: SourcePreviewResponse | None = None
+    validations: list[DispatchValidationItem] = Field(default_factory=list)
+    all_ok: bool = False
 
 
 class ReopenWrite(ApiModel):
@@ -104,6 +176,27 @@ class FactoryProgressResponse(ApiModel):
     progress_percent: int
 
 
+class OrderDetailResponse(ApiModel):
+    detail_id: str
+    origin: str
+    source_sku_id: str | None
+    product_name: str | None
+    properties_value: str | None
+    category: str | None
+    factory_name: str | None
+    matched_variant_id: str | None
+    matched_factory_id: str | None
+    order_quantity: int | None
+    shipped_quantity: int | None
+    pending_quantity: int | None
+    progress_percent: int | None
+    source_tracker: str | None
+    contract_ship_date: date | None
+    dispatch_state: str
+    version: int
+    raw_fields: dict[str, object]
+
+
 class OrderResponse(ApiModel):
     contract_ship_date: date | None
     contract_ship_dates: list[date]
@@ -111,16 +204,18 @@ class OrderResponse(ApiModel):
     order_no: str
     source: str
     order_date: date | None
-    tracker: str
+    tracker: str | None
     lifecycle: str
     display_status: str
     version: int
-    total_quantity: int
-    shipped_quantity: int
-    pending_quantity: int
-    over_quantity: int
-    short_quantity: int
-    progress_percent: int
+    total_quantity: int | None
+    shipped_quantity: int | None
+    pending_quantity: int | None
+    over_quantity: int | None
+    short_quantity: int | None
+    progress_percent: int | None
+    detail_mode: bool = False
+    details: list[OrderDetailResponse] = []
     lines: list[OrderLineResponse]
     factory_progress: list[FactoryProgressResponse]
     validation_issues: list[str]
@@ -138,6 +233,7 @@ class OrderListResponse(ApiModel):
 
 
 class DashboardResponse(ApiModel):
+    total_orders: int
     overdue_orders: int
     pending_import_orders: int
     today_shipments: int
@@ -192,6 +288,9 @@ def create_order_router(
     service: OrderService,
     identity: IdentityAccessService,
     order_import_service: OrderImportService | None = None,
+    *,
+    source_update_service: OrderSourceUpdateService,
+    dispatch_service: OrderDispatchService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
@@ -221,6 +320,128 @@ def create_order_router(
             if token:
                 return identity.authenticate_session(token=token, terminal="mini"), "mini"
         raise SessionInvalid("session is missing")
+
+    @router.patch(
+        "/admin/orders/{order_id}/details/{detail_id}/contract-date",
+        response_model=OrderResponse,
+        tags=["order-admin"],
+    )
+    def save_detail_date(
+        order_id: str,
+        detail_id: str,
+        payload: DetailDateWrite,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> OrderResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        result = source_update_service.save_date(
+            actor_id=actor.user_id,
+            order_id=order_id,
+            detail_id=detail_id,
+            version=payload.version,
+            detail_version=payload.detail_version,
+            contract_ship_date=payload.contract_ship_date,
+            request_id=request.state.request_id,
+        )
+        return _order_response(result, request.state.request_id)
+
+    @router.post(
+        "/admin/orders/{order_id}/source-refresh/preview",
+        response_model=SourcePreviewResponse,
+        tags=["order-admin"],
+    )
+    def preview_source(
+        order_id: str,
+        payload: RefreshWrite,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> SourcePreviewResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        return SourcePreviewResponse.model_validate(
+            source_update_service.preview(
+                actor_id=actor.user_id,
+                order_id=order_id,
+                version=payload.version,
+                request_id=request.state.request_id,
+            )
+        )
+
+    @router.post(
+        "/admin/orders/{order_id}/source-refresh/confirm",
+        response_model=OrderResponse,
+        tags=["order-admin"],
+    )
+    def confirm_source(
+        order_id: str,
+        payload: RefreshConfirmWrite,
+        request: Request,
+        idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=191),
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> OrderResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        result = source_update_service.confirm(
+            actor_id=actor.user_id,
+            order_id=order_id,
+            version=payload.version,
+            preview_id=payload.preview_id,
+            idempotency_key=idempotency_key,
+            request_id=request.state.request_id,
+        )
+        return _order_response(result, request.state.request_id)
+
+    @router.post(
+        "/admin/orders/{order_id}/dispatch/preview",
+        response_model=DispatchPreviewResponse,
+        tags=["order-admin"],
+    )
+    def preview_dispatch(
+        order_id: str,
+        payload: DispatchPreviewWrite,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> DispatchPreviewResponse:
+        if dispatch_service is None:
+            raise OrderNotFound("dispatch not enabled")
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        return DispatchPreviewResponse.model_validate(
+            dispatch_service.dispatch_preview(
+                actor_id=actor.user_id,
+                order_id=order_id,
+                version=payload.version,
+                detail_ids=payload.detail_ids,
+                request_id=request.state.request_id,
+            )
+        )
+
+    @router.post(
+        "/admin/orders/{order_id}/dispatch/confirm",
+        response_model=OrderResponse,
+        tags=["order-admin"],
+    )
+    def confirm_dispatch(
+        order_id: str,
+        payload: DispatchConfirmWrite,
+        request: Request,
+        idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=191),
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> OrderResponse:
+        if dispatch_service is None:
+            raise OrderNotFound("dispatch not enabled")
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        result = dispatch_service.dispatch_confirm(
+            actor_id=actor.user_id,
+            order_id=order_id,
+            version=payload.version,
+            preview_id=payload.preview_id,
+            idempotency_key=idempotency_key,
+            request_id=request.state.request_id,
+        )
+        return _order_response(result, request.state.request_id)
 
     @router.post(
         "/admin/orders",
@@ -296,20 +517,37 @@ def create_order_router(
     def transition_actor(ot_web_session: str | None, x_csrf_token: str | None) -> UserSnapshot:
         return web_admin(ot_web_session, x_csrf_token, require_csrf=True)
 
+    @router.get(
+        "/admin/orders/{order_id}/dispatch/factories",
+        response_model=list[WithdrawalFactoryResponse],
+        tags=["order-admin"],
+    )
+    def withdrawal_factories(
+        order_id: str, ot_web_session: str | None = Cookie(default=None)
+    ) -> list[WithdrawalFactoryResponse]:
+        actor = web_admin(ot_web_session, None, require_csrf=False)
+        return [
+            WithdrawalFactoryResponse(**item)
+            for item in service.withdrawal_factories(actor_id=actor.user_id, order_id=order_id)
+        ]
+
     @router.post(
-        "/admin/orders/{order_id}/withdraw",
+        "/admin/orders/{order_id}/dispatch/withdraw",
         response_model=OrderResponse,
         tags=["order-admin"],
     )
-    def withdraw(
+    def withdraw_factory(
         order_id: str,
+        body: FactoryWithdrawalWrite,
         request: Request,
         idempotency_key: str = Header(alias="Idempotency-Key"),
         ot_web_session: str | None = Cookie(default=None),
         x_csrf_token: str | None = Header(default=None),
     ) -> OrderResponse:
         actor = transition_actor(ot_web_session, x_csrf_token)
-        result = service.withdraw(
+        result = service.withdraw_factory(
+            factory_id=body.factory_id,
+            version=body.version,
             actor_id=actor.user_id,
             order_id=order_id,
             request_id=request.state.request_id,
@@ -445,17 +683,21 @@ def create_order_router(
     )
     def dashboard(
         request: Request,
+        keyword: str = "",
+        sort_by: Annotated[str, Query(alias="sortBy")] = "updatedDesc",
         ot_web_session: str | None = Cookie(default=None),
     ) -> DashboardResponse:
         actor = web_admin(ot_web_session)
-        items, _ = service.list_visible(
+        items, total = service.list_visible(
             actor_id=actor.user_id,
-            include_drafts=False,
+            include_drafts=True,
+            keyword=keyword,
             page_size=10,
-            sort_by="updatedDesc",
+            sort_by=sort_by,
         )
         overdue, shipments = service.dashboard_counts(actor_id=actor.user_id)
         return DashboardResponse(
+            total_orders=total,
             overdue_orders=overdue,
             pending_import_orders=(
                 order_import_service.pending_count(actor_id=actor.user_id)

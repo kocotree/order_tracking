@@ -21,7 +21,7 @@ const candidate = {
   orderDate: "2026-08-22",
   tracker: "松子",
   contractShipDates: ["2026-08-30"], contractShipDate: "2026-08-30",
-  category: "帽子",
+  category: "童帽春夏",
   totalQuantity: 100,
   shippedQuantity: 0,
   pendingQuantity: 100,
@@ -55,10 +55,10 @@ describe("pending order import page", () => {
     expect(wrapper.findAll("tbody input[type=checkbox]")[0].attributes("disabled")).toBeUndefined();
     expect(wrapper.findAll("tbody input[type=checkbox]")[1].attributes("disabled")).toBeUndefined();
 
-    await wrapper.get(".import-category-filter").setValue("帽子");
+    await wrapper.get(".import-category-filter").setValue("童帽春夏");
     await wrapper.get(".import-search-form").trigger("submit");
     await flushPromises();
-    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ category: "帽子" }));
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ category: "童帽春夏" }));
   });
 });
 

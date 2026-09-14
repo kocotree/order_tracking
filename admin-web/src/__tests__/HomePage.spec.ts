@@ -86,8 +86,8 @@ describe("order dashboard prototype alignment", () => {
     await flushPromises();
 
     expect(wrapper.findAll(".dashboard-order-link").map((link) => link.attributes("title"))).toEqual(["090#", "078#"]);
-    expect(wrapper.findAll('[data-category="服装"]')).toHaveLength(2);
-    expect(wrapper.findAll('[data-category="帽子"]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-category="童装春夏"]')).toHaveLength(2);
+    expect(wrapper.findAll('[data-category="童帽秋冬"]')).toHaveLength(1);
 
     dashboardMock.mockResolvedValueOnce({ totalOrders: 0, recentOrders: [], overdueOrders: 1, pendingImportOrders: 0, todayShipments: 0, requestId: "search" });
     await wrapper.get('.dashboard-search-field input').setValue("蓝色");

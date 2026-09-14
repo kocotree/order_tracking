@@ -25,6 +25,7 @@ class ProductListItemResponse(ApiModel):
     sku_id: str
     name: str
     properties_value: str
+    category: str | None
     image_available: bool
     image_url: str | None
 
@@ -49,6 +50,7 @@ def _item_response(item: ProductListItem) -> ProductListItemResponse:
         sku_id=item.sku_id,
         name=item.name,
         properties_value=item.properties_value,
+        category=item.category,
         image_available=item.image_available,
         image_url=image_url,
     )

@@ -6,15 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.adapters.product import FakeJstProductSource, SourceProductVariant
 from app.db.models import Product
 from app.modules.product_sync import ProductSyncService
-
-LOCAL_DEMO_CATEGORIES = (
-    "童帽春夏",
-    "童配春夏",
-    "童装春夏",
-    "童帽秋冬",
-    "童配秋冬",
-    "童装秋冬",
-)
+from app.modules.product_sync.categories import PRODUCT_CATEGORIES
 
 
 def seed_local_demo_products(session_factory: sessionmaker[Session]) -> None:
@@ -28,7 +20,7 @@ def seed_local_demo_products(session_factory: sessionmaker[Session]) -> None:
             name=f"演示产品 {index:02d}",
             properties_value=f"演示色,{49 + index}",
             pic=None,
-            category=LOCAL_DEMO_CATEGORIES[(index - 1) % len(LOCAL_DEMO_CATEGORIES)],
+            category=PRODUCT_CATEGORIES[(index - 1) % len(PRODUCT_CATEGORIES)],
             enabled=1,
             source_modified_at=datetime(2026, 8, 21, 8, index),
         )

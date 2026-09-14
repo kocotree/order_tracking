@@ -76,7 +76,7 @@ describe("pending order import detail page", () => {
     expect(wrapper.findAll(".detail-summary-grid > div")).toHaveLength(6);
     expect(wrapper.findAll(".pending-import-detail-table th")).toHaveLength(11);
     expect(wrapper.findAll(".data-grid-sort-button")).toHaveLength(10);
-    expect(wrapper.find(".category-tag").text()).toBe("帽子");
+    expect(wrapper.find(".category-tag").text()).toBe("童帽春夏");
     expect(wrapper.find(".tracker-tag").text()).toBe("松子");
     expect(wrapper.find(".product-thumb").exists()).toBe(false);
     expect(wrapper.get(".detail-code").attributes("title")).toBe("6970000000001");

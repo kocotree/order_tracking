@@ -1,7 +1,8 @@
 import hashlib
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from sqlalchemy import delete, func, or_, select
@@ -24,17 +25,7 @@ from app.db.models import (
     ProductVariant,
 )
 from app.modules.infrastructure import utc_now
-
-PRODUCT_CATEGORY_ALLOWLIST = frozenset(
-    {
-        "童帽春夏",
-        "童配春夏",
-        "童装春夏",
-        "童帽秋冬",
-        "童配秋冬",
-        "童装秋冬",
-    }
-)
+from app.modules.product_sync.categories import PRODUCT_CATEGORY_ALLOWLIST
 
 
 @dataclass(frozen=True)
@@ -54,6 +45,7 @@ class ProductListItem:
     sku_id: str
     name: str
     properties_value: str
+    category: str | None
     image_available: bool
     image_version: str | None
 
@@ -124,6 +116,7 @@ class ProductCatalogService:
                     sku_id=variant.source_sku_id,
                     name=product.name,
                     properties_value=variant.properties_value,
+                    category=variant.source_category,
                     image_available=(
                         product.image_cache_status == "cached"
                         and product.image_object_key is not None
@@ -172,6 +165,158 @@ class ProductSyncService:
     ) -> None:
         self._session_factory = session_factory
         self._source = source
+
+    def _targeted_records(
+        self, *, name: str | None, i_id: str | None,
+    ) -> tuple[SourceProductVariant, ...]:
+        if bool(name) == bool(i_id) or not (i_id or name or "").strip():
+            raise ProductSourceError("product_target_invalid")
+        records: dict[str, SourceProductVariant] = {}
+        page_number = 1
+        while True:
+            page = self._source.fetch_targeted_page(page_number=page_number, name=name, i_id=i_id)
+            if page.page_number != page_number:
+                raise ProductSourceError("product_source_pagination_invalid")
+            for record in page.items:
+                if (i_id and record.i_id != i_id) or (name and record.name != name):
+                    raise ProductSourceError("product_target_mismatch")
+                previous = records.get(record.sku_id)
+                if previous is not None and previous != record:
+                    raise ProductSourceError("product_source_duplicate_conflict")
+                records[record.sku_id] = record
+            if not page.has_next:
+                break
+            # ponytail: bounded maintenance batch; use normal sync for larger catalogs.
+            if len(records) > 10_000 or page_number >= 200:
+                raise ProductSourceError("product_target_too_large")
+            page_number += 1
+        if not records:
+            raise ProductSourceError("product_target_not_found")
+        return tuple(records[key] for key in sorted(records))
+
+    def _targeted_preview(
+        self, session: Session, records: tuple[SourceProductVariant, ...],
+    ) -> dict[str, Any]:
+        items: list[dict[str, Any]] = []
+        states: list[Any] = []
+        styles = sorted({record.i_id for record in records})
+        blocked = len(styles) != 1
+        for record in records:
+            variant = session.scalar(select(ProductVariant).where(
+                ProductVariant.source_sku_id == record.sku_id,
+            ).with_for_update())
+            product = session.scalar(select(Product).where(
+                Product.source_i_id == record.i_id,
+            ).with_for_update())
+            state = None if variant is None else (
+                variant.product_id, variant.properties_value, variant.source_category,
+                variant.source_enabled, variant.is_available, variant.source_modified_at,
+            )
+            product_state = None if product is None else (
+                product.product_id, product.name, product.image_source_ref,
+                product.source_modified_at, product.is_available,
+            )
+            states.append((state, product_state))
+            reason = None
+            action = "create" if variant is None else "update"
+            if len(styles) != 1:
+                reason = "ambiguous_name"
+            elif variant is not None and (
+                product is None or variant.product_id != product.product_id
+            ):
+                reason = "identity_conflict"
+                blocked = True
+            elif not self._is_available(record):
+                reason = "disabled_or_out_of_scope"
+            elif not record.properties_value or not record.properties_value.strip():
+                reason = "missing_properties"
+                blocked = True
+            elif variant is not None:
+                if record.source_modified_at < variant.source_modified_at:
+                    action = "ignored"
+                    reason = "older_source"
+                elif record.source_modified_at == variant.source_modified_at:
+                    if (
+                        variant.properties_value, variant.source_category, variant.source_enabled
+                    ) != (record.properties_value, record.category, record.enabled):
+                        reason = "same_timestamp_conflict"
+                        blocked = True
+                    elif variant.is_available and product is not None and product.is_available:
+                        action = "existing"
+            if reason and action != "ignored":
+                action = "rejected"
+            items.append({
+                "iId": record.i_id, "skuId": record.sku_id, "name": record.name,
+                "category": record.category, "action": action, "reason": reason,
+            })
+        digest = hashlib.sha256(json.dumps(
+            {"source": [asdict(record) for record in records], "database": states},
+            sort_keys=True, ensure_ascii=False, default=str,
+        ).encode()).hexdigest()
+        return {"digest": digest, "styles": styles, "blocked": blocked, "items": items}
+
+    def preview_targeted(
+        self, *, name: str | None = None, i_id: str | None = None,
+    ) -> dict[str, Any]:
+        records = self._targeted_records(name=name, i_id=i_id)
+        with self._session_factory() as session:
+            return self._targeted_preview(session, records)
+
+    def run_targeted(
+        self, *, expected_digest: str, request_id: str, worker_id: str,
+        name: str | None = None, i_id: str | None = None, actor_id: str | None = None,
+    ) -> ProductSyncResult:
+        run_id = self._start_or_resume_run(
+            run_type="targeted", start_cursor=None, request_id=request_id, worker_id=worker_id,
+        )
+        try:
+            records = self._targeted_records(name=name, i_id=i_id)
+            with self._session_factory() as session, session.begin():
+                preview = self._targeted_preview(session, records)
+                if preview["digest"] != expected_digest:
+                    raise ProductSourceError("product_preview_changed")
+                if preview["blocked"]:
+                    raise ProductSourceError("product_target_blocked")
+                now = utc_now()
+                included = created = updated = 0
+                for record, item in zip(records, preview["items"], strict=True):
+                    if item["action"] not in {"create", "update"}:
+                        continue
+                    self._upsert_available(session, record=record, now=now)
+                    included += 1
+                    created += item["action"] == "create"
+                    updated += item["action"] == "update"
+                run = session.get(ProductSyncRun, run_id)
+                if run is None:
+                    raise RuntimeError("product_sync_run_missing")
+                run.status = "succeeded"
+                run.active_key = None
+                run.finished_at = now
+                run.source_completed = True
+                run.records_read = len(records)
+                run.included_records = included
+                run.created_records = created
+                run.updated_records = updated
+                run.ignored_records = len(records) - included
+                session.add(AuditLog(
+                    request_id=request_id, action="product_sync.succeeded",
+                    target_type="product_sync_run", target_id=run_id,
+                    changes={"runType": "targeted", "styles": preview["styles"],
+                             "created": created, "updated": updated, "digest": expected_digest},
+                    actor_id=actor_id, source_terminal="internal_cli",
+                ))
+                if included:
+                    self._enqueue_candidate_revalidation(
+                        session, run_id=run_id, request_id=request_id, actor_id=actor_id,
+                        available_at=now,
+                    )
+        except Exception as error:
+            self._record_failure(run_id=run_id, error=error, actor_id=actor_id)
+            raise
+        return ProductSyncResult(
+            run_id=run_id, status="succeeded", included_records=included,
+            ignored_records=len(records) - included, success_cursor=None,
+        )
 
     def run_initial(
         self,
@@ -632,7 +777,10 @@ class ProductSyncService:
         with self._session_factory() as session:
             return session.scalar(
                 select(ProductSyncRun.success_cursor)
-                .where(ProductSyncRun.status == "succeeded")
+                .where(
+                    ProductSyncRun.status == "succeeded",
+                    ProductSyncRun.run_type.in_(("initial", "incremental")),
+                )
                 .order_by(ProductSyncRun.finished_at.desc(), ProductSyncRun.run_id.desc())
                 .limit(1)
             )
@@ -720,6 +868,18 @@ class ProductSyncService:
     ) -> Product:
         properties_value = ProductSyncService._required_properties_value(record)
         product = session.scalar(select(Product).where(Product.source_i_id == record.i_id))
+        variant = session.scalar(
+            select(ProductVariant).where(ProductVariant.source_sku_id == record.sku_id)
+        )
+        if variant is not None:
+            if product is None or variant.product_id != product.product_id:
+                raise ValueError("product_source_identity_conflict")
+            if record.source_modified_at < variant.source_modified_at:
+                return product
+            if record.source_modified_at == variant.source_modified_at and (
+                variant.properties_value, variant.source_category, variant.source_enabled
+            ) != (properties_value, record.category, record.enabled):
+                raise ProductSourceError("product_source_duplicate_conflict")
         if product is None:
             product = Product(
                 product_id=str(uuid4()),
@@ -734,7 +894,7 @@ class ProductSyncService:
             )
             session.add(product)
             session.flush()
-        else:
+        elif record.source_modified_at >= product.source_modified_at:
             image_changed = product.image_source_ref != record.pic
             product.name = record.name
             product.is_available = True
@@ -748,9 +908,6 @@ class ProductSyncService:
                 product.image_cache_error = None
             product.source_modified_at = max(product.source_modified_at, record.source_modified_at)
             product.last_synced_at = now
-        variant = session.scalar(
-            select(ProductVariant).where(ProductVariant.source_sku_id == record.sku_id)
-        )
         if variant is None:
             session.add(
                 ProductVariant(

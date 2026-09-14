@@ -212,8 +212,9 @@ def test_order_api_enforces_terminal_and_factory_visibility(
             )
             assert second_published.status_code == 200
 
-            assert client.get("/api/v1/orders?category=帽子").json()["total"] == 2
-            assert client.get("/api/v1/orders?category=服装").json()["total"] == 0
+            assert client.get("/api/v1/orders?category=童帽春夏").json()["total"] == 2
+            assert client.get("/api/v1/orders?category=儿童手套").json()["total"] == 0
+            assert client.get("/api/v1/orders?category=帽子").status_code == 400
             multi_factory = client.get(
                 "/api/v1/orders",
                 params=[

@@ -26,12 +26,15 @@ describe("order list prototype alignment", () => {
     expect(wrapper.get('.order-list-search-field input').attributes('placeholder')).toBe("输入订单编号、产品名称或颜色/规格");
     expect(wrapper.text()).not.toContain("更多操作");
     expect(wrapper.text()).not.toContain("手工新建订单");
-    expect(wrapper.text()).toContain("服装");
+    expect(wrapper.text()).toContain("童装春夏");
+    expect(wrapper.get('.order-select-field select').findAll('option').map((item) => item.text())).toEqual([
+      "全部分类", "童帽春夏", "童配春夏", "童装春夏", "童帽秋冬", "童配秋冬", "童装秋冬", "儿童手套",
+    ]);
     expect(wrapper.findAll('.data-grid-sort-button')).toHaveLength(9);
     expect(wrapper.get('.status-badge').classes()).toContain('is-info');
     expect(wrapper.get('.tracker-tag').attributes('data-tracker')).toBe('橄榄');
 
-    await wrapper.get('.order-select-field select').setValue("服装");
+    await wrapper.get('.order-select-field select').setValue("童装春夏");
     await flushPromises();
     await wrapper.get('.order-multiselect-trigger').trigger('click');
     await wrapper.get('.order-multiselect-option input').setValue(true);
@@ -40,7 +43,7 @@ describe("order list prototype alignment", () => {
     await categoryHeader?.trigger('click');
     await flushPromises();
 
-    expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ category: "服装", factoryIds: ["factory-1"], sortBy: "categoryAsc" }));
+    expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ category: "童装春夏", factoryIds: ["factory-1"], sortBy: "categoryAsc" }));
   });
 });
 

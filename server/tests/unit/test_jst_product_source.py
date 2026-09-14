@@ -873,6 +873,38 @@ def test_jst_product_source_does_not_retry_non_transient_http_failure(
     assert sleeps == []
 
 
+def test_targeted_product_query_uses_exact_name_or_style_without_catalog_scan(
+    tmp_path: Path,
+) -> None:
+    bodies: list[dict[str, object]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/openWeb/auth/getInitToken":
+            return httpx.Response(200, json={"code": 0, "data": {
+                "access_token": "test-access", "refresh_token": "test-refresh",
+                "expires_in": 2_592_000,
+            }})
+        body = json.loads(parse_qs(request.content.decode())["biz"][0])
+        bodies.append(body)
+        return httpx.Response(200, json={"code": 0, "data": {
+            "datas": [], "page_count": 2,
+        }})
+
+    source = AppCredentialJstProductSource(JstProductSourceConfig(
+        app_key="test-key", app_secret="test-secret",
+        initial_sync_begin=datetime(2026, 1, 1),
+        token_cache_path=tmp_path / "token.json", request_interval_seconds=0,
+    ), transport=httpx.MockTransport(respond))
+    assert source.fetch_targeted_page(page_number=1, name="测试手套").has_next
+    assert not source.fetch_targeted_page(page_number=2, i_id="TEST-GLOVE").has_next
+    assert bodies == [
+        {"page_index": 1, "page_size": 50, "exactly_name": "测试手套"},
+        {"page_index": 2, "page_size": 50, "i_ids": ["TEST-GLOVE"]},
+    ]
+    with pytest.raises(ProductSourceError, match="product_target_invalid"):
+        source.fetch_targeted_page(page_number=1)
+
+
 def test_product_image_store_caches_public_https_image_in_private_storage() -> None:
     private_files = FakePrivateFileStore(bucket="shared-test-private")
 

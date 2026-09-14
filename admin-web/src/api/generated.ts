@@ -2654,6 +2654,8 @@ export interface components {
         };
         /** ProductListItemResponse */
         ProductListItemResponse: {
+            /** Category */
+            category: string | null;
             /** Iid */
             iId: string;
             /** Imageavailable */

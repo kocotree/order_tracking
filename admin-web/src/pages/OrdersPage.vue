@@ -24,7 +24,7 @@
 
             <label class="order-select-field">
               <span class="sr-only">选择分类</span>
-              <select v-model="category" @change="search"><option value="">全部分类</option><option value="服装">服装</option><option value="帽子">帽子</option></select>
+              <select v-model="category" @change="search"><option value="">全部分类</option><option v-for="value in productCategories" :key="value" :value="value">{{ value }}</option></select>
             </label>
 
             <div class="order-multiselect">
@@ -89,8 +89,8 @@
                 <td class="order-sequence-cell">{{ (page - 1) * pageSize + index + 1 }}</td>
                 <td><RouterLink class="row-link" :to="`/orders/${item.orderId}`">{{ item.orderNo }}</RouterLink></td>
                 <td class="order-product-summary"><strong>{{ productSummary(item) }}</strong></td>
-                <td>
-                  <span v-for="value in displayCategories(item)" :key="value" class="category-tag" :class="value === '帽子' ? 'is-hat' : 'is-clothing'">{{ value }}</span>
+                <td class="category-summary" :title="displayCategories(item).join('、')">
+                  <span v-for="value in displayCategories(item)" :key="value" class="category-tag">{{ value }}</span>
                   <span v-if="displayCategories(item).length === 0">—</span>
                 </td>
                 <td><span class="tracker-tag" :data-tracker="item.tracker">{{ item.tracker }}</span></td>
@@ -123,6 +123,7 @@
 </template>
 
 <script setup lang="ts">
+import { productCategories, sortedCategories } from "@/productCategories";
 import { useRoute } from "vue-router";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
@@ -169,12 +170,7 @@ const productSummary = (order: Order) => [...new Set((order.detailMode ? order.d
 const factorySummary = (order: Order) => [...new Set((order.detailMode ? order.details : order.factoryProgress).map((row) => row.factoryName))].join("、") || "—";
 
 function displayCategories(order: Order) {
-  const values = new Set<"服装" | "帽子">();
-  for (const line of (order.detailMode ? order.details : order.lines)) {
-    if (!line.category) continue;
-    values.add(line.category === "童装春夏" || line.category === "童装秋冬" ? "服装" : "帽子");
-  }
-  return (["服装", "帽子"] as const).filter((value) => values.has(value));
+  return sortedCategories((order.detailMode ? order.details : order.lines).map((line) => line.category));
 }
 
 function statusTone(order: Order) {

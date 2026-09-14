@@ -374,13 +374,17 @@ def test_confirmed_refresh_downgrade_keeps_idempotent_result(
     )
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", test_database_url)
-    with pytest.raises(RuntimeError, match="拒绝有损回滚"):
-        command.downgrade(config, "20260911_0034")
-    assert inspect(test_database_engine).has_table("order_change_previews")
-    assert (
-        service.confirm(**args, preview_id=preview["preview_id"], idempotency_key="migration89")
-        == result
-    )
+    try:
+        with pytest.raises(RuntimeError, match="拒绝有损回滚"):
+            command.downgrade(config, "20260911_0034")
+        assert inspect(test_database_engine).has_table("order_change_previews")
+        assert (
+            service.confirm(**args, preview_id=preview["preview_id"], idempotency_key="migration89")
+            == result
+        )
+    finally:
+        # Earlier revisions can downgrade before a later guard rejects the request.
+        command.upgrade(config, "head")
 
 
 def test_refresh_preserves_explicitly_locked_tracker(test_database_engine: Engine):

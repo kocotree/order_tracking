@@ -1,6 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from threading import Barrier
 
 import pytest
 from sqlalchemy import Engine, text
@@ -8,18 +6,15 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.avatar import FakeAvatarStore
 from app.adapters.identity import FakeFeishuIdentity
-from app.adapters.sms import FakeSmsSender
 from app.adapters.wechat import FakeWechatIdentity, WechatProfile
+from app.db.models import AdminApplication, User
 from app.modules.identity_access import (
-    AdminApplicationSnapshot,
-    ApplicationConflict,
     AvatarInvalid,
     FeishuProfile,
     IdentityAccessService,
     OAuthStateInvalid,
     PermissionDenied,
     SessionInvalid,
-    VerificationInvalid,
 )
 
 
@@ -212,127 +207,13 @@ def test_disabled_admin_cannot_reenter_through_feishu_oauth(
     assert service.get_user(user_id=ordinary.user_id).is_enabled is False
 
 
-def test_verified_sms_creates_one_pending_admin_application_without_plaintext(
+def test_auto_granted_admin_cannot_read_application_history_and_super_identity_is_stable(
     test_database_engine: Engine,
 ) -> None:
     clean_identity_tables(test_database_engine)
-    sms = FakeSmsSender()
     factory = sessionmaker(test_database_engine, class_=Session)
     service = IdentityAccessService(
         factory,
-        sms_sender=sms,
-        token_secret=b"test-token-secret-not-for-production",
-        phone_encryption_secret=b"test-phone-encryption-secret",
-        phone_digest_secret=b"test-phone-digest-secret",
-    )
-    applicant = service.resolve_feishu_identity(
-        scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_applicant", display_name="煎饼"),
-        request_id="req-create-applicant",
-    )
-
-    challenge = service.send_admin_application_code(
-        user_id=applicant.user_id,
-        phone="13812345122",
-        request_id="req-send-sms",
-    )
-    application = service.submit_admin_application(
-        user_id=applicant.user_id,
-        challenge_id=challenge.challenge_id,
-        verification_code=sms.last_code_for("13812345122"),
-        request_id="req-submit-application",
-    )
-
-    assert application.status == "pending"
-    assert application.phone_masked == "138****5122"
-    assert application.display_name == "煎饼"
-    with pytest.raises(ApplicationConflict):
-        service.submit_admin_application(
-            user_id=applicant.user_id,
-            challenge_id=challenge.challenge_id,
-            verification_code=sms.last_code_for("13812345122"),
-            request_id="req-submit-duplicate",
-        )
-
-    with test_database_engine.connect() as connection:
-        raw = " ".join(
-            str(value)
-            for value in connection.execute(
-                text(
-                    "SELECT phone_encrypted, phone_digest, phone_masked "
-                    "FROM users WHERE user_id = :user_id"
-                ),
-                {"user_id": applicant.user_id},
-            ).one()
-        )
-        code_digest = connection.execute(
-            text("SELECT code_digest FROM sms_challenges WHERE challenge_id = :challenge_id"),
-            {"challenge_id": challenge.challenge_id},
-        ).scalar_one()
-    assert "13812345122" not in raw
-    assert sms.last_code_for("13812345122") not in code_digest
-
-
-def test_wrong_sms_code_is_limited_and_persistently_invalidates_challenge(
-    test_database_engine: Engine,
-) -> None:
-    clean_identity_tables(test_database_engine)
-    sms = FakeSmsSender()
-    service = IdentityAccessService(
-        sessionmaker(test_database_engine, class_=Session),
-        sms_sender=sms,
-        token_secret=b"test-token-secret-not-for-production",
-        phone_encryption_secret=b"test-phone-encryption-secret",
-        phone_digest_secret=b"test-phone-digest-secret",
-    )
-    applicant = service.resolve_feishu_identity(
-        scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_wrong_code", display_name="煎饼"),
-        request_id="req-create-wrong-code-user",
-    )
-    challenge = service.send_admin_application_code(
-        user_id=applicant.user_id,
-        phone="13812345122",
-        request_id="req-send-wrong-code",
-    )
-
-    for attempt in range(5):
-        with pytest.raises(VerificationInvalid):
-            service.submit_admin_application(
-                user_id=applicant.user_id,
-                challenge_id=challenge.challenge_id,
-                verification_code="000000",
-                request_id=f"req-wrong-code-{attempt}",
-            )
-
-    with test_database_engine.connect() as connection:
-        attempts, invalidated_at = connection.execute(
-            text(
-                "SELECT attempts, invalidated_at FROM sms_challenges "
-                "WHERE challenge_id = :challenge_id"
-            ),
-            {"challenge_id": challenge.challenge_id},
-        ).one()
-    assert attempts == 5
-    assert invalidated_at is not None
-    with pytest.raises(VerificationInvalid):
-        service.submit_admin_application(
-            user_id=applicant.user_id,
-            challenge_id=challenge.challenge_id,
-            verification_code=sms.last_code_for("13812345122"),
-            request_id="req-correct-code-after-lockout",
-        )
-
-
-def test_only_super_admin_can_review_and_approval_grants_ordinary_admin(
-    test_database_engine: Engine,
-) -> None:
-    clean_identity_tables(test_database_engine)
-    sms = FakeSmsSender()
-    factory = sessionmaker(test_database_engine, class_=Session)
-    service = IdentityAccessService(
-        factory,
-        sms_sender=sms,
         super_admin_subjects={"ou_super"},
         token_secret=b"test-token-secret-not-for-production",
         phone_encryption_secret=b"test-phone-encryption-secret",
@@ -350,57 +231,15 @@ def test_only_super_admin_can_review_and_approval_grants_ordinary_admin(
     )
     applicant = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_candidate", display_name="煎饼"),
+        profile=FeishuProfile(subject="ou_candidate", display_name="煎饼", phone="13812345122"),
         request_id="req-create-candidate",
+        auto_grant_admin=True,
     )
-    challenge = service.send_admin_application_code(
-        user_id=applicant.user_id,
-        phone="13812345122",
-        request_id="req-send-candidate-code",
-    )
-    application = service.submit_admin_application(
-        user_id=applicant.user_id,
-        challenge_id=challenge.challenge_id,
-        verification_code=sms.last_code_for("13812345122"),
-        request_id="req-submit-candidate",
-    )
-
     with pytest.raises(PermissionDenied):
         service.list_admin_applications(actor_id=applicant.user_id)
 
-    barrier = Barrier(2)
-
-    def approve_concurrently(request_id: str) -> str:
-        barrier.wait()
-        try:
-            return service.approve_admin_application(
-                actor_id=super_admin.user_id,
-                application_id=application.application_id,
-                expected_version=application.version,
-                request_id=request_id,
-            ).status
-        except ApplicationConflict:
-            return "conflict"
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        outcomes = list(
-            pool.map(
-                approve_concurrently,
-                ["req-approve-candidate-a", "req-approve-candidate-b"],
-            )
-        )
-
-    assert sorted(outcomes) == ["approved", "conflict"]
-    approved_user = service.get_user(user_id=applicant.user_id)
-    assert approved_user.role == "admin"
-    assert approved_user.is_super_admin is False
-    with pytest.raises(ApplicationConflict):
-        service.approve_admin_application(
-            actor_id=super_admin.user_id,
-            application_id=application.application_id,
-            expected_version=application.version,
-            request_id="req-approve-candidate-again",
-        )
+    assert applicant.role == "admin"
+    assert applicant.is_super_admin is False
 
     # Repeated OAuth keeps the same configured super-administrator identity.
     repeated_super = service.resolve_feishu_identity(
@@ -416,96 +255,12 @@ def test_only_super_admin_can_review_and_approval_grants_ordinary_admin(
     assert repeated_super.user_id == super_admin.user_id
 
 
-def test_rejection_requires_reason_and_reapplication_preserves_history(
-    test_database_engine: Engine,
-) -> None:
-    clean_identity_tables(test_database_engine)
-    now = [datetime(2026, 8, 20, 8, 0, tzinfo=UTC)]
-    sms = FakeSmsSender()
-    service = IdentityAccessService(
-        sessionmaker(test_database_engine, class_=Session),
-        sms_sender=sms,
-        super_admin_subjects={"ou_super"},
-        token_secret=b"test-token-secret-not-for-production",
-        phone_encryption_secret=b"test-phone-encryption-secret",
-        phone_digest_secret=b"test-phone-digest-secret",
-        clock=lambda: now[0],
-    )
-    super_admin = service.resolve_feishu_identity(
-        scope="tenant-a/app-a",
-        profile=FeishuProfile(
-            subject="ou_super",
-            display_name="松子",
-            phone="13912345678",
-        ),
-        request_id="req-bootstrap-super",
-        auto_grant_admin=True,
-    )
-    applicant = service.resolve_feishu_identity(
-        scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_reapply", display_name="煎饼"),
-        request_id="req-create-reapply",
-    )
-    first_challenge = service.send_admin_application_code(
-        user_id=applicant.user_id,
-        phone="13812345122",
-        request_id="req-first-code",
-    )
-    first = service.submit_admin_application(
-        user_id=applicant.user_id,
-        challenge_id=first_challenge.challenge_id,
-        verification_code=sms.last_code_for("13812345122"),
-        request_id="req-first-application",
-    )
-
-    with pytest.raises(VerificationInvalid):
-        service.reject_admin_application(
-            actor_id=super_admin.user_id,
-            application_id=first.application_id,
-            expected_version=first.version,
-            reason="  ",
-            request_id="req-empty-rejection",
-        )
-    rejected = service.reject_admin_application(
-        actor_id=super_admin.user_id,
-        application_id=first.application_id,
-        expected_version=first.version,
-        reason="手机号信息未核实",
-        request_id="req-reject",
-    )
-    assert rejected.status == "rejected"
-    assert rejected.rejection_reason == "手机号信息未核实"
-
-    now[0] += timedelta(seconds=61)
-    next_challenge = service.send_admin_application_code(
-        user_id=applicant.user_id,
-        phone="13812345122",
-        request_id="req-next-code",
-    )
-    second = service.submit_admin_application(
-        user_id=applicant.user_id,
-        challenge_id=next_challenge.challenge_id,
-        verification_code=sms.last_code_for("13812345122"),
-        request_id="req-second-application",
-    )
-    history = service.list_admin_applications(actor_id=super_admin.user_id)
-    assert second.application_id != first.application_id
-    assert [item.status for item in history] == ["pending", "rejected"]
-    pending_only = service.list_admin_applications(
-        actor_id=super_admin.user_id,
-        status="pending",
-    )
-    assert [item.application_id for item in pending_only] == [second.application_id]
-
-
 def test_disabling_admin_revokes_all_sessions_and_enable_does_not_revive_them(
     test_database_engine: Engine,
 ) -> None:
     clean_identity_tables(test_database_engine)
-    sms = FakeSmsSender()
     service = IdentityAccessService(
         sessionmaker(test_database_engine, class_=Session),
-        sms_sender=sms,
         super_admin_subjects={"ou_super"},
         token_secret=b"test-token-secret-not-for-production",
         phone_encryption_secret=b"test-phone-encryption-secret",
@@ -523,25 +278,9 @@ def test_disabling_admin_revokes_all_sessions_and_enable_does_not_revive_them(
     )
     candidate = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_ordinary", display_name="煎饼"),
+        profile=FeishuProfile(subject="ou_ordinary", display_name="煎饼", phone="13812345122"),
         request_id="req-create-ordinary",
-    )
-    challenge = service.send_admin_application_code(
-        user_id=candidate.user_id,
-        phone="13812345122",
-        request_id="req-send-ordinary-code",
-    )
-    application = service.submit_admin_application(
-        user_id=candidate.user_id,
-        challenge_id=challenge.challenge_id,
-        verification_code=sms.last_code_for("13812345122"),
-        request_id="req-submit-ordinary",
-    )
-    service.approve_admin_application(
-        actor_id=super_admin.user_id,
-        application_id=application.application_id,
-        expected_version=application.version,
-        request_id="req-approve-ordinary",
+        auto_grant_admin=True,
     )
     ordinary = service.get_user(user_id=candidate.user_id)
     web = service.issue_session(user_id=ordinary.user_id, terminal="web")
@@ -595,7 +334,6 @@ def test_wechat_phone_binding_reuses_internal_user_and_scopes_external_identity(
     test_database_engine: Engine,
 ) -> None:
     clean_identity_tables(test_database_engine)
-    sms = FakeSmsSender()
     wechat = FakeWechatIdentity(
         scope="test-appid",
         login_profiles={
@@ -608,46 +346,18 @@ def test_wechat_phone_binding_reuses_internal_user_and_scopes_external_identity(
     )
     service = IdentityAccessService(
         sessionmaker(test_database_engine, class_=Session),
-        sms_sender=sms,
         wechat_identity=wechat,
         super_admin_subjects={"ou_super"},
         token_secret=b"test-token-secret-not-for-production",
         phone_encryption_secret=b"test-phone-encryption-secret",
         phone_digest_secret=b"test-phone-digest-secret",
     )
-    super_admin = service.resolve_feishu_identity(
-        scope="tenant-a/app-a",
-        profile=FeishuProfile(
-            subject="ou_super",
-            display_name="松子",
-            phone="13912345678",
-        ),
-        request_id="req-bootstrap-super",
-        auto_grant_admin=True,
-    )
     applicant = service.resolve_feishu_identity(
         scope="tenant-a/app-a",
-        profile=FeishuProfile(subject="ou_bind", display_name="煎饼"),
+        profile=FeishuProfile(subject="ou_bind", display_name="煎饼", phone="13812345122"),
         request_id="req-create-bind-user",
+        auto_grant_admin=True,
     )
-    challenge = service.send_admin_application_code(
-        user_id=applicant.user_id,
-        phone="13812345122",
-        request_id="req-bind-sms",
-    )
-    application = service.submit_admin_application(
-        user_id=applicant.user_id,
-        challenge_id=challenge.challenge_id,
-        verification_code=sms.last_code_for("13812345122"),
-        request_id="req-bind-application",
-    )
-    service.approve_admin_application(
-        actor_id=super_admin.user_id,
-        application_id=application.application_id,
-        expected_version=application.version,
-        request_id="req-bind-approve",
-    )
-
     first_login = service.begin_wechat_login(login_code="wx-login", request_id="req-wx-login")
     assert first_login.status == "phone_required"
     assert first_login.binding_token
@@ -743,7 +453,6 @@ def test_wechat_phone_binding_ignores_historical_admin_application_states(
         auto_grant_admin=True,
     )
 
-    applications: dict[str, AdminApplicationSnapshot] = {}
     for state, phone in (("pending", "13812345122"), ("rejected", "13812345123")):
         applicant = service.resolve_feishu_identity(
             scope="tenant-a/app-a",
@@ -754,18 +463,24 @@ def test_wechat_phone_binding_ignores_historical_admin_application_states(
             ),
             request_id=f"req-create-{state}",
         )
-        applications[state] = service.submit_admin_application(
-            user_id=applicant.user_id,
-            request_id=f"req-submit-{state}",
-        )
-    rejected = applications["rejected"]
-    service.reject_admin_application(
-        actor_id=super_admin.user_id,
-        application_id=rejected.application_id,
-        expected_version=rejected.version,
-        reason="资料未核实",
-        request_id="req-reject-state",
-    )
+        # Seed pre-OAuth history without keeping the retired application write flow.
+        with Session(test_database_engine) as session, session.begin():
+            user = session.get(User, applicant.user_id)
+            assert user is not None
+            session.add(AdminApplication(
+                application_id=f"historical-{state}",
+                user_id=user.user_id,
+                pending_user_id=user.user_id if state == "pending" else None,
+                feishu_display_name_snapshot=state,
+                phone_encrypted=user.phone_encrypted,
+                phone_digest=user.phone_digest,
+                phone_masked=user.phone_masked,
+                status=state,
+                submitted_at=datetime(2026, 8, 20),
+                reviewed_by=super_admin.user_id if state == "rejected" else None,
+                reviewed_at=datetime(2026, 8, 21) if state == "rejected" else None,
+                rejection_reason="资料未核实" if state == "rejected" else None,
+            ))
     for state, phone in (("pending", "13812345122"), ("rejected", "13812345123")):
         service.resolve_feishu_identity(
             scope="tenant-a/app-a",

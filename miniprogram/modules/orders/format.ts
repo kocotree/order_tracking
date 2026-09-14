@@ -4,10 +4,6 @@ export function orderProductSummary(order: Order): string {
   return [...new Set(order.lines.map((item) => item.productName))].join("、") || "—";
 }
 
-export function orderPropertiesSummary(order: Order): string {
-  return [...new Set(order.lines.map((item) => item.propertiesValue))].join("、") || "—";
-}
-
 export function orderFactorySummary(order: Order): string {
   return [...new Set(order.factoryProgress.map((item) => item.factoryName))].join("、") || "—";
 }

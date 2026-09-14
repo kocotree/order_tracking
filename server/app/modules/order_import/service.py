@@ -28,6 +28,7 @@ from app.db.models import (
     User,
 )
 from app.modules.orders.service import TRACKERS
+from app.modules.product_sync.categories import PRODUCT_CATEGORY_ALLOWLIST, category_summary
 
 ACTIVE_KEY = "feishu-order-import"
 LOCAL_DEPENDENCY_ISSUES = frozenset(
@@ -135,6 +136,49 @@ class SourceOrderRow:
 
 
 class OrderImportService:
+    def rebuild_categories(
+        self, *, expected_digest: str | None = None, request_id: str = "category-preview",
+        actor_id: str | None = None,
+    ) -> dict[str, Any]:
+        with self._session_factory() as session, session.begin():
+            candidates = session.scalars(select(OrderImportCandidate).where(
+                OrderImportCandidate.status.in_(("PENDING", "IMPORTED")),
+            ).order_by(OrderImportCandidate.candidate_id).with_for_update()).all()
+            items: list[dict[str, Any]] = []
+            source: list[Any] = []
+            for candidate in candidates:
+                lines = session.scalars(select(OrderImportCandidateLine).where(
+                    OrderImportCandidateLine.candidate_id == candidate.candidate_id,
+                ).order_by(OrderImportCandidateLine.candidate_line_id)).all()
+                value = category_summary(line.category for line in lines)
+                unknown = sorted({line.category for line in lines if line.category
+                                  and line.category not in PRODUCT_CATEGORY_ALLOWLIST})
+                source.append((candidate.candidate_id, candidate.version, candidate.category,
+                               [(line.candidate_line_id, line.category) for line in lines]))
+                items.append({"candidateId": candidate.candidate_id, "orderNo": candidate.order_no,
+                              "before": candidate.category, "after": value,
+                              "unknown": unknown, "missingLines": not lines})
+            digest = sha256(json.dumps(source, ensure_ascii=False).encode()).hexdigest()
+            if expected_digest is not None and expected_digest != digest:
+                raise ValueError("category_preview_changed")
+            updated = 0
+            if expected_digest is not None:
+                for candidate, item in zip(candidates, items, strict=True):
+                    if item["missingLines"] or item["unknown"] or item["before"] == item["after"]:
+                        continue
+                    candidate.category = item["after"]
+                    candidate.version += 1
+                    candidate.updated_at = self._clock().replace(tzinfo=None)
+                    updated += 1
+                session.add(AuditLog(
+                    request_id=request_id, action="order_import.categories_rebuilt",
+                    target_type="order_import_candidate", target_id="batch",
+                    changes={"updated": updated, "digest": digest}, actor_id=actor_id,
+                    source_terminal="internal_cli",
+                ))
+            return {"digest": digest, "items": items, "updated": updated,
+                    "applied": expected_digest is not None}
+
     def __init__(
         self,
         session_factory: sessionmaker[Session],
@@ -1226,15 +1270,10 @@ class OrderImportService:
         candidate.version += 1
         if tracker is None or tracker not in TRACKERS:
             issues.append("INVALID_TRACKER")
-        categories = {self._display_category(row.category) for row in rows if row.category}
         candidate.tracker = tracker
         candidate.order_date = order_date
         candidate.contract_ship_date = None
-        candidate.category = (
-            "、".join(name for name in ("服装", "帽子") if name in categories)
-            if categories
-            else None
-        )
+        candidate.category = category_summary(row.category for row in rows)
         candidate.total_quantity = self._nullable_sum([row.order_quantity for row in rows])
         candidate.shipped_quantity = self._nullable_sum([row.shipped_quantity for row in rows])
         candidate.pending_quantity = self._nullable_sum(
@@ -1283,10 +1322,6 @@ class OrderImportService:
                     sort_order=sort_order,
                 )
             )
-
-    @staticmethod
-    def _display_category(source_category: str | None) -> str:
-        return "服装" if source_category in {"童装春夏", "童装秋冬"} else "帽子"
 
     @staticmethod
     def _issue_details(code: str) -> tuple[str | None, str]:

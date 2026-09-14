@@ -258,6 +258,7 @@ describe("administrator identity web", () => {
               skuId: "SKU-01",
               name: "春夏童帽",
               propertiesValue: "蓝色,52",
+              category: "童帽春夏",
               imageAvailable: true,
               imageUrl: `/api/v1/admin/products/product-1/image?v=version-${imageVersion}`,
             },
@@ -267,6 +268,7 @@ describe("administrator identity web", () => {
               skuId: "SKU-02",
               name: "秋冬童帽",
               propertiesValue: "米色,54",
+              category: "童帽秋冬",
               imageAvailable: false,
               imageUrl: null,
             },
@@ -289,6 +291,7 @@ describe("administrator identity web", () => {
     expect(wrapper.text()).toContain("ITEM-01");
     expect(wrapper.text()).toContain("SKU-01");
     expect(wrapper.text()).toContain("蓝色,52");
+    expect(wrapper.find(".product-list-table").text()).toContain("童帽春夏");
     expect(wrapper.find(".product-list-table").text()).not.toContain("操作");
     expect(wrapper.find(".product-list-table").text()).not.toContain("编辑");
     expect(wrapper.find(".order-list-filter-card").exists()).toBe(true);

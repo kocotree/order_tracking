@@ -68,7 +68,7 @@
                 <td class="dashboard-sequence-cell">{{ index + 1 }}</td>
                 <td><RouterLink class="dashboard-order-link" :title="item.orderNo" :to="`/orders/${item.orderId}`">{{ item.orderNo }}</RouterLink></td>
                 <td class="dashboard-product-cell" :title="productSummary(item)">{{ productSummary(item) }}</td>
-                <td>
+                <td class="category-summary" :title="displayCategories(item).join('、')">
                   <span v-for="category in displayCategories(item)" :key="category" class="dashboard-category-tag" :data-category="category">{{ category }}</span>
                   <span v-if="displayCategories(item).length === 0">—</span>
                 </td>
@@ -97,6 +97,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ApiError, orderApi, type DashboardOrders, type NotificationItem, type Order } from "@/api/client";
 import { useNotificationsStore } from "@/stores/notifications";
 import AdminShell from "@/components/AdminShell.vue";
+import { sortedCategories } from "@/productCategories";
 
 type SortKey = "orderNo" | "productName" | "category" | "tracker" | "factory" | "contractShipDate" | "progressPercent" | "quantity" | "status";
 
@@ -128,12 +129,7 @@ const productSummary = (order: Order) => [...new Set((order.detailMode ? order.d
 const factorySummary = (order: Order) => [...new Set((order.detailMode ? order.details : order.factoryProgress).map((item) => item.factoryName))].join("、") || "—";
 
 function displayCategories(order: Order) {
-  const categories = new Set<"服装" | "帽子">();
-  for (const line of (order.detailMode ? order.details : order.lines)) {
-    if (!line.category) continue;
-    categories.add(line.category === "童装春夏" || line.category === "童装秋冬" ? "服装" : "帽子");
-  }
-  return ["服装", "帽子"].filter((item): item is "服装" | "帽子" => categories.has(item as "服装" | "帽子"));
+  return sortedCategories((order.detailMode ? order.details : order.lines).map((line) => line.category));
 }
 
 const displayedOrders = computed(() => (dashboard.value?.recentOrders ?? []).slice(0, 10));

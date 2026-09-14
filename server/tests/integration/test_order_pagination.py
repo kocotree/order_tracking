@@ -1,4 +1,6 @@
+from collections.abc import Callable
 from datetime import UTC, date, datetime
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +18,85 @@ from app.db.models import (
 from app.main import create_app
 from app.modules.identity_access import IdentityAccessService
 from app.modules.orders import AssignmentInput, DraftLineInput, OrderService
+from app.modules.orders.service import OrderSnapshot
 from tests.integration.test_order_lifecycle import _seed_order_dependencies
+
+
+def snapshot_sort_key(sort_by: str, today: date) -> Callable[[OrderSnapshot], tuple[Any, ...]]:
+    normalized_sort = sort_by.removesuffix("Asc").removesuffix("Desc")
+    if normalized_sort == "orderNo":
+        return lambda item: (item.order_no,)
+    if normalized_sort == "productName":
+        return lambda item: ("、".join(line.product_name for line in item.lines), item.order_no)
+    if normalized_sort == "category":
+
+        def category_value(item: OrderSnapshot) -> tuple[str, str]:
+            rows = item.details if item.detail_mode else item.lines
+            categories = sorted({line.category for line in rows if line.category})
+            return ("、".join(categories), item.order_no)
+
+        return category_value
+    if normalized_sort == "tracker":
+        return lambda item: (item.tracker, item.order_no)
+    if normalized_sort == "factory":
+        return lambda item: (
+            "、".join(row.factory_name for row in item.factory_progress),
+            item.order_no,
+        )
+    if normalized_sort == "contractShipDate" or sort_by in {"shipDateAsc", "shipDateDesc"}:
+        descending = sort_by.endswith("Desc")
+        return lambda item: (
+            not item.contract_ship_dates,
+            (
+                -item.contract_ship_dates[-1].toordinal()
+                if descending
+                else item.contract_ship_dates[0].toordinal()
+            )
+            if item.contract_ship_dates
+            else 0,
+            item.order_no,
+        )
+    if normalized_sort == "progressPercent":
+        return lambda item: (item.progress_percent, item.order_no)
+    if normalized_sort == "shippedQuantity":
+        return lambda item: (item.shipped_quantity, item.order_no)
+    if normalized_sort == "status":
+        return lambda item: (item.display_status, item.order_no)
+    if sort_by == "orderDateDesc":
+        return lambda item: (
+            item.order_date is None,
+            -(item.order_date.toordinal()) if item.order_date else 0,
+            item.order_no,
+        )
+    if sort_by == "updatedDesc":
+        return lambda item: (-item.updated_at.timestamp(), item.order_no)
+    return lambda item: (
+        0
+        if item.display_status == "已逾期"
+        else 1
+        if item.lifecycle == "PUBLISHED"
+        else 2
+        if item.lifecycle == "COMPLETED"
+        else 3,
+        item.contract_ship_date or date.max,
+        item.order_no,
+    )
+
+
+
+def ordered_snapshots(items: list[OrderSnapshot], sort: str, today: date) -> list[OrderSnapshot]:
+    reverse = sort.endswith("Desc") and sort not in {
+        "updatedDesc", "orderDateDesc", "shipDateDesc", "contractShipDateDesc",
+    }
+    if sort.startswith("category"):
+        nonempty = [item for item in items if any(line.category for line in item.lines)]
+        nonempty.sort(key=lambda item: item.order_no)
+        key = snapshot_sort_key(sort, today)
+        nonempty.sort(key=lambda item: key(item)[0], reverse=reverse)
+        return nonempty + sorted(
+            [item for item in items if item not in nonempty], key=lambda item: item.order_no,
+        )
+    return sorted(items, key=snapshot_sort_key(sort, today), reverse=reverse)
 
 
 @pytest.mark.parametrize("factory_scope", [False, True])
@@ -114,13 +194,7 @@ def test_admin_pagination_matches_complete_snapshots_and_bounds_queries(
         ]
         for direction in ["Asc", "Desc"]
     ]:
-        reverse = sort.endswith("Desc") and sort not in {
-            "updatedDesc",
-            "orderDateDesc",
-            "shipDateDesc",
-            "contractShipDateDesc",
-        }
-        ordered = sorted(expected, key=service._sort_key(sort, today), reverse=reverse)
+        ordered = ordered_snapshots(expected, sort, today)
         calls = []
 
         def count(*args, calls=calls):
@@ -161,7 +235,7 @@ def test_admin_pagination_matches_complete_snapshots_and_bounds_queries(
                     )
                 )
             ]
-            matching.sort(key=service._sort_key("priority", today))
+            matching.sort(key=snapshot_sort_key("priority", today))
             actual, total = service.list_visible(
                 actor_id=actor_id,
                 include_drafts=True,
@@ -182,7 +256,7 @@ def test_admin_pagination_matches_complete_snapshots_and_bounds_queries(
         page_size=10,
     )
     assert total == len(expected)
-    assert actual == sorted(expected, key=service._sort_key("priority", today))[10:20]
+    assert actual == ordered_snapshots(expected, "priority", today)[10:20]
 
 
 def test_dashboard_counts_all_orders_and_beijing_business_day(
@@ -347,8 +421,7 @@ def test_long_summary_sort_empty_orders_and_last_factory_name(test_database_engi
     for field in ["productName", "factory", "category", "progressPercent", "contractShipDate"]:
         for direction in ["Asc", "Desc"]:
             sort = field + direction
-            reverse = direction == "Desc" and field != "contractShipDate"
-            ordered = sorted(expected, key=service._sort_key(sort, today), reverse=reverse)
+            ordered = ordered_snapshots(expected, sort, today)
             actual, total = service.list_visible(
                 actor_id=admin, include_drafts=True, sort_by=sort, page=2, page_size=1, today=today
             )
@@ -421,11 +494,11 @@ def test_factory_keyword_and_category_only_match_visible_lines(
             )
         )
     assert service.list_visible(actor_id="factory-user-a", keyword="secret")[1] == 0
-    assert service.list_visible(actor_id="factory-user-a", category="服装")[1] == 0
+    assert service.list_visible(actor_id="factory-user-a", category="童装春夏")[1] == 0
     items, total = service.list_visible(
-        actor_id="factory-user-a", keyword="own", category="帽子", today=date(2026, 9, 10)
+        actor_id="factory-user-a", keyword="own", category="童帽春夏", today=date(2026, 9, 10)
     )
     assert total == 1 and len(items[0].lines) == 1
     assert items[0].display_status == "未完成"
     assert items[0].contract_ship_dates == [date(2026, 9, 30)]
-    assert service.list_visible(actor_id=admin, keyword="secret", category="服装")[1] == 1
+    assert service.list_visible(actor_id=admin, keyword="secret", category="童装春夏")[1] == 1

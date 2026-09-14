@@ -56,6 +56,10 @@ class SourceProductPage:
 
 
 class JstProductSource(Protocol):
+    def fetch_targeted_page(
+        self, *, page_number: int, name: str | None = None, i_id: str | None = None,
+    ) -> SourceProductPage: ...
+
     def fetch_initial_page(
         self,
         *,
@@ -156,6 +160,28 @@ class AppCredentialJstProductSource:
             )
             self._start_scan("incremental", start)
         return self._fetch_page(page_number=page_number)
+
+    def fetch_targeted_page(
+        self, *, page_number: int, name: str | None = None, i_id: str | None = None,
+    ) -> SourceProductPage:
+        if page_number < 1 or bool(name) == bool(i_id):
+            raise ProductSourceError("product_target_invalid")
+        target = i_id or name
+        if not isinstance(target, str) or not target.strip() or len(target) > 255:
+            raise ProductSourceError("product_target_invalid")
+        data = self._request_data({
+            "page_index": page_number,
+            "page_size": self._config.page_size,
+            **({"i_ids": [target]} if i_id else {"exactly_name": target}),
+        })
+        if data.get("page_index", page_number) != page_number:
+            raise ProductSourceError("product_source_pagination_invalid")
+        return SourceProductPage(
+            page_number=page_number,
+            items=tuple(self._parse_item(item) for item in self._items(data)),
+            has_next=self._has_next(data, current_page=page_number),
+            candidate_cursor="",
+        )
 
     def _start_scan(self, mode: str, start: datetime) -> None:
         scan_start = self._business_datetime(start)
@@ -298,6 +324,9 @@ class AppCredentialJstProductSource:
             "modified_begin": modified_begin.strftime("%Y-%m-%d %H:%M:%S"),
             "modified_end": modified_end.strftime("%Y-%m-%d %H:%M:%S"),
         }
+        return self._request_data(body)
+
+    def _request_data(self, body: dict[str, object]) -> dict[str, object]:
         biz = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
         try:
             access_token = self._get_access_token()
@@ -591,6 +620,12 @@ class ProductImageStore(Protocol):
 
 
 class DisabledJstProductSource:
+    def fetch_targeted_page(
+        self, *, page_number: int, name: str | None = None, i_id: str | None = None,
+    ) -> SourceProductPage:
+        del page_number, name, i_id
+        raise ProductSourceError("product_source_not_configured")
+
     def fetch_initial_page(
         self,
         *,
@@ -707,18 +742,26 @@ class FakeJstProductSource:
         *,
         initial_pages: Sequence[Sequence[SourceProductVariant]] = (),
         incremental_pages: Sequence[Sequence[SourceProductVariant]] = (),
+        targeted_pages: Sequence[Sequence[SourceProductVariant]] = (),
         candidate_cursor: str,
         fail_initial_page: int | None = None,
         fail_incremental_page: int | None = None,
     ) -> None:
         self._initial_pages = tuple(tuple(page) for page in initial_pages)
         self._incremental_pages = tuple(tuple(page) for page in incremental_pages)
+        self._targeted_pages = tuple(tuple(page) for page in targeted_pages)
         self._candidate_cursor = candidate_cursor
         self._fail_initial_page = fail_initial_page
         self._fail_incremental_page = fail_incremental_page
         self.initial_page_numbers: list[int] = []
         self.incremental_page_numbers: list[int] = []
         self.incremental_start_cursors: list[str | None] = []
+
+    def fetch_targeted_page(
+        self, *, page_number: int, name: str | None = None, i_id: str | None = None,
+    ) -> SourceProductPage:
+        del name, i_id
+        return self._page(self._targeted_pages, page_number)
 
     def fetch_initial_page(
         self,

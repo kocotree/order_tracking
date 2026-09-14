@@ -26,6 +26,7 @@
                 <th scope="col">图片</th>
                 <th scope="col"><TableSortButton label="产品编码" field="skuId" :sort-by="sortBy" :sort-order="sortOrder" @sort="sort($event as SortField)" /></th>
                 <th scope="col"><TableSortButton label="产品名称" field="name" :sort-by="sortBy" :sort-order="sortOrder" @sort="sort($event as SortField)" /></th>
+                <th scope="col">分类</th>
                 <th scope="col"><TableSortButton label="颜色/规格" field="propertiesValue" :sort-by="sortBy" :sort-order="sortOrder" @sort="sort($event as SortField)" /></th>
               </tr>
             </thead>
@@ -38,10 +39,11 @@
                 </td>
                 <td class="product-code-cell">{{ item.skuId }}</td>
                 <td><strong class="product-name-cell">{{ item.name }}</strong></td>
+                <td><span class="category-tag">{{ item.category ?? "—" }}</span></td>
                 <td>{{ item.propertiesValue }}</td>
               </tr>
               <tr v-if="items.length === 0">
-                <td colspan="6">
+                <td colspan="7">
                   <div class="empty-state"><div><span class="empty-state-mark">0</span><strong>没有符合条件的产品</strong><p>可以更换货号、产品编码、产品名称或颜色/规格后重新搜索。</p></div></div>
                 </td>
               </tr>

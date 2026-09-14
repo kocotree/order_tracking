@@ -9,6 +9,18 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import Subquery
 
 from app.db.models import Order, OrderAssignment, OrderDetail, OrderLine, QuantityLedger
+from app.modules.product_sync.categories import PRODUCT_CATEGORIES
+
+
+def category_labels(column: str) -> ColumnElement[Any]:
+    # Both column names and categories are code constants, never request values.
+    categories = ", ".join(f"'{value}'" for value in PRODUCT_CATEGORIES)
+    value = f"NULLIF(TRIM({column}), '')"
+    rank = f"CASE WHEN {value} IN ({categories}) THEN FIELD({value}, {categories}) ELSE 8 END"
+    return func.group_concat(literal_column(
+        f"DISTINCT {value} COLLATE utf8mb4_0900_bin ORDER BY {rank}, "
+        f"{value} COLLATE utf8mb4_0900_bin SEPARATOR '、'"
+    ))
 
 
 def source_rows() -> Subquery:
@@ -217,32 +229,9 @@ def page_orders(
         )
         keys = [string_key(names), order_no]
     elif normalized == "category":
-        clothes = (
-            select(OrderLine.order_line_id)
-            .where(
-                OrderLine.order_id == Order.order_id,
-                visible_line,
-                OrderLine.category_snapshot.collate("utf8mb4_0900_bin").in_(
-                    ["童装春夏", "童装秋冬"]
-                ),
-            )
-            .correlate(Order)
-            .exists()
-        )
-        hats = (
-            select(OrderLine.order_line_id)
-            .where(
-                OrderLine.order_id == Order.order_id,
-                visible_line,
-                OrderLine.category_snapshot.collate("utf8mb4_0900_bin") != "",
-                OrderLine.category_snapshot.collate("utf8mb4_0900_bin").not_in(
-                    ["童装春夏", "童装秋冬"]
-                ),
-            )
-            .correlate(Order)
-            .exists()
-        )
-        label = case((clothes & hats, "服装、帽子"), (clothes, "服装"), (hats, "帽子"), else_="")
+        label = select(category_labels("order_lines.category_snapshot")).where(
+            OrderLine.order_id == Order.order_id, visible_line,
+        ).correlate(Order).scalar_subquery()
         keys = [string_key(label), order_no]
     elif normalized == "tracker":
         keys = [string_key(Order.tracker), order_no]
@@ -394,12 +383,9 @@ def page_orders(
             ).scalar_subquery()
             source_value = string_key(source_value)
         elif normalized == "category":
-            clothes = source_query.where(rows.c.category.in_(["童装春夏", "童装秋冬"])).exists()
-            hats = source_query.where(
-                rows.c.category != "", rows.c.category.not_in(["童装春夏", "童装秋冬"])
-            ).exists()
             source_value = string_key(
-                case((clothes & hats, "服装、帽子"), (clothes, "服装"), (hats, "帽子"), else_="")
+                source_query.with_only_columns(category_labels("source_rows.category"))
+                .scalar_subquery()
             )
         else:
 
@@ -427,6 +413,14 @@ def page_orders(
             value.is_(None),
             value.desc() if reverse else value.asc(),
             order_no.desc() if reverse else order_no,
+        ]
+        if normalized == "category":
+            keys = [value == "", value.desc() if reverse else value.asc(), order_no]
+        reverse = False
+    if normalized == "category" and factory_id is not None:
+        category_key = keys[0]
+        keys = [
+            category_key == "", category_key.desc() if reverse else category_key.asc(), order_no,
         ]
         reverse = False
     if reverse:

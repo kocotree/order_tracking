@@ -18,7 +18,7 @@
           </header>
           <div class="detail-overview-content">
             <dl class="detail-summary-grid">
-              <div><dt>分类</dt><dd><span v-for="category in categories" :key="category" class="category-tag" :class="category === '帽子' ? 'is-hat' : 'is-clothing'">{{ category }}</span></dd></div>
+              <div><dt>分类</dt><dd><span v-for="category in categories" :key="category" class="category-tag">{{ category }}</span></dd></div>
               <div><dt>跟单人员</dt><dd><span class="tracker-tag" :data-tracker="order.tracker">{{ order.tracker ?? "—" }}</span></dd></div>
               <div><dt>合同出货时间</dt><dd class="detail-due-date">{{ order.contractShipDates.join("、") || "—" }}</dd></div>
               <div><dt>订单数量</dt><dd class="detail-summary-number">{{ number(order.totalQuantity) }}</dd></div>
@@ -172,6 +172,7 @@
 </template>
 
 <script setup lang="ts">
+import { sortedCategories } from "@/productCategories";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ApiError, contractApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview } from "@/api/client";
@@ -431,7 +432,7 @@ const dateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { ti
 const pageTitle = computed(() => order.value ? `订单详情 · ${order.value.orderNo}` : "订单详情");
 const contractButtonEnabled = computed(() => order.value?.lifecycle !== "DRAFT" && contractFactories.value.length > 0 && !loadingContracts.value);
 const contractButtonTitle = computed(() => order.value?.lifecycle === "DRAFT" || contractFactories.value.length === 0 ? "订单尚未派工，不能导出加工合同" : "导出加工合同");
-const categories = computed(() => { const values = [...new Set((order.value?.detailMode ? order.value.details : order.value?.lines)?.map((line) => line.category?.trim()).filter((value): value is string => Boolean(value)) ?? [])]; return values.length ? values : ["未分类"]; });
+const categories = computed(() => { const values = sortedCategories((order.value?.detailMode ? order.value.details : order.value?.lines)?.map((line) => line.category) ?? []); return values.length ? values : ["未分类"]; });
 const detailRows = computed(() => {
   const rows: DetailRow[] = order.value?.detailMode
     ? order.value.details.map((detail): DetailRow => ({ key: detail.detailId, skuId: detail.sourceSkuId ?? "—", productName: detail.productName ?? "—", propertiesValue: detail.propertiesValue ?? "—", factoryName: detail.factoryName ?? "—", dispatched: detail.dispatchState === "ASSIGNED", contractShipDate: detail.contractShipDate ?? "", orderQuantity: detail.orderQuantity, shippedQuantity: detail.shippedQuantity, pendingQuantity: detail.pendingQuantity, progressPercent: detail.progressPercent }))

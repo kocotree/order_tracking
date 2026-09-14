@@ -2886,6 +2886,17 @@
       },
       "ProductListItemResponse": {
         "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
           "iId": {
             "title": "Iid",
             "type": "string"
@@ -2928,6 +2939,7 @@
           "skuId",
           "name",
           "propertiesValue",
+          "category",
           "imageAvailable",
           "imageUrl"
         ],

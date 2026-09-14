@@ -179,6 +179,43 @@ def test_two_admin_requests_reuse_one_active_import_run(
     _clean_import_data(test_database_engine)
 
 
+def test_category_rebuild_preserves_candidate_dates_quantities_and_status(
+    test_database_engine: Engine,
+) -> None:
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    service = OrderImportService(sessions)
+    run = service.create_or_reuse_run(actor_id="admin-order-import", request_id="category-seed")
+    row = SourceOrderRow(
+        "category-source", "CATEGORY-ORDER", "6970000000001", "测试童帽", "蓝色 / 120",
+        "儿童手套", "测试工厂", 100, 20, 80, "松子", date(2026, 8, 22), date(2026, 8, 30), {},
+    )
+    service.process_run(run_id=run.run_id, rows=[row], pages_read=1)
+    with sessions() as session, session.begin():
+        candidate = session.scalar(select(OrderImportCandidate))
+        assert candidate is not None
+        candidate.category = "帽子"
+        candidate.date_overrides = {"saved": "2026-09-20"}
+        candidate.status = "IMPORTED"
+        candidate_id = candidate.candidate_id
+    before = service.get_candidate(actor_id="admin-order-import", candidate_id=candidate_id)
+    preview = service.rebuild_categories()
+    assert preview["items"][0]["after"] == "儿童手套"
+    assert service.get_candidate(actor_id="admin-order-import", candidate_id=candidate_id) == before
+    assert service.rebuild_categories(expected_digest=preview["digest"], request_id="rebuild")[
+        "updated"
+    ] == 1
+    after = service.get_candidate(actor_id="admin-order-import", candidate_id=candidate_id)
+    assert after.category == "儿童手套" and after.status == "IMPORTED"
+    assert after.total_quantity == before.total_quantity and after.lines == before.lines
+    with sessions() as session:
+        assert session.get(OrderImportCandidate, candidate_id).date_overrides == {
+            "saved": "2026-09-20",
+        }
+    with pytest.raises(ValueError, match="category_preview_changed"):
+        service.rebuild_categories(expected_digest=preview["digest"], request_id="stale-rebuild")
+
+
 def test_factory_user_enable_enqueues_local_revalidation_job(
     test_database_engine: Engine,
 ) -> None:

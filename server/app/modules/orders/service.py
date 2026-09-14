@@ -28,6 +28,7 @@ from app.db.models import (
     User,
 )
 from app.modules.orders.admin_query import display_status, page_orders
+from app.modules.product_sync.categories import PRODUCT_CATEGORY_ALLOWLIST
 
 TRACKERS = frozenset({"烧麦", "松子", "橄榄", "大葱", "青椒"})
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
@@ -852,14 +853,10 @@ class OrderService:
             if trackers:
                 query = query.where(Order.tracker.in_(trackers))
             if category:
-                category_sources = {
-                    "服装": ("童装春夏", "童装秋冬"),
-                    "帽子": ("童帽春夏", "童帽秋冬", "童配春夏", "童配秋冬"),
-                }
-                if category not in category_sources:
+                if category not in PRODUCT_CATEGORY_ALLOWLIST:
                     raise OrderValidationError("invalid category")
                 matching_categories = select(OrderLine.order_id).where(
-                    OrderLine.category_snapshot.in_(category_sources[category])
+                    OrderLine.category_snapshot.collate("utf8mb4_0900_bin") == category
                 )
                 if scoped_factory is not None:
                     matching_categories = matching_categories.where(
@@ -879,7 +876,7 @@ class OrderService:
                             select(OrderDetail.detail_id)
                             .where(
                                 OrderDetail.order_id == Order.order_id,
-                                OrderDetail.category.in_(category_sources[category]),
+                                OrderDetail.category.collate("utf8mb4_0900_bin") == category,
                             )
                             .exists(),
                         ),
@@ -1694,71 +1691,6 @@ class OrderService:
                 .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
                 .where(OrderLine.order_id == order_id, OrderAssignment.is_active.is_(True))
             )
-        )
-
-    @staticmethod
-    def _sort_key(sort_by: str, today: date) -> Callable[[OrderSnapshot], tuple[Any, ...]]:
-        normalized_sort = sort_by.removesuffix("Asc").removesuffix("Desc")
-        if normalized_sort == "orderNo":
-            return lambda item: (item.order_no,)
-        if normalized_sort == "productName":
-            return lambda item: ("、".join(line.product_name for line in item.lines), item.order_no)
-        if normalized_sort == "category":
-
-            def category_value(item: OrderSnapshot) -> tuple[str, str]:
-                categories = {
-                    "服装" if line.category in {"童装春夏", "童装秋冬"} else "帽子"
-                    for line in item.lines
-                    if line.category
-                }
-                label = "、".join(value for value in ("服装", "帽子") if value in categories)
-                return (label, item.order_no)
-
-            return category_value
-        if normalized_sort == "tracker":
-            return lambda item: (item.tracker, item.order_no)
-        if normalized_sort == "factory":
-            return lambda item: (
-                "、".join(row.factory_name for row in item.factory_progress),
-                item.order_no,
-            )
-        if normalized_sort == "contractShipDate" or sort_by in {"shipDateAsc", "shipDateDesc"}:
-            descending = sort_by.endswith("Desc")
-            return lambda item: (
-                not item.contract_ship_dates,
-                (
-                    -item.contract_ship_dates[-1].toordinal()
-                    if descending
-                    else item.contract_ship_dates[0].toordinal()
-                )
-                if item.contract_ship_dates
-                else 0,
-                item.order_no,
-            )
-        if normalized_sort == "progressPercent":
-            return lambda item: (item.progress_percent, item.order_no)
-        if normalized_sort == "shippedQuantity":
-            return lambda item: (item.shipped_quantity, item.order_no)
-        if normalized_sort == "status":
-            return lambda item: (item.display_status, item.order_no)
-        if sort_by == "orderDateDesc":
-            return lambda item: (
-                item.order_date is None,
-                -(item.order_date.toordinal()) if item.order_date else 0,
-                item.order_no,
-            )
-        if sort_by == "updatedDesc":
-            return lambda item: (-item.updated_at.timestamp(), item.order_no)
-        return lambda item: (
-            0
-            if item.display_status == "已逾期"
-            else 1
-            if item.lifecycle == "PUBLISHED"
-            else 2
-            if item.lifecycle == "COMPLETED"
-            else 3,
-            item.contract_ship_date or date.max,
-            item.order_no,
         )
 
     @staticmethod

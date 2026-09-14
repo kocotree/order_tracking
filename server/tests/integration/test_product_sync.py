@@ -1,7 +1,9 @@
-from datetime import datetime
+from dataclasses import replace
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import Engine, delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.product import FakeJstProductSource, ProductSourceError, SourceProductVariant
@@ -13,7 +15,7 @@ from app.db.models import (
     ProductSyncStagedVariant,
     ProductVariant,
 )
-from app.modules.product_sync import ProductSyncService
+from app.modules.product_sync import ProductCatalogService, ProductSyncService
 
 
 def source_variant(
@@ -73,6 +75,7 @@ def test_initial_sync_only_makes_exact_allowlisted_enabled_variants_available(
                             "童帽秋冬",
                             "童配秋冬",
                             "童装秋冬",
+                            "儿童手套",
                         ],
                         start=1,
                     )
@@ -92,18 +95,129 @@ def test_initial_sync_only_makes_exact_allowlisted_enabled_variants_available(
     )
 
     assert result.status == "succeeded"
-    assert result.included_records == 6
+    assert result.included_records == 7
     assert result.ignored_records == 4
     assert result.success_cursor == "cursor-1"
     with session_factory() as session:
         products = session.scalars(select(Product)).all()
         variants = session.scalars(select(ProductVariant)).all()
     assert sorted((product.source_i_id, product.is_available) for product in products) == [
-        (f"ITEM-{index}", True) for index in range(1, 7)
+        (f"ITEM-{index}", True) for index in range(1, 8)
     ]
     assert sorted((variant.source_sku_id, variant.is_available) for variant in variants) == [
-        (f"SKU-{index}", True) for index in range(1, 7)
+        (f"SKU-{index}", True) for index in range(1, 8)
     ]
+
+
+def test_targeted_sync_previews_cross_page_skus_then_imports_once_without_global_cursor(
+    test_database_engine: Engine,
+) -> None:
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    record = source_variant(i_id="TEST-GLOVE", sku_id="GLOVE-1", category="儿童手套", enabled=1)
+    second = source_variant(i_id="TEST-GLOVE", sku_id="GLOVE-2", category="儿童手套", enabled=1)
+    service = ProductSyncService(sessions, source=FakeJstProductSource(
+        targeted_pages=[[record], [record, second]], candidate_cursor="target-only",
+    ))
+    catalog = ProductCatalogService(sessions)
+    preview = service.preview_targeted(i_id="TEST-GLOVE")
+    assert [row["action"] for row in preview["items"]] == ["create", "create"]
+    assert catalog.list_available(keyword="", page=1, page_size=10,
+                                  sort_by="iId", sort_order="asc").total == 0
+    result = service.run_targeted(i_id="TEST-GLOVE", expected_digest=preview["digest"],
+                                  request_id="target-test", worker_id="test-cli")
+    assert result.included_records == 2
+    page = catalog.list_available(keyword="", page=1, page_size=10,
+                                  sort_by="iId", sort_order="asc")
+    assert sorted((row.sku_id, row.category) for row in page.items) == [
+        ("GLOVE-1", "儿童手套"), ("GLOVE-2", "儿童手套"),
+    ]
+    repeat = service.preview_targeted(i_id="TEST-GLOVE")
+    assert [row["action"] for row in repeat["items"]] == ["existing", "existing"]
+    repeated = service.run_targeted(i_id="TEST-GLOVE", expected_digest=repeat["digest"],
+                                    request_id="repeat-test", worker_id="test-cli")
+    assert repeated.included_records == 0
+    with sessions() as session:
+        assert all(run.success_cursor is None for run in session.scalars(select(ProductSyncRun)))
+
+
+@pytest.mark.parametrize("failure", ["source_change", "duplicate", "identity", "same_time", "busy"])
+def test_targeted_sync_rejects_conflicts_and_never_publishes_partial_products(
+    test_database_engine: Engine, failure: str,
+) -> None:
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    record = source_variant(i_id="TEST-GLOVE", sku_id="GLOVE-1", category="儿童手套", enabled=1)
+    initial = ProductSyncService(sessions, source=FakeJstProductSource(
+        initial_pages=[[record]], candidate_cursor="full-cursor",
+    ))
+    initial.run_initial(request_id="seed", worker_id="test")
+    fresh = replace(record, sku_id="GLOVE-2")
+    source = FakeJstProductSource(targeted_pages=[[record, fresh]], candidate_cursor="irrelevant")
+    service = ProductSyncService(sessions, source=source)
+    preview = service.preview_targeted(i_id=record.i_id)
+    if failure == "source_change":
+        source = FakeJstProductSource(targeted_pages=[[record, replace(fresh, name="新名称")]],
+                                     candidate_cursor="irrelevant")
+        service = ProductSyncService(sessions, source=source)
+    elif failure == "duplicate":
+        source = FakeJstProductSource(targeted_pages=[[record, fresh], [replace(fresh, enabled=0)]],
+                                     candidate_cursor="irrelevant")
+        service = ProductSyncService(sessions, source=source)
+    elif failure == "identity":
+        with sessions() as session, session.begin():
+            session.scalar(select(Product)).source_i_id = "DIFFERENT-STYLE"
+    elif failure == "same_time":
+        source = FakeJstProductSource(
+            targeted_pages=[[replace(record, properties_value="新规格"), fresh]],
+            candidate_cursor="irrelevant",
+        )
+        service = ProductSyncService(sessions, source=source)
+        preview = service.preview_targeted(i_id=record.i_id)
+        assert preview["blocked"]
+    else:
+        with sessions() as session, session.begin():
+            session.add(ProductSyncRun(run_id="busy-run", run_type="initial", status="running",
+                                       active_key="product-sync", started_at=datetime.now(),
+                                       worker_id="test", request_id="busy"))
+    with pytest.raises(IntegrityError if failure == "busy" else ProductSourceError):
+        service.run_targeted(i_id=record.i_id, expected_digest=preview["digest"],
+                             request_id="reject", worker_id="test")
+    assert ProductCatalogService(sessions).list_available(
+        keyword="", page=1, page_size=10, sort_by="skuId", sort_order="asc",
+    ).total == 1
+
+
+def test_targeted_sync_reports_ambiguous_disabled_and_older_records(
+    test_database_engine: Engine,
+) -> None:
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    record = source_variant(i_id="STYLE-1", sku_id="GLOVE-1", category="儿童手套", enabled=1,
+                            name="同名手套")
+    ambiguous = ProductSyncService(sessions, source=FakeJstProductSource(
+        targeted_pages=[[record, replace(record, i_id="STYLE-2", sku_id="GLOVE-2")]],
+        candidate_cursor="irrelevant",
+    )).preview_targeted(name="同名手套")
+    assert ambiguous["blocked"] and ambiguous["styles"] == ["STYLE-1", "STYLE-2"]
+    ProductSyncService(sessions, source=FakeJstProductSource(initial_pages=[[record]],
+                                                           candidate_cursor="full-cursor")).run_initial(
+        request_id="seed", worker_id="test",
+    )
+    source = FakeJstProductSource(targeted_pages=[[
+        replace(record, source_modified_at=record.source_modified_at - timedelta(days=1)),
+        replace(record, sku_id="DISABLED", enabled=0),
+        replace(record, sku_id="OUTSIDE", category="其他"),
+    ]], candidate_cursor="target-only")
+    service = ProductSyncService(sessions, source=source)
+    preview = service.preview_targeted(i_id="STYLE-1")
+    assert [(row["skuId"], row["action"]) for row in preview["items"]] == [
+        ("DISABLED", "rejected"), ("GLOVE-1", "ignored"), ("OUTSIDE", "rejected"),
+    ]
+    service.run_targeted(i_id="STYLE-1", expected_digest=preview["digest"],
+                         request_id="skip", worker_id="test")
+    incremental = FakeJstProductSource(candidate_cursor="next-global-cursor")
+    ProductSyncService(sessions, source=incremental).run_incremental(
+        request_id="next", worker_id="test",
+    )
+    assert incremental.incremental_start_cursors == ["full-cursor"]
 
 
 def test_successful_product_sync_enqueues_candidate_revalidation(

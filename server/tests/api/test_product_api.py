@@ -128,6 +128,7 @@ def test_admin_product_list_enforces_role_and_returns_only_available_searchable_
         assert page.status_code == 200
         assert page.json()["total"] == 12
         assert page.json()["page"] == 2
+        assert page.json()["items"][0]["category"] == "童帽春夏"
         assert [item["skuId"] for item in page.json()["items"]] == ["SKU-01", "SKU-00"]
         assert page.json()["items"][0]["imageUrl"] == page.json()["items"][1]["imageUrl"]
         assert page.json()["items"][0]["imageUrl"] == image_url
@@ -181,6 +182,7 @@ def test_admin_product_list_enforces_role_and_returns_only_available_searchable_
             "skuId": "SKU-05",
             "name": "童帽产品 05",
             "propertiesValue": "蓝色,55",
+            "category": "童帽春夏",
             "imageAvailable": False,
             "imageUrl": None,
         }

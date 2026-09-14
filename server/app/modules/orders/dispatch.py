@@ -16,15 +16,12 @@ Built directly on the #89 source preview/confirm service:
 """
 
 import json
-from collections.abc import Callable
-from datetime import UTC, date, datetime, timedelta
-from hashlib import sha256
+from datetime import date, timedelta
 from typing import Any
 from uuid import uuid4
 
-from pydantic import TypeAdapter
 from sqlalchemy import select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from app.db.models import (
     Factory,
@@ -45,30 +42,13 @@ from app.modules.orders.service import (
     OrderSnapshot,
     OrderValidationError,
 )
-from app.modules.orders.source_update import FIELDS, OrderSourceUpdateService
-
-_SNAPSHOT = TypeAdapter(OrderSnapshot)
+from app.modules.orders.source_update import FIELDS, SNAPSHOT, OrderSourceUpdateService, _hash
 
 DISPATCH_PREVIEW_MINUTES = 5
 
 
-def _hash(value: object) -> str:
-    return sha256(
-        json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
-    ).hexdigest()
-
-
 class OrderDispatchService(OrderSourceUpdateService):
     """Dispatch execution records on top of #89 source update flows."""
-
-    def __init__(
-        self,
-        session_factory: sessionmaker[Session],
-        *,
-        source: Any,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-    ) -> None:
-        super().__init__(session_factory, source=source, clock=clock)
 
     # ------------------------------------------------------------------
     # preview
@@ -180,7 +160,7 @@ class OrderDispatchService(OrderSourceUpdateService):
             if repeated:
                 if repeated.request_hash != request_hash:
                     raise OrderConflict("同一幂等标识不能用于不同派工")
-                return _SNAPSHOT.validate_python(repeated.result)
+                return SNAPSHOT.validate_python(repeated.result)
             pending = session.get(OrderChangePreview, preview_id)
             if (
                 pending is None
@@ -209,7 +189,7 @@ class OrderDispatchService(OrderSourceUpdateService):
                     )
                 )
                 if repeated and repeated.request_hash == request_hash:
-                    return _SNAPSHOT.validate_python(repeated.result)
+                    return SNAPSHOT.validate_python(repeated.result)
             raise
 
         with self._session_factory() as session, session.begin():
@@ -226,7 +206,7 @@ class OrderDispatchService(OrderSourceUpdateService):
             if repeated:
                 if repeated.request_hash != request_hash:
                     raise OrderConflict("同一幂等标识不能用于不同派工")
-                return _SNAPSHOT.validate_python(repeated.result)
+                return SNAPSHOT.validate_python(repeated.result)
             if not order.detail_mode or order.version != version:
                 raise OrderConflict("订单状态或版本已变化，请重新加载")
             if order.lifecycle not in {"DRAFT", "PUBLISHED"}:
@@ -441,7 +421,7 @@ class OrderDispatchService(OrderSourceUpdateService):
                     idempotency_key=idempotency_key,
                     status="completed",
                     request_hash=request_hash,
-                    result=json.loads(_SNAPSHOT.dump_json(result)),
+                    result=json.loads(SNAPSHOT.dump_json(result)),
                 )
             )
             return result

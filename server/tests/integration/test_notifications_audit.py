@@ -24,11 +24,41 @@ from app.db.models import (
     RepairReturnBatch,
     RepairReturnLine,
     Shipment,
+    ShipmentVoidRequest,
     StoredFile,
     User,
 )
 from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.orders import AssignmentInput, DraftLineInput, OrderService
+
+
+def _seed_historical_void_request(
+    sessions: sessionmaker[Session], *, shipment_id: str, reason: str, now: datetime
+) -> None:
+    with sessions.begin() as session:
+        shipment = session.get(Shipment, shipment_id)
+        assert shipment is not None
+        shipment.status = "VOID_PENDING"
+        request = ShipmentVoidRequest(
+            request_id=f"void-{shipment_id}"[:36],
+            shipment_id=shipment_id,
+            active_shipment_id=shipment_id,
+            requested_by="factory-notice-user",
+            reason=reason,
+            status="PENDING",
+            idempotency_key=shipment_id,
+            created_at=now,
+        )
+        session.add(request)
+        session.add(OutboxMessage(
+            event_type="shipment.void_requested",
+            aggregate_type="shipment",
+            aggregate_id=shipment_id,
+            dedupe_key=f"shipment-void-request:{request.request_id}",
+            payload={"shipmentId": shipment_id, "requestId": request.request_id},
+            status="pending",
+            available_at=now,
+        ))
 
 
 def _publish_order(test_database_engine: Engine, *, factory_user_ids: list[str]):
@@ -1201,8 +1231,6 @@ def test_due_scan_stops_and_restores_for_fully_shipped_factory_and_completed_ord
 def test_void_request_only_sends_to_unique_enabled_named_admins(
     test_database_engine: Engine,
 ) -> None:
-    from app.modules.shipments.service import ShipmentService
-
     sessions, _, _ = _publish_order(test_database_engine, factory_user_ids=["factory-notice-user"])
     now = datetime(2026, 8, 27, 9, 0)
     with sessions() as session, session.begin():
@@ -1253,16 +1281,9 @@ def test_void_request_only_sends_to_unique_enabled_named_admins(
                 submitted_at=now,
             )
         )
-    shipments = ShipmentService(sessions)
-    for _ in range(2):
-        shipments.request_void(
-            actor_id="factory-notice-user",
-            factory_id="factory-notice-a",
-            shipment_id="void-card",
-            reason="箱数填错，请撤回",
-            idempotency_key="void-card",
-            now=now,
-        )
+    _seed_historical_void_request(
+        sessions, shipment_id="void-card", reason="箱数填错，请撤回", now=now,
+    )
     service = NotificationsAuditService(sessions)
     assert service.consume_next_business_event(worker_id="event", now=now)
     assert not service.consume_next_business_event(worker_id="event", now=now)
@@ -1450,15 +1471,9 @@ def test_shipment_and_withdrawal_notify_only_involved_order_trackers(
         expected.add("admin-notice")
     for template in ["admin_shipment", "admin_void_request"]:
         if template == "admin_void_request":
-            for _ in range(2):
-                shipments.request_void(
-                    actor_id="factory-notice-user",
-                    factory_id="factory-notice-a",
-                    shipment_id=draft.shipment_id,
-                    reason="测试撤回",
-                    idempotency_key="tracker-void",
-                    now=now,
-                )
+            _seed_historical_void_request(
+                sessions, shipment_id=draft.shipment_id, reason="测试撤回", now=now,
+            )
         assert service.consume_next_business_event(worker_id="tracker-event", now=now)
         assert not service.consume_next_business_event(worker_id="tracker-event", now=now)
         feishu, wechat = FakeFeishuBusinessNotifier(), FakeWechatNotifier()

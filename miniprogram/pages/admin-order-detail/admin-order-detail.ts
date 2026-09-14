@@ -16,6 +16,8 @@ type FactoryProduct = {
 };
 
 type FactoryProgress = Order["factoryProgress"][number] & {
+  contractShipDateText: string;
+  showDetailContractDates: boolean;
   orderText: string;
   shippedText: string;
   pendingText: string;
@@ -50,8 +52,11 @@ Page({
           assignedText: formatQuantity(assignment.assignedQuantity),
           shippedText: formatQuantity(assignment.shippedQuantity),
         })));
+      const dates = products.map((product) => product.contractShipDateText).filter((date) => date !== "—");
       return {
         ...factory,
+        contractShipDateText: formatContractShipDate(dates),
+        showDetailContractDates: new Set(dates).size > 1,
         orderText: formatQuantity(factory.orderQuantity),
         shippedText: formatQuantity(factory.shippedQuantity),
         pendingText: formatQuantity(factory.pendingQuantity),

@@ -267,6 +267,22 @@
   justify-content: space-between;
 }
 
+.admin-factory-top { gap: 14rpx; }
+
+.admin-factory-heading {
+  min-width: 0;
+  flex: 1;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.admin-factory-date {
+  margin-left: 14rpx;
+  color: #7a8491;
+  font-size: 22rpx;
+  font-weight: 400;
+}
+
 .admin-factory-name {
   color: #1f2833;
   font-size: 28rpx;
@@ -275,6 +291,7 @@
 
 .admin-factory-rate {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 14rpx;
   color: #1677ff;

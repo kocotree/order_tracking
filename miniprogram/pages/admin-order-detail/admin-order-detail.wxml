@@ -46,7 +46,7 @@
         <view wx:for="{{factoryProgress}}" wx:key="factoryId" wx:for-item="factory" class="admin-factory-card {{expandedFactory === factory.factoryId ? 'is-open' : ''}}">
           <view role="button" aria-label="{{factory.factoryName}}工厂进度" class="admin-factory-summary" data-id="{{factory.factoryId}}" bindtap="toggleFactory">
             <view class="admin-factory-top">
-              <text class="admin-factory-name">{{factory.factoryName}}</text>
+              <view class="admin-factory-heading"><text class="admin-factory-name">{{factory.factoryName}}</text><text class="admin-factory-date">{{factory.contractShipDateText}}</text></view>
               <view class="admin-factory-rate"><text>{{factory.progressPercent}}%</text><view class="admin-factory-arrow" /></view>
             </view>
             <view class="admin-factory-numbers">
@@ -61,7 +61,7 @@
             <view class="admin-product-table-head"><text>序号</text><text>产品名称</text><text>颜色/规格</text><text>已发/下单</text></view>
             <view wx:for="{{factory.products}}" wx:key="orderLineId" wx:for-item="product" class="admin-product-row">
               <text class="admin-product-index">{{product.index}}</text>
-              <view class="admin-product-name"><text>{{product.productName}}</text><text class="detail-contract-date">合同出货时间 {{product.contractShipDateText}}</text></view>
+              <view class="admin-product-name"><text>{{product.productName}}</text><text wx:if="{{factory.showDetailContractDates}}" class="detail-contract-date">合同出货时间 {{product.contractShipDateText}}</text></view>
               <text class="admin-product-spec">{{product.propertiesValue}}</text>
               <text class="admin-product-quantity">{{product.shippedText}} / {{product.assignedText}}</text>
             </view>

@@ -9,7 +9,6 @@ from pydantic import TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.adapters.errors import ExternalAdapterUnavailable
 from app.adapters.order_source import AppCredentialFeishuOrderSource, FeishuOrderSource
 from app.db.models import (
     Factory,
@@ -535,21 +534,6 @@ class OrderSourceUpdateService(OrderService):
                 or pending.payload.get("kind") != "refresh"
             ):
                 raise OrderConflict("来源预览已失效，请重新检查来源")
-            detail_ids = list(pending.payload["versions"])
-        try:
-            _, fetched = self._read(order_id, actor_id, version, detail_ids)
-        except (OrderConflict, ExternalAdapterUnavailable):
-            # A competing retry may have committed during the source read.
-            with self._session_factory() as session:
-                repeated = session.scalar(
-                    select(IdempotencyRecord).where(
-                        IdempotencyRecord.scope == scope,
-                        IdempotencyRecord.idempotency_key == idempotency_key,
-                    )
-                )
-                if repeated and repeated.request_hash == request_hash:
-                    return SNAPSHOT.validate_python(repeated.result)
-            raise
         with self._session_factory() as session, session.begin():
             self._require_admin(session, actor_id)
             order = self._locked_order(session, order_id)
@@ -589,14 +573,6 @@ class OrderSourceUpdateService(OrderService):
                     or detail.dispatch_state != "UNASSIGNED"
                 ):
                     raise OrderConflict("明细版本或派工状态已变化，请重新检查")
-                latest = self._values(session, fetched[detail_id], detail)
-                accepted = preview.payload["updates"][detail_id]
-                if any(
-                    latest[key] != value
-                    for key, value in accepted.items()
-                    if key != "accepted_source_modified_at"
-                ):
-                    raise OrderConflict("来源资料或匹配结果已变化，请重新预览并确认")
                 for key, value in preview.payload["updates"][detail_id].items():
                     if key in {"contract_ship_date", "source_contract_ship_date"}:
                         value = _date(value)

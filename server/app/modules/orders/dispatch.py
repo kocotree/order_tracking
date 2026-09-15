@@ -1,22 +1,7 @@
-"""Detail-level dispatch: preview, validate and confirm for #90.
-
-Built directly on the #89 source preview/confirm service:
-
-- ``dispatch_preview`` reuses ``preview(detail_ids=...)``. When the selected
-  details have source differences the response only points at that refresh
-  preview; the admin confirms it through the existing source-refresh confirm
-  endpoint (an independent confirmation that a cancelled dispatch cannot
-  undo), then re-runs the dispatch preview.
-- When no differences exist, each selected detail is validated against the
-  dispatch rules and a short-lived dispatch preview is stored.
-- ``dispatch_confirm`` re-reads the source, verifies it still matches the
-  accepted detail values, re-locks products/factories/accounts in a fixed
-  order and re-validates everything before a single transaction creates the
-  execution records and the per-factory notification events.
-"""
+"""Validate and dispatch selected saved order details."""
 
 import json
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -42,7 +27,7 @@ from app.modules.orders.service import (
     OrderSnapshot,
     OrderValidationError,
 )
-from app.modules.orders.source_update import FIELDS, SNAPSHOT, OrderSourceUpdateService, _hash
+from app.modules.orders.source_update import SNAPSHOT, OrderSourceUpdateService, _hash
 
 DISPATCH_PREVIEW_MINUTES = 5
 
@@ -67,30 +52,6 @@ class OrderDispatchService(OrderSourceUpdateService):
         if len(detail_ids) != len(set(detail_ids)):
             raise OrderConflict("明细选择不能重复")
 
-        # Reuse the #89 preview: reads the latest source for exactly these
-        # details, verifies the selection is still unassigned and the order
-        # version is current. Rejects missing/duplicated/renamed source rows.
-        source_preview = self.preview(
-            actor_id=actor_id,
-            order_id=order_id,
-            version=version,
-            request_id=request_id,
-            detail_ids=detail_ids,
-            allow_legacy=True,
-        )
-        if source_preview["differences"]:
-            # The admin must accept the source update first (independent
-            # confirmation via the #89 endpoint), then re-run this preview.
-            return {
-                "preview_id": None,
-                "version": version,
-                "expires_at": None,
-                "requires_source_confirmation": True,
-                "source_preview": source_preview,
-                "validations": [],
-                "all_ok": False,
-            }
-
         with self._session_factory() as session, session.begin():
             order = self._check(session, actor_id, order_id, version, lock=True)
             rows = self._details(session, order_id, lock=True)
@@ -113,7 +74,7 @@ class OrderDispatchService(OrderSourceUpdateService):
                 expires_at=now + timedelta(minutes=DISPATCH_PREVIEW_MINUTES),
                 payload={
                     "kind": "dispatch",
-                    "source_preview_id": source_preview["preview_id"],
+                    "source_preview_id": None,
                     "detail_ids": list(detail_ids),
                     "versions": {row.detail_id: row.version for row in ordered},
                     "validations": validations,
@@ -174,24 +135,6 @@ class OrderDispatchService(OrderSourceUpdateService):
                 raise OrderConflict("派工预览已失效，请重新检查")
             detail_ids: list[str] = list(pending.payload["detail_ids"])
 
-        # Network read outside the write transaction (same contract as #89).
-        from app.adapters.errors import ExternalAdapterUnavailable
-
-        try:
-            _, fetched = self._read(order_id, actor_id, version, detail_ids, allow_legacy=True)
-        except (OrderConflict, ExternalAdapterUnavailable):
-            # A competing retry may have committed during the source read.
-            with self._session_factory() as session:
-                repeated = session.scalar(
-                    select(IdempotencyRecord).where(
-                        IdempotencyRecord.scope == scope,
-                        IdempotencyRecord.idempotency_key == idempotency_key,
-                    )
-                )
-                if repeated and repeated.request_hash == request_hash:
-                    return SNAPSHOT.validate_python(repeated.result)
-            raise
-
         with self._session_factory() as session, session.begin():
             self._require_admin(session, actor_id)
             order = self._locked_order(session, order_id)
@@ -233,22 +176,6 @@ class OrderDispatchService(OrderSourceUpdateService):
                     raise OrderConflict("所选明细包含已派工行，请重新选择")
                 if row.version != preview.payload["versions"][row.detail_id]:
                     raise OrderConflict("明细版本已变化，请重新检查")
-
-            # The dispatch must execute exactly the accepted values that were
-            # validated in the preview. If the source (or its match result)
-            # changed again, require a new preview instead of silently using
-            # either the old or the new values.
-            for row in ordered:
-                latest = self._values(session, fetched[row.detail_id], row)
-                for key in FIELDS:
-                    if self._protected(row, key):
-                        continue
-                    before = getattr(row, key)
-                    after = latest[key]
-                    if isinstance(before, date):
-                        before = before.isoformat()
-                    if before != after:
-                        raise OrderConflict("来源资料或匹配结果已变化，请重新预览并确认")
 
             # Re-validate under locks; products, factories and accounts are
             # read with row locks in a fixed sorted order so a concurrent

@@ -136,10 +136,36 @@ def test_dispatch_reports_execution_quantities_without_double_counting(
         assert assignment.is_active is True
         audit = session.scalar(select(AuditLog).where(AuditLog.action == "order.detail_dispatched"))
         assert audit is not None
-        source_preview_id = audit.changes["sourcePreviewId"]
-        source_preview = session.get(OrderChangePreview, source_preview_id)
-        assert source_preview is not None
-        assert source_preview.payload["updates"][detail.detail_id]["accepted_source_hash"]
+        assert audit.changes["sourcePreviewId"] is None
+
+
+def test_dispatch_uses_saved_details_when_source_is_unavailable(
+    test_database_engine: Engine,
+):
+    sessions, source, order_id = setup_dispatch_order(test_database_engine)
+    service = OrderDispatchService(sessions, source=source)
+    order = service.get(order_id=order_id)
+    detail = order.details[0]
+    source._fail_on_page = 1
+
+    preview = service.dispatch_preview(
+        actor_id="admin-order-import",
+        order_id=order_id,
+        request_id="saved107-preview",
+        version=order.version,
+        detail_ids=[detail.detail_id],
+    )
+    result = service.dispatch_confirm(
+        actor_id="admin-order-import",
+        order_id=order_id,
+        request_id="saved107-confirm",
+        version=order.version,
+        preview_id=preview["preview_id"],
+        idempotency_key="saved107",
+    )
+
+    assert result.details[0].dispatch_state == "ASSIGNED"
+    assert result.details[0].shipped_quantity == 20
 
 
 def test_dispatch_api_enforces_web_auth_csrf_and_server_owned_fields(
@@ -194,7 +220,7 @@ def test_dispatch_api_enforces_web_auth_csrf_and_server_owned_fields(
         assert confirmed.json()["lifecycle"] == "PUBLISHED"
 
 
-def test_source_change_requires_independent_confirm_before_dispatch(
+def test_manual_source_update_then_dispatch_uses_saved_values(
     test_database_engine: Engine,
 ):
     sessions, source, order_id = setup_dispatch_order(test_database_engine)
@@ -214,36 +240,22 @@ def test_source_change_requires_independent_confirm_before_dispatch(
         ]
     ]
 
-    # dispatch_preview detects the difference
-    preview = service.dispatch_preview(**args, version=order.version, detail_ids=[detail_id])
-    assert preview["requires_source_confirmation"] is True
-    assert preview["preview_id"] is None
-    assert len(preview["source_preview"]["differences"]) > 0
-    assert any(d["field"] == "已发数量" for d in preview["source_preview"]["differences"])
-
-    # Confirm the source update independently via the #89 endpoint.
+    source_preview = service.preview(
+        **args,
+        version=order.version,
+        detail_ids=[detail_id],
+    )
+    assert any(d["field"] == "已发数量" for d in source_preview["differences"])
     source_saved = service.confirm(
         actor_id="admin-order-import",
         order_id=order_id,
         version=order.version,
-        preview_id=preview["source_preview"]["preview_id"],
+        preview_id=source_preview["preview_id"],
         idempotency_key="src90",
         request_id="confirm-src",
     )
     assert source_saved.details[0].shipped_quantity == 25
-    # Cancelling dispatch (= not calling dispatch_confirm) does not undo the update.
-    # The next step proves it: we proceed with dispatch.
 
-    # Re-run dispatch preview with the new order version.
-    source._pages = [
-        [
-            replace(
-                source._pages[0][0],
-                shipped_quantity=25,
-                raw_fields={"下单数": 100, "出货总数": 25},
-            )
-        ]
-    ]  # source still says 25 → no difference
     preview2 = service.dispatch_preview(
         **args,
         version=source_saved.version,
@@ -589,7 +601,7 @@ def test_concurrent_same_key_retry_reuses_one_dispatch_result(test_database_engi
         assert session.query(OutboxMessage).count() == 1
 
 
-def test_source_changed_after_dispatch_preview_requires_re_preview(
+def test_source_change_after_dispatch_preview_does_not_change_saved_values(
     test_database_engine: Engine,
 ):
     sessions, source, order_id = setup_dispatch_order(test_database_engine)
@@ -610,19 +622,19 @@ def test_source_changed_after_dispatch_preview_requires_re_preview(
             )
         ]
     ]
-    with pytest.raises(OrderConflict, match="来源资料或匹配结果已变化"):
-        service.dispatch_confirm(
-            **args,
-            version=order.version,
-            preview_id=preview["preview_id"],
-            idempotency_key="race",
-        )
+    result = service.dispatch_confirm(
+        **args,
+        version=order.version,
+        preview_id=preview["preview_id"],
+        idempotency_key="race",
+    )
+    assert result.details[0].shipped_quantity == 20
 
     with Session(test_database_engine) as session:
         details = list(session.scalars(select(OrderDetail).where(OrderDetail.order_id == order_id)))
         for d in details:
-            assert d.dispatch_state == "UNASSIGNED"
-        assert session.query(OrderAssignment).count() == 0
+            assert d.dispatch_state == "ASSIGNED"
+        assert session.query(OrderAssignment).count() == 1
 
 
 def test_dispatch_notifies_factory_users_and_re_consume_skips(

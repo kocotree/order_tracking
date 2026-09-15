@@ -4,7 +4,7 @@
 
 ## Issue #88–#91 本地实现增量（2026-09-11）
 
-来源明细订单导入只生成宽松草稿，不能走下文旧人工草稿的整单保存／发布接口。未派工日期使用 `PATCH /admin/orders/{order_id}/details/{detail_id}/contract-date`；更新先调用 `source-refresh/preview`，有差异独立确认 `source-refresh/confirm`，再使用 `dispatch/preview` 和 `dispatch/confirm` 派工（均为订单下的 POST，前缀 `/api/v1`）。取消派工不撤销已确认的来源更新。
+来源明细订单导入只生成宽松草稿，不能走下文旧人工草稿的整单保存／发布接口。未派工日期使用 `PATCH /admin/orders/{order_id}/details/{detail_id}/contract-date`；手动更新先调用 `source-refresh/preview` 读取一次外部来源，有差异时 `source-refresh/confirm` 直接应用该预览快照。`dispatch/preview` 和 `dispatch/confirm` 只使用系统已保存值，不访问飞书或聚水潭（均为订单下的 POST，前缀 `/api/v1`）。取消派工不撤销已确认的来源更新。
 
 旧 `POST /admin/orders/{order_id}/withdraw` 已移除。按工厂撤回先 GET `dispatch/factories` 获取当前派工及禁止原因标记，再 POST `dispatch/withdraw`，只带工厂和订单版本、CSRF、幂等键；无原因字段或二次确认。所选工厂有有效系统发货时返回冲突，其他工厂不受影响。接口具体字段以 OpenAPI 为准。
 

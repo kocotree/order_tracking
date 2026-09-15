@@ -116,7 +116,9 @@ def main() -> None:
                 incremental_table_scope_confirmed=(
                     settings.feishu_order_incremental_table_scope_confirmed
                 ),
-            )
+                purchase_detail_table_id=settings.feishu_purchase_detail_table_id,
+            ),
+            product_source if isinstance(product_source, AppCredentialJstProductSource) else None,
         )
         if all(
             [
@@ -125,6 +127,7 @@ def main() -> None:
                 settings.feishu_order_app_token,
                 settings.feishu_order_table_id,
                 settings.feishu_order_view_id,
+                settings.feishu_purchase_detail_table_id,
             ]
         )
         else DisabledFeishuOrderSource()

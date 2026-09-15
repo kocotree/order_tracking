@@ -16,6 +16,11 @@ function formatNumber(value) {
   return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
 }
 
+function renderTrackers(order) {
+  const trackers = order.trackers?.length ? order.trackers : [order.tracker].filter(Boolean);
+  return trackers.map((tracker) => `<span class="tracker-tag" data-tracker="${escapeHTML(tracker)}">${escapeHTML(tracker)}</span>`).join("") || "—";
+}
+
 function buildFallbackDetail(orderNo) {
   const sourceOrder = orderListData.orders.find((item) => item.orderNo === orderNo) ?? orderListData.orders[0];
   const factories = sourceOrder.factory.split(/[、,，]/).map((value) => value.trim());
@@ -68,7 +73,7 @@ function getOrderDetail(orderNo) {
   const sourceOrder = orderListData.orders.find((item) => item.orderNo === orderNo);
   if (!sourceOrder) return detail;
   const displayStatus = getOrderDisplayStatus(sourceOrder);
-  return { ...detail, statusKey: sourceOrder.statusKey, statusLabel: displayStatus.label, tone: displayStatus.tone };
+  return { ...detail, tracker: sourceOrder.tracker, trackers: sourceOrder.trackers ?? [sourceOrder.tracker], statusKey: sourceOrder.statusKey, statusLabel: displayStatus.label, tone: displayStatus.tone };
 }
 
 function buildProductFactoryRows(order) {
@@ -79,13 +84,15 @@ function buildProductFactoryRows(order) {
         .map((line) => ({
           ...product,
           factory: factory.name,
+          dueDate: line.dueDate,
+          dispatched: order.statusKey !== "draft",
           quantity: line.quantity,
           shippedQuantity: line.shipped,
           pendingQuantity: Math.max(line.quantity - line.shipped, 0),
         })),
     );
 
-    return factoryRows.length > 0 ? factoryRows : [{ ...product, factory: "—" }];
+    return factoryRows.length > 0 ? factoryRows : [{ ...product, factory: "—", dueDate: order.nearestDue, dispatched: order.statusKey !== "draft" }];
   });
 }
 
@@ -98,12 +105,14 @@ function renderProductRows(rows) {
           <td class="detail-code">${escapeHTML(product.code)}</td>
           <td><strong class="detail-product-name">${escapeHTML(product.name)}</strong></td>
           <td>${escapeHTML(product.colorSpec)}</td>
-          <td>${escapeHTML(product.factory)}</td>
+          <td>${product.dispatched ? escapeHTML(product.factory) : `<input class="pending-detail-input" value="${escapeHTML(product.factory)}" list="order-detail-factories" data-detail-factory="${index}">`}</td>
+          <td><span class="status-badge ${product.dispatched ? "is-info" : "is-draft"}">${product.dispatched ? "已派工" : "未派工"}</span></td>
+          <td>${product.dispatched ? escapeHTML(product.dueDate || "—") : `<input class="pending-detail-input" type="date" value="${escapeHTML(product.dueDate || "")}" data-detail-date="${index}">`}</td>
           <td class="detail-number">${escapeHTML(formatNumber(product.quantity))}</td>
-          <td class="detail-number">${escapeHTML(formatNumber(product.shippedQuantity))}</td>
-          <td class="detail-number">${escapeHTML(formatNumber(product.pendingQuantity))}</td>
+          <td class="detail-number">${product.dispatched ? escapeHTML(formatNumber(product.shippedQuantity)) : `<input class="pending-detail-input pending-number-input" type="number" min="0" step="1" value="${escapeHTML(product.shippedQuantity)}" data-detail-shipped="${index}">`}</td>
+          <td class="detail-number" data-detail-pending="${index}">${escapeHTML(formatNumber(product.pendingQuantity))}</td>
           <td>
-            <span class="detail-progress"><span><i style="width: ${product.quantity ? Math.round(product.shippedQuantity / product.quantity * 100) : 0}%"></i></span><em>${product.quantity ? Math.round(product.shippedQuantity / product.quantity * 100) : 0}%</em></span>
+            <span class="detail-progress" data-detail-progress="${index}"><span><i style="width: ${product.quantity ? Math.min(Math.round(product.shippedQuantity / product.quantity * 100), 100) : 0}%"></i></span><em>${product.quantity ? Math.round(product.shippedQuantity / product.quantity * 100) : 0}%</em></span>
           </td>
         </tr>
       `,
@@ -314,7 +323,7 @@ export function renderOrderDetailPage(orderNo) {
         <div class="detail-overview-content">
           <dl class="detail-summary-grid" aria-label="订单概览">
             <div><dt>分类</dt><dd><span class="category-tag is-${order.category === "帽子" ? "hat" : "clothing"}">${escapeHTML(order.category)}</span></dd></div>
-            <div><dt>跟单人员</dt><dd><span class="tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></dd></div>
+            <div><dt>跟单人员</dt><dd>${renderTrackers(order)}</dd></div>
             <div><dt>合同出货时间</dt><dd class="detail-due-date">${escapeHTML(order.nearestDue)}</dd></div>
             <div><dt>订单数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.totalQuantity))}</dd></div>
             <div><dt>已发数量</dt><dd class="detail-summary-number">${escapeHTML(formatNumber(order.shippedQuantity))}</dd></div>
@@ -326,6 +335,7 @@ export function renderOrderDetailPage(orderNo) {
       <section class="section-card detail-section-card">
         <header class="detail-section-header">
           <h2>订单明细</h2>
+          ${productFactoryRows.some((row) => !row.dispatched) ? `<div class="pending-import-save-actions"><span hidden data-detail-unsaved>有未保存修改</span><button class="detail-primary-button" type="button" data-order-detail-save disabled>保存</button></div>` : ""}
         </header>
         <div class="detail-table-scroll">
           <table class="detail-data-table product-detail-table data-grid-table" data-sort-table="order-products">
@@ -336,6 +346,8 @@ export function renderOrderDetailPage(orderNo) {
                 ${renderSortableHeader("产品名称", "name")}
                 ${renderSortableHeader("颜色/规格", "colorSpec")}
                 ${renderSortableHeader("工厂", "factory")}
+                ${renderSortableHeader("派工状态", "dispatched")}
+                ${renderSortableHeader("合同出货时间", "dueDate")}
                 ${renderSortableHeader("下单数量", "quantity")}
                 ${renderSortableHeader("已发数量", "shippedQuantity")}
                 ${renderSortableHeader("未发数量", "pendingQuantity")}
@@ -344,6 +356,7 @@ export function renderOrderDetailPage(orderNo) {
             </thead>
             <tbody data-order-products-body>${renderProductRows(productFactoryRows)}</tbody>
           </table>
+          <datalist id="order-detail-factories">${[...new Set(orderListData.orders.flatMap((item) => item.factory.split(/[、,，]/).map((value) => value.trim())))].map((factory) => `<option value="${escapeHTML(factory)}"></option>`).join("")}</datalist>
         </div>
       </section>
 
@@ -431,6 +444,39 @@ export function bindOrderDetailPage(orderNo) {
     list.hidden = !list.hidden;
     event.currentTarget.setAttribute("aria-expanded", String(!list.hidden));
     page.querySelector("[data-audit-label]").textContent = list.hidden ? "展开" : "收起";
+  });
+  page?.addEventListener("input", (event) => {
+    const index = Number(event.target.dataset.detailFactory ?? event.target.dataset.detailDate ?? event.target.dataset.detailShipped);
+    if (!Number.isInteger(index) || !productRows[index]) return;
+    if (event.target.matches("[data-detail-factory]")) productRows[index].factory = event.target.value;
+    if (event.target.matches("[data-detail-date]")) productRows[index].dueDate = event.target.value;
+    if (event.target.matches("[data-detail-shipped]")) {
+      const value = Number(event.target.value);
+      if (Number.isInteger(value) && value >= 0) {
+        productRows[index].shippedQuantity = value;
+        productRows[index].pendingQuantity = Math.max(productRows[index].quantity - value, 0);
+        const percent = productRows[index].quantity ? Math.round(value / productRows[index].quantity * 100) : 0;
+        page.querySelector(`[data-detail-pending="${index}"]`).textContent = formatNumber(productRows[index].pendingQuantity);
+        const progress = page.querySelector(`[data-detail-progress="${index}"]`);
+        progress.querySelector("i").style.width = `${Math.min(percent, 100)}%`;
+        progress.querySelector("em").textContent = `${percent}%`;
+      }
+    }
+    page.querySelector("[data-detail-unsaved]")?.removeAttribute("hidden");
+    page.querySelector("[data-order-detail-save]")?.removeAttribute("disabled");
+  });
+  page?.querySelector("[data-order-detail-save]")?.addEventListener("click", () => {
+    const factories = new Set([...page.querySelectorAll("#order-detail-factories option")].map((option) => option.value));
+    const invalidFactory = [...page.querySelectorAll("[data-detail-factory]")].find((input) => !factories.has(input.value));
+    const invalidQuantity = [...page.querySelectorAll("[data-detail-shipped]")].find((input) => !Number.isInteger(Number(input.value)) || Number(input.value) < 0);
+    if (invalidFactory || invalidQuantity) {
+      showToast("保存失败", invalidFactory ? "请选择已有工厂。" : "已发数量必须为非负整数。");
+      (invalidFactory || invalidQuantity)?.focus();
+      return;
+    }
+    page.querySelector("[data-detail-unsaved]")?.setAttribute("hidden", "");
+    page.querySelector("[data-order-detail-save]")?.setAttribute("disabled", "");
+    showToast("保存成功", "未派工订单明细已更新。");
   });
   const withdrawLayer = page?.querySelector("[data-withdraw-layer]");
   page?.querySelector("[data-withdraw-open]")?.addEventListener("click", () => { withdrawLayer.hidden = false; });

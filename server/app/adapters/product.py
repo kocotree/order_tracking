@@ -4,6 +4,7 @@ import socket
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from hashlib import md5
 from ipaddress import ip_address
 from pathlib import Path
@@ -55,16 +56,19 @@ class SourceProductPage:
     next_checkpoint: str | None = None
 
 
+@dataclass(frozen=True)
+class SourcePurchaseItem:
+    po_id: str
+    poi_id: str
+    sku_id: str | None
+    qty: int
+    in_qty: int
+    return_qty: int | None
+
+
 class JstProductSource(Protocol):
     def fetch_targeted_page(
         self, *, page_number: int, name: str | None = None, i_id: str | None = None,
-    ) -> SourceProductPage: ...
-
-    def fetch_initial_page(
-        self,
-        *,
-        page_number: int,
-        checkpoint: str | None = None,
     ) -> SourceProductPage: ...
 
     def fetch_incremental_page(
@@ -74,6 +78,17 @@ class JstProductSource(Protocol):
         page_number: int,
         checkpoint: str | None = None,
     ) -> SourceProductPage: ...
+
+    def fetch_initial_page(
+        self,
+        *,
+        page_number: int,
+        checkpoint: str | None = None,
+    ) -> SourceProductPage: ...
+
+
+class JstPurchaseSource(Protocol):
+    def fetch_purchase_items(self, po_ids: list[str]) -> list[SourcePurchaseItem]: ...
 
 
 @dataclass(frozen=True)
@@ -142,6 +157,34 @@ class AppCredentialJstProductSource:
         elif page_number == 1:
             self._start_scan("initial", self._config.initial_sync_begin)
         return self._fetch_page(page_number=page_number)
+
+    def fetch_purchase_items(self, po_ids: list[str]) -> list[SourcePurchaseItem]:
+        result: list[SourcePurchaseItem] = []
+        unique = list(dict.fromkeys(value.strip() for value in po_ids if value.strip()))
+        for start in range(0, len(unique), 50):
+            chunk = unique[start : start + 50]
+            page = 1
+            while True:
+                data = self._request_data(
+                    {"po_ids": chunk, "page_index": page, "page_size": 50},
+                    path="/open/purchase/query",
+                )
+                purchases = data.get("datas", data.get("purchase_orders", []))
+                if not isinstance(purchases, list):
+                    raise ProductSourceError("purchase_source_contract_invalid")
+                for purchase in purchases:
+                    if not isinstance(purchase, dict):
+                        raise ProductSourceError("purchase_source_contract_invalid")
+                    po_id = self._identifier(purchase.get("po_id"))
+                    items = purchase.get("items")
+                    if not isinstance(items, list):
+                        raise ProductSourceError("purchase_source_contract_invalid")
+                    for item in items:
+                        result.append(self._parse_purchase_item(po_id, item))
+                if not self._has_next(data, current_page=page):
+                    break
+                page += 1
+        return result
 
     def fetch_incremental_page(
         self,
@@ -326,11 +369,15 @@ class AppCredentialJstProductSource:
         }
         return self._request_data(body)
 
-    def _request_data(self, body: dict[str, object]) -> dict[str, object]:
+    def _request_data(
+        self, body: dict[str, object], *, path: str = "/open/sku/query"
+    ) -> dict[str, object]:
         biz = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
         try:
             access_token = self._get_access_token()
-            payload = self._request_business_page(biz=biz, access_token=access_token)
+            payload = self._request_business_page(
+                path=path, biz=biz, access_token=access_token
+            )
         except (_JstRequestRejected, httpx.HTTPError, TypeError, ValueError) as error:
             raise ProductSourceError("product_source_unavailable") from error
         data = payload.get("data", payload)
@@ -341,6 +388,7 @@ class AppCredentialJstProductSource:
     def _request_business_page(
         self,
         *,
+        path: str,
         biz: str,
         access_token: str,
     ) -> dict[str, object]:
@@ -350,7 +398,7 @@ class AppCredentialJstProductSource:
             self._wait_for_business_slot()
             try:
                 return self._post_form(
-                    "/open/sku/query",
+                    path,
                     self._business_form(biz, access_token),
                 )
             except _JstRequestRejected as error:
@@ -564,6 +612,53 @@ class AppCredentialJstProductSource:
             )
         except (TypeError, ValueError) as error:
             raise ProductSourceError("product_source_contract_invalid") from error
+
+    @classmethod
+    def _parse_purchase_item(cls, po_id: str, raw: object) -> SourcePurchaseItem:
+        if not isinstance(raw, dict):
+            raise ProductSourceError("purchase_source_contract_invalid")
+        try:
+            return SourcePurchaseItem(
+                po_id=cls._identifier(po_id),
+                poi_id=cls._identifier(raw.get("poi_id")),
+                sku_id=cls._optional_identifier(raw.get("sku_id")),
+                qty=cls._integer(raw.get("qty")),
+                in_qty=cls._integer(raw.get("inQty")),
+                return_qty=(
+                    None if raw.get("return_qty") is None else cls._integer(raw["return_qty"])
+                ),
+            )
+        except (TypeError, ValueError) as error:
+            raise ProductSourceError("purchase_source_contract_invalid") from error
+
+    @staticmethod
+    def _integer(value: object) -> int:
+        if isinstance(value, bool):
+            raise ValueError("invalid integer")
+        try:
+            number = Decimal(str(value))
+        except InvalidOperation as error:
+            raise ValueError("invalid integer") from error
+        if not number.is_finite() or number != number.to_integral_value():
+            raise ValueError("invalid integer")
+        return int(number)
+
+    @classmethod
+    def _identifier(cls, value: object) -> str:
+        result = cls._optional_identifier(value)
+        if result is None:
+            raise ValueError("missing identifier")
+        return result
+
+    @staticmethod
+    def _optional_identifier(value: object) -> str | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return AppCredentialJstProductSource._optional_text(value)
 
     @staticmethod
     def _items(data: dict[str, object]) -> list[object]:

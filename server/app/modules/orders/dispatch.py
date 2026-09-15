@@ -241,7 +241,7 @@ class OrderDispatchService(OrderSourceUpdateService):
             for row in ordered:
                 latest = self._values(session, fetched[row.detail_id], row)
                 for key in FIELDS:
-                    if key == "contract_ship_date" and row.date_override_enabled:
+                    if self._protected(row, key):
                         continue
                     before = getattr(row, key)
                     after = latest[key]
@@ -270,10 +270,20 @@ class OrderDispatchService(OrderSourceUpdateService):
             factory_assignment_ids: dict[str, list[int]] = {}
 
             if order.tracker_locked_at is None:
-                trackers = {(row.source_tracker or "").strip() for row in ordered}
-                if len(trackers) != 1 or not trackers <= TRACKERS:
-                    raise OrderConflict("来源跟单信息缺失或不一致，不能首次派工")
-                order.tracker = next(iter(trackers))
+                all_rows = sorted(
+                    self._details(session, order_id),
+                    key=lambda row: (row.sort_order, row.detail_id),
+                )
+                trackers = list(dict.fromkeys(
+                    tracker
+                    for row in all_rows
+                    for tracker in self._row_trackers(row)
+                    if tracker
+                ))
+                if not trackers or any(tracker not in TRACKERS for tracker in trackers):
+                    raise OrderConflict("来源跟单信息缺失或无效，不能首次派工")
+                order.trackers = trackers
+                order.tracker = trackers[0]
                 order.tracker_locked_at = now
 
             for row in ordered:
@@ -470,7 +480,6 @@ class OrderDispatchService(OrderSourceUpdateService):
                 )
             )
 
-        trackers = {(row.source_tracker or "").strip() for row in rows}
         validations: list[dict[str, Any]] = []
         for row in rows:
             problems: list[str] = []
@@ -492,15 +501,11 @@ class OrderDispatchService(OrderSourceUpdateService):
                 problems.append("下单数量须为正整数")
             if row.source_shipped_quantity is None or row.source_shipped_quantity < 0:
                 problems.append("初始已发数量须为非负整数")
-            tracker = (row.source_tracker or "").strip()
-            if not tracker:
+            trackers = self._row_trackers(row)
+            if not trackers:
                 problems.append("跟单人员缺失")
-            elif tracker not in TRACKERS:
+            elif any(tracker not in TRACKERS for tracker in trackers):
                 problems.append("跟单人员无效")
-            elif order.tracker_locked_at is not None and tracker != order.tracker:
-                problems.append("跟单人员与已锁定执行跟单人不一致")
-            elif order.tracker_locked_at is None and len(trackers) > 1:
-                problems.append("跟单人员与所选其他明细不一致")
             validations.append(
                 {
                     "detail_id": row.detail_id,
@@ -517,3 +522,7 @@ class OrderDispatchService(OrderSourceUpdateService):
             "accounts": accounts,
         }
         return validations, context
+
+    @staticmethod
+    def _row_trackers(row: OrderDetail) -> list[str]:
+        return list(row.source_trackers or ([row.source_tracker] if row.source_tracker else []))

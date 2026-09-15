@@ -93,7 +93,7 @@
                   <span v-for="value in displayCategories(item)" :key="value" class="category-tag">{{ value }}</span>
                   <span v-if="displayCategories(item).length === 0">—</span>
                 </td>
-                <td><span class="tracker-tag" :data-tracker="item.tracker">{{ item.tracker }}</span></td>
+                <td class="tracker-cell"><span class="tracker-tags"><span v-for="tracker in item.trackers" :key="tracker" class="tracker-tag" :data-tracker="tracker">{{ tracker }}</span><span v-if="!item.trackers.length">—</span></span></td>
                 <td>{{ factorySummary(item) }}</td>
                 <td class="date-summary" :title="item.contractShipDates.join('、')">{{ item.contractShipDates.join("、") || "—" }}</td>
                 <td><div class="list-progress-line"><span class="progress-track"><span class="progress-bar" :style="{ width: `${Math.min(item.progressPercent ?? 0, 100)}%` }"></span></span><span class="list-progress-percent">{{ item.progressPercent == null ? "—" : `${item.progressPercent}%` }}</span></div></td>

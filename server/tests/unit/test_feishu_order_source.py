@@ -48,8 +48,8 @@ class _Client:
                 "跟单人员": 4,
                 "下单时间": 5,
                 "合同出货时间": 20,
-                "出货总数": 20,
-                "未出数量": 20,
+                "采购子订单号-映射": 20,
+                "采购子订单号-人工确认": 1,
                 "产品编码": 2,
                 "一级分类": 20,
                 "更新时间": 1002,
@@ -207,7 +207,7 @@ def test_source_reads_contract_formula_without_plan_date(
 @pytest.mark.parametrize(
     "raw", [None, "", "错误", "1.5", True, "Infinity", "NaN", "2147483648", ["1", "2"]]
 )
-def test_invalid_source_quantities_remain_unknown(raw: object) -> None:
+def test_old_feishu_shipment_quantities_are_ignored(raw: object) -> None:
     row = AppCredentialFeishuOrderSource._parse_record(
         {
             "record_id": "raw-quantity",
@@ -218,7 +218,7 @@ def test_invalid_source_quantities_remain_unknown(raw: object) -> None:
     assert row.order_quantity is None
     assert row.shipped_quantity is None
     assert row.pending_quantity is None
-    assert row.raw_fields["出货总数"] == raw
+    assert "出货总数" not in row.raw_fields
 
 
 @pytest.mark.parametrize("raw", [True, "invalid", "Infinity", 10**30])

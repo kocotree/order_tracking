@@ -1604,7 +1604,11 @@ def test_candidate_filters_and_all_sorts_match_legacy_pages(test_database_engine
                 if filters["category"] in (item.category or "").split("、")
             ]
         if "trackers" in filters:
-            expected = [item for item in expected if item.tracker in filters["trackers"]]
+            expected = [
+                item
+                for item in expected
+                if any(tracker in filters["trackers"] for tracker in item.trackers)
+            ]
         if "factory_names" in filters:
             expected = [
                 item

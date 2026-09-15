@@ -512,6 +512,57 @@
         "title": "CandidateDateWrite",
         "type": "object"
       },
+      "CandidateLineBatchItemWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateLineId": {
+            "exclusiveMinimum": 0.0,
+            "title": "Candidatelineid",
+            "type": "integer"
+          },
+          "contractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
+          },
+          "factoryId": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factoryid"
+          },
+          "shippedQuantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
+          }
+        },
+        "required": [
+          "candidateLineId"
+        ],
+        "title": "CandidateLineBatchItemWrite",
+        "type": "object"
+      },
       "CandidateLineResponse": {
         "properties": {
           "candidateLineId": {
@@ -653,6 +704,82 @@
           "validationIssues"
         ],
         "title": "CandidateLineResponse",
+        "type": "object"
+      },
+      "CandidateLineWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "contractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
+          },
+          "factoryId": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factoryid"
+          },
+          "shippedQuantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "CandidateLineWrite",
+        "type": "object"
+      },
+      "CandidateLinesWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateLineBatchItemWrite"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "lines"
+        ],
+        "title": "CandidateLinesWrite",
         "type": "object"
       },
       "CandidateListResponse": {
@@ -810,6 +937,13 @@
             ],
             "title": "Tracker"
           },
+          "trackers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Trackers",
+            "type": "array"
+          },
           "updatedAt": {
             "format": "date-time",
             "title": "Updatedat",
@@ -841,6 +975,7 @@
           "validationIssues",
           "orderDate",
           "tracker",
+          "trackers",
           "contractShipDate",
           "category",
           "totalQuantity",
@@ -1133,6 +1268,145 @@
           "contractShipDate"
         ],
         "title": "DetailDateWrite",
+        "type": "object"
+      },
+      "DetailFieldsBatchItem": {
+        "additionalProperties": false,
+        "properties": {
+          "contractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
+          },
+          "detailId": {
+            "minLength": 1,
+            "title": "Detailid",
+            "type": "string"
+          },
+          "detailVersion": {
+            "exclusiveMinimum": 0.0,
+            "title": "Detailversion",
+            "type": "integer"
+          },
+          "factoryId": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factoryid"
+          },
+          "shippedQuantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
+          }
+        },
+        "required": [
+          "detailId",
+          "detailVersion"
+        ],
+        "title": "DetailFieldsBatchItem",
+        "type": "object"
+      },
+      "DetailFieldsBatchWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/DetailFieldsBatchItem"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "lines"
+        ],
+        "title": "DetailFieldsBatchWrite",
+        "type": "object"
+      },
+      "DetailFieldsWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "contractShipDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contractshipdate"
+          },
+          "detailVersion": {
+            "exclusiveMinimum": 0.0,
+            "title": "Detailversion",
+            "type": "integer"
+          },
+          "factoryId": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factoryid"
+          },
+          "shippedQuantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "detailVersion"
+        ],
+        "title": "DetailFieldsWrite",
         "type": "object"
       },
       "DispatchConfirmWrite": {
@@ -2514,6 +2788,13 @@
             ],
             "title": "Sourcetracker"
           },
+          "sourceTrackers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sourcetrackers",
+            "type": "array"
+          },
           "version": {
             "title": "Version",
             "type": "integer"
@@ -2534,6 +2815,7 @@
           "pendingQuantity",
           "progressPercent",
           "sourceTracker",
+          "sourceTrackers",
           "contractShipDate",
           "dispatchState",
           "version",
@@ -2841,6 +3123,13 @@
             ],
             "title": "Tracker"
           },
+          "trackers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Trackers",
+            "type": "array"
+          },
           "updatedAt": {
             "format": "date-time",
             "title": "Updatedat",
@@ -2866,6 +3155,7 @@
           "source",
           "orderDate",
           "tracker",
+          "trackers",
           "lifecycle",
           "displayStatus",
           "version",
@@ -6824,6 +7114,183 @@
         ]
       }
     },
+    "/api/v1/admin/import-candidates/{candidate_id}/lines": {
+      "patch": {
+        "operationId": "save_candidate_lines_api_v1_admin_import_candidates__candidate_id__lines_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateLinesWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Candidate Lines",
+        "tags": [
+          "order-import"
+        ]
+      }
+    },
+    "/api/v1/admin/import-candidates/{candidate_id}/lines/{candidate_line_id}": {
+      "patch": {
+        "operationId": "save_candidate_line_api_v1_admin_import_candidates__candidate_id__lines__candidate_line_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "candidate_line_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Line Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateLineWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Candidate Line",
+        "tags": [
+          "order-import"
+        ]
+      }
+    },
     "/api/v1/admin/import-candidates/{candidate_id}/lines/{candidate_line_id}/date": {
       "patch": {
         "operationId": "save_candidate_date_api_v1_admin_import_candidates__candidate_id__lines__candidate_line_id__date_patch",
@@ -7837,6 +8304,183 @@
         "summary": "Create Export",
         "tags": [
           "contract-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/details": {
+      "patch": {
+        "operationId": "save_detail_lines_api_v1_admin_orders__order_id__details_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetailFieldsBatchWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Detail Lines",
+        "tags": [
+          "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/details/{detail_id}": {
+      "patch": {
+        "operationId": "save_detail_fields_api_v1_admin_orders__order_id__details__detail_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "detail_id",
+            "required": true,
+            "schema": {
+              "title": "Detail Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetailFieldsWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Detail Fields",
+        "tags": [
+          "order-admin"
         ]
       }
     },

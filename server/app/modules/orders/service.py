@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -5,7 +6,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import case, delete, func, or_, select, true
+from sqlalchemy import and_, case, delete, func, or_, select, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
@@ -18,6 +19,7 @@ from app.db.models import (
     OrderAssignment,
     OrderCompletionRecord,
     OrderDetail,
+    OrderImportCandidate,
     OrderLine,
     OutboxMessage,
     Product,
@@ -143,6 +145,7 @@ class DetailSnapshot:
     pending_quantity: int | None
     progress_percent: int | None
     source_tracker: str | None
+    source_trackers: list[str]
     contract_ship_date: date | None
     dispatch_state: str
     version: int
@@ -156,6 +159,7 @@ class OrderSnapshot:
     source: str
     order_date: date | None
     tracker: str | None
+    trackers: list[str]
     contract_ship_date: date | None
     contract_ship_dates: list[date]
     lifecycle: str
@@ -261,6 +265,7 @@ class OrderService:
             source=source,
             order_date=order_date,
             tracker=tracker,
+            trackers=[tracker],
             contract_ship_date=None,
             lifecycle="DRAFT",
             version=1,
@@ -308,6 +313,7 @@ class OrderService:
                 order.order_no = normalized_order_no
                 order.order_date = order_date
                 order.tracker = tracker
+                order.trackers = [tracker]
                 order.contract_ship_date = None
                 order.version += 1
                 order.updated_by = actor_id
@@ -851,7 +857,7 @@ class OrderService:
                     matched = case((Order.detail_mode.is_(True), source_match), else_=matched)
                 query = query.where(or_(Order.order_no.like(pattern), matched))
             if trackers:
-                query = query.where(Order.tracker.in_(trackers))
+                query = query.where(func.json_overlaps(Order.trackers, json.dumps(trackers)))
             if category:
                 if category not in PRODUCT_CATEGORY_ALLOWLIST:
                     raise OrderValidationError("invalid category")
@@ -909,12 +915,24 @@ class OrderService:
         with self._session_factory() as session:
             self._require_admin(session, actor_id)
             self._require_order(session, order_id)
+            candidate_id = session.scalar(
+                select(OrderImportCandidate.candidate_id).where(
+                    OrderImportCandidate.imported_order_id == order_id
+                )
+            )
+            targets = [
+                and_(AuditLog.target_type == "order", AuditLog.target_id == order_id)
+            ]
+            if candidate_id:
+                targets.append(
+                    and_(
+                        AuditLog.target_type == "order_import_candidate",
+                        AuditLog.target_id == candidate_id,
+                    )
+                )
             entries = session.scalars(
                 select(AuditLog)
-                .where(
-                    AuditLog.target_type == "order",
-                    AuditLog.target_id == order_id,
-                )
+                .where(or_(*targets))
                 .order_by(AuditLog.id.desc())
             )
             snapshots: list[OrderAuditSnapshot] = []
@@ -947,6 +965,19 @@ class OrderService:
             reason = changes.get("reason")
             suffix = f"：{reason}" if isinstance(reason, str) and reason.strip() else ""
             return f"按发货单退回 {quantity:,} 件{suffix}"
+        if action in {"order_import.detail_updated", "order.detail_updated"}:
+            labels = {
+                "factory": "工厂",
+                "contractShipDate": "合同出货时间",
+                "shippedQuantity": "已发数量",
+            }
+            parts = []
+            for key, label in labels.items():
+                value = changes.get(key)
+                if isinstance(value, dict):
+                    parts.append(f"{label}‘{value.get('before')} → {value.get('after')}’")
+            detail = changes.get("detailLabel") or changes.get("detailId")
+            return f"修改明细 {detail}：" + "，".join(parts)
         labels = {
             "order.draft_created": "创建订单草稿",
             "order.draft_updated": "更新订单草稿",
@@ -1487,6 +1518,7 @@ class OrderService:
             source=order.source,
             order_date=order.order_date,
             tracker=order.tracker,
+            trackers=list(order.trackers or ([order.tracker] if order.tracker else [])),
             contract_ship_date=dates[0] if dates else None,
             contract_ship_dates=dates,
             lifecycle=order.lifecycle,
@@ -1598,6 +1630,9 @@ class OrderService:
                     pending_quantity=pending,
                     progress_percent=progress,
                     source_tracker=row.source_tracker,
+                    source_trackers=list(
+                        row.source_trackers or ([row.source_tracker] if row.source_tracker else [])
+                    ),
                     contract_ship_date=row.contract_ship_date,
                     dispatch_state="ASSIGNED" if active else "UNASSIGNED",
                     version=row.version,
@@ -1630,6 +1665,7 @@ class OrderService:
             source=order.source,
             order_date=order.order_date,
             tracker=order.tracker,
+            trackers=list(order.trackers or ([order.tracker] if order.tracker else [])),
             contract_ship_date=dates[0] if dates else None,
             contract_ship_dates=dates,
             lifecycle=order.lifecycle,

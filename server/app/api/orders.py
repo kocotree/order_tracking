@@ -67,6 +67,29 @@ class DetailDateWrite(VersionWrite):
     contract_ship_date: date | None
 
 
+class DetailFieldsWrite(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+    version: StrictInt = Field(gt=0)
+    detail_version: StrictInt = Field(gt=0)
+    factory_id: str | None = Field(default=None, min_length=1)
+    contract_ship_date: date | None = None
+    shipped_quantity: StrictInt | None = Field(default=None, ge=0)
+
+
+class DetailFieldsBatchItem(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+    detail_id: str = Field(min_length=1)
+    detail_version: StrictInt = Field(gt=0)
+    factory_id: str | None = Field(default=None, min_length=1)
+    contract_ship_date: date | None = None
+    shipped_quantity: StrictInt | None = Field(default=None, ge=0)
+
+
+class DetailFieldsBatchWrite(VersionWrite):
+    model_config = ConfigDict(extra="forbid")
+    lines: list[DetailFieldsBatchItem] = Field(min_length=1, max_length=500)
+
+
 class RefreshWrite(VersionWrite):
     model_config = ConfigDict(extra="forbid")
 
@@ -191,6 +214,7 @@ class OrderDetailResponse(ApiModel):
     pending_quantity: int | None
     progress_percent: int | None
     source_tracker: str | None
+    source_trackers: list[str]
     contract_ship_date: date | None
     dispatch_state: str
     version: int
@@ -205,6 +229,7 @@ class OrderResponse(ApiModel):
     source: str
     order_date: date | None
     tracker: str | None
+    trackers: list[str]
     lifecycle: str
     display_status: str
     version: int
@@ -342,6 +367,59 @@ def create_order_router(
             version=payload.version,
             detail_version=payload.detail_version,
             contract_ship_date=payload.contract_ship_date,
+            request_id=request.state.request_id,
+        )
+        return _order_response(result, request.state.request_id)
+
+    @router.patch(
+        "/admin/orders/{order_id}/details/{detail_id}",
+        response_model=OrderResponse,
+        tags=["order-admin"],
+    )
+    def save_detail_fields(
+        order_id: str,
+        detail_id: str,
+        payload: DetailFieldsWrite,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> OrderResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        result = source_update_service.save_fields(
+            actor_id=actor.user_id, order_id=order_id, detail_id=detail_id,
+            version=payload.version, detail_version=payload.detail_version,
+            changes=payload.model_dump(
+                exclude={"version", "detail_version"}, exclude_unset=True
+            ),
+            request_id=request.state.request_id,
+        )
+        return _order_response(result, request.state.request_id)
+
+    @router.patch(
+        "/admin/orders/{order_id}/details",
+        response_model=OrderResponse,
+        tags=["order-admin"],
+    )
+    def save_detail_lines(
+        order_id: str,
+        payload: DetailFieldsBatchWrite,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> OrderResponse:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        result = source_update_service.save_fields_batch(
+            actor_id=actor.user_id,
+            order_id=order_id,
+            version=payload.version,
+            updates=[
+                (
+                    line.detail_id,
+                    line.detail_version,
+                    line.model_dump(exclude={"detail_id", "detail_version"}, exclude_unset=True),
+                )
+                for line in payload.lines
+            ],
             request_id=request.state.request_id,
         )
         return _order_response(result, request.state.request_id)

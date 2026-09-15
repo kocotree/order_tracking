@@ -59,6 +59,11 @@ function renderProgress(label, percent) {
   `;
 }
 
+function renderTrackers(order, className = "tracker-tag") {
+  const trackers = order.trackers?.length ? order.trackers : [order.tracker].filter(Boolean);
+  return trackers.map((tracker) => `<span class="${className}" data-tracker="${escapeHTML(tracker)}">${escapeHTML(tracker)}</span>`).join("") || "—";
+}
+
 function renderOrderRows(orders, rowStart = 0) {
   if (orders.length === 0) {
     return `
@@ -89,7 +94,7 @@ function renderOrderRows(orders, rowStart = 0) {
             <strong>${escapeHTML(order.productName)}</strong>
           </td>
           <td><span class="category-tag is-${order.category === "帽子" ? "hat" : "clothing"}">${escapeHTML(order.category)}</span></td>
-          <td class="tracker-cell"><span class="tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></td>
+          <td class="tracker-cell"><span class="tracker-tags">${renderTrackers(order)}</span></td>
           <td>${escapeHTML(order.factory)}</td>
           <td>${escapeHTML(order.nearestDue)}</td>
           <td>${renderProgress("发货进度", order.shippedPercent)}</td>
@@ -131,7 +136,7 @@ function renderPagination(currentPage, totalPages, totalItems) {
 
 export function renderOrderListPage() {
   const factories = [...new Set(orderListData.orders.flatMap((item) => item.factory.split(/[、,，]/).map((value) => value.trim())))].sort();
-  const trackers = [...new Set(orderListData.orders.map((item) => item.tracker))].sort();
+  const trackers = [...new Set(orderListData.orders.flatMap((item) => item.trackers?.length ? item.trackers : [item.tracker]))].sort();
 
   return `
     <article class="order-list-page" data-order-list-page>
@@ -362,7 +367,7 @@ export function bindOrderListPage() {
       const matchesStatus = activeStatus === "all" || getOrderDisplayStatus(order).key === activeStatus;
       const orderFactories = order.factory.split(/[、,，]/).map((value) => value.trim());
       const matchesFactory = factories.length === 0 || factories.some((factory) => orderFactories.includes(factory));
-      const matchesTracker = trackers.length === 0 || trackers.includes(order.tracker);
+      const matchesTracker = trackers.length === 0 || trackers.some((tracker) => (order.trackers?.length ? order.trackers : [order.tracker]).includes(tracker));
       const matchesFrom = !dueFrom || order.nearestDue >= dueFrom;
       const matchesTo = !dueTo || order.nearestDue <= dueTo;
       return matchesKeyword && matchesCategory && matchesStatus && matchesFactory && matchesTracker && matchesFrom && matchesTo;

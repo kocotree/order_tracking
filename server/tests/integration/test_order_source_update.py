@@ -145,10 +145,6 @@ def test_source_changes_again_and_transaction_rollback(test_database_engine: Eng
     source._pages = [[replace(row, shipped_quantity=10, raw_fields={"出货总数": 10})]]
     preview = service.preview(**args)
     source._pages = [[replace(row, shipped_quantity=11, raw_fields={"出货总数": 11})]]
-    with pytest.raises(OrderConflict, match="来源资料"):
-        service.confirm(**args, preview_id=preview["preview_id"], idempotency_key="changed")
-    assert service.get(order_id=order_id).shipped_quantity == 0
-    preview = service.preview(**args)
 
     def fail(_mapper, _connection, target):
         if target.action == "order.source_refreshed":
@@ -167,9 +163,29 @@ def test_source_changes_again_and_transaction_rollback(test_database_engine: Eng
     confirmed = service.confirm(
         **args, preview_id=preview["preview_id"], idempotency_key="rollback"
     )
+    assert confirmed.details[0].shipped_quantity == 10
     assert confirmed.details[0].contract_ship_date == date(2026, 12, 27)
     again = service.preview(**{**args, "version": confirmed.version})
-    assert again["differences"] == []
+    assert any(d["field"] == "已发数量" for d in again["differences"])
+
+
+def test_source_confirm_uses_saved_preview_when_source_becomes_unavailable(
+    test_database_engine: Engine,
+):
+    sessions, row, source, order_id = setup_order(test_database_engine)
+    service = OrderSourceUpdateService(sessions, source=source)
+    args = dict(
+        actor_id="admin-order-import", order_id=order_id, version=1, request_id="snapshot107"
+    )
+    source._pages = [[replace(row, shipped_quantity=35, raw_fields={"出货总数": 35})]]
+    preview = service.preview(**args)
+    source._fail_on_page = 1
+
+    result = service.confirm(
+        **args, preview_id=preview["preview_id"], idempotency_key="snapshot107"
+    )
+
+    assert result.details[0].shipped_quantity == 35
 
 
 def test_assigned_details_and_tracker_are_protected(test_database_engine: Engine):
@@ -274,7 +290,7 @@ def test_partial_refresh_protects_assigned_snapshot_and_locked_tracker(
     args = dict(actor_id="admin-order-import", order_id=order_id, version=1, request_id="partial89")
     preview = service.preview(**args)
     result = service.confirm(**args, preview_id=preview["preview_id"], idempotency_key="partial")
-    assert requested == ["rec90", "rec90"]
+    assert requested == ["rec90"]
     assert result.tracker == "松子"
     with sessions() as session:
         assert session.get(OrderDetail, assigned_id).source_shipped_quantity == 0
@@ -297,16 +313,9 @@ def test_concurrent_confirm_writes_once(test_database_engine: Engine):
     )
     preview = service.preview(**args)
     barrier = Barrier(2)
-    original = source.read_records
-
-    def read(ids):
-        result = original(ids)
-        barrier.wait(timeout=10)
-        return result
-
-    source.read_records = read
 
     def confirm():
+        barrier.wait(timeout=10)
         return service.confirm(**args, preview_id=preview["preview_id"], idempotency_key="same89")
 
     with ThreadPoolExecutor(max_workers=2) as executor:

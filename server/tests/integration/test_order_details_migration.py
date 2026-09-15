@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime
 
 import pytest
@@ -8,7 +9,6 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import (
     OrderDetail,
-    OrderImportCandidate,
     OrderImportCandidateLine,
     OrderImportRun,
     OrderImportSourceCursor,
@@ -123,23 +123,30 @@ def test_upgrade_preserves_execution_ids_and_unassigned_legacy_drafts(
                 )
             )
             for order, count in [(published, 1), (draft, 2)]:
-                candidate = OrderImportCandidate(
-                    candidate_id=order.order_id,
-                    order_no=order.order_no,
-                    status="IMPORTED",
-                    validation_state="READY",
-                    validation_issues=[],
-                    date_overrides={},
-                    source_record_count=count,
-                    total_quantity=100,
-                    shipped_quantity=60,
-                    pending_quantity=40,
-                    imported_order_id=order.order_id,
-                    created_at=now,
-                    updated_at=now,
+                session.execute(
+                    text("""
+                        INSERT INTO order_import_candidates (
+                            candidate_id, order_no, status, validation_state,
+                            validation_issues, date_overrides, source_record_count,
+                            total_quantity, shipped_quantity, pending_quantity,
+                            imported_order_id, created_at, updated_at
+                        ) VALUES (
+                            :candidate_id, :order_no, 'IMPORTED', 'READY',
+                            :validation_issues, :date_overrides, :source_record_count,
+                            100, 60, 40, :imported_order_id, :created_at, :updated_at
+                        )
+                    """),
+                    {
+                        "candidate_id": order.order_id,
+                        "order_no": order.order_no,
+                        "validation_issues": json.dumps([]),
+                        "date_overrides": json.dumps({}),
+                        "source_record_count": count,
+                        "imported_order_id": order.order_id,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
                 )
-                session.add(candidate)
-                session.flush()
                 for index in range(count):
                     source = OrderImportSourceRecord(
                         source_scope="legacy",
@@ -158,7 +165,7 @@ def test_upgrade_preserves_execution_ids_and_unassigned_legacy_drafts(
                     session.flush()
                     session.add(
                         OrderImportCandidateLine(
-                            candidate_id=candidate.candidate_id,
+                            candidate_id=order.order_id,
                             source_record_pk=source.source_record_pk,
                             order_quantity=100,
                             shipped_quantity=60,
@@ -246,8 +253,11 @@ def test_downgrade_refuses_new_source_data_before_altering_schema(
     try:
         with pytest.raises(RuntimeError, match="拒绝有损回滚"):
             command.downgrade(config, "20260909_0033")
-        service = OrderService(sessionmaker(test_database_engine))
-        assert service.get(order_id="new-source").detail_mode
+        with test_database_engine.connect() as connection:
+            assert connection.execute(
+                text("SELECT detail_mode FROM orders WHERE order_id = :order_id"),
+                {"order_id": "new-source"},
+            ).scalar_one()
     finally:
         # Later reversible migrations may already have run before 0034 rejects the downgrade.
         command.upgrade(config, "head")

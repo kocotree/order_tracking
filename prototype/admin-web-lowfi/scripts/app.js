@@ -4,9 +4,9 @@ import { bindAppShell, renderAppShell, showToast } from "./components/app-shell.
 import { bindDashboardPage, renderDashboardPage } from "./pages/dashboard.js";
 import { bindNotificationListPage, renderNotificationListPage } from "./pages/notification-list.js";
 import { bindOrderListPage, renderOrderListPage } from "./pages/order-list.js";
-import { bindOrderDetailPage, renderOrderDetailPage } from "./pages/order-detail.js";
+import { bindOrderDetailPage, renderOrderDetailPage } from "./pages/order-detail.js?v=20260915-issue-102";
 import { bindPendingImportListPage, renderPendingImportListPage } from "./pages/pending-import-list.js";
-import { bindPendingImportDetailPage, renderPendingImportDetailPage } from "./pages/pending-import-detail.js";
+import { bindPendingImportDetailPage, renderPendingImportDetailPage } from "./pages/pending-import-detail.js?v=20260915-issue-102";
 import { bindShipmentListPage, renderShipmentListPage } from "./pages/shipment-list.js";
 import { bindShipmentDetailPage, renderShipmentDetailPage } from "./pages/shipment-detail.js";
 import { bindRepairListPage, renderRepairListPage } from "./pages/repair-list.js";

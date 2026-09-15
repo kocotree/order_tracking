@@ -2,7 +2,7 @@ import { useRoute } from "vue-router";
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, contractApi, orderApi, shipmentApi, type Shipment, type Order } from "@/api/client";
+import { ApiError, contractApi, identityApi, orderApi, shipmentApi, type Shipment, type Order } from "@/api/client";
 import OrderDetailPage from "@/pages/OrderDetailPage.vue";
 
 vi.mock("vue-router", async () => {
@@ -14,6 +14,7 @@ vi.mock("vue-router", async () => {
 const sampleOrder = {
     detailMode: false, details: [],
   orderId: "order-1", orderNo: "092#", source: "manual", orderDate: "2026-08-22", tracker: "青椒",
+  trackers: ["青椒"],
   contractShipDates: ["2026-09-15"], contractShipDate: "2026-09-15", lifecycle: "DRAFT", displayStatus: "草稿", version: 1,
   totalQuantity: 400, shippedQuantity: 0, pendingQuantity: 400, overQuantity: 0, shortQuantity: 0, progressPercent: 0,
   lines: [{ orderLineId: 1, variantId: "variant-1", skuId: "KQ26721", productName: "轻量防风马甲", propertiesValue: "雾蓝 / 110", category: "服装", imageObjectKey: null, orderQuantity: 400, shippedQuantity: 0, pendingQuantity: 400, overQuantity: 0, shortQuantity: 0, progressPercent: 0, assignments: [{ contractShipDate: "2026-08-30", assignmentId: 1, factoryId: "factory-1", factoryName: "盛泰", assignedQuantity: 400, shippedQuantity: 0, pendingQuantity: 400, overQuantity: 0, shortQuantity: 0, progressPercent: 0 }] }],
@@ -28,6 +29,7 @@ beforeEach(() => {
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
 
   vi.spyOn(shipmentApi, "list").mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(identityApi, "listFactoryOptions").mockResolvedValue({ items: [{ factoryId: "factory-1", factoryName: "测试工厂", supplierNumber: "SUP-001" }], total: 1 });
   vi.spyOn(orderApi, "auditLogs").mockResolvedValue({
     items: [{ action: "order.imported_from_feishu", changes: {}, actorId: "admin-1", operatorName: "松子", content: "从飞书导入订单：订单数量 400，初始已发数量 100，未发数量 300。", sourceTerminal: "web", createdAt: "2026-08-25T01:00:00Z" }],
     total: 1,
@@ -171,21 +173,23 @@ describe("related shipments", () => {
   });
 });
 
-it("allows only the source detail contract date without exposing whole-order publishing", async () => {
+it("allows the four source detail fields without exposing whole-order publishing", async () => {
   vi.spyOn(orderApi, "get").mockResolvedValue({ ...sampleOrder, source: "feishu", detailMode: true,
-    tracker: null, totalQuantity: null, shippedQuantity: null, pendingQuantity: null, lines: [], factoryProgress: [],
+    tracker: null, trackers: [], totalQuantity: null, shippedQuantity: null, pendingQuantity: null, lines: [], factoryProgress: [],
     details: [{ detailId: "source-1", origin: "feishu", sourceSkuId: "RAW-SKU", productName: "未匹配产品",
       propertiesValue: "蓝色", category: "帽子", factoryName: "未匹配厂", matchedVariantId: null,
       matchedFactoryId: null, orderQuantity: null, shippedQuantity: null, pendingQuantity: null,
       progressPercent: null, sourceTracker: null, contractShipDate: null, dispatchState: "UNASSIGNED",
-      version: 1, rawFields: { "下单数": "待补" } }],
+      sourceTrackers: [], version: 1, rawFields: { "下单数": "待补" } }],
   });
   const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: true } } });
   await flushPromises();
   const table = wrapper.get('.product-detail-table');
   expect(table.text()).toContain("RAW-SKU");
-  expect(table.text()).toContain("未匹配厂");
-  expect(table.findAll('input:not([type="checkbox"]), select')).toHaveLength(1);
+  expect((table.get('input[aria-label="第1条工厂"]').element as HTMLInputElement).value).toBe("未匹配厂");
+  expect(table.findAll('input:not([type="checkbox"])')).toHaveLength(4);
+  expect(table.get('input[aria-label="第1条未发数量"]').attributes('disabled')).toBeDefined();
+  expect(table.get('input[aria-label="第1条工厂"]').attributes('list')).toBe('order-factory-options');
   expect(table.get('input[type="date"]').attributes('type')).toBe('date');
   expect(wrapper.text()).not.toContain("发布订单");
   expect(wrapper.findAll('.detail-summary-number').map(cell => cell.text())).toEqual(["—", "—", "—"]);
@@ -196,7 +200,7 @@ const sourceOrder: Order = { ...sampleOrder, source: "feishu", detailMode: true,
   details: [{ detailId: "source-89", origin: "feishu", sourceSkuId: "RAW-SKU", productName: "测试产品",
     propertiesValue: "蓝色", category: "帽子", factoryName: "测试厂", matchedVariantId: null,
     matchedFactoryId: null, orderQuantity: 100, shippedQuantity: 0, pendingQuantity: 100,
-    progressPercent: 0, sourceTracker: "松子", contractShipDate: "2026-09-15", dispatchState: "UNASSIGNED",
+    progressPercent: 0, sourceTracker: "松子", sourceTrackers: ["松子"], contractShipDate: "2026-09-15", dispatchState: "UNASSIGNED",
     version: 1, rawFields: {} }],
 };
 const sourceDiff = { previewId: "preview89", version: 1, expiresAt: "2026-09-11T12:05:00",
@@ -219,19 +223,26 @@ it("shows a dispatch preview failure on the page before any dialog opens", async
   wrapper.unmount();
 });
 
-it("preserves failed date input and prevents refresh until the save succeeds", async () => {
+it("saves all edited detail fields together and keeps failed input", async () => {
   vi.spyOn(orderApi, "get").mockResolvedValue(sourceOrder);
-  const save = vi.spyOn(orderApi, "saveDetailDate").mockRejectedValueOnce(new Error("offline"))
-    .mockResolvedValueOnce({ ...sourceOrder, version: 2, details: [{ ...sourceOrder.details[0], version: 2, contractShipDate: null }] });
+  const save = vi.spyOn(orderApi, "saveDetailLines").mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValueOnce({ ...sourceOrder, version: 2, details: [{ ...sourceOrder.details[0], version: 2, factoryName: "测试工厂", contractShipDate: null, shippedQuantity: 40, pendingQuantity: 60, progressPercent: 40 }] });
   const wrapper = mountSource(); await flushPromises();
-  const input = wrapper.get('input[type="date"]');
-  await input.setValue(""); await input.trigger('blur'); await flushPromises();
-  expect(wrapper.text()).toContain('日期保存失败');
-  expect((input.element as HTMLInputElement).value).toBe('');
+  await wrapper.get('input[aria-label="第1条合同出货时间"]').setValue("");
+  const shippedInput = wrapper.get('input[aria-label="第1条已发数量"]');
+  const pendingInput = wrapper.get('input[aria-label="第1条未发数量"]');
+  await shippedInput.setValue("30");
+  expect((pendingInput.element as HTMLInputElement).value).toBe("70");
+  await pendingInput.setValue("60");
+  expect((shippedInput.element as HTMLInputElement).value).toBe("40");
+  const saveButton = wrapper.findAll('button').find(button => button.text() === '保存')!;
   expect(updateButton(wrapper).attributes('disabled')).toBeDefined();
-  expect(wrapper.get('.detail-due-date').text()).toBe('2026-09-15');
-  await input.trigger('blur'); await flushPromises();
-  expect(save).toHaveBeenLastCalledWith('order-1', 'source-89', 1, 1, null);
+  await saveButton.trigger('click'); await flushPromises();
+  expect(wrapper.text()).toContain('offline');
+  expect((pendingInput.element as HTMLInputElement).value).toBe('60');
+  expect(updateButton(wrapper).attributes('disabled')).toBeDefined();
+  await saveButton.trigger('click'); await flushPromises();
+  expect(save).toHaveBeenLastCalledWith('order-1', { version: 1, lines: [{ detailId: 'source-89', detailVersion: 1, contractShipDate: null, shippedQuantity: 40 }] });
   expect(updateButton(wrapper).attributes('disabled')).toBeUndefined();
   wrapper.unmount();
 });

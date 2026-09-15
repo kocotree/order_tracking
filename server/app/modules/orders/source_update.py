@@ -12,14 +12,22 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.adapters.errors import ExternalAdapterUnavailable
 from app.adapters.order_source import AppCredentialFeishuOrderSource, FeishuOrderSource
 from app.db.models import (
+    Factory,
     IdempotencyRecord,
     Order,
     OrderChangePreview,
     OrderDetail,
     OrderImportSourceRecord,
+    User,
 )
 from app.modules.order_import import OrderImportService, SourceOrderRow
-from app.modules.orders.service import TRACKERS, OrderConflict, OrderService, OrderSnapshot
+from app.modules.orders.service import (
+    TRACKERS,
+    OrderConflict,
+    OrderService,
+    OrderSnapshot,
+    OrderValidationError,
+)
 
 FIELDS = {
     "source_sku_id": "产品编码",
@@ -32,6 +40,7 @@ FIELDS = {
     "order_quantity": "下单数量",
     "source_shipped_quantity": "已发数量",
     "source_tracker": "跟单人员",
+    "source_trackers": "跟单人员",
     "contract_ship_date": "合同出货时间",
 }
 RAW_FIELDS = {
@@ -41,7 +50,6 @@ RAW_FIELDS = {
     "category": "一级分类",
     "factory_name": "工厂",
     "order_quantity": "下单数",
-    "source_shipped_quantity": "出货总数",
     "source_tracker": "跟单人员",
     "contract_ship_date": "合同出货时间",
 }
@@ -49,6 +57,15 @@ SNAPSHOT = TypeAdapter(OrderSnapshot)
 
 
 def _hash(value: object) -> str:
+    if isinstance(value, dict) and isinstance(value.get("_purchase"), dict):
+        value = {
+            **value,
+            "_purchase": {
+                key: item
+                for key, item in value["_purchase"].items()
+                if key != "readAt"
+            },
+        }
     return sha256(
         json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
     ).hexdigest()
@@ -104,35 +121,163 @@ class OrderSourceUpdateService(OrderService):
         contract_ship_date: date | None,
         request_id: str,
     ) -> OrderSnapshot:
+        return self.save_fields(
+            actor_id=actor_id, order_id=order_id, version=version,
+            detail_id=detail_id, detail_version=detail_version,
+            changes={"contract_ship_date": contract_ship_date}, request_id=request_id,
+        )
+
+    def save_fields(
+        self,
+        *,
+        actor_id: str,
+        order_id: str,
+        version: int,
+        detail_id: str,
+        detail_version: int,
+        changes: dict[str, object],
+        request_id: str,
+    ) -> OrderSnapshot:
+        return self.save_fields_batch(
+            actor_id=actor_id,
+            order_id=order_id,
+            version=version,
+            updates=[(detail_id, detail_version, changes)],
+            request_id=request_id,
+        )
+
+    def save_fields_batch(
+        self,
+        *,
+        actor_id: str,
+        order_id: str,
+        version: int,
+        updates: list[tuple[str, int, dict[str, object]]],
+        request_id: str,
+    ) -> OrderSnapshot:
+        allowed = {"factory_id", "contract_ship_date", "shipped_quantity"}
+        if (
+            not updates
+            or len({detail_id for detail_id, _, _ in updates}) != len(updates)
+            or any(not changes or not set(changes) <= allowed for _, _, changes in updates)
+        ):
+            raise OrderValidationError("未提供可保存的明细字段")
         with self._session_factory() as session, session.begin():
             order = self._check(session, actor_id, order_id, version, lock=True)
             rows = self._details(session, order_id, lock=True)
-            detail = next((row for row in rows if row.detail_id == detail_id), None)
-            if (
-                detail is None
-                or detail.version != detail_version
-                or detail.dispatch_state != "UNASSIGNED"
-            ):
-                raise OrderConflict("明细版本或派工状态已变化，请重新加载")
-            before = detail.contract_ship_date
-            detail.contract_ship_date = contract_ship_date
-            detail.date_override_enabled = True
-            detail.version += 1
-            detail.updated_at = self._now()
-            self._touch(order, actor_id)
-            self._add_audit(
-                session,
-                request_id=request_id,
-                action="order.detail_date_updated",
-                order_id=order_id,
-                actor_id=actor_id,
-                changes={
+            rows_by_id = {row.detail_id: row for row in rows}
+            audits: list[dict[str, object]] = []
+            state_changed = False
+            for detail_id, detail_version, changes in updates:
+                detail = rows_by_id.get(detail_id)
+                if (
+                    detail is None
+                    or detail.version != detail_version
+                    or detail.dispatch_state != "UNASSIGNED"
+                ):
+                    raise OrderConflict("明细版本或派工状态已变化，请重新加载")
+                audit: dict[str, object] = {
                     "detailId": detail_id,
-                    "before": before.isoformat() if before else None,
-                    "after": contract_ship_date.isoformat() if contract_ship_date else None,
-                    "dateOverrideEnabled": True,
-                },
-            )
+                    "detailLabel": detail.properties_value or detail.product_name or detail_id,
+                }
+                detail_changed = False
+                if "factory_id" in changes:
+                    factory_id = changes["factory_id"]
+                    if not isinstance(factory_id, str):
+                        raise OrderValidationError("工厂不能为空")
+                    factory = session.get(Factory, factory_id)
+                    if factory is None or not factory.is_enabled:
+                        raise OrderValidationError("工厂不存在或已停用")
+                    detail_changed |= (
+                        detail.factory_name != factory.factory_name
+                        or detail.matched_factory_id != factory.factory_id
+                        or not detail.factory_override_enabled
+                    )
+                    if detail.factory_name != factory.factory_name:
+                        audit["factory"] = {
+                            "before": detail.factory_name,
+                            "after": factory.factory_name,
+                        }
+                    detail.factory_name = factory.factory_name
+                    detail.matched_factory_id = factory.factory_id
+                    detail.factory_override_enabled = True
+                if "contract_ship_date" in changes:
+                    contract_ship_date = changes["contract_ship_date"]
+                    if contract_ship_date is not None and not isinstance(contract_ship_date, date):
+                        raise OrderValidationError("合同出货时间无效")
+                    before_date = detail.contract_ship_date
+                    detail_changed |= (
+                        before_date != contract_ship_date or not detail.date_override_enabled
+                    )
+                    if before_date != contract_ship_date:
+                        audit["contractShipDate"] = {
+                            "before": before_date.isoformat() if before_date else None,
+                            "after": contract_ship_date.isoformat() if contract_ship_date else None,
+                        }
+                    detail.contract_ship_date = contract_ship_date
+                    detail.date_override_enabled = True
+                if "shipped_quantity" in changes:
+                    shipped = changes["shipped_quantity"]
+                    if isinstance(shipped, bool) or not isinstance(shipped, int) or shipped < 0:
+                        raise OrderValidationError("已发数量须为非负整数")
+                    detail_changed |= (
+                        detail.source_shipped_quantity != shipped
+                        or not detail.shipped_override_enabled
+                    )
+                    if detail.source_shipped_quantity != shipped:
+                        audit["shippedQuantity"] = {
+                            "before": detail.source_shipped_quantity,
+                            "after": shipped,
+                        }
+                    detail.source_shipped_quantity = shipped
+                    detail.shipped_override_enabled = True
+                if not detail_changed:
+                    continue
+                state_changed = True
+                issues = list(detail.parse_issues)
+                if "factory_id" in changes:
+                    issues = [
+                        code
+                        for code in issues
+                        if code not in {"FACTORY_NOT_MATCHED", "FACTORY_HAS_NO_ENABLED_USER"}
+                    ]
+                    if session.scalar(
+                        select(User.user_id)
+                        .where(
+                            User.factory_id == detail.matched_factory_id,
+                            User.role == "factory",
+                            User.is_enabled.is_(True),
+                        )
+                        .limit(1)
+                    ) is None:
+                        issues.append("FACTORY_HAS_NO_ENABLED_USER")
+                if "shipped_quantity" in changes:
+                    issues = [
+                        code
+                        for code in issues
+                        if code != "INVALID_INITIAL_SHIPPED_QUANTITY"
+                    ]
+                detail.parse_issues = list(dict.fromkeys(issues))
+                detail.version += 1
+                detail.updated_at = self._now()
+                if len(audit) > 2:
+                    audits.append(audit)
+            if not state_changed:
+                return self._source_snapshot(session, order, rows)
+            self._touch(order, actor_id)
+            if audits:
+                self._add_audit(
+                    session,
+                    request_id=request_id,
+                    action="order.detail_updated",
+                    order_id=order_id,
+                    actor_id=actor_id,
+                    changes=(
+                        audits[0]
+                        if len(audits) == 1
+                        else {"details": audits, "content": f"修改订单明细 {len(audits)} 条"}
+                    ),
+                )
             session.flush()
             return self._source_snapshot(session, order, rows)
 
@@ -208,6 +353,23 @@ class OrderSourceUpdateService(OrderService):
     @staticmethod
     def _values(session: Session, row: SourceOrderRow, detail: OrderDetail) -> dict[str, Any]:
         variant, factory, issues = OrderImportService.match_source_row(session, row)
+        if detail.factory_override_enabled:
+            factory = session.get(Factory, detail.matched_factory_id)
+            issues = [
+                code
+                for code in issues
+                if code not in {"FACTORY_NOT_MATCHED", "FACTORY_HAS_NO_ENABLED_USER"}
+            ]
+            if factory is not None and session.scalar(
+                select(User.user_id)
+                .where(
+                    User.factory_id == factory.factory_id,
+                    User.role == "factory",
+                    User.is_enabled.is_(True),
+                )
+                .limit(1)
+            ) is None:
+                issues.append("FACTORY_HAS_NO_ENABLED_USER")
         if detail.origin == "legacy" and detail.source_record_pk is None:
             values = {key: getattr(detail, key) for key in FIELDS}
             return {
@@ -230,12 +392,21 @@ class OrderSourceUpdateService(OrderService):
             "product_name": row.product_name,
             "properties_value": row.properties_value,
             "category": row.category,
-            "factory_name": row.factory_name,
+            "factory_name": (
+                detail.factory_name if detail.factory_override_enabled else row.factory_name
+            ),
             "matched_variant_id": variant.variant_id if variant else None,
             "matched_factory_id": factory.factory_id if factory else None,
             "order_quantity": OrderImportService._quantity(row.order_quantity, minimum=1),
-            "source_shipped_quantity": OrderImportService._quantity(row.shipped_quantity),
+            "source_shipped_quantity": (
+                detail.source_shipped_quantity
+                if detail.shipped_override_enabled
+                else OrderImportService._quantity(row.shipped_quantity)
+            ),
             "source_tracker": row.tracker,
+            "source_trackers": list(
+                row.trackers or ((row.tracker,) if row.tracker else ())
+            ),
             "source_contract_ship_date": source_date.isoformat() if source_date else None,
             "contract_ship_date": effective_date.isoformat() if effective_date else None,
             "accepted_raw_fields": row.raw_fields,
@@ -273,7 +444,7 @@ class OrderSourceUpdateService(OrderService):
                 values = self._values(session, fetched[detail.detail_id], detail)
                 updates[detail.detail_id] = values
                 for key, label in FIELDS.items():
-                    if key == "contract_ship_date" and detail.date_override_enabled:
+                    if self._protected(detail, key):
                         continue
                     before = getattr(detail, key)
                     after = values[key]
@@ -434,14 +605,17 @@ class OrderSourceUpdateService(OrderService):
                     setattr(detail, key, value)
                 detail.version += 1
                 detail.updated_at = self._now()
-            # Once execution exists its tracker belongs to the execution snapshot.
-            if order.tracker_locked_at is None and not any(
-                row.dispatch_state == "ASSIGNED" for row in rows
-            ):
-                trackers = {row.source_tracker for row in rows}
-                order.tracker = (
-                    next(iter(trackers)) if len(trackers) == 1 and trackers <= TRACKERS else None
-                )
+            if order.tracker_locked_at is None:
+                trackers = list(dict.fromkeys(
+                    tracker
+                    for row in sorted(rows, key=lambda item: (item.sort_order, item.detail_id))
+                    for tracker in (
+                        row.source_trackers or ([row.source_tracker] if row.source_tracker else [])
+                    )
+                    if tracker in TRACKERS
+                ))
+                order.trackers = trackers
+                order.tracker = trackers[0] if trackers else None
             self._touch(order, actor_id)
             preview.consumed_at = self._now()
             self._add_audit(
@@ -471,6 +645,14 @@ class OrderSourceUpdateService(OrderService):
                 )
             )
             return result
+
+    @staticmethod
+    def _protected(detail: OrderDetail, key: str) -> bool:
+        return (
+            (key == "contract_ship_date" and detail.date_override_enabled)
+            or (key in {"factory_name", "matched_factory_id"} and detail.factory_override_enabled)
+            or (key == "source_shipped_quantity" and detail.shipped_override_enabled)
+        )
 
     def _touch(self, order: Order, actor_id: str) -> None:
         order.version += 1

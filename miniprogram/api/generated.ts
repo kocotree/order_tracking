@@ -262,6 +262,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/import-candidates/{candidate_id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Save Candidate Lines */
+        patch: operations["save_candidate_lines_api_v1_admin_import_candidates__candidate_id__lines_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/import-candidates/{candidate_id}/lines/{candidate_line_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Save Candidate Line */
+        patch: operations["save_candidate_line_api_v1_admin_import_candidates__candidate_id__lines__candidate_line_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/import-candidates/{candidate_id}/lines/{candidate_line_id}/date": {
         parameters: {
             query?: never;
@@ -482,6 +516,40 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Save Detail Lines */
+        patch: operations["save_detail_lines_api_v1_admin_orders__order_id__details_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/details/{detail_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Save Detail Fields */
+        patch: operations["save_detail_fields_api_v1_admin_orders__order_id__details__detail_id__patch"];
         trace?: never;
     };
     "/api/v1/admin/orders/{order_id}/details/{detail_id}/contract-date": {
@@ -1888,6 +1956,17 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** CandidateLineBatchItemWrite */
+        CandidateLineBatchItemWrite: {
+            /** Candidatelineid */
+            candidateLineId: number;
+            /** Contractshipdate */
+            contractShipDate?: string | null;
+            /** Factoryid */
+            factoryId?: string | null;
+            /** Shippedquantity */
+            shippedQuantity?: number | null;
+        };
         /** CandidateLineResponse */
         CandidateLineResponse: {
             /** Candidatelineid */
@@ -1914,6 +1993,24 @@ export interface components {
             sourceSkuId: string | null;
             /** Validationissues */
             validationIssues: string[];
+        };
+        /** CandidateLineWrite */
+        CandidateLineWrite: {
+            /** Contractshipdate */
+            contractShipDate?: string | null;
+            /** Factoryid */
+            factoryId?: string | null;
+            /** Shippedquantity */
+            shippedQuantity?: number | null;
+            /** Version */
+            version: number;
+        };
+        /** CandidateLinesWrite */
+        CandidateLinesWrite: {
+            /** Lines */
+            lines: components["schemas"]["CandidateLineBatchItemWrite"][];
+            /** Version */
+            version: number;
         };
         /** CandidateListResponse */
         CandidateListResponse: {
@@ -1956,6 +2053,8 @@ export interface components {
             totalQuantity: number | null;
             /** Tracker */
             tracker: string | null;
+            /** Trackers */
+            trackers: string[];
             /**
              * Updatedat
              * Format: date-time
@@ -2060,6 +2159,39 @@ export interface components {
             contractShipDate: string | null;
             /** Detailversion */
             detailVersion: number;
+            /** Version */
+            version: number;
+        };
+        /** DetailFieldsBatchItem */
+        DetailFieldsBatchItem: {
+            /** Contractshipdate */
+            contractShipDate?: string | null;
+            /** Detailid */
+            detailId: string;
+            /** Detailversion */
+            detailVersion: number;
+            /** Factoryid */
+            factoryId?: string | null;
+            /** Shippedquantity */
+            shippedQuantity?: number | null;
+        };
+        /** DetailFieldsBatchWrite */
+        DetailFieldsBatchWrite: {
+            /** Lines */
+            lines: components["schemas"]["DetailFieldsBatchItem"][];
+            /** Version */
+            version: number;
+        };
+        /** DetailFieldsWrite */
+        DetailFieldsWrite: {
+            /** Contractshipdate */
+            contractShipDate?: string | null;
+            /** Detailversion */
+            detailVersion: number;
+            /** Factoryid */
+            factoryId?: string | null;
+            /** Shippedquantity */
+            shippedQuantity?: number | null;
             /** Version */
             version: number;
         };
@@ -2539,6 +2671,8 @@ export interface components {
             sourceSkuId: string | null;
             /** Sourcetracker */
             sourceTracker: string | null;
+            /** Sourcetrackers */
+            sourceTrackers: string[];
             /** Version */
             version: number;
         };
@@ -2642,6 +2776,8 @@ export interface components {
             totalQuantity: number | null;
             /** Tracker */
             tracker: string | null;
+            /** Trackers */
+            trackers: string[];
             /**
              * Updatedat
              * Format: date-time
@@ -4160,6 +4296,85 @@ export interface operations {
             };
         };
     };
+    save_candidate_lines_api_v1_admin_import_candidates__candidate_id__lines_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                candidate_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateLinesWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_candidate_line_api_v1_admin_import_candidates__candidate_id__lines__candidate_line_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                candidate_id: string;
+                candidate_line_id: number;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateLineWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     save_candidate_date_api_v1_admin_import_candidates__candidate_id__lines__candidate_line_id__date_patch: {
         parameters: {
             query?: never;
@@ -4639,6 +4854,85 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContractExportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_detail_lines_api_v1_admin_orders__order_id__details_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetailFieldsBatchWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_detail_fields_api_v1_admin_orders__order_id__details__detail_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+                detail_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetailFieldsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
                 };
             };
             /** @description Validation Error */

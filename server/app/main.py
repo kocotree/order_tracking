@@ -1,6 +1,7 @@
 import secrets
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -31,6 +32,7 @@ from app.adapters.private_files import (
     FakePrivateFileStore,
     PrivateFileStore,
 )
+from app.adapters.product import AppCredentialJstProductSource, JstProductSourceConfig
 from app.adapters.wechat import (
     AppCredentialWechatIdentity,
     DisabledWechatIdentity,
@@ -257,6 +259,29 @@ def create_app(
     if order_source is None and local_demo_enabled:
         order_source = local_demo_order_source(session_factory)
     if order_source is None:
+        purchase_source = (
+            AppCredentialJstProductSource(
+                JstProductSourceConfig(
+                    app_key=settings.jst_product_app_key,
+                    app_secret=settings.jst_product_app_secret,
+                    initial_sync_begin=datetime.fromisoformat(
+                        settings.jst_product_initial_sync_begin
+                    ),
+                    endpoint=settings.jst_product_endpoint,
+                    token_cache_path=Path(settings.jst_product_token_cache_path),
+                    page_size=settings.jst_product_page_size,
+                    request_interval_seconds=settings.jst_product_request_interval_seconds,
+                    retry_attempts=settings.jst_product_retry_attempts,
+                    retry_base_delay_seconds=settings.jst_product_retry_base_delay_seconds,
+                )
+            )
+            if all((
+                settings.jst_product_app_key,
+                settings.jst_product_app_secret,
+                settings.jst_product_initial_sync_begin,
+            ))
+            else None
+        )
         order_source = (
             AppCredentialFeishuOrderSource(
                 FeishuOrderSourceConfig(
@@ -265,7 +290,9 @@ def create_app(
                     app_token=settings.feishu_order_app_token,
                     table_id=settings.feishu_order_table_id,
                     view_id=settings.feishu_order_view_id,
-                )
+                    purchase_detail_table_id=settings.feishu_purchase_detail_table_id,
+                ),
+                purchase_source,
             )
             if not local_demo_enabled
             and all(
@@ -275,6 +302,7 @@ def create_app(
                     settings.feishu_order_app_token,
                     settings.feishu_order_table_id,
                     settings.feishu_order_view_id,
+                    settings.feishu_purchase_detail_table_id,
                 ]
             )
             else DisabledFeishuOrderSource()

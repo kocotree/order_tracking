@@ -154,6 +154,51 @@ def test_jst_product_source_splits_sync_into_seven_day_windows(
     assert cached["refresh_token"] == "refresh-token"
 
 
+def test_jst_purchase_source_batches_main_orders_and_reads_all_pages(tmp_path: Path) -> None:
+    bodies: list[dict[str, object]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        form = parse_qs(request.content.decode())
+        if request.url.path == "/openWeb/auth/getInitToken":
+            return httpx.Response(200, json={"code": 0, "data": {
+                "access_token": "access-token", "refresh_token": "refresh-token",
+                "expires_in": 2_592_000,
+            }})
+        assert request.url.path == "/open/purchase/query"
+        body = json.loads(form["biz"][0])
+        bodies.append(body)
+        po_id = str(body["po_ids"][0])
+        return httpx.Response(200, json={"code": 0, "data": {
+            "datas": [{"po_id": int(po_id), "items": [{
+                "poi_id": f"child-{body['page_index']}", "sku_id": "SKU-1",
+                "qty": 10, "inQty": 7, "return_qty": None,
+            }]}],
+            "page_index": body["page_index"],
+            "has_next": body["page_index"] == 1,
+        }})
+
+    source = AppCredentialJstProductSource(
+        JstProductSourceConfig(
+            app_key="app-key", app_secret="app-secret",
+            initial_sync_begin=datetime(2026, 9, 1, tzinfo=ZoneInfo("Asia/Shanghai")),
+            token_cache_path=tmp_path / "jst-token.json", request_interval_seconds=0,
+        ),
+        transport=httpx.MockTransport(respond),
+    )
+
+    items = source.fetch_purchase_items(["1596185", "1596185"])
+
+    actual = [(item.po_id, item.poi_id, item.qty, item.in_qty, item.return_qty) for item in items]
+    assert actual == [
+        ("1596185", "child-1", 10, 7, None),
+        ("1596185", "child-2", 10, 7, None),
+    ]
+    assert bodies == [
+        {"po_ids": ["1596185"], "page_index": 1, "page_size": 50},
+        {"po_ids": ["1596185"], "page_index": 2, "page_size": 50},
+    ]
+
+
 def test_jst_product_source_splits_a_dense_window_at_the_internal_page_target(
     tmp_path: Path,
 ) -> None:

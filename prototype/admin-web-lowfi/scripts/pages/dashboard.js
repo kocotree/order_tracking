@@ -21,6 +21,11 @@ function renderNotifications() {
   return items.map(item => `<button type="button" data-notification-id="${escapeHTML(item.id)}" data-route="${escapeHTML(buildRouteWithReturn(item.route, "/dashboard"))}"><i aria-hidden="true"></i><span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.description)}</small></span><time>${escapeHTML(item.time)}</time></button>`).join("");
 }
 
+function renderTrackers(order) {
+  const trackers = order.trackers?.length ? order.trackers : [order.tracker].filter(Boolean);
+  return trackers.map((tracker) => `<span class="dashboard-tracker-tag tracker-tag" data-tracker="${escapeHTML(tracker)}">${escapeHTML(tracker)}</span>`).join("") || "—";
+}
+
 function renderOrderRows(orders) {
   if (orders.length === 0) {
     return `
@@ -50,7 +55,7 @@ function renderOrderRows(orders) {
             <strong>${escapeHTML(order.productName)}</strong>
           </td>
           <td><span class="dashboard-category-tag" data-category="${escapeHTML(order.category)}">${escapeHTML(order.category)}</span></td>
-          <td class="tracker-cell"><span class="dashboard-tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></td>
+          <td class="tracker-cell"><span class="tracker-tags">${renderTrackers(order)}</span></td>
           <td>${escapeHTML(order.factory)}</td>
           <td>${escapeHTML(order.nearestDue)}</td>
           <td>
@@ -69,7 +74,7 @@ function orderSortValue(order, key) {
     orderNo: order.orderNo,
     productName: order.productName,
     category: order.category,
-    tracker: order.tracker,
+    tracker: (order.trackers?.length ? order.trackers : [order.tracker]).join("、"),
     factory: order.factory,
     nearestDue: order.nearestDue,
     progress: order.progress,

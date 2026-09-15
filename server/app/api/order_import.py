@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Header, HTTPException, Query, Request, Response
-from pydantic import Field
+from pydantic import ConfigDict, Field, StrictInt
 
 from app.api.orders import ApiModel
 from app.modules.identity_access import IdentityAccessService, PermissionDenied, SessionInvalid
@@ -55,6 +55,7 @@ class CandidateResponse(ApiModel):
     validation_issues: list[str]
     order_date: date | None
     tracker: str | None
+    trackers: list[str]
     contract_ship_date: date | None
     category: str | None
     total_quantity: int | None
@@ -76,6 +77,28 @@ class CandidateListResponse(ApiModel):
 class CandidateDateWrite(ApiModel):
     version: int = Field(gt=0, strict=True)
     contract_ship_date: date | None
+
+
+class CandidateLineWrite(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+    version: StrictInt = Field(gt=0)
+    factory_id: str | None = Field(default=None, min_length=1)
+    contract_ship_date: date | None = None
+    shipped_quantity: StrictInt | None = Field(default=None, ge=0)
+
+
+class CandidateLineBatchItemWrite(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+    candidate_line_id: StrictInt = Field(gt=0)
+    factory_id: str | None = Field(default=None, min_length=1)
+    contract_ship_date: date | None = None
+    shipped_quantity: StrictInt | None = Field(default=None, ge=0)
+
+
+class CandidateLinesWrite(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+    version: StrictInt = Field(gt=0)
+    lines: list[CandidateLineBatchItemWrite] = Field(min_length=1, max_length=100)
 
 
 class BatchConfirmWrite(ApiModel):
@@ -245,6 +268,35 @@ def create_order_import_router(
             raise HTTPException(status_code=404) from error
 
     @router.patch(
+        "/import-candidates/{candidate_id}/lines",
+        response_model=CandidateResponse,
+    )
+    def save_candidate_lines(
+        candidate_id: str,
+        payload: CandidateLinesWrite,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> CandidateResponse:
+        actor = admin(ot_web_session, x_csrf_token, write=True)
+        try:
+            return _candidate_response(service.save_candidate_lines(
+                actor_id=actor.user_id,
+                candidate_id=candidate_id,
+                version=payload.version,
+                updates=[
+                    (
+                        line.candidate_line_id,
+                        line.model_dump(exclude={"candidate_line_id"}, exclude_unset=True),
+                    )
+                    for line in payload.lines
+                ],
+                request_id=request.state.request_id,
+            ))
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @router.patch(
         "/import-candidates/{candidate_id}/lines/{candidate_line_id}/date",
         response_model=CandidateResponse,
     )
@@ -268,6 +320,29 @@ def create_order_import_router(
                     request_id=request.state.request_id,
                 )
             )
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @router.patch(
+        "/import-candidates/{candidate_id}/lines/{candidate_line_id}",
+        response_model=CandidateResponse,
+    )
+    def save_candidate_line(
+        candidate_id: str,
+        candidate_line_id: int,
+        payload: CandidateLineWrite,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> CandidateResponse:
+        actor = admin(ot_web_session, x_csrf_token, write=True)
+        changes = payload.model_dump(exclude={"version"}, exclude_unset=True)
+        try:
+            return _candidate_response(service.save_candidate_fields(
+                actor_id=actor.user_id, candidate_id=candidate_id,
+                candidate_line_id=candidate_line_id, version=payload.version,
+                changes=changes, request_id=request.state.request_id,
+            ))
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 

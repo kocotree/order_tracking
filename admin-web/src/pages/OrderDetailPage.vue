@@ -11,7 +11,7 @@
               <span class="status-badge" :class="statusTone(order)"><i aria-hidden="true"></i>{{ order.displayStatus }}</span>
               <button v-if="order.lifecycle === 'DRAFT' && !order.detailMode" class="detail-primary-button" type="button" @click="openAction('publish')">发布订单</button>
               <button class="detail-outline-button" type="button" data-testid="contract-export-open" :disabled="!contractButtonEnabled" :title="contractButtonTitle" @click="openContractExport">导出加工合同</button>
-              <button v-if="order.lifecycle !== 'DRAFT'" class="detail-outline-button" type="button" :disabled="interactionBusy || hasUnsavedDates" @click="openWithdrawal">撤回派工</button>
+              <button v-if="order.lifecycle !== 'DRAFT'" class="detail-outline-button" type="button" :disabled="interactionBusy || hasUnsavedDetails" @click="openWithdrawal">撤回派工</button>
               <button v-if="order.lifecycle === 'PUBLISHED'" class="detail-primary-button" type="button" :disabled="!canComplete || interactionBusy" @click="openAction('complete')">确认订单完成</button>
               <button v-if="order.lifecycle === 'COMPLETED'" class="detail-outline-button" type="button" @click="openAction('reopen')">撤销完成</button>
             </div>
@@ -19,7 +19,7 @@
           <div class="detail-overview-content">
             <dl class="detail-summary-grid">
               <div><dt>分类</dt><dd><span v-for="category in categories" :key="category" class="category-tag">{{ category }}</span></dd></div>
-              <div><dt>跟单人员</dt><dd><span class="tracker-tag" :data-tracker="order.tracker">{{ order.tracker ?? "—" }}</span></dd></div>
+              <div><dt>跟单人员</dt><dd><span v-for="tracker in order.trackers" :key="tracker" class="tracker-tag" :data-tracker="tracker">{{ tracker }}</span><span v-if="!order.trackers.length">—</span></dd></div>
               <div><dt>合同出货时间</dt><dd class="detail-due-date">{{ order.contractShipDates.join("、") || "—" }}</dd></div>
               <div><dt>订单数量</dt><dd class="detail-summary-number">{{ number(order.totalQuantity) }}</dd></div>
               <div><dt>已发数量</dt><dd class="detail-summary-number">{{ number(order.shippedQuantity) }}</dd></div>
@@ -33,8 +33,10 @@
           <header class="detail-section-header">
             <div class="dispatch-heading"><h2>订单明细</h2><span v-if="order.detailMode" class="dispatch-count">已派工 {{ dispatchedCount }}/{{ detailRows.length }} 条 · {{ dispatchProgressLabel }}</span></div>
             <div v-if="hasUnassigned" class="dispatch-actions">
-              <button class="detail-outline-button" type="button" :disabled="interactionBusy || hasUnsavedDates || sourcePreview !== null" @click="previewSource">更新未派工明细</button>
-              <button class="detail-primary-button" type="button" :disabled="!selectedDetails.size || interactionBusy || hasUnsavedDates || sourcePreview !== null" @click="previewDispatch">派工（已选 {{ selectedDetails.size }} 条）</button>
+              <span v-if="hasUnsavedDetails" class="detail-unsaved-label">有未保存修改</span>
+              <button class="detail-primary-button" type="button" :disabled="interactionBusy || !hasUnsavedDetails" @click="saveDetailLines">{{ savingDetails ? '保存中…' : '保存' }}</button>
+              <button class="detail-outline-button" type="button" :disabled="interactionBusy || hasUnsavedDetails || sourcePreview !== null" @click="previewSource">更新未派工明细</button>
+              <button class="detail-primary-button" type="button" :disabled="!selectedDetails.size || interactionBusy || hasUnsavedDetails || sourcePreview !== null" @click="previewDispatch">派工（已选 {{ selectedDetails.size }} 条）</button>
             </div>
           </header>
           <p v-if="sourceError" class="page-error" role="alert">{{ sourceError }}</p>
@@ -42,18 +44,18 @@
           <div class="detail-table-scroll">
             <table class="data-grid-table product-detail-table dispatch-table" :class="{ 'has-selection': hasUnassigned }">
               <colgroup>
-                <col v-if="hasUnassigned" style="width:40px">
-                <col style="width:52px">
-                <col style="width:160px">
-                <col>
-                <col style="width:130px">
-                <col style="width:125px">
-                <col style="width:90px">
-                <col style="width:170px">
-                <col style="width:105px">
-                <col style="width:105px">
-                <col style="width:95px">
-                <col style="width:135px">
+                <col v-if="hasUnassigned" class="dispatch-select-col">
+                <col class="dispatch-sequence-col">
+                <col class="dispatch-code-col">
+                <col class="dispatch-name-col">
+                <col class="dispatch-properties-col">
+                <col class="dispatch-factory-col">
+                <col class="dispatch-state-col">
+                <col class="dispatch-date-col">
+                <col class="dispatch-quantity-col">
+                <col class="dispatch-quantity-col">
+                <col class="dispatch-pending-col">
+                <col class="dispatch-progress-col">
               </colgroup>
               <thead><tr>
                 <th v-if="hasUnassigned" class="dispatch-check"><input type="checkbox" :checked="allSelected" :disabled="interactionBusy" aria-label="选择全部未派工明细" @change="toggleAll($event)"></th>
@@ -68,15 +70,16 @@
                 <td class="dispatch-code">{{ row.skuId }}</td>
                 <td class="dispatch-name" :title="row.productName">{{ row.productName }}</td>
                 <td>{{ row.propertiesValue }}</td>
-                <td :title="row.factoryName">{{ row.factoryName }}</td>
+                <td :title="row.factoryName"><input v-if="isEditable(row.key)" v-model="detailDraft(row.key).factoryName" list="order-factory-options" :aria-label="`第${index + 1}条工厂`" :disabled="interactionBusy"><template v-else>{{ row.factoryName }}</template></td>
                 <td><span class="status-badge" :class="row.dispatched ? 'is-info' : 'is-draft'">{{ row.dispatched ? '已派工' : '未派工' }}</span></td>
-                <td><input v-if="isEditable(row.key)" class="source-contract-date" type="date" :aria-label="`第${index + 1}条合同出货时间`" :value="dateDrafts[row.key] ?? row.contractShipDate" :disabled="interactionBusy || sourcePreview !== null || dispatchSourcePreview !== null" @input="dateDrafts[row.key] = ($event.target as HTMLInputElement).value" @blur="saveDetailDate(row.key)"><template v-else>{{ row.contractShipDate || "—" }}</template></td>
+                <td><input v-if="isEditable(row.key)" v-model="detailDraft(row.key).contractShipDate" class="source-contract-date" type="date" :aria-label="`第${index + 1}条合同出货时间`" :disabled="interactionBusy || sourcePreview !== null || dispatchSourcePreview !== null"><template v-else>{{ row.contractShipDate || "—" }}</template></td>
                 <td class="detail-number">{{ number(row.orderQuantity) }}</td>
-                <td class="detail-number">{{ number(row.shippedQuantity) }}</td>
-                <td class="detail-number">{{ number(row.pendingQuantity) }}</td>
-                <td><span class="detail-progress"><span><i :style="{ width: `${Math.min(row.progressPercent ?? 0, 100)}%` }"></i></span><em>{{ row.progressPercent == null ? "—" : `${row.progressPercent}%` }}</em></span></td>
+                <td class="detail-number"><input v-if="isEditable(row.key)" :value="detailDraft(row.key).shippedQuantity" type="number" min="0" step="1" :aria-label="`第${index + 1}条已发数量`" :disabled="interactionBusy" @input="changeDetailShipped(row, $event)"><template v-else>{{ number(row.shippedQuantity) }}</template></td>
+                <td class="detail-number"><input v-if="isEditable(row.key)" :value="detailDraft(row.key).pendingQuantity" type="number" min="0" :max="row.orderQuantity ?? undefined" step="1" :aria-label="`第${index + 1}条未发数量`" :disabled="interactionBusy || row.orderQuantity == null" @input="changeDetailPending(row, $event)"><template v-else>{{ number(row.pendingQuantity) }}</template></td>
+                <td><span class="detail-progress"><span><i :style="{ width: `${Math.min(displayProgress(row) ?? 0, 100)}%` }"></i></span><em>{{ displayProgress(row) == null ? "—" : `${displayProgress(row)}%` }}</em></span></td>
               </tr></tbody>
             </table>
+            <datalist id="order-factory-options"><option v-for="factory in factories" :key="factory.factoryId" :value="factory.factoryName" /></datalist>
           </div>
         </section>
 
@@ -114,7 +117,7 @@
       <dialog ref="sourceDialog" class="modal source-update-modal" aria-labelledby="source-update-title" @cancel="cancelSource" @close="onSourceClosed">
         <header><h2 id="source-update-title">更新未派工明细</h2><button type="button" aria-label="关闭" :disabled="sourceBusy" @click="cancelSource">×</button></header>
         <div class="modal-body">
-          <p>{{ sourcePreview?.differences.length ? '来源资料有变化，请确认后更新。已派工明细和人工填写的合同出货时间保持不变。' : '未派工明细没有可更新的来源变化，人工填写的合同出货时间已保留。' }}</p>
+          <p>{{ sourcePreview?.differences.length ? '来源资料有变化，请确认后更新。已派工明细和人工保存的工厂、合同出货时间、已发/未发数量保持不变。' : '未派工明细没有可更新的来源变化，人工保存的工厂、合同出货时间、已发/未发数量已保留。' }}</p>
           <table v-if="sourcePreview?.differences.length"><thead><tr><th>明细</th><th>字段</th><th>当前值</th><th>来源新值</th></tr></thead><tbody><tr v-for="(change, index) in sourcePreview.differences" :key="index"><td>{{ change.label }}</td><td>{{ change.field }}</td><td>{{ change.before ?? '—' }}</td><td>{{ change.after ?? '—' }}</td></tr></tbody></table>
           <p v-if="sourceError" class="page-error" role="alert">{{ sourceError }}</p>
         </div>
@@ -124,7 +127,7 @@
       <dialog ref="dispatchDialog" class="modal dispatch-modal" aria-labelledby="dispatch-dialog-title" @cancel="cancelDispatch" @close="onDispatchClosed">
         <header><h2 id="dispatch-dialog-title">{{ dispatchStep === 'source' ? '更新未派工明细' : '确认派工' }}</h2><button type="button" aria-label="关闭" :disabled="dispatchBusy" @click="cancelDispatch">×</button></header>
         <div class="modal-body" v-if="dispatchStep === 'source'">
-          <p>来源资料有变化，请确认后继续派工。已派工明细和人工填写的合同出货时间保持不变。</p>
+          <p>来源资料有变化，请确认后继续派工。已派工明细和人工保存的工厂、合同出货时间、已发/未发数量保持不变。</p>
           <table><thead><tr><th>明细</th><th>字段</th><th>当前值</th><th>来源新值</th></tr></thead><tbody><tr v-for="(change, index) in dispatchSourcePreview?.differences ?? []" :key="index"><td>{{ change.label }}</td><td>{{ change.field }}</td><td>{{ change.before ?? '—' }}</td><td>{{ change.after ?? '—' }}</td></tr></tbody></table>
         </div>
         <div class="modal-body" v-else>
@@ -175,7 +178,7 @@
 import { sortedCategories } from "@/productCategories";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, contractApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview } from "@/api/client";
+import { ApiError, contractApi, identityApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 
 const relatedShipments = ref<Shipment[]>([]);
@@ -191,9 +194,11 @@ async function loadShipments() {
 type Action = "publish" | "delete" | "complete" | "reopen";
 type DetailSortKey = "skuId" | "productName" | "propertiesValue" | "factoryName" | "dispatched" | "contractShipDate" | "orderQuantity" | "shippedQuantity" | "pendingQuantity" | "progressPercent";
 type DetailRow = { key: string; skuId: string; productName: string; propertiesValue: string; factoryName: string; dispatched: boolean; contractShipDate: string; orderQuantity: number | null; shippedQuantity: number | null; pendingQuantity: number | null; progressPercent: number | null };
+type DetailDraft = { factoryName: string; contractShipDate: string; shippedQuantity: string; pendingQuantity: string };
 const detailColumns: { key: DetailSortKey; label: string }[] = [{ key: "skuId", label: "产品编码" }, { key: "productName", label: "产品名称" }, { key: "propertiesValue", label: "颜色/规格" }, { key: "factoryName", label: "工厂" }, { key: "dispatched", label: "派工状态" }, { key: "contractShipDate", label: "合同出货时间" }, { key: "orderQuantity", label: "下单数量" }, { key: "shippedQuantity", label: "已发数量" }, { key: "pendingQuantity", label: "未发数量" }, { key: "progressPercent", label: "发货进度" }];
 const route = useRoute(); const router = useRouter(); let orderId = String(route.params.orderId);
 const order = ref<Order | null>(null); const loading = ref(true); const errorMessage = ref(""); const pendingAction = ref<Action | null>(null); const reopenReason = ref(""); const actionError = ref(""); const acting = ref(false); const detailSortKey = ref<DetailSortKey | null>(null); const detailSortOrder = ref<"asc" | "desc">("asc");
+const factories = ref<Awaited<ReturnType<typeof identityApi.listFactoryOptions>>["items"]>([]);
 
 const withdrawalDialog = ref<HTMLDialogElement | null>(null);
 const withdrawalFactories = ref<Awaited<ReturnType<typeof orderApi.withdrawalFactories>>>([]);
@@ -203,7 +208,7 @@ const withdrawalError = ref("");
 let withdrawalKey = "";
 const canComplete = computed(() => detailRows.value.length > 0 && detailRows.value.every(row => row.dispatched && row.pendingQuantity === 0));
 async function openWithdrawal() {
-  if (!order.value || interactionBusy.value || hasUnsavedDates.value) return;
+  if (!order.value || interactionBusy.value || hasUnsavedDetails.value) return;
   const target = orderId;
   withdrawalFactory.value = ""; withdrawalError.value = ""; withdrawalFactories.value = [];
   withdrawalKey = crypto.randomUUID(); withdrawalBusy.value = true;
@@ -223,7 +228,7 @@ async function confirmWithdrawal() {
   try {
     const saved = await orderApi.withdrawFactory(target, withdrawalFactory.value, order.value.version, withdrawalKey);
     if (target !== orderId) return;
-    order.value = saved; selectedDetails.value.clear(); dateDrafts.value = {};
+    order.value = saved; selectedDetails.value.clear(); resetDetailDrafts();
     withdrawalDialog.value?.close();
     await Promise.all([loadAudit(), loadContracts()]);
   } catch (error) { if (target === orderId) withdrawalError.value = error instanceof ApiError ? error.message : "撤回失败，请重试"; }
@@ -233,7 +238,8 @@ async function confirmWithdrawal() {
 // Source update state
 const sourceBusy = ref(false);
 const sourceError = ref("");
-const dateDrafts = ref<Record<string, string>>({});
+const detailDrafts = ref<Record<string, DetailDraft>>({});
+const savingDetails = ref(false);
 const sourcePreview = ref<SourcePreview | null>(null);
 const sourceDialog = ref<HTMLDialogElement | null>(null);
 let sourceEpoch = 0;
@@ -250,7 +256,7 @@ const selectedDetails = ref(new Set<string>());
 let dispatchKey = "";
 let dispatchSourceKey = "";
 let dispatchEpoch = 0;
-const interactionBusy = computed(() => sourceBusy.value || dispatchBusy.value || withdrawalBusy.value || acting.value);
+const interactionBusy = computed(() => sourceBusy.value || dispatchBusy.value || withdrawalBusy.value || acting.value || savingDetails.value);
 
 const isEditable = (id: string) => order.value?.detailMode ? order.value.details.find((row) => row.detailId === id && row.dispatchState === "UNASSIGNED") : undefined;
 const hasUnassigned = computed(() => order.value?.detailMode && order.value.details.some((row) => row.dispatchState === "UNASSIGNED"));
@@ -281,29 +287,96 @@ function toggleRow(key: string, event: Event) {
   else selectedDetails.value.delete(key);
 }
 
-const hasUnsavedDates = computed(() => Object.entries(dateDrafts.value).some(([id, value]) => value !== (isEditable(id)?.contractShipDate ?? "")));
+const detailDraft = (id: string) => detailDrafts.value[id]!;
+function resetDetailDrafts() {
+  detailDrafts.value = Object.fromEntries((order.value?.details ?? [])
+    .filter((detail) => detail.dispatchState === "UNASSIGNED")
+    .map((detail) => [detail.detailId, {
+      factoryName: detail.factoryName ?? "",
+      contractShipDate: detail.contractShipDate ?? "",
+      shippedQuantity: detail.shippedQuantity == null ? "" : String(detail.shippedQuantity),
+      pendingQuantity: detail.pendingQuantity == null ? "" : String(detail.pendingQuantity),
+    }]));
+}
+const hasUnsavedDetails = computed(() => (order.value?.details ?? []).some((detail) => {
+  const draft = detailDrafts.value[detail.detailId];
+  return detail.dispatchState === "UNASSIGNED" && draft && (
+    draft.factoryName !== (detail.factoryName ?? "")
+    || draft.contractShipDate !== (detail.contractShipDate ?? "")
+    || draft.shippedQuantity !== (detail.shippedQuantity == null ? "" : String(detail.shippedQuantity))
+    || draft.pendingQuantity !== (detail.pendingQuantity == null ? "" : String(detail.pendingQuantity))
+  );
+}));
+function draftShipped(row: DetailRow) {
+  const raw = detailDrafts.value[row.key]?.shippedQuantity ?? row.shippedQuantity;
+  if (raw === "" || raw == null) return null;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+function displayProgress(row: DetailRow) {
+  const shipped = draftShipped(row);
+  return !row.orderQuantity || shipped == null ? null : Math.round(shipped * 100 / row.orderQuantity);
+}
+function changeDetailShipped(row: DetailRow, event: Event) {
+  const value = (event.target as HTMLInputElement).value;
+  const draft = detailDraft(row.key);
+  draft.shippedQuantity = value;
+  const quantity = Number(value);
+  draft.pendingQuantity = row.orderQuantity != null && value !== "" && Number.isInteger(quantity) && quantity >= 0 ? String(Math.max(row.orderQuantity - quantity, 0)) : "";
+  sourceError.value = "";
+}
+function changeDetailPending(row: DetailRow, event: Event) {
+  const value = (event.target as HTMLInputElement).value;
+  const draft = detailDraft(row.key);
+  draft.pendingQuantity = value;
+  const quantity = Number(value);
+  if (row.orderQuantity != null && value !== "" && Number.isInteger(quantity) && quantity >= 0 && quantity <= row.orderQuantity) draft.shippedQuantity = String(row.orderQuantity - quantity);
+  sourceError.value = "";
+}
 function currentSource(epoch: number, id: string) { return epoch === sourceEpoch && String(route.params.orderId) === id; }
 function currentDispatch(epoch: number, id: string) { return epoch === dispatchEpoch && String(route.params.orderId) === id; }
 
-async function saveDetailDate(id: string) {
-  const detail = isEditable(id);
-  if (!order.value || !detail || interactionBusy.value || sourcePreview.value || dispatchSourcePreview.value) return;
-  const value = dateDrafts.value[id];
-  if (value === undefined || value === (detail.contractShipDate ?? "")) return;
-  const epoch = ++sourceEpoch, target = orderId;
-  sourceBusy.value = true; sourceError.value = "";
+async function saveDetailLines() {
+  if (!order.value || !hasUnsavedDetails.value || interactionBusy.value) return;
+  const factoryByName = new Map(factories.value.map((factory) => [factory.factoryName, factory.factoryId]));
+  let lines;
   try {
-    const saved = await orderApi.saveDetailDate(target, id, order.value.version, detail.version, value || null);
-    if (!currentSource(epoch, target)) return;
-    order.value = saved; delete dateDrafts.value[id];
-    void loadAudit();
+    lines = order.value.details.flatMap((detail) => {
+      if (detail.dispatchState !== "UNASSIGNED") return [];
+      const draft = detailDrafts.value[detail.detailId];
+      if (!draft) return [];
+      const factoryChanged = draft.factoryName !== (detail.factoryName ?? "");
+      const dateChanged = draft.contractShipDate !== (detail.contractShipDate ?? "");
+      const shippedChanged = draft.shippedQuantity !== (detail.shippedQuantity == null ? "" : String(detail.shippedQuantity));
+      const pendingChanged = draft.pendingQuantity !== (detail.pendingQuantity == null ? "" : String(detail.pendingQuantity));
+      if (!factoryChanged && !dateChanged && !shippedChanged && !pendingChanged) return [];
+      const quantity = Number(draft.shippedQuantity);
+      const pendingQuantity = Number(draft.pendingQuantity);
+      if (factoryChanged && !factoryByName.has(draft.factoryName)) throw new Error("请选择已有工厂");
+      if (shippedChanged && (draft.shippedQuantity === "" || !Number.isInteger(quantity) || quantity < 0)) throw new Error("已发数量必须为非负整数");
+      if (pendingChanged && (detail.orderQuantity == null || draft.pendingQuantity === "" || !Number.isInteger(pendingQuantity) || pendingQuantity < 0 || pendingQuantity > detail.orderQuantity)) throw new Error("未发数量必须为不超过下单数量的非负整数");
+      return [{ detailId: detail.detailId, detailVersion: detail.version,
+        ...(factoryChanged ? { factoryId: factoryByName.get(draft.factoryName)! } : {}),
+        ...(dateChanged ? { contractShipDate: draft.contractShipDate || null } : {}),
+        ...(shippedChanged ? { shippedQuantity: quantity } : {}),
+      }];
+    });
   } catch (error) {
-    if (currentSource(epoch, target)) sourceError.value = error instanceof ApiError ? `${error.message}；日期尚未保存，请重试，版本冲突时刷新页面。` : "日期保存失败，输入已保留，请重新聚焦后离开输入框重试。";
-  } finally { if (currentSource(epoch, target)) sourceBusy.value = false; }
+    sourceError.value = error instanceof Error ? error.message : "订单明细保存失败";
+    return;
+  }
+  savingDetails.value = true; sourceError.value = "";
+  try {
+    order.value = await orderApi.saveDetailLines(orderId, { version: order.value.version, lines });
+    resetDetailDrafts();
+    await loadAudit();
+  } catch (error) {
+    sourceError.value = error instanceof ApiError && error.status === 409 ? "资料已更新，请刷新页面后重新填写" : error instanceof Error ? error.message : "订单明细保存失败";
+  } finally { savingDetails.value = false; }
 }
 
 async function previewSource() {
-  if (!order.value || interactionBusy.value || hasUnsavedDates.value || sourcePreview.value) return;
+  if (!order.value || interactionBusy.value || hasUnsavedDetails.value || sourcePreview.value) return;
   const epoch = ++sourceEpoch, target = orderId;
   sourceBusy.value = true; sourceError.value = "";
   try {
@@ -329,7 +402,7 @@ async function confirmSource() {
   try {
     const saved = await orderApi.confirmSource(target, preview.version, preview.previewId, sourceKey);
     if (!currentSource(epoch, target)) return;
-    order.value = saved; sourcePreview.value = null; sourceDialog.value?.close();
+    order.value = saved; resetDetailDrafts(); sourcePreview.value = null; sourceDialog.value?.close();
     void loadAudit();
   } catch (error) {
     if (currentSource(epoch, target)) sourceError.value = error instanceof ApiError ? error.message : "来源更新失败，请重试。";
@@ -338,7 +411,7 @@ async function confirmSource() {
 
 // Dispatch flow: preview → (source changes?) → confirm
 async function previewDispatch() {
-  if (!order.value || interactionBusy.value || hasUnsavedDates.value || sourcePreview.value || selectedDetails.value.size === 0) return;
+  if (!order.value || interactionBusy.value || hasUnsavedDetails.value || sourcePreview.value || selectedDetails.value.size === 0) return;
   const epoch = ++dispatchEpoch, target = orderId;
   dispatchBusy.value = true; dispatchError.value = "";
   const detailIds = [...selectedDetails.value];
@@ -375,7 +448,7 @@ async function confirmDispatchSource() {
   try {
     const saved = await orderApi.confirmSource(target, source.version, source.previewId, dispatchSourceKey);
     if (!currentDispatch(epoch, target)) return;
-    order.value = saved;
+    order.value = saved; resetDetailDrafts();
     const detailIds = [...selectedDetails.value];
     const preview = await orderApi.dispatchPreview(target, saved.version, detailIds);
     if (!currentDispatch(epoch, target)) return;
@@ -401,7 +474,7 @@ async function confirmDispatchAction() {
   try {
     const saved = await orderApi.dispatchConfirm(target, preview.version, preview.previewId, dispatchKey);
     if (!currentDispatch(epoch, target)) return;
-    order.value = saved;
+    order.value = saved; resetDetailDrafts();
     selectedDetails.value.clear();
     dispatchPreview.value = null;
     dispatchDialog.value?.close();
@@ -419,7 +492,7 @@ watch(() => route.params.orderId, () => {
   sourcePreview.value = null; sourceDialog.value?.close(); sourceError.value = "";
   dispatchPreview.value = null; dispatchDialog.value?.close(); dispatchError.value = "";
   dispatchSourcePreview.value = null; selectedDetails.value.clear();
-  dateDrafts.value = {}; order.value = null; relatedShipments.value = []; auditLogs.value = [];
+  detailDrafts.value = {}; order.value = null; relatedShipments.value = []; auditLogs.value = [];
   withdrawalDialog.value?.close(); withdrawalBusy.value = false;
   contractFactories.value = []; pendingAction.value = null; contractDialogOpen.value = false;
   void load();
@@ -470,10 +543,15 @@ async function load() {
     const result = await orderApi.get(target);
     if (target !== orderId) return;
     order.value = result;
+    resetDetailDrafts();
     await Promise.all([loadShipments(), loadAudit(), loadContracts()]);
   } catch (error) {
     if (target === orderId) errorMessage.value = error instanceof ApiError && error.status === 404 && route.query?.notificationReturnTo ? "内容已不可查看" : error instanceof ApiError ? error.message : "订单详情加载失败";
   } finally { if (target === orderId) loading.value = false; }
+}
+async function loadFactoryOptions() {
+  try { factories.value = (await identityApi.listFactoryOptions()).items; }
+  catch { factories.value = []; }
 }
 function goBack() { return router.push(typeof route.query.notificationReturnTo === "string" ? route.query.notificationReturnTo : "/orders"); }
 function selectContractFactory(factory: ContractFactoryStatus) { selectedContractFactory.value = factory; contractSigningDate.value = factory.signingDate || localDate(); contractError.value = ""; }
@@ -481,7 +559,7 @@ function openContractExport() { if (!order.value) return; contractError.value = 
 function closeContractExport() { contractDialogOpen.value = false; selectedContractFactory.value = null; contractError.value = ""; }
 async function confirmContractExport() { const factory = selectedContractFactory.value; if (!factory || !contractSigningDate.value) return; exportingContract.value = true; contractError.value = ""; try { const exported = await contractApi.export(orderId, factory.factoryId, contractSigningDate.value); await contractApi.download(exported); closeContractExport(); await loadContracts(); } catch (error) { contractError.value = error instanceof ApiError ? error.message : "加工合同导出失败"; } finally { exportingContract.value = false; } }
 async function confirmAction() { if (!order.value || !pendingAction.value) return; acting.value = true; actionError.value = ""; try { const action = pendingAction.value; if (action === "delete") { await orderApi.delete(orderId); await router.replace("/orders"); return; } if (action === "publish") await orderApi.publish(orderId, order.value.version); if (action === "complete") await orderApi.complete(orderId); if (action === "reopen") await orderApi.reopen(orderId, reopenReason.value); pendingAction.value = null; await load(); } catch (error) { actionError.value = error instanceof ApiError ? error.message : "订单操作失败"; } finally { acting.value = false; } }
-onMounted(load);
+onMounted(() => { void Promise.all([load(), loadFactoryOptions()]); });
 </script>
 
 <style scoped>
@@ -500,6 +578,7 @@ onMounted(load);
 .dispatch-page .detail-section-header { height: 54px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; }
 .dispatch-page .detail-section-header h2 { font-size: 18px; }
 .dispatch-heading, .dispatch-actions { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
+.detail-unsaved-label { color: #9a6700; font-size: 12px; font-weight: 700; }
 .dispatch-count { color: var(--muted); font-size: 13px; font-weight: 500; }
 .dispatch-table { width: 100%; min-width: 1550px; table-layout: fixed; border-collapse: collapse; font-size: 14px; }
 .dispatch-table th, .dispatch-table td { box-sizing: border-box; border: 1px solid #dde1e7; padding: 0 14px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -508,8 +587,26 @@ onMounted(load);
 .dispatch-table .dispatch-seq { width: 52px; min-width: 52px; max-width: 52px; padding: 0 8px; text-align: center; font-weight: 700; }
 .dispatch-table th.dispatch-seq { font-weight: 800; }
 .dispatch-table .dispatch-check { width: 40px; min-width: 40px; max-width: 40px; padding: 0 8px; text-align: center; }
-.dispatch-table .dispatch-name-column, .dispatch-table .dispatch-name { width: calc(100% - 1167px); }
-.dispatch-table.has-selection .dispatch-name-column, .dispatch-table.has-selection .dispatch-name { width: calc(100% - 1207px); }
+.dispatch-table .dispatch-select-col { width: 40px; }
+.dispatch-table .dispatch-sequence-col { width: 52px; }
+.dispatch-table .dispatch-code-col { width: 10.680908%; }
+.dispatch-table .dispatch-name-col { width: 25.567423%; }
+.dispatch-table .dispatch-properties-col { width: 8.678238%; }
+.dispatch-table .dispatch-factory-col { width: 8.344459%; }
+.dispatch-table .dispatch-state-col { width: 6.008011%; }
+.dispatch-table .dispatch-date-col { width: 11.348465%; }
+.dispatch-table .dispatch-quantity-col { width: 7.009346%; }
+.dispatch-table .dispatch-pending-col { width: 6.341789%; }
+.dispatch-table .dispatch-progress-col { width: 9.012016%; }
+.dispatch-table.has-selection .dispatch-code-col { width: 10.973937%; }
+.dispatch-table.has-selection .dispatch-name-col { width: 23.525377%; }
+.dispatch-table.has-selection .dispatch-properties-col { width: 8.916324%; }
+.dispatch-table.has-selection .dispatch-factory-col { width: 8.573388%; }
+.dispatch-table.has-selection .dispatch-state-col { width: 6.17284%; }
+.dispatch-table.has-selection .dispatch-date-col { width: 11.659808%; }
+.dispatch-table.has-selection .dispatch-quantity-col { width: 7.201646%; }
+.dispatch-table.has-selection .dispatch-pending-col { width: 6.515775%; }
+.dispatch-table.has-selection .dispatch-progress-col { width: 9.259259%; }
 .dispatch-table input:not([type=checkbox]) { width: 100%; min-width: 0; height: 32px; padding: 0 7px; border: 1px solid #d3dbe6; border-radius: 4px; background: white; color: inherit; font: inherit; }
 .dispatch-table input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--erp-blue); }
 .dispatch-table .dispatch-code { color: var(--erp-blue-dark); font-weight: 700; }

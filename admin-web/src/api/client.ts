@@ -22,9 +22,14 @@ export type DashboardOrders = components["schemas"]["DashboardResponse"];
 export type DraftCreate = components["schemas"]["app__api__orders__DraftCreate"];
 export type DraftUpdate = components["schemas"]["DraftUpdate"];
 export type AuditLogList = components["schemas"]["AuditLogListResponse"];
+export type CandidateAuditList = components["schemas"]["AuditListResponse"];
 export type ImportRun = components["schemas"]["ImportRunResponse"];
 export type ImportCandidate = components["schemas"]["CandidateResponse"];
 export type ImportCandidateList = components["schemas"]["CandidateListResponse"];
+export type CandidateLineWrite = components["schemas"]["CandidateLineWrite"];
+export type CandidateLinesWrite = components["schemas"]["CandidateLinesWrite"];
+export type DetailFieldsWrite = components["schemas"]["DetailFieldsWrite"];
+export type DetailFieldsBatchWrite = components["schemas"]["DetailFieldsBatchWrite"];
 export type BatchConfirmResult = components["schemas"]["BatchConfirmResponse"];
 export type User = components["schemas"]["UserResponse"];
 export type ContractFactoryStatus = components["schemas"]["ContractFactoryStatusResponse"];
@@ -329,6 +334,14 @@ export const orderApi = {
     request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/details/${encodeURIComponent(detailId)}/contract-date`, {
       method: "PATCH", body: JSON.stringify({ version, detailVersion, contractShipDate }),
     }),
+  saveDetailFields: (orderId: string, detailId: string, payload: DetailFieldsWrite) =>
+    request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/details/${encodeURIComponent(detailId)}`, {
+      method: "PATCH", body: JSON.stringify(payload),
+    }),
+  saveDetailLines: (orderId: string, payload: DetailFieldsBatchWrite) =>
+    request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/details`, {
+      method: "PATCH", body: JSON.stringify(payload),
+    }),
   previewSource: (orderId: string, version: number) =>
     request<SourcePreview>(`/v1/admin/orders/${encodeURIComponent(orderId)}/source-refresh/preview`, {
       method: "POST", body: JSON.stringify({ version }),
@@ -479,6 +492,16 @@ export const orderImportApi = {
     request<ImportCandidate>(`/v1/admin/import-candidates/${encodeURIComponent(candidateId)}/lines/${lineId}/date`, {
       method: "PATCH", body: JSON.stringify({ version, contractShipDate }),
     }),
+  saveLine: (candidateId: string, lineId: number, payload: CandidateLineWrite) =>
+    request<ImportCandidate>(`/v1/admin/import-candidates/${encodeURIComponent(candidateId)}/lines/${lineId}`, {
+      method: "PATCH", body: JSON.stringify(payload),
+    }),
+  saveLines: (candidateId: string, payload: CandidateLinesWrite) =>
+    request<ImportCandidate>(`/v1/admin/import-candidates/${encodeURIComponent(candidateId)}/lines`, {
+      method: "PATCH", body: JSON.stringify(payload),
+    }),
+  auditLogs: (candidateId: string) =>
+    request<CandidateAuditList>(`/v1/admin/audit-logs?targetType=order_import_candidate&targetId=${encodeURIComponent(candidateId)}&pageSize=100`),
   confirm: (candidateId: string, version?: number) =>
     request<{ orderId: string; requestId: string }>(
       `/v1/admin/import-candidates/${encodeURIComponent(candidateId)}/confirm`,

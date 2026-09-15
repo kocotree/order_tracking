@@ -7,6 +7,7 @@ import OrdersPage from "@/pages/OrdersPage.vue";
 
 const sampleOrder = {
   detailMode: false, details: [], orderId: "order-1", orderNo: "090#", source: "manual", orderDate: "2026-08-20", tracker: "橄榄",
+  trackers: ["橄榄", "松子"],
   contractShipDates: ["2026-08-25"], contractShipDate: "2026-08-25", lifecycle: "PUBLISHED", displayStatus: "未完成", version: 1,
   totalQuantity: 100, shippedQuantity: 20, pendingQuantity: 80, overQuantity: 0, shortQuantity: 0, progressPercent: 20,
   lines: [{ orderLineId: 1, variantId: "variant-1", skuId: "SKU-1", productName: "晴雨机能风衣", propertiesValue: "蓝色 / 120", category: "童装春夏", imageObjectKey: null, orderQuantity: 100, shippedQuantity: 20, pendingQuantity: 80, overQuantity: 0, shortQuantity: 0, progressPercent: 20, assignments: [] }],
@@ -32,7 +33,7 @@ describe("order list prototype alignment", () => {
     ]);
     expect(wrapper.findAll('.data-grid-sort-button')).toHaveLength(9);
     expect(wrapper.get('.status-badge').classes()).toContain('is-info');
-    expect(wrapper.get('.tracker-tag').attributes('data-tracker')).toBe('橄榄');
+    expect(wrapper.findAll('.tracker-tag').map((item) => item.text())).toEqual(['橄榄', '松子']);
 
     await wrapper.get('.order-select-field select').setValue("童装春夏");
     await flushPromises();

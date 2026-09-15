@@ -444,7 +444,7 @@ class NotificationsAuditService:
                 and message.channel == "wechat"
             )
             if due and user.role == "admin" and message.channel == "feishu":
-                allowed = name == order.tracker or (
+                allowed = name in self._order_trackers(order) or (
                     scope["node"] == "D-3" and name in {"煎饼", "核桃"}
                 )
             if allowed:
@@ -508,20 +508,20 @@ class NotificationsAuditService:
                     else f"订单 {order.order_no} 距合同出货还有 {days} 天"
                 )
                 summary = f"合同出货时间为 {due_date.isoformat()}，请及时跟进"
-                admin_users = list(
-                    session.scalars(
-                        select(User)
-                        .where(
-                            User.role == "admin",
-                            User.is_enabled.is_(True),
-                            or_(
-                                User.feishu_display_name == order.tracker,
-                                User.feishu_display_name.endswith(f"&{order.tracker}"),
-                            ),
-                        )
-                        .order_by(User.user_id)
-                    ).all()
-                )
+                names = self._order_trackers(order)
+                name_filters = [
+                    condition
+                    for name in names
+                    for condition in (
+                        User.feishu_display_name == name,
+                        User.feishu_display_name.endswith(f"&{name}"),
+                    )
+                ]
+                admin_users = list(session.scalars(
+                    select(User).where(
+                        User.role == "admin", User.is_enabled.is_(True), or_(*name_filters)
+                    ).order_by(User.user_id)
+                ).all()) if name_filters else []
                 if days == 3:
                     admin_users.extend(
                         session.scalars(
@@ -1397,8 +1397,8 @@ class NotificationsAuditService:
 
     @staticmethod
     def _shipment_tracker_recipient_ids(session: Session, shipment_id: str) -> set[str]:
-        trackers = session.scalars(
-            select(Order.tracker)
+        tracker_rows = session.execute(
+            select(Order.trackers, Order.tracker)
             .join(OrderLine, OrderLine.order_id == Order.order_id)
             .join(OrderAssignment, OrderAssignment.order_line_id == OrderLine.order_line_id)
             .join(
@@ -1410,6 +1410,11 @@ class NotificationsAuditService:
         ).all()
         admins = session.scalars(select(User).where(User.role == "admin")).all()
         recipients: set[str] = set()
+        trackers = list(dict.fromkeys(
+            tracker
+            for collection, legacy in tracker_rows
+            for tracker in (collection or ([legacy] if legacy else []))
+        ))
         for tracker in trackers:
             matches = [
                 user
@@ -1428,6 +1433,10 @@ class NotificationsAuditService:
                 continue
             recipients.add(matches[0].user_id)
         return recipients
+
+    @staticmethod
+    def _order_trackers(order: Order) -> list[str]:
+        return list(order.trackers or ([order.tracker] if order.tracker else []))
 
     @staticmethod
     def _admin_business_recipient_ids(session: Session) -> set[str]:

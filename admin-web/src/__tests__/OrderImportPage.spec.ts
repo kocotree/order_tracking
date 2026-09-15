@@ -20,6 +20,7 @@ const candidate = {
   validationIssues: [],
   orderDate: "2026-08-22",
   tracker: "松子",
+  trackers: ["松子", "青椒"],
   contractShipDates: ["2026-08-30"], contractShipDate: "2026-08-30",
   category: "童帽春夏",
   totalQuantity: 100,
@@ -54,6 +55,7 @@ describe("pending order import page", () => {
     expect(wrapper.text()).toContain("每页展示 10 条待导入订单");
     expect(wrapper.findAll("tbody input[type=checkbox]")[0].attributes("disabled")).toBeUndefined();
     expect(wrapper.findAll("tbody input[type=checkbox]")[1].attributes("disabled")).toBeUndefined();
+    expect(wrapper.findAll('.tracker-cell').at(0)?.findAll('.tracker-tag').map((item) => item.text())).toEqual(['松子', '青椒']);
 
     await wrapper.get(".import-category-filter").setValue("童帽春夏");
     await wrapper.get(".import-search-form").trigger("submit");

@@ -15,6 +15,11 @@ function renderMultiSelectOptions(values, attribute) {
   `).join("");
 }
 
+function renderTrackers(order) {
+  const trackers = order.trackers?.length ? order.trackers : [order.tracker].filter(Boolean);
+  return trackers.map((tracker) => `<span class="tracker-tag" data-tracker="${escapeHTML(tracker)}">${escapeHTML(tracker)}</span>`).join("") || "—";
+}
+
 function renderRows(orders, rowStart = 0, selectedOrderNos = new Set()) {
   if (orders.length === 0) {
     return `<tr><td colspan="9"><div class="empty-state"><div><span class="empty-state-mark">0</span><strong>没有符合当前条件的订单</strong><p>可以调整搜索词或筛选条件后重新查询。</p></div></div></td></tr>`;
@@ -30,7 +35,7 @@ function renderRows(orders, rowStart = 0, selectedOrderNos = new Set()) {
       <td><button class="row-link" type="button" data-import-detail="${escapeHTML(order.orderNo)}">${escapeHTML(order.orderNo)}</button></td>
       <td class="order-product-summary"><strong>${escapeHTML(order.productName)}</strong></td>
       <td><span class="category-tag is-${order.category === "帽子" ? "hat" : "clothing"}">${escapeHTML(order.category)}</span></td>
-      <td class="tracker-cell"><span class="tracker-tag" data-tracker="${escapeHTML(order.tracker)}">${escapeHTML(order.tracker)}</span></td>
+      <td class="tracker-cell"><span class="tracker-tags">${renderTrackers(order)}</span></td>
       <td>${escapeHTML(order.factory)}</td>
       <td><span class="status-badge is-${escapeHTML(order.tone)}">${escapeHTML(order.validationLabel)}</span></td>
       <td><button class="order-view-button" type="button" data-import-detail="${escapeHTML(order.orderNo)}">详情</button>${order.statusKey === "pending" ? `<button class="order-delete-button" type="button" data-delete-pending-import="${escapeHTML(order.orderNo)}">删除</button>` : ""}</td>
@@ -78,7 +83,7 @@ function renderDeletePendingImportDialog() {
 
 export function renderPendingImportListPage() {
   const factories = [...new Set(pendingImportData.orders.flatMap((item) => item.factory.split(/[、,，]/).map((value) => value.trim())))].sort();
-  const trackers = [...new Set(pendingImportData.orders.map((item) => item.tracker))].sort();
+  const trackers = [...new Set(pendingImportData.orders.flatMap((item) => item.trackers?.length ? item.trackers : [item.tracker]))].sort();
 
   return `
     <article class="order-list-page pending-import-page" data-pending-import-page>
@@ -213,7 +218,7 @@ export function bindPendingImportListPage() {
         && (!category || order.category === category)
         && (!validation || order.validationKey === validation)
         && (factories.length === 0 || factories.some((factory) => orderFactories.includes(factory)))
-        && (trackers.length === 0 || trackers.includes(order.tracker));
+        && (trackers.length === 0 || trackers.some((tracker) => (order.trackers?.length ? order.trackers : [order.tracker]).includes(tracker)));
     });
     currentOrders = sortState.key
       ? sortRows(filteredOrders, sortState, pendingOrderSortValue)

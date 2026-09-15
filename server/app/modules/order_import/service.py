@@ -1,6 +1,6 @@
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from typing import Any
@@ -91,6 +91,7 @@ class CandidateSnapshot:
     validation_issues: list[str]
     order_date: date | None
     tracker: str | None
+    trackers: list[str]
     contract_ship_date: date | None
     category: str | None
     total_quantity: int | None
@@ -133,6 +134,7 @@ class SourceOrderRow:
     raw_fields: dict[str, object]
     source_detail_id: str | None = None
     source_modified_at: datetime | None = None
+    trackers: tuple[str, ...] = ()
 
 
 class OrderImportService:
@@ -333,7 +335,7 @@ class OrderImportService:
                                 and (source.normalized_fields or {}).get(
                                     "contractDateMappingVersion"
                                 )
-                                == 3
+                                == 4
                             )
                         )
                     ):
@@ -341,7 +343,8 @@ class OrderImportService:
                         continue
                     if (
                         source.normalized_fields == normalized_fields
-                        and source.raw_fields == row.raw_fields
+                        and self._stable_raw_fields(source.raw_fields)
+                        == self._stable_raw_fields(row.raw_fields)
                     ):
                         source.source_detail_id = row.source_detail_id
                         source.raw_fields = row.raw_fields
@@ -640,7 +643,7 @@ class OrderImportService:
                     > 0
                 )
             if trackers:
-                query = query.where(candidate.tracker.collate("utf8mb4_0900_bin").in_(trackers))
+                query = query.where(func.json_overlaps(candidate.trackers, json.dumps(trackers)))
             if validation_state:
                 query = query.where(
                     candidate.validation_state.collate("utf8mb4_0900_bin") == validation_state
@@ -741,39 +744,197 @@ class OrderImportService:
         contract_ship_date: date | None,
         request_id: str,
     ) -> CandidateSnapshot:
+        return self.save_candidate_fields(
+            actor_id=actor_id,
+            candidate_id=candidate_id,
+            candidate_line_id=candidate_line_id,
+            version=version,
+            changes={"contract_ship_date": contract_ship_date},
+            request_id=request_id,
+        )
+
+    def save_candidate_fields(
+        self,
+        *,
+        actor_id: str,
+        candidate_id: str,
+        candidate_line_id: int,
+        version: int,
+        changes: dict[str, object],
+        request_id: str,
+    ) -> CandidateSnapshot:
+        return self.save_candidate_lines(
+            actor_id=actor_id,
+            candidate_id=candidate_id,
+            version=version,
+            updates=[(candidate_line_id, changes)],
+            request_id=request_id,
+        )
+
+    def save_candidate_lines(
+        self,
+        *,
+        actor_id: str,
+        candidate_id: str,
+        version: int,
+        updates: list[tuple[int, dict[str, object]]],
+        request_id: str,
+    ) -> CandidateSnapshot:
+        allowed = {"factory_id", "contract_ship_date", "shipped_quantity"}
+        if (
+            not updates
+            or len({line_id for line_id, _ in updates}) != len(updates)
+            or any(not changes or not set(changes) <= allowed for _, changes in updates)
+        ):
+            raise ValueError("invalid candidate line fields")
         with self._session_factory() as session, session.begin():
             self._require_admin(session, actor_id)
             candidate = self._locked_pending_candidate(session, candidate_id)
             if candidate.version != version:
                 raise ValueError("candidate version changed; reload before saving")
             rows = self._candidate_lines(session, candidate_id)
-            line = next(
-                (item for item in rows if item.candidate_line_id == candidate_line_id), None
+            lines_by_id = {line.candidate_line_id: line for line in rows}
+            audits: list[dict[str, object]] = []
+            state_changed = False
+            for candidate_line_id, changes in updates:
+                line = lines_by_id.get(candidate_line_id)
+                if line is None:
+                    raise ValueError("candidate line changed; reload before saving")
+                key = f"source:{line.source_record_pk}"
+                override = dict(candidate.field_overrides.get(key) or {})
+                audit: dict[str, object] = {
+                    "candidateLineId": candidate_line_id,
+                    "detailLabel": (
+                        line.properties_value or line.product_name or str(candidate_line_id)
+                    ),
+                }
+                line_changed = False
+                if "factory_id" in changes:
+                    factory_id = changes["factory_id"]
+                    if not isinstance(factory_id, str):
+                        raise ValueError("factory is required")
+                    factory = session.get(Factory, factory_id)
+                    if factory is None or not factory.is_enabled:
+                        raise ValueError("factory is unavailable")
+                    line_changed |= (
+                        line.factory_name != factory.factory_name
+                        or override.get("factoryId") != factory.factory_id
+                    )
+                    if line.factory_name != factory.factory_name:
+                        audit["factory"] = {
+                            "before": line.factory_name,
+                            "after": factory.factory_name,
+                        }
+                    line.factory_name = factory.factory_name
+                    line.matched_factory_id = factory.factory_id
+                    override["factoryId"] = factory.factory_id
+                    override["factoryName"] = factory.factory_name
+                if "contract_ship_date" in changes:
+                    contract_ship_date = changes["contract_ship_date"]
+                    if contract_ship_date is not None and not isinstance(contract_ship_date, date):
+                        raise ValueError("contract shipment date is invalid")
+                    before_date = line.contract_ship_date
+                    date_value = contract_ship_date.isoformat() if contract_ship_date else None
+                    line_changed |= (
+                        before_date != contract_ship_date
+                        or "contractShipDate" not in override
+                        or override.get("contractShipDate") != date_value
+                    )
+                    if before_date != contract_ship_date:
+                        audit["contractShipDate"] = {
+                            "before": before_date.isoformat() if before_date else None,
+                            "after": date_value,
+                        }
+                    line.contract_ship_date = contract_ship_date
+                    override["contractShipDate"] = date_value
+                    candidate.date_overrides = {**candidate.date_overrides, key: date_value}
+                if "shipped_quantity" in changes:
+                    shipped = changes["shipped_quantity"]
+                    if isinstance(shipped, bool) or not isinstance(shipped, int) or shipped < 0:
+                        raise ValueError("shipped quantity must be a non-negative integer")
+                    line_changed |= (
+                        line.shipped_quantity != shipped
+                        or override.get("shippedQuantity") != shipped
+                    )
+                    if line.shipped_quantity != shipped:
+                        audit["shippedQuantity"] = {
+                            "before": line.shipped_quantity,
+                            "after": shipped,
+                        }
+                    line.shipped_quantity = shipped
+                    line.pending_quantity = self._pending(line.order_quantity, shipped)
+                    override["shippedQuantity"] = shipped
+                if not line_changed:
+                    continue
+                state_changed = True
+                candidate.field_overrides = {**candidate.field_overrides, key: override}
+                source_row = SourceOrderRow(
+                    "", candidate.order_no, line.source_sku_id, line.product_name,
+                    line.properties_value, line.category, line.factory_name,
+                    line.order_quantity, line.shipped_quantity, line.pending_quantity,
+                    candidate.tracker, candidate.order_date, line.source_contract_ship_date, {},
+                    trackers=tuple(candidate.trackers),
+                )
+                variant, factory, line_issues = self.match_source_row(session, source_row)
+                line.matched_variant_id = variant.variant_id if variant else None
+                line.matched_factory_id = factory.factory_id if factory else None
+                line.validation_issues = line_issues
+                if len(audit) > 2:
+                    audits.append(audit)
+            if not state_changed:
+                return self._candidate_snapshot(session, candidate, lines=rows)
+            issues = ([] if candidate.trackers and all(
+                item in TRACKERS for item in candidate.trackers
+            ) else ["INVALID_TRACKER"])
+            issues.extend(code for item in rows for code in item.validation_issues)
+            candidate.validation_issues = list(dict.fromkeys(issues))
+            candidate.issue_count = len(candidate.validation_issues)
+            candidate.total_quantity = self._nullable_sum([item.order_quantity for item in rows])
+            candidate.shipped_quantity = self._nullable_sum(
+                [item.shipped_quantity for item in rows]
             )
-            if line is None:
-                raise ValueError("candidate line changed; reload before saving")
-            key = f"source:{line.source_record_pk}"
-            candidate.date_overrides = {
-                **candidate.date_overrides,
-                key: contract_ship_date.isoformat() if contract_ship_date else None,
-            }
-            for item in rows:
-                if item.source_record_pk == line.source_record_pk:
-                    item.contract_ship_date = contract_ship_date
+            candidate.pending_quantity = self._nullable_sum(
+                [item.pending_quantity for item in rows]
+            )
             candidate.validation_state = (
                 "READY"
                 if not candidate.validation_issues and all(item.contract_ship_date for item in rows)
                 else "INVALID"
             )
+            session.execute(
+                delete(OrderImportValidationIssue).where(
+                    OrderImportValidationIssue.candidate_id == candidate.candidate_id
+                )
+            )
+            for sort_order, code in enumerate(candidate.validation_issues, start=1):
+                field_name, message = self._issue_details(code)
+                session.add(
+                    OrderImportValidationIssue(
+                        candidate_id=candidate.candidate_id,
+                        code=code,
+                        field_name=field_name,
+                        message=message,
+                        sort_order=sort_order,
+                    )
+                )
             candidate.version += 1
             candidate.updated_at = self._clock().replace(tzinfo=None)
-            self._add_candidate_audit(
-                session,
-                request_id=request_id,
-                action="order_import.date_updated",
-                candidate=candidate,
-                actor_id=actor_id,
-            )
+            if audits:
+                self._add_candidate_audit(
+                    session,
+                    request_id=request_id,
+                    action="order_import.detail_updated",
+                    candidate=candidate,
+                    actor_id=actor_id,
+                    changes=(
+                        audits[0]
+                        if len(audits) == 1
+                        else {
+                            "details": audits,
+                            "content": f"修改订单明细 {len(audits)} 条",
+                        }
+                    ),
+                )
             session.flush()
             return self._candidate_snapshot(session, candidate)
 
@@ -815,6 +976,7 @@ class OrderImportService:
                         detail_mode=True,
                         order_date=candidate.order_date,
                         tracker=candidate.tracker if candidate.tracker in TRACKERS else None,
+                        trackers=list(candidate.trackers),
                         lifecycle="DRAFT",
                         created_by=actor_id,
                         updated_by=actor_id,
@@ -832,10 +994,11 @@ class OrderImportService:
                     ):
                         raise ValueError("candidate source identity changed")
                     fields = source.normalized_fields or {}
-                    if fields.get("contractDateMappingVersion") != 3:
+                    if fields.get("contractDateMappingVersion") != 4:
                         raise ValueError("来源解析规则已更新，请先重新获取飞书订单再导入")
                     date_key = f"source:{source.source_record_pk}"
                     old_date_key = self._date_key(line.source_sku_id, line.factory_name)
+                    field_override = candidate.field_overrides.get(date_key) or {}
                     session.add(
                         OrderDetail(
                             detail_id=str(uuid4()),
@@ -847,7 +1010,7 @@ class OrderImportService:
                             accepted_source_modified_at=source.source_modified_at,
                             accepted_source_hash=sha256(
                                 json.dumps(
-                                    source.raw_fields,
+                                    self._stable_raw_fields(source.raw_fields),
                                     sort_keys=True,
                                     ensure_ascii=False,
                                     separators=(",", ":"),
@@ -863,12 +1026,19 @@ class OrderImportService:
                             order_quantity=line.order_quantity,
                             source_shipped_quantity=line.shipped_quantity,
                             source_tracker=fields.get("tracker"),
+                            source_trackers=[
+                                item
+                                for item in fields.get("trackers", [])
+                                if isinstance(item, str)
+                            ],
                             source_contract_ship_date=line.source_contract_ship_date,
                             contract_ship_date=line.contract_ship_date,
                             date_override_enabled=(
                                 date_key in candidate.date_overrides
                                 or old_date_key in candidate.date_overrides
                             ),
+                            factory_override_enabled="factoryId" in field_override,
+                            shipped_override_enabled="shippedQuantity" in field_override,
                             parse_issues=line.validation_issues,
                             dispatch_state="UNASSIGNED",
                             created_at=now,
@@ -1156,7 +1326,7 @@ class OrderImportService:
     @staticmethod
     def _normalized_source_fields(row: SourceOrderRow) -> dict[str, object]:
         return {
-            "contractDateMappingVersion": 3,
+            "contractDateMappingVersion": 4,
             "orderNo": row.order_no,
             "sourceSkuId": row.source_sku_id,
             "productName": row.product_name,
@@ -1167,11 +1337,22 @@ class OrderImportService:
             "shippedQuantity": OrderImportService._quantity(row.shipped_quantity),
             "pendingQuantity": OrderImportService._quantity(row.pending_quantity),
             "tracker": row.tracker,
+            "trackers": list(row.trackers or ((row.tracker,) if row.tracker else ())),
             "orderDate": row.order_date.isoformat() if row.order_date else None,
             "contractShipDate": (
                 row.contract_ship_date.isoformat() if row.contract_ship_date else None
             ),
         }
+
+    @staticmethod
+    def _stable_raw_fields(value: dict[str, object]) -> dict[str, object]:
+        result = dict(value)
+        purchase = result.get("_purchase")
+        if isinstance(purchase, dict):
+            result["_purchase"] = {
+                key: item for key, item in purchase.items() if key != "readAt"
+            }
+        return result
 
     @staticmethod
     def _order_is_frozen(session: Session, order_no: str) -> bool:
@@ -1222,6 +1403,9 @@ class OrderImportService:
             raw_fields=source.raw_fields,
             source_detail_id=source.source_detail_id,
             source_modified_at=source.source_modified_at,
+            trackers=tuple(
+                item for item in fields.get("trackers", []) if isinstance(item, str)
+            ),
         )
 
     @staticmethod
@@ -1248,12 +1432,30 @@ class OrderImportService:
     ) -> None:
         rows = [row for row, _ in group]
         issues: list[str] = []
-        tracker = self._unique_value([row.tracker for row in rows])
+        trackers = list(dict.fromkeys(
+            tracker
+            for row in rows
+            for tracker in (row.trackers or ((row.tracker,) if row.tracker else ()))
+            if tracker
+        ))
         order_date = next((row.order_date for row in rows if row.order_date is not None), None)
         effective_dates: dict[int, date | None] = {}
+        effective_rows: dict[int, SourceOrderRow] = {}
         for row, source in group:
             key = f"source:{source.source_record_pk}"
             old_key = self._date_key(row.source_sku_id, row.factory_name)
+            field_override = candidate.field_overrides.get(key) or {}
+            if "factoryName" in field_override:
+                row = replace(row, factory_name=field_override["factoryName"])
+            if "shippedQuantity" in field_override:
+                row = replace(
+                    row,
+                    shipped_quantity=field_override["shippedQuantity"],
+                    pending_quantity=self._pending(
+                        row.order_quantity, field_override["shippedQuantity"]
+                    ),
+                )
+            effective_rows[source.source_record_pk] = row
             override_key = key if key in candidate.date_overrides else old_key
             original = row.contract_ship_date
             effective_dates[source.source_record_pk] = (
@@ -1268,19 +1470,22 @@ class OrderImportService:
                 )
             )
         candidate.version += 1
-        if tracker is None or tracker not in TRACKERS:
+        if not trackers or any(tracker not in TRACKERS for tracker in trackers):
             issues.append("INVALID_TRACKER")
-        candidate.tracker = tracker
+        candidate.trackers = trackers
+        candidate.tracker = trackers[0] if trackers else None
         candidate.order_date = order_date
         candidate.contract_ship_date = None
         candidate.category = category_summary(row.category for row in rows)
-        candidate.total_quantity = self._nullable_sum([row.order_quantity for row in rows])
-        candidate.shipped_quantity = self._nullable_sum([row.shipped_quantity for row in rows])
+        effective = list(effective_rows.values())
+        candidate.total_quantity = self._nullable_sum([row.order_quantity for row in effective])
+        candidate.shipped_quantity = self._nullable_sum([row.shipped_quantity for row in effective])
         candidate.pending_quantity = self._nullable_sum(
-            [self._pending(row.order_quantity, row.shipped_quantity) for row in rows]
+            [self._pending(row.order_quantity, row.shipped_quantity) for row in effective]
         )
         candidate.source_record_count = len(rows)
         for row, source in group:
+            row = effective_rows[source.source_record_pk]
             variant, factory, line_issues = self.match_source_row(session, row)
             product = session.get(Product, variant.product_id) if variant else None
             issues.extend(line_issues)
@@ -1378,6 +1583,7 @@ class OrderImportService:
             validation_issues=list(candidate.validation_issues),
             order_date=candidate.order_date,
             tracker=candidate.tracker,
+            trackers=list(candidate.trackers),
             contract_ship_date=min(
                 (line.contract_ship_date for line in lines if line.contract_ship_date), default=None
             ),
@@ -1431,6 +1637,7 @@ class OrderImportService:
         action: str,
         candidate: OrderImportCandidate,
         actor_id: str,
+        changes: dict[str, object] | None = None,
     ) -> None:
         session.add(
             AuditLog(
@@ -1438,7 +1645,11 @@ class OrderImportService:
                 action=action,
                 target_type="order_import_candidate",
                 target_id=candidate.candidate_id,
-                changes={"orderNo": candidate.order_no, "status": candidate.status},
+                changes={
+                    "orderNo": candidate.order_no,
+                    "status": candidate.status,
+                    **(changes or {}),
+                },
                 actor_id=actor_id,
                 source_terminal="web_admin",
             )

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     feishu_order_app_token: str = ""
     feishu_order_table_id: str = ""
     feishu_order_view_id: str = ""
+    feishu_purchase_detail_table_id: str = ""
     feishu_order_incremental_table_scope_confirmed: bool = False
     oss_region: str = ""
     oss_endpoint: str = ""
@@ -152,6 +153,7 @@ class Settings(BaseSettings):
             self.feishu_order_app_token,
             self.feishu_order_table_id,
             self.feishu_order_view_id,
+            self.feishu_purchase_detail_table_id,
             self.oss_region,
             self.oss_endpoint,
             self.oss_access_key_id,

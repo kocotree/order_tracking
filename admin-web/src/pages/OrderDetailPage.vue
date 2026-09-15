@@ -44,18 +44,18 @@
           <div class="detail-table-scroll">
             <table class="data-grid-table product-detail-table dispatch-table" :class="{ 'has-selection': hasUnassigned }">
               <colgroup>
-                <col v-if="hasUnassigned" style="width:40px">
-                <col style="width:52px">
-                <col style="width:160px">
-                <col>
-                <col style="width:130px">
-                <col style="width:125px">
-                <col style="width:90px">
-                <col style="width:170px">
-                <col style="width:105px">
-                <col style="width:105px">
-                <col style="width:95px">
-                <col style="width:135px">
+                <col v-if="hasUnassigned" class="dispatch-select-col">
+                <col class="dispatch-sequence-col">
+                <col class="dispatch-code-col">
+                <col class="dispatch-name-col">
+                <col class="dispatch-properties-col">
+                <col class="dispatch-factory-col">
+                <col class="dispatch-state-col">
+                <col class="dispatch-date-col">
+                <col class="dispatch-quantity-col">
+                <col class="dispatch-quantity-col">
+                <col class="dispatch-pending-col">
+                <col class="dispatch-progress-col">
               </colgroup>
               <thead><tr>
                 <th v-if="hasUnassigned" class="dispatch-check"><input type="checkbox" :checked="allSelected" :disabled="interactionBusy" aria-label="选择全部未派工明细" @change="toggleAll($event)"></th>
@@ -587,8 +587,26 @@ onMounted(() => { void Promise.all([load(), loadFactoryOptions()]); });
 .dispatch-table .dispatch-seq { width: 52px; min-width: 52px; max-width: 52px; padding: 0 8px; text-align: center; font-weight: 700; }
 .dispatch-table th.dispatch-seq { font-weight: 800; }
 .dispatch-table .dispatch-check { width: 40px; min-width: 40px; max-width: 40px; padding: 0 8px; text-align: center; }
-.dispatch-table .dispatch-name-column, .dispatch-table .dispatch-name { width: calc(100% - 1167px); }
-.dispatch-table.has-selection .dispatch-name-column, .dispatch-table.has-selection .dispatch-name { width: calc(100% - 1207px); }
+.dispatch-table .dispatch-select-col { width: 40px; }
+.dispatch-table .dispatch-sequence-col { width: 52px; }
+.dispatch-table .dispatch-code-col { width: 10.680908%; }
+.dispatch-table .dispatch-name-col { width: 25.567423%; }
+.dispatch-table .dispatch-properties-col { width: 8.678238%; }
+.dispatch-table .dispatch-factory-col { width: 8.344459%; }
+.dispatch-table .dispatch-state-col { width: 6.008011%; }
+.dispatch-table .dispatch-date-col { width: 11.348465%; }
+.dispatch-table .dispatch-quantity-col { width: 7.009346%; }
+.dispatch-table .dispatch-pending-col { width: 6.341789%; }
+.dispatch-table .dispatch-progress-col { width: 9.012016%; }
+.dispatch-table.has-selection .dispatch-code-col { width: 10.973937%; }
+.dispatch-table.has-selection .dispatch-name-col { width: 23.525377%; }
+.dispatch-table.has-selection .dispatch-properties-col { width: 8.916324%; }
+.dispatch-table.has-selection .dispatch-factory-col { width: 8.573388%; }
+.dispatch-table.has-selection .dispatch-state-col { width: 6.17284%; }
+.dispatch-table.has-selection .dispatch-date-col { width: 11.659808%; }
+.dispatch-table.has-selection .dispatch-quantity-col { width: 7.201646%; }
+.dispatch-table.has-selection .dispatch-pending-col { width: 6.515775%; }
+.dispatch-table.has-selection .dispatch-progress-col { width: 9.259259%; }
 .dispatch-table input:not([type=checkbox]) { width: 100%; min-width: 0; height: 32px; padding: 0 7px; border: 1px solid #d3dbe6; border-radius: 4px; background: white; color: inherit; font: inherit; }
 .dispatch-table input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--erp-blue); }
 .dispatch-table .dispatch-code { color: var(--erp-blue-dark); font-weight: 700; }

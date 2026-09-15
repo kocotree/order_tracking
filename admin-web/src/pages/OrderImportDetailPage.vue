@@ -36,7 +36,7 @@
 
       <section class="section-card detail-section-card">
         <header class="detail-section-header pending-import-detail-header">
-          <div><h2>订单明细</h2><p v-if="candidate.status === 'PENDING'">可修改工厂、合同出货时间和已发数量</p></div>
+          <h2>订单明细</h2>
           <div v-if="candidate.status === 'PENDING'" class="pending-import-save-actions">
             <span v-if="dirty">有未保存修改</span>
             <button class="detail-primary-button" type="button" :disabled="saving || importing || !dirty" @click="saveLines">

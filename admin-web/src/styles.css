@@ -613,7 +613,7 @@ h1, h2, p { margin-top: 0; }
 .order-detail-page .pending-import-detail-table th:nth-child(3) { width: auto; }
 .order-detail-page .pending-import-detail-table th:nth-child(4) { width: 120px; }
 .order-detail-page .pending-import-detail-table th:nth-child(5) { width: 150px; }
-.order-detail-page .pending-import-detail-table th:nth-child(6) { width: 148px; }
+.order-detail-page .pending-import-detail-table th:nth-child(6) { width: 180px; }
 .order-detail-page .pending-import-detail-table th:nth-child(7), .order-detail-page .pending-import-detail-table th:nth-child(8), .order-detail-page .pending-import-detail-table th:nth-child(9) { width: 96px; }
 .order-detail-page .pending-import-detail-table th:nth-child(10) { width: 144px; }
 .order-detail-page .pending-import-detail-table th:nth-child(11) { width: 110px; }

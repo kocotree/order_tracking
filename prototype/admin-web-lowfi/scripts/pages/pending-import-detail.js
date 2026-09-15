@@ -130,7 +130,7 @@ export function renderPendingImportDetailPage(orderNo) {
 
       <section class="section-card detail-section-card">
         <header class="detail-section-header">
-          <div><h2>订单明细</h2>${isImported ? "" : "<p>可修改工厂、合同出货时间和已发数量</p>"}</div>
+          <h2>订单明细</h2>
           ${isImported ? "" : `<div class="pending-import-save-actions"><span data-unsaved-tip hidden>有未保存修改</span><button class="detail-primary-button" type="button" data-save-details disabled>保存</button></div>`}
         </header>
         <div class="detail-table-scroll">

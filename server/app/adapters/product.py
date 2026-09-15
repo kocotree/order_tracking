@@ -161,8 +161,9 @@ class AppCredentialJstProductSource:
     def fetch_purchase_items(self, po_ids: list[str]) -> list[SourcePurchaseItem]:
         result: list[SourcePurchaseItem] = []
         unique = list(dict.fromkeys(value.strip() for value in po_ids if value.strip()))
-        for start in range(0, len(unique), 50):
-            chunk = unique[start : start + 50]
+        # The purchase endpoint accepts at most 20 order IDs per request.
+        for start in range(0, len(unique), 20):
+            chunk = unique[start : start + 20]
             page = 1
             while True:
                 data = self._request_data(

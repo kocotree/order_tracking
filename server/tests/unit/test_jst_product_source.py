@@ -154,7 +154,10 @@ def test_jst_product_source_splits_sync_into_seven_day_windows(
     assert cached["refresh_token"] == "refresh-token"
 
 
-def test_jst_purchase_source_batches_main_orders_and_reads_all_pages(tmp_path: Path) -> None:
+@pytest.mark.parametrize("order_count", [1, 20, 21, 35, 41])
+def test_jst_purchase_source_batches_main_orders_and_reads_all_pages(
+    tmp_path: Path, order_count: int,
+) -> None:
     bodies: list[dict[str, object]] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -167,12 +170,12 @@ def test_jst_purchase_source_batches_main_orders_and_reads_all_pages(tmp_path: P
         assert request.url.path == "/open/purchase/query"
         body = json.loads(form["biz"][0])
         bodies.append(body)
-        po_id = str(body["po_ids"][0])
+        assert len(body["po_ids"]) <= 20, "Jushuitan rejects more than 20 purchase IDs"
         return httpx.Response(200, json={"code": 0, "data": {
             "datas": [{"po_id": int(po_id), "items": [{
                 "poi_id": f"child-{body['page_index']}", "sku_id": "SKU-1",
                 "qty": 10, "inQty": 7, "return_qty": None,
-            }]}],
+            }]} for po_id in body["po_ids"]],
             "page_index": body["page_index"],
             "has_next": body["page_index"] == 1,
         }})
@@ -186,16 +189,17 @@ def test_jst_purchase_source_batches_main_orders_and_reads_all_pages(tmp_path: P
         transport=httpx.MockTransport(respond),
     )
 
-    items = source.fetch_purchase_items(["1596185", "1596185"])
+    po_ids = [str(1596185 + index) for index in range(order_count)]
+    items = source.fetch_purchase_items([*po_ids, po_ids[0]])
 
     actual = [(item.po_id, item.poi_id, item.qty, item.in_qty, item.return_qty) for item in items]
-    assert actual == [
-        ("1596185", "child-1", 10, 7, None),
-        ("1596185", "child-2", 10, 7, None),
-    ]
+    assert sorted(actual) == sorted([
+        (po_id, f"child-{page}", 10, 7, None)
+        for po_id in po_ids for page in (1, 2)
+    ])
     assert bodies == [
-        {"po_ids": ["1596185"], "page_index": 1, "page_size": 50},
-        {"po_ids": ["1596185"], "page_index": 2, "page_size": 50},
+        {"po_ids": po_ids[start:start + 20], "page_index": page, "page_size": 50}
+        for start in range(0, order_count, 20) for page in (1, 2)
     ]
 
 

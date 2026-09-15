@@ -74,8 +74,8 @@
                 <td><span class="status-badge" :class="row.dispatched ? 'is-info' : 'is-draft'">{{ row.dispatched ? '已派工' : '未派工' }}</span></td>
                 <td><input v-if="isEditable(row.key)" v-model="detailDraft(row.key).contractShipDate" class="source-contract-date" type="date" :aria-label="`第${index + 1}条合同出货时间`" :disabled="interactionBusy || sourcePreview !== null || dispatchSourcePreview !== null"><template v-else>{{ row.contractShipDate || "—" }}</template></td>
                 <td class="detail-number">{{ number(row.orderQuantity) }}</td>
-                <td class="detail-number"><input v-if="isEditable(row.key)" v-model="detailDraft(row.key).shippedQuantity" type="number" min="0" step="1" :aria-label="`第${index + 1}条已发数量`" :disabled="interactionBusy"><template v-else>{{ number(row.shippedQuantity) }}</template></td>
-                <td class="detail-number">{{ number(displayPending(row)) }}</td>
+                <td class="detail-number"><input v-if="isEditable(row.key)" :value="detailDraft(row.key).shippedQuantity" type="number" min="0" step="1" :aria-label="`第${index + 1}条已发数量`" :disabled="interactionBusy" @input="changeDetailShipped(row, $event)"><template v-else>{{ number(row.shippedQuantity) }}</template></td>
+                <td class="detail-number"><input v-if="isEditable(row.key)" :value="detailDraft(row.key).pendingQuantity" type="number" min="0" :max="row.orderQuantity ?? undefined" step="1" :aria-label="`第${index + 1}条未发数量`" :disabled="interactionBusy || row.orderQuantity == null" @input="changeDetailPending(row, $event)"><template v-else>{{ number(row.pendingQuantity) }}</template></td>
                 <td><span class="detail-progress"><span><i :style="{ width: `${Math.min(displayProgress(row) ?? 0, 100)}%` }"></i></span><em>{{ displayProgress(row) == null ? "—" : `${displayProgress(row)}%` }}</em></span></td>
               </tr></tbody>
             </table>
@@ -117,7 +117,7 @@
       <dialog ref="sourceDialog" class="modal source-update-modal" aria-labelledby="source-update-title" @cancel="cancelSource" @close="onSourceClosed">
         <header><h2 id="source-update-title">更新未派工明细</h2><button type="button" aria-label="关闭" :disabled="sourceBusy" @click="cancelSource">×</button></header>
         <div class="modal-body">
-          <p>{{ sourcePreview?.differences.length ? '来源资料有变化，请确认后更新。已派工明细和人工填写的合同出货时间保持不变。' : '未派工明细没有可更新的来源变化，人工填写的合同出货时间已保留。' }}</p>
+          <p>{{ sourcePreview?.differences.length ? '来源资料有变化，请确认后更新。已派工明细和人工保存的工厂、合同出货时间、已发/未发数量保持不变。' : '未派工明细没有可更新的来源变化，人工保存的工厂、合同出货时间、已发/未发数量已保留。' }}</p>
           <table v-if="sourcePreview?.differences.length"><thead><tr><th>明细</th><th>字段</th><th>当前值</th><th>来源新值</th></tr></thead><tbody><tr v-for="(change, index) in sourcePreview.differences" :key="index"><td>{{ change.label }}</td><td>{{ change.field }}</td><td>{{ change.before ?? '—' }}</td><td>{{ change.after ?? '—' }}</td></tr></tbody></table>
           <p v-if="sourceError" class="page-error" role="alert">{{ sourceError }}</p>
         </div>
@@ -127,7 +127,7 @@
       <dialog ref="dispatchDialog" class="modal dispatch-modal" aria-labelledby="dispatch-dialog-title" @cancel="cancelDispatch" @close="onDispatchClosed">
         <header><h2 id="dispatch-dialog-title">{{ dispatchStep === 'source' ? '更新未派工明细' : '确认派工' }}</h2><button type="button" aria-label="关闭" :disabled="dispatchBusy" @click="cancelDispatch">×</button></header>
         <div class="modal-body" v-if="dispatchStep === 'source'">
-          <p>来源资料有变化，请确认后继续派工。已派工明细和人工填写的合同出货时间保持不变。</p>
+          <p>来源资料有变化，请确认后继续派工。已派工明细和人工保存的工厂、合同出货时间、已发/未发数量保持不变。</p>
           <table><thead><tr><th>明细</th><th>字段</th><th>当前值</th><th>来源新值</th></tr></thead><tbody><tr v-for="(change, index) in dispatchSourcePreview?.differences ?? []" :key="index"><td>{{ change.label }}</td><td>{{ change.field }}</td><td>{{ change.before ?? '—' }}</td><td>{{ change.after ?? '—' }}</td></tr></tbody></table>
         </div>
         <div class="modal-body" v-else>
@@ -194,7 +194,7 @@ async function loadShipments() {
 type Action = "publish" | "delete" | "complete" | "reopen";
 type DetailSortKey = "skuId" | "productName" | "propertiesValue" | "factoryName" | "dispatched" | "contractShipDate" | "orderQuantity" | "shippedQuantity" | "pendingQuantity" | "progressPercent";
 type DetailRow = { key: string; skuId: string; productName: string; propertiesValue: string; factoryName: string; dispatched: boolean; contractShipDate: string; orderQuantity: number | null; shippedQuantity: number | null; pendingQuantity: number | null; progressPercent: number | null };
-type DetailDraft = { factoryName: string; contractShipDate: string; shippedQuantity: string };
+type DetailDraft = { factoryName: string; contractShipDate: string; shippedQuantity: string; pendingQuantity: string };
 const detailColumns: { key: DetailSortKey; label: string }[] = [{ key: "skuId", label: "产品编码" }, { key: "productName", label: "产品名称" }, { key: "propertiesValue", label: "颜色/规格" }, { key: "factoryName", label: "工厂" }, { key: "dispatched", label: "派工状态" }, { key: "contractShipDate", label: "合同出货时间" }, { key: "orderQuantity", label: "下单数量" }, { key: "shippedQuantity", label: "已发数量" }, { key: "pendingQuantity", label: "未发数量" }, { key: "progressPercent", label: "发货进度" }];
 const route = useRoute(); const router = useRouter(); let orderId = String(route.params.orderId);
 const order = ref<Order | null>(null); const loading = ref(true); const errorMessage = ref(""); const pendingAction = ref<Action | null>(null); const reopenReason = ref(""); const actionError = ref(""); const acting = ref(false); const detailSortKey = ref<DetailSortKey | null>(null); const detailSortOrder = ref<"asc" | "desc">("asc");
@@ -295,6 +295,7 @@ function resetDetailDrafts() {
       factoryName: detail.factoryName ?? "",
       contractShipDate: detail.contractShipDate ?? "",
       shippedQuantity: detail.shippedQuantity == null ? "" : String(detail.shippedQuantity),
+      pendingQuantity: detail.pendingQuantity == null ? "" : String(detail.pendingQuantity),
     }]));
 }
 const hasUnsavedDetails = computed(() => (order.value?.details ?? []).some((detail) => {
@@ -303,19 +304,34 @@ const hasUnsavedDetails = computed(() => (order.value?.details ?? []).some((deta
     draft.factoryName !== (detail.factoryName ?? "")
     || draft.contractShipDate !== (detail.contractShipDate ?? "")
     || draft.shippedQuantity !== (detail.shippedQuantity == null ? "" : String(detail.shippedQuantity))
+    || draft.pendingQuantity !== (detail.pendingQuantity == null ? "" : String(detail.pendingQuantity))
   );
 }));
 function draftShipped(row: DetailRow) {
-  const value = Number(detailDrafts.value[row.key]?.shippedQuantity ?? row.shippedQuantity);
+  const raw = detailDrafts.value[row.key]?.shippedQuantity ?? row.shippedQuantity;
+  if (raw === "" || raw == null) return null;
+  const value = Number(raw);
   return Number.isInteger(value) && value >= 0 ? value : null;
-}
-function displayPending(row: DetailRow) {
-  const shipped = draftShipped(row);
-  return row.orderQuantity == null || shipped == null ? null : Math.max(row.orderQuantity - shipped, 0);
 }
 function displayProgress(row: DetailRow) {
   const shipped = draftShipped(row);
   return !row.orderQuantity || shipped == null ? null : Math.round(shipped * 100 / row.orderQuantity);
+}
+function changeDetailShipped(row: DetailRow, event: Event) {
+  const value = (event.target as HTMLInputElement).value;
+  const draft = detailDraft(row.key);
+  draft.shippedQuantity = value;
+  const quantity = Number(value);
+  draft.pendingQuantity = row.orderQuantity != null && value !== "" && Number.isInteger(quantity) && quantity >= 0 ? String(Math.max(row.orderQuantity - quantity, 0)) : "";
+  sourceError.value = "";
+}
+function changeDetailPending(row: DetailRow, event: Event) {
+  const value = (event.target as HTMLInputElement).value;
+  const draft = detailDraft(row.key);
+  draft.pendingQuantity = value;
+  const quantity = Number(value);
+  if (row.orderQuantity != null && value !== "" && Number.isInteger(quantity) && quantity >= 0 && quantity <= row.orderQuantity) draft.shippedQuantity = String(row.orderQuantity - quantity);
+  sourceError.value = "";
 }
 function currentSource(epoch: number, id: string) { return epoch === sourceEpoch && String(route.params.orderId) === id; }
 function currentDispatch(epoch: number, id: string) { return epoch === dispatchEpoch && String(route.params.orderId) === id; }
@@ -332,10 +348,13 @@ async function saveDetailLines() {
       const factoryChanged = draft.factoryName !== (detail.factoryName ?? "");
       const dateChanged = draft.contractShipDate !== (detail.contractShipDate ?? "");
       const shippedChanged = draft.shippedQuantity !== (detail.shippedQuantity == null ? "" : String(detail.shippedQuantity));
-      if (!factoryChanged && !dateChanged && !shippedChanged) return [];
+      const pendingChanged = draft.pendingQuantity !== (detail.pendingQuantity == null ? "" : String(detail.pendingQuantity));
+      if (!factoryChanged && !dateChanged && !shippedChanged && !pendingChanged) return [];
       const quantity = Number(draft.shippedQuantity);
+      const pendingQuantity = Number(draft.pendingQuantity);
       if (factoryChanged && !factoryByName.has(draft.factoryName)) throw new Error("请选择已有工厂");
       if (shippedChanged && (draft.shippedQuantity === "" || !Number.isInteger(quantity) || quantity < 0)) throw new Error("已发数量必须为非负整数");
+      if (pendingChanged && (detail.orderQuantity == null || draft.pendingQuantity === "" || !Number.isInteger(pendingQuantity) || pendingQuantity < 0 || pendingQuantity > detail.orderQuantity)) throw new Error("未发数量必须为不超过下单数量的非负整数");
       return [{ detailId: detail.detailId, detailVersion: detail.version,
         ...(factoryChanged ? { factoryId: factoryByName.get(draft.factoryName)! } : {}),
         ...(dateChanged ? { contractShipDate: draft.contractShipDate || null } : {}),

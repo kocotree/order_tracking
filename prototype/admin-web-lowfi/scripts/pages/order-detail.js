@@ -110,7 +110,7 @@ function renderProductRows(rows) {
           <td>${product.dispatched ? escapeHTML(product.dueDate || "—") : `<input class="pending-detail-input" type="date" value="${escapeHTML(product.dueDate || "")}" data-detail-date="${index}">`}</td>
           <td class="detail-number">${escapeHTML(formatNumber(product.quantity))}</td>
           <td class="detail-number">${product.dispatched ? escapeHTML(formatNumber(product.shippedQuantity)) : `<input class="pending-detail-input pending-number-input" type="number" min="0" step="1" value="${escapeHTML(product.shippedQuantity)}" data-detail-shipped="${index}">`}</td>
-          <td class="detail-number" data-detail-pending="${index}">${escapeHTML(formatNumber(product.pendingQuantity))}</td>
+          <td class="detail-number">${product.dispatched ? escapeHTML(formatNumber(product.pendingQuantity)) : `<input class="pending-detail-input pending-number-input" type="number" min="0" max="${escapeHTML(product.quantity)}" step="1" value="${escapeHTML(product.pendingQuantity)}" data-detail-pending="${index}" aria-label="第${index + 1}条未发数量">`}</td>
           <td>
             <span class="detail-progress" data-detail-progress="${index}"><span><i style="width: ${product.quantity ? Math.min(Math.round(product.shippedQuantity / product.quantity * 100), 100) : 0}%"></i></span><em>${product.quantity ? Math.round(product.shippedQuantity / product.quantity * 100) : 0}%</em></span>
           </td>
@@ -446,7 +446,7 @@ export function bindOrderDetailPage(orderNo) {
     page.querySelector("[data-audit-label]").textContent = list.hidden ? "展开" : "收起";
   });
   page?.addEventListener("input", (event) => {
-    const index = Number(event.target.dataset.detailFactory ?? event.target.dataset.detailDate ?? event.target.dataset.detailShipped);
+    const index = Number(event.target.dataset.detailFactory ?? event.target.dataset.detailDate ?? event.target.dataset.detailShipped ?? event.target.dataset.detailPending);
     if (!Number.isInteger(index) || !productRows[index]) return;
     if (event.target.matches("[data-detail-factory]")) productRows[index].factory = event.target.value;
     if (event.target.matches("[data-detail-date]")) productRows[index].dueDate = event.target.value;
@@ -456,7 +456,19 @@ export function bindOrderDetailPage(orderNo) {
         productRows[index].shippedQuantity = value;
         productRows[index].pendingQuantity = Math.max(productRows[index].quantity - value, 0);
         const percent = productRows[index].quantity ? Math.round(value / productRows[index].quantity * 100) : 0;
-        page.querySelector(`[data-detail-pending="${index}"]`).textContent = formatNumber(productRows[index].pendingQuantity);
+        page.querySelector(`[data-detail-pending="${index}"]`).value = productRows[index].pendingQuantity;
+        const progress = page.querySelector(`[data-detail-progress="${index}"]`);
+        progress.querySelector("i").style.width = `${Math.min(percent, 100)}%`;
+        progress.querySelector("em").textContent = `${percent}%`;
+      }
+    }
+    if (event.target.matches("[data-detail-pending]")) {
+      const value = Number(event.target.value);
+      if (Number.isInteger(value) && value >= 0 && value <= productRows[index].quantity) {
+        productRows[index].pendingQuantity = value;
+        productRows[index].shippedQuantity = productRows[index].quantity - value;
+        page.querySelector(`[data-detail-shipped="${index}"]`).value = productRows[index].shippedQuantity;
+        const percent = productRows[index].quantity ? Math.round(productRows[index].shippedQuantity / productRows[index].quantity * 100) : 0;
         const progress = page.querySelector(`[data-detail-progress="${index}"]`);
         progress.querySelector("i").style.width = `${Math.min(percent, 100)}%`;
         progress.querySelector("em").textContent = `${percent}%`;
@@ -469,9 +481,10 @@ export function bindOrderDetailPage(orderNo) {
     const factories = new Set([...page.querySelectorAll("#order-detail-factories option")].map((option) => option.value));
     const invalidFactory = [...page.querySelectorAll("[data-detail-factory]")].find((input) => !factories.has(input.value));
     const invalidQuantity = [...page.querySelectorAll("[data-detail-shipped]")].find((input) => !Number.isInteger(Number(input.value)) || Number(input.value) < 0);
-    if (invalidFactory || invalidQuantity) {
-      showToast("保存失败", invalidFactory ? "请选择已有工厂。" : "已发数量必须为非负整数。");
-      (invalidFactory || invalidQuantity)?.focus();
+    const invalidPending = [...page.querySelectorAll("[data-detail-pending]")].find((input) => !Number.isInteger(Number(input.value)) || Number(input.value) < 0 || Number(input.value) > Number(input.max));
+    if (invalidFactory || invalidQuantity || invalidPending) {
+      showToast("保存失败", invalidFactory ? "请选择已有工厂。" : invalidPending ? "未发数量必须为不超过下单数量的非负整数。" : "已发数量必须为非负整数。");
+      (invalidFactory || invalidQuantity || invalidPending)?.focus();
       return;
     }
     page.querySelector("[data-detail-unsaved]")?.setAttribute("hidden", "");

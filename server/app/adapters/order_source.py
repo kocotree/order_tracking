@@ -333,10 +333,7 @@ class AppCredentialFeishuOrderSource:
                 row = result[index]
                 if item.sku_id and row.source_sku_id and item.sku_id != row.source_sku_id:
                     continue
-                remaining = item.qty - item.in_qty + (item.return_qty or 0)
-                shipped = (
-                    row.order_quantity - remaining if row.order_quantity is not None else None
-                )
+                remaining = item.qty - item.in_qty
                 raw = dict(row.raw_fields)
                 raw["_purchase"] = {
                     "childOrderId": child_id,
@@ -349,7 +346,8 @@ class AppCredentialFeishuOrderSource:
                 }
                 result[index] = replace(
                     row,
-                    shipped_quantity=shipped,
+                    order_quantity=item.qty,
+                    shipped_quantity=item.in_qty,
                     pending_quantity=remaining,
                     raw_fields=raw,
                 )

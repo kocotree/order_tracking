@@ -35,6 +35,7 @@ function getPendingImportDetail(orderNo) {
       rowKey: index,
       contractShipDate: product.contractShipDate ?? detail.nearestDue,
       shippedQuantity: String(product.shippedQuantity ?? 0),
+      pendingQuantity: String(Math.max(Number(product.quantity) - Number(product.shippedQuantity ?? 0), 0)),
     })),
   };
 }
@@ -54,6 +55,9 @@ function renderProductRows(products, editable = false) {
     const shippedQuantity = editable
       ? `<input class="pending-detail-input pending-number-input" type="number" min="0" step="1" value="${escapeHTML(product.shippedQuantity)}" data-detail-field="shippedQuantity" aria-label="第${index + 1}条已发数量">`
       : formatNumber(shipped);
+    const pendingQuantity = editable
+      ? `<input class="pending-detail-input pending-number-input" type="number" min="0" max="${escapeHTML(product.quantity)}" step="1" value="${escapeHTML(product.pendingQuantity)}" data-detail-field="pendingQuantity" aria-label="第${index + 1}条未发数量">`
+      : formatNumber(pending);
     return `
       <tr data-product-key="${product.rowKey}">
         <td class="detail-sequence-cell">${index + 1}</td>
@@ -64,7 +68,7 @@ function renderProductRows(products, editable = false) {
         <td>${contractShipDate}</td>
         <td class="detail-number">${escapeHTML(formatNumber(product.quantity))}</td>
         <td class="detail-number">${shippedQuantity}</td>
-        <td class="detail-number" data-pending-quantity>${formatNumber(pending)}</td>
+        <td class="detail-number">${pendingQuantity}</td>
         <td><span class="detail-progress"><span><i style="width: ${Math.min(progress, 100)}%"></i></span><em>${progress}%</em></span></td>
         <td><span class="status-badge is-${validationTone}">${product.validationKey === "ready" ? "通过" : "未通过"}</span></td>
       </tr>
@@ -75,7 +79,7 @@ function renderProductRows(products, editable = false) {
 function productSortValue(product, key) {
   if (key === "shippedQuantity") return Number(product.shippedQuantity || 0);
   if (key === "progress") return product.quantity ? Number(product.shippedQuantity || 0) / product.quantity : 0;
-  if (key === "pendingQuantity") return Math.max(product.quantity - Number(product.shippedQuantity || 0), 0);
+  if (key === "pendingQuantity") return Number(product.pendingQuantity || 0);
   return product[key];
 }
 
@@ -159,12 +163,12 @@ export function bindPendingImportDetailPage(orderNo) {
   const openButton = page?.querySelector("[data-import-confirm-open]");
   const order = getPendingImportDetail(orderNo);
   const products = order.products;
-  let savedValues = products.map(({ factory, contractShipDate, shippedQuantity }) => ({ factory, contractShipDate, shippedQuantity }));
+  let savedValues = products.map(({ factory, contractShipDate, shippedQuantity, pendingQuantity }) => ({ factory, contractShipDate, shippedQuantity, pendingQuantity }));
   let sortState = { key: "code", direction: "asc" };
 
   const isDirty = () => products.some((product, index) => {
     const saved = savedValues[index];
-    return product.factory !== saved.factory || product.contractShipDate !== saved.contractShipDate || product.shippedQuantity !== saved.shippedQuantity;
+    return product.factory !== saved.factory || product.contractShipDate !== saved.contractShipDate || product.shippedQuantity !== saved.shippedQuantity || product.pendingQuantity !== saved.pendingQuantity;
   });
 
   const updateDirtyState = () => {
@@ -179,11 +183,15 @@ export function bindPendingImportDetailPage(orderNo) {
     }
   };
 
-  const updateRowQuantity = (row, product) => {
+  const updateRowQuantity = (row, product, changedField) => {
     const shipped = Number(product.shippedQuantity || 0);
-    const pending = Math.max(product.quantity - shipped, 0);
-    const progress = product.quantity ? Math.round(shipped * 100 / product.quantity) : 0;
-    row.querySelector("[data-pending-quantity]").textContent = formatNumber(pending);
+    const pending = Number(product.pendingQuantity || 0);
+    if (changedField === "shippedQuantity" && Number.isInteger(shipped) && shipped >= 0) product.pendingQuantity = String(Math.max(product.quantity - shipped, 0));
+    if (changedField === "pendingQuantity" && Number.isInteger(pending) && pending >= 0 && pending <= product.quantity) product.shippedQuantity = String(product.quantity - pending);
+    const effectiveShipped = Number(product.shippedQuantity || 0);
+    const progress = product.quantity ? Math.round(effectiveShipped * 100 / product.quantity) : 0;
+    row.querySelector('[data-detail-field="shippedQuantity"]').value = product.shippedQuantity;
+    row.querySelector('[data-detail-field="pendingQuantity"]').value = product.pendingQuantity;
     row.querySelector(".detail-progress i").style.width = `${Math.min(progress, 100)}%`;
     row.querySelector(".detail-progress em").textContent = `${progress}%`;
   };
@@ -208,14 +216,15 @@ export function bindPendingImportDetailPage(orderNo) {
     const product = products.find((item) => item.rowKey === Number(row.dataset.productKey));
     if (!product) return;
     product[input.dataset.detailField] = input.value;
-    if (input.dataset.detailField === "shippedQuantity") updateRowQuantity(row, product);
+    if (["shippedQuantity", "pendingQuantity"].includes(input.dataset.detailField)) updateRowQuantity(row, product, input.dataset.detailField);
     updateDirtyState();
   });
   page.querySelector("[data-save-details]")?.addEventListener("click", () => {
     const invalidFactory = products.find((product) => !factoryOptions.includes(product.factory));
     const invalidQuantity = products.find((product) => product.shippedQuantity === "" || !Number.isInteger(Number(product.shippedQuantity)) || Number(product.shippedQuantity) < 0);
-    if (invalidFactory || invalidQuantity) {
-      showToast("订单明细保存失败", invalidFactory ? "请选择已有工厂。" : "已发数量必须为非负整数。");
+    const invalidPending = products.find((product) => product.pendingQuantity === "" || !Number.isInteger(Number(product.pendingQuantity)) || Number(product.pendingQuantity) < 0 || Number(product.pendingQuantity) > product.quantity);
+    if (invalidFactory || invalidQuantity || invalidPending) {
+      showToast("订单明细保存失败", invalidFactory ? "请选择已有工厂。" : invalidPending ? "未发数量必须为不超过下单数量的非负整数。" : "已发数量必须为非负整数。");
       return;
     }
     const shipped = products.reduce((total, product) => total + Number(product.shippedQuantity), 0);
@@ -224,9 +233,9 @@ export function bindPendingImportDetailPage(orderNo) {
     page.querySelector("[data-summary-shipped]").textContent = formatNumber(shipped);
     page.querySelector("[data-summary-pending]").textContent = formatNumber(pending);
     page.querySelector("[data-summary-due]").textContent = dates[0] || "—";
-    savedValues = products.map(({ factory, contractShipDate, shippedQuantity }) => ({ factory, contractShipDate, shippedQuantity }));
+    savedValues = products.map(({ factory, contractShipDate, shippedQuantity, pendingQuantity }) => ({ factory, contractShipDate, shippedQuantity, pendingQuantity }));
     const audit = page.querySelector("[data-candidate-audit]");
-    if (audit) audit.insertAdjacentHTML("afterbegin", `<div><strong>煎饼</strong><span>修改订单明细：工厂、合同出货时间、已发数量</span><time>刚刚</time></div>`);
+    if (audit) audit.insertAdjacentHTML("afterbegin", `<div><strong>煎饼</strong><span>修改订单明细：工厂、合同出货时间、已发/未发数量</span><time>刚刚</time></div>`);
     updateDirtyState();
     showToast("订单明细保存成功", `${orderNo} 的修改已保存。`);
   });

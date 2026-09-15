@@ -63,10 +63,13 @@
                 </td>
                 <td class="detail-number">{{ number(line.orderQuantity) }}</td>
                 <td class="detail-number">
-                  <input v-if="candidate.status === 'PENDING'" v-model="draft(line).shippedQuantity" class="pending-detail-input pending-number-input" type="number" min="0" step="1" :aria-label="`${line.sourceSkuId ?? index + 1} 已发数量`" :disabled="saving || importing" @input="clearSaveError" />
+                  <input v-if="candidate.status === 'PENDING'" :value="draft(line).shippedQuantity" class="pending-detail-input pending-number-input" type="number" min="0" step="1" :aria-label="`${line.sourceSkuId ?? index + 1} 已发数量`" :disabled="saving || importing" @input="changeShipped(line, $event)" />
                   <span v-else>{{ number(line.shippedQuantity) }}</span>
                 </td>
-                <td class="detail-number">{{ number(pending(line)) }}</td>
+                <td class="detail-number">
+                  <input v-if="candidate.status === 'PENDING'" :value="draft(line).pendingQuantity" class="pending-detail-input pending-number-input" type="number" min="0" :max="line.orderQuantity ?? undefined" step="1" :aria-label="`${line.sourceSkuId ?? index + 1} 未发数量`" :disabled="saving || importing || line.orderQuantity == null" @input="changePending(line, $event)" />
+                  <span v-else>{{ number(line.pendingQuantity) }}</span>
+                </td>
                 <td><span class="detail-progress"><span><i :style="{ width: `${Math.min(progress(line) ?? 0, 100)}%` }"></i></span><em>{{ progress(line) == null ? "—" : `${progress(line)}%` }}</em></span></td>
                 <td><span class="status-badge" :class="line.validationIssues.length ? 'is-warning' : 'is-success'">{{ line.validationIssues.length ? "未通过" : "通过" }}</span></td>
               </tr>
@@ -104,7 +107,7 @@ import TableSortButton from "@/components/TableSortButton.vue";
 import { sortedCategories } from "@/productCategories";
 
 type CandidateLine = ImportCandidate["lines"][number];
-type LineDraft = { factoryName: string; contractShipDate: string; shippedQuantity: string };
+type LineDraft = { factoryName: string; contractShipDate: string; shippedQuantity: string; pendingQuantity: string };
 
 const route = useRoute();
 const router = useRouter();
@@ -127,14 +130,21 @@ const number = (value: number | null) => value == null ? "—" : value.toLocaleS
 const issueText = (issues: string[]) => issues.map((issue) => issueLabels[issue] ?? "资料待处理").join("；");
 const draft = (line: CandidateLine) => drafts.value[line.candidateLineId]!;
 const shipped = (line: CandidateLine) => {
-  const value = Number(draft(line)?.shippedQuantity ?? line.shippedQuantity);
+  const raw = draft(line)?.shippedQuantity ?? line.shippedQuantity;
+  if (raw === "" || raw == null) return null;
+  const value = Number(raw);
   return Number.isInteger(value) && value >= 0 ? value : null;
 };
-const pending = (line: CandidateLine) => line.orderQuantity == null || shipped(line) == null ? null : Math.max(line.orderQuantity - shipped(line)!, 0);
+const pending = (line: CandidateLine) => {
+  const raw = draft(line)?.pendingQuantity ?? line.pendingQuantity;
+  if (raw === "" || raw == null) return null;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 0 ? value : null;
+};
 const progress = (line: CandidateLine) => !line.orderQuantity || shipped(line) == null ? null : Math.round(shipped(line)! * 100 / line.orderQuantity);
 const dirty = computed(() => candidate.value?.lines.some((line) => {
   const value = draft(line);
-  return value && (value.factoryName !== (line.factoryName ?? "") || value.contractShipDate !== (line.contractShipDate ?? "") || value.shippedQuantity !== (line.shippedQuantity == null ? "" : String(line.shippedQuantity)));
+  return value && (value.factoryName !== (line.factoryName ?? "") || value.contractShipDate !== (line.contractShipDate ?? "") || value.shippedQuantity !== (line.shippedQuantity == null ? "" : String(line.shippedQuantity)) || value.pendingQuantity !== (line.pendingQuantity == null ? "" : String(line.pendingQuantity)));
 }) ?? false);
 const sortedLines = computed(() => [...(candidate.value?.lines ?? [])].sort((left, right) => {
   const value = (line: CandidateLine) => lineSortBy.value === "factoryName" ? draft(line)?.factoryName : lineSortBy.value === "contractShipDate" ? draft(line)?.contractShipDate : lineSortBy.value === "shippedQuantity" ? shipped(line) : lineSortBy.value === "pendingQuantity" ? pending(line) : lineSortBy.value === "progress" ? progress(line) : lineSortBy.value === "validation" ? issueText(line.validationIssues) : line[lineSortBy.value as keyof CandidateLine] ?? "";
@@ -142,11 +152,27 @@ const sortedLines = computed(() => [...(candidate.value?.lines ?? [])].sort((lef
 }));
 
 function resetDrafts() {
-  drafts.value = Object.fromEntries((candidate.value?.lines ?? []).map((line) => [line.candidateLineId, { factoryName: line.factoryName ?? "", contractShipDate: line.contractShipDate ?? "", shippedQuantity: line.shippedQuantity == null ? "" : String(line.shippedQuantity) }]));
+  drafts.value = Object.fromEntries((candidate.value?.lines ?? []).map((line) => [line.candidateLineId, { factoryName: line.factoryName ?? "", contractShipDate: line.contractShipDate ?? "", shippedQuantity: line.shippedQuantity == null ? "" : String(line.shippedQuantity), pendingQuantity: line.pendingQuantity == null ? "" : String(line.pendingQuantity) }]));
 }
 function toggleLineSort(field: string) { if (lineSortBy.value === field) lineSortOrder.value = lineSortOrder.value === "asc" ? "desc" : "asc"; else { lineSortBy.value = field; lineSortOrder.value = "asc"; } }
 function backToList() { return router.push({ path: "/orders/import", query: route.query }); }
 function clearSaveError() { errorMessage.value = ""; }
+function changeShipped(line: CandidateLine, event: Event) {
+  const value = (event.target as HTMLInputElement).value;
+  const values = draft(line);
+  values.shippedQuantity = value;
+  const quantity = Number(value);
+  values.pendingQuantity = line.orderQuantity != null && value !== "" && Number.isInteger(quantity) && quantity >= 0 ? String(Math.max(line.orderQuantity - quantity, 0)) : "";
+  clearSaveError();
+}
+function changePending(line: CandidateLine, event: Event) {
+  const value = (event.target as HTMLInputElement).value;
+  const values = draft(line);
+  values.pendingQuantity = value;
+  const quantity = Number(value);
+  if (line.orderQuantity != null && value !== "" && Number.isInteger(quantity) && quantity >= 0 && quantity <= line.orderQuantity) values.shippedQuantity = String(line.orderQuantity - quantity);
+  clearSaveError();
+}
 function openConfirm() { errorMessage.value = ""; confirmOpen.value = true; }
 function formatTime(value: string) { return new Date(value).toLocaleString("zh-CN", { hour12: false }); }
 function sourceLabel(value: string | null) { return value === "web_admin" ? "管理员网页" : value === "mini_program" ? "微信小程序" : "系统"; }
@@ -168,13 +194,16 @@ async function saveLines() {
   try {
     lines = candidate.value.lines.flatMap((line) => {
       const value = draft(line);
-      if (!value || (value.factoryName === (line.factoryName ?? "") && value.contractShipDate === (line.contractShipDate ?? "") && value.shippedQuantity === (line.shippedQuantity == null ? "" : String(line.shippedQuantity)))) return [];
+      if (!value || (value.factoryName === (line.factoryName ?? "") && value.contractShipDate === (line.contractShipDate ?? "") && value.shippedQuantity === (line.shippedQuantity == null ? "" : String(line.shippedQuantity)) && value.pendingQuantity === (line.pendingQuantity == null ? "" : String(line.pendingQuantity)))) return [];
       const factoryChanged = value.factoryName !== (line.factoryName ?? "");
       const dateChanged = value.contractShipDate !== (line.contractShipDate ?? "");
       const shippedChanged = value.shippedQuantity !== (line.shippedQuantity == null ? "" : String(line.shippedQuantity));
+      const pendingChanged = value.pendingQuantity !== (line.pendingQuantity == null ? "" : String(line.pendingQuantity));
       const quantity = Number(value.shippedQuantity);
+      const pendingQuantity = Number(value.pendingQuantity);
       if (factoryChanged && !factoryByName.has(value.factoryName)) throw new Error("请选择已有工厂");
       if (shippedChanged && (value.shippedQuantity === "" || !Number.isInteger(quantity) || quantity < 0)) throw new Error("已发数量必须为非负整数");
+      if (pendingChanged && (line.orderQuantity == null || value.pendingQuantity === "" || !Number.isInteger(pendingQuantity) || pendingQuantity < 0 || pendingQuantity > line.orderQuantity)) throw new Error("未发数量必须为不超过下单数量的非负整数");
       return [{ candidateLineId: line.candidateLineId, ...(factoryChanged ? { factoryId: factoryByName.get(value.factoryName)! } : {}), ...(dateChanged ? { contractShipDate: value.contractShipDate || null } : {}), ...(shippedChanged ? { shippedQuantity: quantity } : {}) }];
     });
   } catch (error) {

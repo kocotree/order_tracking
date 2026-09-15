@@ -173,7 +173,7 @@ describe("related shipments", () => {
   });
 });
 
-it("allows the three source detail fields without exposing whole-order publishing", async () => {
+it("allows the four source detail fields without exposing whole-order publishing", async () => {
   vi.spyOn(orderApi, "get").mockResolvedValue({ ...sampleOrder, source: "feishu", detailMode: true,
     tracker: null, trackers: [], totalQuantity: null, shippedQuantity: null, pendingQuantity: null, lines: [], factoryProgress: [],
     details: [{ detailId: "source-1", origin: "feishu", sourceSkuId: "RAW-SKU", productName: "未匹配产品",
@@ -187,7 +187,8 @@ it("allows the three source detail fields without exposing whole-order publishin
   const table = wrapper.get('.product-detail-table');
   expect(table.text()).toContain("RAW-SKU");
   expect((table.get('input[aria-label="第1条工厂"]').element as HTMLInputElement).value).toBe("未匹配厂");
-  expect(table.findAll('input:not([type="checkbox"])')).toHaveLength(3);
+  expect(table.findAll('input:not([type="checkbox"])')).toHaveLength(4);
+  expect(table.get('input[aria-label="第1条未发数量"]').attributes('disabled')).toBeDefined();
   expect(table.get('input[aria-label="第1条工厂"]').attributes('list')).toBe('order-factory-options');
   expect(table.get('input[type="date"]').attributes('type')).toBe('date');
   expect(wrapper.text()).not.toContain("发布订单");
@@ -225,18 +226,23 @@ it("shows a dispatch preview failure on the page before any dialog opens", async
 it("saves all edited detail fields together and keeps failed input", async () => {
   vi.spyOn(orderApi, "get").mockResolvedValue(sourceOrder);
   const save = vi.spyOn(orderApi, "saveDetailLines").mockRejectedValueOnce(new Error("offline"))
-    .mockResolvedValueOnce({ ...sourceOrder, version: 2, details: [{ ...sourceOrder.details[0], version: 2, factoryName: "测试工厂", contractShipDate: null, shippedQuantity: 30, pendingQuantity: 70, progressPercent: 30 }] });
+    .mockResolvedValueOnce({ ...sourceOrder, version: 2, details: [{ ...sourceOrder.details[0], version: 2, factoryName: "测试工厂", contractShipDate: null, shippedQuantity: 40, pendingQuantity: 60, progressPercent: 40 }] });
   const wrapper = mountSource(); await flushPromises();
   await wrapper.get('input[aria-label="第1条合同出货时间"]').setValue("");
-  await wrapper.get('input[aria-label="第1条已发数量"]').setValue("30");
+  const shippedInput = wrapper.get('input[aria-label="第1条已发数量"]');
+  const pendingInput = wrapper.get('input[aria-label="第1条未发数量"]');
+  await shippedInput.setValue("30");
+  expect((pendingInput.element as HTMLInputElement).value).toBe("70");
+  await pendingInput.setValue("60");
+  expect((shippedInput.element as HTMLInputElement).value).toBe("40");
   const saveButton = wrapper.findAll('button').find(button => button.text() === '保存')!;
   expect(updateButton(wrapper).attributes('disabled')).toBeDefined();
   await saveButton.trigger('click'); await flushPromises();
   expect(wrapper.text()).toContain('offline');
-  expect((wrapper.get('input[aria-label="第1条已发数量"]').element as HTMLInputElement).value).toBe('30');
+  expect((pendingInput.element as HTMLInputElement).value).toBe('60');
   expect(updateButton(wrapper).attributes('disabled')).toBeDefined();
   await saveButton.trigger('click'); await flushPromises();
-  expect(save).toHaveBeenLastCalledWith('order-1', { version: 1, lines: [{ detailId: 'source-89', detailVersion: 1, contractShipDate: null, shippedQuantity: 30 }] });
+  expect(save).toHaveBeenLastCalledWith('order-1', { version: 1, lines: [{ detailId: 'source-89', detailVersion: 1, contractShipDate: null, shippedQuantity: 40 }] });
   expect(updateButton(wrapper).attributes('disabled')).toBeUndefined();
   wrapper.unmount();
 });

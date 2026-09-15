@@ -14,7 +14,7 @@ class PurchaseSource:
         self.requested = po_ids
         return [
             SourcePurchaseItem("1596185", "manual-child", "SKU-1", 550, 0, None),
-            SourcePurchaseItem("1596185", "mapped-child", "SKU-2", 650, 419, 0),
+            SourcePurchaseItem("1596185", "mapped-child", "SKU-2", 650, 419, 7),
         ]
 
 
@@ -81,7 +81,7 @@ def test_purchase_quantity_uses_manual_then_mapping_and_deduplicates_main_order(
             "采购子订单号-映射": "wrong-child",
             "采购子订单号-人工确认": "manual-child",
         }),
-        row("two", "SKU-2", {"采购子订单号-映射": "mapped-child"}),
+        row("two", "SKU-2", {"采购子订单号-映射": "mapped-child", "下单数": 999}),
     ]
 
     client = Client()
@@ -89,9 +89,12 @@ def test_purchase_quantity_uses_manual_then_mapping_and_deduplicates_main_order(
 
     assert purchase.requested == ["1596185"]
     assert client.requests[0]["params"] == {"page_size": 500}
-    assert [(item.shipped_quantity, item.pending_quantity) for item in actual] == [
-        (0, 550),
-        (419, 231),
+    assert [
+        (item.order_quantity, item.shipped_quantity, item.pending_quantity)
+        for item in actual
+    ] == [
+        (550, 0, 550),
+        (650, 419, 231),
     ]
     assert actual[1].raw_fields["_purchase"]["childOrderId"] == "mapped-child"  # type: ignore[index]
 

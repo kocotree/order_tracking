@@ -1640,6 +1640,8 @@ class OrderDetail(Base):
     origin: Mapped[str] = mapped_column(String(16), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
     accepted_raw_fields: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    purchase_order_id: Mapped[str | None] = mapped_column(Text)
+    purchase_order_item_id: Mapped[str | None] = mapped_column(Text)
     accepted_source_modified_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
     accepted_source_hash: Mapped[str | None] = mapped_column(String(64))
     source_sku_id: Mapped[str | None] = mapped_column(Text)

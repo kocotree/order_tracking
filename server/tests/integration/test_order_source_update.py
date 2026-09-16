@@ -6,14 +6,19 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.order_source import FakeFeishuOrderSource
-from app.db.models import OrderDetail
+from app.db.models import Order, OrderDetail
 from app.modules.order_import import OrderImportService, SourceOrderRow
 from app.modules.orders import OrderConflict
 from app.modules.orders.source_update import OrderSourceUpdateService
 from tests.integration.test_order_import import _seed_import_dependencies
 
 
-def setup_order(test_database_engine: Engine, *, two_rows: bool = False):
+def setup_order(
+    test_database_engine: Engine,
+    *,
+    two_rows: bool = False,
+    raw_fields: dict[str, object] | None = None,
+):
     _seed_import_dependencies(test_database_engine)
     sessions = sessionmaker(test_database_engine, expire_on_commit=False)
     importer = OrderImportService(sessions)
@@ -31,7 +36,7 @@ def setup_order(test_database_engine: Engine, *, two_rows: bool = False):
         "松子",
         None,
         date(2026, 12, 31),
-        {"出货总数": 0},
+        raw_fields if raw_fields is not None else {"出货总数": 0},
     )
     rows = [row, replace(row, record_id="rec90")] if two_rows else [row]
     source = FakeFeishuOrderSource([rows])
@@ -46,6 +51,146 @@ def setup_order(test_database_engine: Engine, *, two_rows: bool = False):
         request_id="import89",
     )
     return sessions, row, source, order_id
+
+
+def test_purchase_link_migration_backfills_only_nonempty_strings(
+    test_database_engine: Engine,
+    test_database_url: str,
+):
+    from alembic import command
+    from alembic.config import Config
+
+    sessions, _, _, order_id = setup_order(
+        test_database_engine,
+        raw_fields={
+            "_purchase": {
+                "mainOrderId": " PO-111 ",
+                "childOrderId": " POI-111 ",
+            }
+        },
+    )
+    with sessions() as session, session.begin():
+        order = session.get(Order, order_id)
+        session.add_all(
+            [
+                OrderDetail(
+                    detail_id="invalid-purchase-links",
+                    order_id=order_id,
+                    origin="legacy",
+                    sort_order=2,
+                    accepted_raw_fields={
+                        "_purchase": {"mainOrderId": "   ", "childOrderId": 111}
+                    },
+                    source_trackers=[],
+                    parse_issues=[],
+                    dispatch_state="UNASSIGNED",
+                    created_at=order.created_at,
+                    updated_at=order.updated_at,
+                ),
+                OrderDetail(
+                    detail_id="missing-purchase-links",
+                    order_id=order_id,
+                    origin="manual",
+                    sort_order=3,
+                    accepted_raw_fields={},
+                    source_trackers=[],
+                    parse_issues=[],
+                    dispatch_state="UNASSIGNED",
+                    created_at=order.created_at,
+                    updated_at=order.updated_at,
+                ),
+            ]
+        )
+
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", test_database_url)
+    command.downgrade(config, "20260915_0039")
+    try:
+        command.upgrade(config, "head")
+        with sessions() as session:
+            details = {
+                detail.detail_id: detail
+                for detail in session.scalars(select(OrderDetail)).all()
+            }
+            imported = next(
+                detail
+                for key, detail in details.items()
+                if key not in {"invalid-purchase-links", "missing-purchase-links"}
+            )
+            assert imported.purchase_order_id == "PO-111"
+            assert imported.purchase_order_item_id == "POI-111"
+            assert details["invalid-purchase-links"].purchase_order_id is None
+            assert details["invalid-purchase-links"].purchase_order_item_id is None
+            assert details["missing-purchase-links"].purchase_order_id is None
+            assert details["missing-purchase-links"].purchase_order_item_id is None
+    finally:
+        command.upgrade(config, "head")
+
+
+def test_purchase_links_persist_on_import_and_source_confirm(
+    test_database_engine: Engine,
+):
+    sessions, row, source, order_id = setup_order(
+        test_database_engine,
+        raw_fields={
+            "_purchase": {
+                "mainOrderId": "PO-IMPORT",
+                "childOrderId": "POI-IMPORT",
+                "qty": 100,
+            }
+        },
+    )
+    with sessions() as session:
+        detail = session.scalar(select(OrderDetail).where(OrderDetail.order_id == order_id))
+        assert detail.purchase_order_id == "PO-IMPORT"
+        assert detail.purchase_order_item_id == "POI-IMPORT"
+        assert detail.accepted_raw_fields["_purchase"]["qty"] == 100
+
+    service = OrderSourceUpdateService(sessions, source=source)
+    args = dict(
+        actor_id="admin-order-import",
+        order_id=order_id,
+        version=1,
+        request_id="purchase-links",
+    )
+    source._pages = [[
+        replace(
+            row,
+            raw_fields={
+                "_purchase": {
+                    "mainOrderId": "PO-REFRESH",
+                    "childOrderId": "POI-REFRESH",
+                    "qty": 100,
+                }
+            },
+        )
+    ]]
+    preview = service.preview(**args)
+    source._fail_on_page = 1
+    refreshed = service.confirm(
+        **args,
+        preview_id=preview["preview_id"],
+        idempotency_key="purchase-links-refresh",
+    )
+    with sessions() as session:
+        detail = session.scalar(select(OrderDetail).where(OrderDetail.order_id == order_id))
+        assert detail.purchase_order_id == "PO-REFRESH"
+        assert detail.purchase_order_item_id == "POI-REFRESH"
+        assert detail.accepted_raw_fields["_purchase"]["qty"] == 100
+
+    source._fail_on_page = None
+    source._pages = [[replace(row, raw_fields={})]]
+    preview = service.preview(**{**args, "version": refreshed.version})
+    service.confirm(
+        **{**args, "version": refreshed.version},
+        preview_id=preview["preview_id"],
+        idempotency_key="purchase-links-clear",
+    )
+    with sessions() as session:
+        detail = session.scalar(select(OrderDetail).where(OrderDetail.order_id == order_id))
+        assert detail.purchase_order_id is None
+        assert detail.purchase_order_item_id is None
+        assert detail.accepted_raw_fields == {}
 
 
 def test_source_preview_date_protection_versions_and_idempotency(test_database_engine: Engine):

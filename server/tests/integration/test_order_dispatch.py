@@ -831,9 +831,12 @@ def test_migration_downgrade_rejects_dispatch_assignments(
 
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", test_database_url)
-    with pytest.raises(RuntimeError, match="拒绝有损回滚"):
-        alembic_cmd.downgrade(config, "20260911_0035")
+    try:
+        with pytest.raises(RuntimeError, match="拒绝有损回滚"):
+            alembic_cmd.downgrade(config, "20260911_0035")
 
-    with Session(test_database_engine) as session:
-        assert session.query(OrderAssignment).count() == 1
-        assert session.scalar(select(Order).where(Order.order_id == order_id))
+        with Session(test_database_engine) as session:
+            assert session.query(OrderAssignment).count() == 1
+            assert session.scalar(select(Order).where(Order.order_id == order_id))
+    finally:
+        alembic_cmd.upgrade(config, "head")

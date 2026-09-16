@@ -999,6 +999,9 @@ class OrderImportService:
                     date_key = f"source:{source.source_record_pk}"
                     old_date_key = self._date_key(line.source_sku_id, line.factory_name)
                     field_override = candidate.field_overrides.get(date_key) or {}
+                    purchase_order_id, purchase_order_item_id = self.purchase_link_ids(
+                        source.raw_fields
+                    )
                     session.add(
                         OrderDetail(
                             detail_id=str(uuid4()),
@@ -1007,6 +1010,8 @@ class OrderImportService:
                             source_record_pk=source.source_record_pk,
                             sort_order=index,
                             accepted_raw_fields=source.raw_fields,
+                            purchase_order_id=purchase_order_id,
+                            purchase_order_item_id=purchase_order_item_id,
                             accepted_source_modified_at=source.source_modified_at,
                             accepted_source_hash=sha256(
                                 json.dumps(
@@ -1353,6 +1358,20 @@ class OrderImportService:
                 key: item for key, item in purchase.items() if key != "readAt"
             }
         return result
+
+    @staticmethod
+    def purchase_link_ids(value: dict[str, object]) -> tuple[str | None, str | None]:
+        purchase = value.get("_purchase")
+        if not isinstance(purchase, dict):
+            return None, None
+
+        def identifier(key: str) -> str | None:
+            item = purchase.get(key)
+            if not isinstance(item, str) or not (item := item.strip()):
+                return None
+            return item
+
+        return identifier("mainOrderId"), identifier("childOrderId")
 
     @staticmethod
     def _order_is_frozen(session: Session, order_no: str) -> bool:

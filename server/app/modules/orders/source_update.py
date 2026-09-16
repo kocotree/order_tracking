@@ -352,6 +352,9 @@ class OrderSourceUpdateService(OrderService):
     @staticmethod
     def _values(session: Session, row: SourceOrderRow, detail: OrderDetail) -> dict[str, Any]:
         variant, factory, issues = OrderImportService.match_source_row(session, row)
+        purchase_order_id, purchase_order_item_id = OrderImportService.purchase_link_ids(
+            row.raw_fields
+        )
         if detail.factory_override_enabled:
             factory = session.get(Factory, detail.matched_factory_id)
             issues = [
@@ -409,6 +412,8 @@ class OrderSourceUpdateService(OrderService):
             "source_contract_ship_date": source_date.isoformat() if source_date else None,
             "contract_ship_date": effective_date.isoformat() if effective_date else None,
             "accepted_raw_fields": row.raw_fields,
+            "purchase_order_id": purchase_order_id,
+            "purchase_order_item_id": purchase_order_item_id,
             "accepted_source_hash": _hash(row.raw_fields),
             "accepted_source_modified_at": row.source_modified_at.isoformat()
             if row.source_modified_at

@@ -5,10 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, contractApi, identityApi, orderApi, shipmentApi, type Shipment, type Order } from "@/api/client";
 import OrderDetailPage from "@/pages/OrderDetailPage.vue";
 
+const routerPush = vi.hoisted(() => vi.fn());
+
 vi.mock("vue-router", async () => {
   const { reactive } = await import("vue");
   const route = reactive({ params: { orderId: "order-1" }, query: {} });
-  return { useRoute: () => route, useRouter: () => ({ replace: vi.fn() }) };
+  return { useRoute: () => route, useRouter: () => ({ push: routerPush, replace: vi.fn() }) };
 });
 
 const sampleOrder = {
@@ -25,6 +27,8 @@ const sampleOrder = {
 afterEach(() => vi.restoreAllMocks());
 beforeEach(() => {
   useRoute().params.orderId = "order-1";
+  useRoute().query = {};
+  routerPush.mockReset();
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
 
@@ -289,6 +293,7 @@ it("does not expose source refresh or date inputs for assigned details", async (
 });
 
 it("confirms changed sources independently before dispatching the selected details", async () => {
+  useRoute().query = { status: "未完成", factoryId: ["factory-1", "factory-2"], tracker: "松子", page: "2" };
   vi.spyOn(orderApi, "get").mockResolvedValue(sourceOrder);
   const updatedOrder = {
     ...sourceOrder,
@@ -341,6 +346,8 @@ it("confirms changed sources independently before dispatching the selected detai
   await flushPromises();
   expect(confirmDispatch).toHaveBeenCalledWith("order-1", 2, "dispatch-90", expect.any(String));
   expect(wrapper.text()).toContain("全部派工");
+  await wrapper.get(".detail-back-button").trigger("click");
+  expect(routerPush).toHaveBeenCalledWith({ path: "/orders", query: useRoute().query });
   wrapper.unmount();
 });
 

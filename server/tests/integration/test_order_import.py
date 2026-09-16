@@ -389,6 +389,84 @@ def test_pending_candidate_revalidates_from_saved_snapshot_after_factory_user_en
     _clean_import_data(test_database_engine)
 
 
+@pytest.mark.parametrize(
+    ("dependency_state", "expected_issues"),
+    [
+        ("matched", []),
+        ("product_unavailable", ["PRODUCT_VARIANT_NOT_MATCHED"]),
+        ("factory_unavailable", ["FACTORY_NOT_MATCHED"]),
+        ("factory_without_user", ["FACTORY_HAS_NO_ENABLED_USER"]),
+    ],
+)
+def test_initial_and_revalidation_dependency_matching_stay_consistent(
+    test_database_engine: Engine,
+    dependency_state: str,
+    expected_issues: list[str],
+) -> None:
+    _clean_import_data(test_database_engine)
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    with sessions() as session, session.begin():
+        if dependency_state == "product_unavailable":
+            session.get(Product, "product-import").is_available = False
+        elif dependency_state == "factory_unavailable":
+            session.get(Factory, "factory-import").is_enabled = False
+        elif dependency_state == "factory_without_user":
+            session.get(User, "factory-import-user").is_enabled = False
+
+    service = OrderImportService(sessions)
+    run = service.create_or_reuse_run(
+        actor_id="admin-order-import",
+        request_id=f"run-dependency-{dependency_state}",
+    )
+    service.process_run(
+        run_id=run.run_id,
+        pages_read=1,
+        rows=[
+            SourceOrderRow(
+                f"rec-dependency-{dependency_state}",
+                f"E-DEPENDENCY-{dependency_state}",
+                "6970000000001",
+                "测试童帽",
+                "蓝色 / 120",
+                "童帽春夏",
+                "测试工厂",
+                100,
+                0,
+                100,
+                "松子",
+                date(2026, 8, 22),
+                date(2026, 8, 30),
+                {},
+            )
+        ],
+    )
+    with sessions() as session:
+        candidate_id = session.scalar(
+            select(OrderImportCandidate.candidate_id).where(
+                OrderImportCandidate.order_no == f"E-DEPENDENCY-{dependency_state}"
+            )
+        )
+    assert candidate_id is not None
+    before = service.get_candidate(actor_id="admin-order-import", candidate_id=candidate_id)
+
+    result = service.revalidate_pending_candidates(
+        factory_names=["测试工厂"],
+        reason="dependency_consistency",
+        request_id=f"revalidate-dependency-{dependency_state}",
+    )
+    after = service.get_candidate(actor_id="admin-order-import", candidate_id=candidate_id)
+
+    assert before.validation_issues == expected_issues
+    assert before.lines[0].validation_issues == expected_issues
+    assert before.validation_state == ("READY" if not expected_issues else "INVALID")
+    assert result.checked_candidates == 1
+    assert result.updated_candidates == 0
+    assert after == before
+
+    _clean_import_data(test_database_engine)
+
+
 def test_ready_candidate_imports_atomic_feishu_draft(
     test_database_engine: Engine,
 ) -> None:

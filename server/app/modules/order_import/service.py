@@ -1188,41 +1188,15 @@ class OrderImportService:
             line_issues = [
                 code for code in line.validation_issues if code not in LOCAL_DEPENDENCY_ISSUES
             ]
-            variant = session.scalar(
-                select(ProductVariant)
-                .join(Product, Product.product_id == ProductVariant.product_id)
-                .where(
-                    ProductVariant.source_sku_id == (line.source_sku_id or "").strip(),
-                    ProductVariant.properties_value == (line.properties_value or "").strip(),
-                    ProductVariant.is_available.is_(True),
-                    Product.name == (line.product_name or "").strip(),
-                    Product.is_available.is_(True),
-                )
+            variant, factory, dependency_issues = self._match_dependencies(
+                session,
+                source_sku_id=line.source_sku_id,
+                product_name=line.product_name,
+                properties_value=line.properties_value,
+                factory_name=line.factory_name,
             )
             product = session.get(Product, variant.product_id) if variant else None
-            if variant is None:
-                line_issues.append("PRODUCT_VARIANT_NOT_MATCHED")
-            factory = session.scalar(
-                select(Factory).where(
-                    Factory.factory_name == (line.factory_name or "").strip(),
-                    Factory.is_enabled.is_(True),
-                )
-            )
-            if factory is None:
-                line_issues.append("FACTORY_NOT_MATCHED")
-            elif (
-                session.scalar(
-                    select(User.user_id)
-                    .where(
-                        User.factory_id == factory.factory_id,
-                        User.role == "factory",
-                        User.is_enabled.is_(True),
-                    )
-                    .limit(1)
-                )
-                is None
-            ):
-                line_issues.append("FACTORY_HAS_NO_ENABLED_USER")
+            line_issues.extend(dependency_issues)
             candidate_issues.extend(line_issues)
             line_updates.append(
                 (
@@ -1275,31 +1249,36 @@ class OrderImportService:
         return True
 
     @staticmethod
-    def match_source_row(
-        session: Session, row: SourceOrderRow
+    def _match_dependencies(
+        session: Session,
+        *,
+        source_sku_id: str | None,
+        product_name: str | None,
+        properties_value: str | None,
+        factory_name: str | None,
     ) -> tuple[ProductVariant | None, Factory | None, list[str]]:
-        line_issues: list[str] = []
+        issues: list[str] = []
         variant = session.scalar(
             select(ProductVariant)
             .join(Product, Product.product_id == ProductVariant.product_id)
             .where(
-                ProductVariant.source_sku_id == (row.source_sku_id or "").strip(),
-                ProductVariant.properties_value == (row.properties_value or "").strip(),
+                ProductVariant.source_sku_id == (source_sku_id or "").strip(),
+                ProductVariant.properties_value == (properties_value or "").strip(),
                 ProductVariant.is_available.is_(True),
-                Product.name == (row.product_name or "").strip(),
+                Product.name == (product_name or "").strip(),
                 Product.is_available.is_(True),
             )
         )
         if variant is None:
-            line_issues.append("PRODUCT_VARIANT_NOT_MATCHED")
+            issues.append("PRODUCT_VARIANT_NOT_MATCHED")
         factory = session.scalar(
             select(Factory).where(
-                Factory.factory_name == (row.factory_name or "").strip(),
+                Factory.factory_name == (factory_name or "").strip(),
                 Factory.is_enabled.is_(True),
             )
         )
         if factory is None:
-            line_issues.append("FACTORY_NOT_MATCHED")
+            issues.append("FACTORY_NOT_MATCHED")
         elif (
             session.scalar(
                 select(User.user_id)
@@ -1312,7 +1291,20 @@ class OrderImportService:
             )
             is None
         ):
-            line_issues.append("FACTORY_HAS_NO_ENABLED_USER")
+            issues.append("FACTORY_HAS_NO_ENABLED_USER")
+        return variant, factory, issues
+
+    @staticmethod
+    def match_source_row(
+        session: Session, row: SourceOrderRow
+    ) -> tuple[ProductVariant | None, Factory | None, list[str]]:
+        variant, factory, line_issues = OrderImportService._match_dependencies(
+            session,
+            source_sku_id=row.source_sku_id,
+            product_name=row.product_name,
+            properties_value=row.properties_value,
+            factory_name=row.factory_name,
+        )
         if (
             row.order_quantity is None
             or isinstance(row.order_quantity, bool)

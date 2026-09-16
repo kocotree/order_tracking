@@ -553,12 +553,13 @@ async function loadFactoryOptions() {
   try { factories.value = (await identityApi.listFactoryOptions()).items; }
   catch { factories.value = []; }
 }
-function goBack() { return router.push(typeof route.query.notificationReturnTo === "string" ? route.query.notificationReturnTo : "/orders"); }
+function listRoute() { return { path: "/orders", query: route.query }; }
+function goBack() { return router.push(typeof route.query.notificationReturnTo === "string" ? route.query.notificationReturnTo : listRoute()); }
 function selectContractFactory(factory: ContractFactoryStatus) { selectedContractFactory.value = factory; contractSigningDate.value = factory.signingDate || localDate(); contractError.value = ""; }
 function openContractExport() { if (!order.value) return; contractError.value = ""; contractDialogOpen.value = true; if (contractFactories.value.length === 1) selectContractFactory(contractFactories.value[0]); else selectedContractFactory.value = null; }
 function closeContractExport() { contractDialogOpen.value = false; selectedContractFactory.value = null; contractError.value = ""; }
 async function confirmContractExport() { const factory = selectedContractFactory.value; if (!factory || !contractSigningDate.value) return; exportingContract.value = true; contractError.value = ""; try { const exported = await contractApi.export(orderId, factory.factoryId, contractSigningDate.value); await contractApi.download(exported); closeContractExport(); await loadContracts(); } catch (error) { contractError.value = error instanceof ApiError ? error.message : "加工合同导出失败"; } finally { exportingContract.value = false; } }
-async function confirmAction() { if (!order.value || !pendingAction.value) return; acting.value = true; actionError.value = ""; try { const action = pendingAction.value; if (action === "delete") { await orderApi.delete(orderId); await router.replace("/orders"); return; } if (action === "publish") await orderApi.publish(orderId, order.value.version); if (action === "complete") await orderApi.complete(orderId); if (action === "reopen") await orderApi.reopen(orderId, reopenReason.value); pendingAction.value = null; await load(); } catch (error) { actionError.value = error instanceof ApiError ? error.message : "订单操作失败"; } finally { acting.value = false; } }
+async function confirmAction() { if (!order.value || !pendingAction.value) return; acting.value = true; actionError.value = ""; try { const action = pendingAction.value; if (action === "delete") { await orderApi.delete(orderId); await router.replace(listRoute()); return; } if (action === "publish") await orderApi.publish(orderId, order.value.version); if (action === "complete") await orderApi.complete(orderId); if (action === "reopen") await orderApi.reopen(orderId, reopenReason.value); pendingAction.value = null; await load(); } catch (error) { actionError.value = error instanceof ApiError ? error.message : "订单操作失败"; } finally { acting.value = false; } }
 onMounted(() => { void Promise.all([load(), loadFactoryOptions()]); });
 </script>
 

@@ -60,6 +60,32 @@ it("opens the overdue tab from the dashboard query", async () => {
   wrapper.unmount();
 });
 
+it("restores filters from the URL and carries them into order details", async () => {
+  vi.spyOn(identityApi, "listFactoryOptions").mockResolvedValue({ items: [], total: 0 } as never);
+  const list = vi.spyOn(orderApi, "list").mockResolvedValue({ items: [sampleOrder], total: 11, page: 2, pageSize: 10 } as never);
+  const router = createRouter({ history: createMemoryHistory(), routes: [
+    { path: "/orders", component: OrdersPage },
+    { path: "/orders/:orderId", component: { template: "<div />" } },
+  ] });
+  await router.push({ path: "/orders", query: {
+    keyword: "蓝色", status: "未完成", category: "童装春夏", factoryId: ["factory-1", "factory-2"],
+    tracker: ["松子", "橄榄"], shipDateFrom: "2026-09-01", shipDateTo: "2026-09-30", sortBy: "categoryDesc", page: "2",
+  } });
+  const wrapper = mount(OrdersPage, { global: { plugins: [router], stubs: { AdminShell: { template: "<div><slot/></div>" } } } });
+  await flushPromises();
+
+  expect(list).toHaveBeenCalledWith(expect.objectContaining({
+    keyword: "蓝色", status: "未完成", category: "童装春夏", factoryIds: ["factory-1", "factory-2"],
+    trackers: ["松子", "橄榄"], shipDateFrom: "2026-09-01", shipDateTo: "2026-09-30", sortBy: "categoryDesc", page: 2,
+  }));
+  const detailUrl = new URL(wrapper.get('a[href^="/orders/order-1"]').attributes("href")!, "https://example.test");
+  expect(detailUrl.searchParams.get("keyword")).toBe("蓝色");
+  expect(detailUrl.searchParams.getAll("factoryId")).toEqual(["factory-1", "factory-2"]);
+  expect(detailUrl.searchParams.getAll("tracker")).toEqual(["松子", "橄榄"]);
+  expect(detailUrl.searchParams.get("page")).toBe("2");
+  wrapper.unmount();
+});
+
 it("renders orders before slow factory options and ignores stale list responses", async () => {
   let resolveFactories!: (value: never) => void;
   vi.spyOn(identityApi, "listFactoryOptions").mockImplementation(() => new Promise((resolve) => { resolveFactories = resolve; }));

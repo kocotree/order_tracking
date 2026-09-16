@@ -87,7 +87,7 @@
             <tbody>
               <tr v-for="(item, index) in items" :key="item.orderId">
                 <td class="order-sequence-cell">{{ (page - 1) * pageSize + index + 1 }}</td>
-                <td><RouterLink class="row-link" :to="`/orders/${item.orderId}`">{{ item.orderNo }}</RouterLink></td>
+                <td><RouterLink class="row-link" :to="detailRoute(item.orderId)">{{ item.orderNo }}</RouterLink></td>
                 <td class="order-product-summary"><strong>{{ productSummary(item) }}</strong></td>
                 <td class="category-summary" :title="displayCategories(item).join('、')">
                   <span v-for="value in displayCategories(item)" :key="value" class="category-tag">{{ value }}</span>
@@ -99,7 +99,7 @@
                 <td><div class="list-progress-line"><span class="progress-track"><span class="progress-bar" :style="{ width: `${Math.min(item.progressPercent ?? 0, 100)}%` }"></span></span><span class="list-progress-percent">{{ item.progressPercent == null ? "—" : `${item.progressPercent}%` }}</span></div></td>
                 <td class="order-shipment-count">{{ number(item.shippedQuantity) }} / {{ number(item.totalQuantity) }}</td>
                 <td><span class="status-badge" :class="statusTone(item)">{{ item.displayStatus }}</span></td>
-                <td><div class="order-row-actions"><RouterLink class="order-view-button" :to="`/orders/${item.orderId}`">详情</RouterLink><button v-if="item.lifecycle === 'DRAFT'" class="order-delete-button" type="button" @click="deleteTarget = item">删除</button></div></td>
+                <td><div class="order-row-actions"><RouterLink class="order-view-button" :to="detailRoute(item.orderId)">详情</RouterLink><button v-if="item.lifecycle === 'DRAFT'" class="order-delete-button" type="button" @click="deleteTarget = item">删除</button></div></td>
               </tr>
               <tr v-if="items.length === 0"><td colspan="11"><div class="empty-state"><strong>没有符合当前条件的订单</strong><p>可以调整搜索词、状态或筛选条件后重新查询。</p></div></td></tr>
             </tbody>
@@ -124,7 +124,7 @@
 
 <script setup lang="ts">
 import { productCategories, sortedCategories } from "@/productCategories";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 import { ApiError, identityApi, orderApi, type Factory, type Order } from "@/api/client";
@@ -140,22 +140,28 @@ const sortableColumns: { key: TableSortKey; label: string }[] = [
   { key: "progressPercent", label: "发货进度" }, { key: "shippedQuantity", label: "已发/订单数" }, { key: "status", label: "状态" },
 ];
 const trackers = ["烧麦", "松子", "橄榄", "大葱", "青椒"];
+const route = useRoute();
+const router = useRouter();
+const queryValue = (key: string) => { const value = route?.query[key]; return Array.isArray(value) ? value[0] ?? "" : value ?? ""; };
+const queryValues = (key: string) => { const value = route?.query[key]; return Array.isArray(value) ? value.filter((item): item is string => Boolean(item)) : value ? [value] : []; };
+const initialPage = Number.parseInt(queryValue("page"), 10);
+const initialSort = queryValue("sortBy");
+const initialTableSort = initialSort.match(/^(orderNo|productName|category|tracker|factory|contractShipDate|progressPercent|shippedQuantity|status)(Asc|Desc)$/);
 const items = ref<Order[]>([]);
 const factories = ref<Pick<Factory, "factoryId" | "factoryName" | "supplierNumber">[]>([]);
 const total = ref(0);
-const page = ref(1);
+const page = ref(Number.isInteger(initialPage) && initialPage > 0 ? initialPage : 1);
 const pageSize = 10;
-const keyword = ref("");
-const route = useRoute();
+const keyword = ref(queryValue("keyword"));
 const status = ref(statuses.some((item) => item.value === route?.query.status) ? String(route.query.status) : "all");
-const category = ref("");
-const factoryIds = ref<string[]>([]);
-const selectedTrackers = ref<string[]>([]);
-const shipDateFrom = ref("");
-const shipDateTo = ref("");
-const sortBy = ref("priority");
-const tableSortKey = ref<TableSortKey | null>(null);
-const tableSortDirection = ref<"asc" | "desc">("asc");
+const category = ref(queryValue("category"));
+const factoryIds = ref<string[]>(queryValues("factoryId"));
+const selectedTrackers = ref<string[]>(queryValues("tracker"));
+const shipDateFrom = ref(queryValue("shipDateFrom"));
+const shipDateTo = ref(queryValue("shipDateTo"));
+const sortBy = ref(initialTableSort ? initialSort : "priority");
+const tableSortKey = ref<TableSortKey | null>(initialTableSort?.[1] as TableSortKey | undefined ?? null);
+const tableSortDirection = ref<"asc" | "desc">(initialTableSort?.[2] === "Desc" ? "desc" : "asc");
 const loading = ref(true);
 const errorMessage = ref("");
 const factoryOpen = ref(false);
@@ -180,6 +186,21 @@ function statusTone(order: Order) {
   return "is-info";
 }
 
+function listQuery() {
+  const query: Record<string, string | string[]> = {};
+  if (keyword.value.trim()) query.keyword = keyword.value.trim();
+  if (status.value !== "all") query.status = status.value;
+  if (category.value) query.category = category.value;
+  if (factoryIds.value.length) query.factoryId = factoryIds.value;
+  if (selectedTrackers.value.length) query.tracker = selectedTrackers.value;
+  if (shipDateFrom.value) query.shipDateFrom = shipDateFrom.value;
+  if (shipDateTo.value) query.shipDateTo = shipDateTo.value;
+  if (sortBy.value !== "priority") query.sortBy = sortBy.value;
+  if (page.value !== 1) query.page = String(page.value);
+  return query;
+}
+const detailRoute = (orderId: string) => ({ path: `/orders/${orderId}`, query: listQuery() });
+
 let requestSequence = 0;
 async function load() { const requestId = ++requestSequence;
   loading.value = true;
@@ -188,7 +209,7 @@ async function load() { const requestId = ++requestSequence;
     const result = await orderApi.list({ keyword: keyword.value, status: status.value, category: category.value || undefined, factoryIds: factoryIds.value, trackers: selectedTrackers.value, shipDateFrom: shipDateFrom.value || undefined, shipDateTo: shipDateTo.value || undefined, sortBy: sortBy.value, includeDrafts: true, page: page.value, pageSize });
     if (requestId !== requestSequence) return;
     const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
-    if (page.value > lastPage) { page.value = lastPage; await load(); return; }
+    if (page.value > lastPage) { page.value = lastPage; await router?.replace({ path: "/orders", query: listQuery() }); await load(); return; }
     items.value = result.items;
     total.value = result.total;
   } catch (error) {
@@ -198,9 +219,10 @@ async function load() { const requestId = ++requestSequence;
   }
 }
 
-async function search() { page.value = 1; await load(); }
+async function syncAndLoad() { await router?.replace({ path: "/orders", query: listQuery() }); await load(); }
+async function search() { page.value = 1; await syncAndLoad(); }
 async function setStatus(value: string) { status.value = value; await search(); }
-async function go(value: number) { if (value < 1 || value > totalPages.value || value === page.value) return; page.value = value; await load(); }
+async function go(value: number) { if (value < 1 || value > totalPages.value || value === page.value) return; page.value = value; await syncAndLoad(); }
 
 async function toggleSort(key: TableSortKey) {
   if (tableSortKey.value === key) tableSortDirection.value = tableSortDirection.value === "asc" ? "desc" : "asc";

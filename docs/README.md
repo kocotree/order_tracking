@@ -18,7 +18,7 @@
 
 ## 当前入口
 
-[Issue #120](https://github.com/kocotree/order_tracking/issues/120) 二期来货出入技术设计：需求 V1.1 与两处原型已确认（[Issue #117](https://github.com/kocotree/order_tracking/issues/117)），本轮只交付[技术设计草案](二期/project/来货出入技术设计.md)。设计复用现有 `quantity_ledger` 新增两个来源类型，不新建第二套数量口径；文中第 14 节 7 个开放问题需用户答复。未修改运行代码、未新增迁移、未配置飞书或模型服务凭据、未创建开发切片 Issue。
+[Issue #120](https://github.com/kocotree/order_tracking/issues/120) 二期来货出入技术设计：需求 V1.1 与两处原型已确认（[Issue #117](https://github.com/kocotree/order_tracking/issues/117)），本轮只交付[技术设计草案](二期/project/来货出入技术设计.md)。设计复用现有 `quantity_ledger` 新增两个来源类型，不新建第二套数量口径；第 14.1 节记录用户已确认的五项决策，第 14.2 节两项（Excel 新增行绑定来源图片、批次号与照片保留期限）仍待答复。未修改运行代码、未新增迁移、未配置飞书或模型服务凭据、未创建开发切片 Issue。
 
 [Issue #107](https://github.com/kocotree/order_tracking/issues/107) 来源更新单次读取与本地派工：用户已确认“更新未派工明细”只在预览时读取一次飞书/聚水潭，确认应用预览快照；派工只使用系统当前已保存值。已在独立分支按 TDD 完成本地实施与全量后端回归，详见[验证记录](一期/project/issue-107-本地实施与验证.md)；未推送、建 PR 或部署。
 

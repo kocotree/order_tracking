@@ -5,6 +5,41 @@
     return { label: "未完成", tone: "incomplete" };
   }
 
+  function renderIncomingDiffSection(task, icons) {
+    var records = task.incomingDiffs || [];
+    // 无记录时整区隐藏，不渲染空状态。
+    if (!records.length) return "";
+    var groups = records.reduce(function (map, record) {
+      (map[record.productName] ??= []).push(record);
+      return map;
+    }, {});
+    return (
+      '<details class="detail-section incoming-diff-section">' +
+        '<summary><h2>来货出入</h2><i>' + icons.chevron + '</i></summary>' +
+        '<div class="incoming-diff-list">' +
+          Object.keys(groups).map(function (productName) {
+            return (
+              '<div class="incoming-diff-group">' +
+                '<p class="incoming-diff-group__name">' + escapeHtml(productName) + '</p>' +
+                groups[productName].map(function (record) {
+                  var shortage = record.quantity < 0;
+                  return (
+                    '<div class="incoming-diff-row">' +
+                      '<span>' + escapeHtml(record.spec) + '</span>' +
+                      '<b class="' + (shortage ? "pending-warn" : "") + '">' +
+                        (shortage ? "少" : "多") + formatNumber(Math.abs(record.quantity)) + '件' +
+                      '</b>' +
+                    '</div>'
+                  );
+                }).join("") +
+              '</div>'
+            );
+          }).join("") +
+        '</div>' +
+      '</details>'
+    );
+  }
+
   function mount(app, taskId, backPage) {
     var data = window.FactoryPrototypeData;
     var icons = window.FactoryIcons;
@@ -67,6 +102,7 @@
               }).join("") +
             '</div>' +
           '</section>' +
+          renderIncomingDiffSection(task, icons) +
         '</div>' +
       '</div>';
 

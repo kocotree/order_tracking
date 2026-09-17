@@ -257,6 +257,80 @@
   font-weight: 750;
 }
 
+/* Issue #117: 来货出入折叠区，默认折叠，无记录时整区不渲染 */
+.incoming-diff-section > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  align-items: center;
+  min-height: 52px;
+  padding: 0 17px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.incoming-diff-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.incoming-diff-section > summary h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.incoming-diff-section > summary > i {
+  display: grid;
+  color: #8c98a6;
+  transition: transform 160ms ease;
+}
+
+.incoming-diff-section > summary > i svg {
+  width: 15px;
+  height: 15px;
+}
+
+.incoming-diff-section[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.incoming-diff-section[open] > summary > i {
+  transform: rotate(90deg);
+}
+
+.incoming-diff-group {
+  padding: 10px 17px 12px;
+  border-top: 1px solid #edf0f3;
+  background: #fafbfd;
+}
+
+.incoming-diff-group:first-child {
+  border-top: 0;
+}
+
+.incoming-diff-group__name {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.incoming-diff-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 30px;
+  font-size: 11px;
+}
+
+.incoming-diff-row > span {
+  color: #4f5b69;
+}
+
+.incoming-diff-row > b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
 /* ── Toast ── */
 .prototype-toast {
   position: fixed;

@@ -40,6 +40,7 @@ def test_contract_api_is_web_admin_only_and_downloads_private_xlsx(
         workbook_renderer=ContractWorkbookRenderer(template_path=template),
         file_store=FakePrivateFileStore(bucket="contract-api-test"),
         clock=lambda: datetime(2026, 8, 24, 11, 0, tzinfo=UTC),
+        template_version="v1",
     )
     app = create_app(
         database_url=test_database_url,
@@ -90,6 +91,7 @@ def test_contract_api_is_web_admin_only_and_downloads_private_xlsx(
                 bucket="contract-api-unavailable", fail_put=True
             ),
             clock=lambda: datetime(2026, 8, 24, 11, 5, tzinfo=UTC),
+            template_version="v1",
         )
         unavailable_app = create_app(
             database_url=test_database_url,

@@ -7,6 +7,7 @@ from typing import Any
 
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as OpenpyxlImage
+from openpyxl.utils.cell import range_boundaries
 from openpyxl.worksheet.worksheet import Worksheet
 from PIL import Image as PillowImage
 
@@ -19,17 +20,25 @@ class ContractWorkbookRenderer:
     def __init__(
         self,
         *,
-        template_path: Path,
+        template_path: Path | None = None,
+        template_paths: dict[str, Path] | None = None,
         image_loader: Callable[[str], bytes | None] | None = None,
     ) -> None:
-        self._template_path = template_path
+        if template_paths is None:
+            if template_path is None:
+                raise ValueError("contract template path is required")
+            template_paths = {"v1": template_path}
+        self._template_paths = template_paths
         self._image_loader = image_loader or (lambda _object_key: None)
 
-    def render(self, snapshot: dict[str, Any]) -> bytes:
+    def render(self, snapshot: dict[str, Any], *, template_version: str = "v1") -> bytes:
         lines = list(snapshot.get("lines") or [])
         if not lines:
             raise ContractWorkbookError("contract requires at least one line")
-        workbook = load_workbook(self._template_path)
+        template_path = self._template_paths.get(template_version)
+        if template_path is None:
+            raise ContractWorkbookError("contract template version is invalid")
+        workbook = load_workbook(template_path)
         if workbook.sheetnames != ["合同"]:
             raise ContractWorkbookError("contract template sheets are invalid")
         sheet = workbook["合同"]
@@ -37,8 +46,9 @@ class ContractWorkbookRenderer:
         self._write_header(sheet, snapshot)
         self._write_lines(sheet, lines, snapshot)
         self._write_totals(sheet, len(lines), extra_rows)
-        self._write_delivery_term(sheet, snapshot, extra_rows)
-        self._write_supplier_signature(sheet, snapshot, extra_rows)
+        if template_version == "v1":
+            self._write_delivery_term(sheet, snapshot, extra_rows)
+        self._write_supplier_signature(sheet, snapshot)
         workbook.calculation.fullCalcOnLoad = True
         workbook.calculation.forceFullCalc = True
         workbook.calculation.calcMode = "auto"
@@ -48,6 +58,9 @@ class ContractWorkbookRenderer:
 
     @staticmethod
     def _prepare_detail_area(sheet: Worksheet, line_count: int) -> int:
+        print_range = str(sheet.print_area).split("!")[-1].replace("'", "")
+        print_end_row = range_boundaries(print_range)[3]
+        assert print_end_row is not None
         product_column_styles = [
             copy(sheet.cell(8, column)._style)  # type: ignore[union-attr]
             for column in range(1, 4)
@@ -88,7 +101,7 @@ class ContractWorkbookRenderer:
                     end_row=max_row + extra_rows,
                     end_column=max_col,
                 )
-            sheet.print_area = f"A1:I{51 + extra_rows}"
+            sheet.print_area = f"A1:I{print_end_row + extra_rows}"
         detail_end = 19 + extra_rows
         for row_index in range(8, detail_end + 1):
             for column in range(1, 4):
@@ -116,7 +129,8 @@ class ContractWorkbookRenderer:
         sheet["G4"] = (
             f"签订时间：{signing_date.year}年{signing_date.month}月{signing_date.day}日"
         )
-        sheet["A4"] = f"供方：{factory['legalName']}"
+        supplier_label = str(sheet["A4"].value or "供方：").split("：", 1)[0]
+        sheet["A4"] = f"{supplier_label}：{factory['legalName']}"
 
     def _write_lines(
         self,
@@ -214,12 +228,23 @@ class ContractWorkbookRenderer:
 
     @staticmethod
     def _write_supplier_signature(
-        sheet: Worksheet, snapshot: dict[str, Any], extra_rows: int
+        sheet: Worksheet, snapshot: dict[str, Any]
     ) -> None:
         factory = dict(snapshot["factory"])
-        phone = str(factory.get("phone") or "")
-        sheet.cell(45 + extra_rows, 5, (
-            "                         供      方\n"
+        signature_row = next(
+            row
+            for row in range(1, sheet.max_row + 1)
+            if "单位名称（章）：" in str(sheet.cell(row, 5).value or "")
+        )
+        is_v2 = "乙" in str(sheet.cell(signature_row, 5).value)
+        supplier_title = (
+            "                      乙     方"
+            if is_v2
+            else "                         供      方"
+        )
+        phone = "" if is_v2 else str(factory.get("phone") or "")
+        sheet.cell(signature_row, 5, (
+            f"{supplier_title}\n"
             f"单位名称（章）：{factory['legalName']}\n"
             f"单位地址：{factory['address']}\n"
             f"法定代表人：{factory['legalRepresentative']}\n"

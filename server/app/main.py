@@ -318,9 +318,11 @@ def create_app(
         contract_service = ContractService(
             session_factory,
             workbook_renderer=ContractWorkbookRenderer(
-                template_path=(
-                    Path(__file__).resolve().parent / "templates/processing_contract_v1.xlsx"
-                ),
+                template_paths={
+                    version: Path(__file__).resolve().parent
+                    / f"templates/processing_contract_{version}.xlsx"
+                    for version in ("v1", "v2")
+                },
                 image_loader=lambda object_key: private_file_store.get(object_key=object_key),
             ),
             file_store=private_file_store,

@@ -296,10 +296,35 @@ function renderContractExportLayer(order) {
   `;
 }
 
+function formatSignedQuantity(value) {
+  const number = Number(value);
+  return number > 0 ? `+${number}` : String(number);
+}
+
+function renderIncomingDiffRows(rows) {
+  if (!rows.length) return '<tr><td colspan="7" class="detail-empty-row">当前订单暂无来货出入</td></tr>';
+  return rows
+    .map(
+      (row, index) => `
+        <tr>
+          <td class="detail-sequence-cell">${index + 1}</td>
+          <td>${escapeHTML(row.registeredAt)}</td>
+          <td class="detail-code">${escapeHTML(row.purchaseNo)}</td>
+          <td class="detail-code">${escapeHTML(row.code)}</td>
+          <td><strong class="detail-product-name">${escapeHTML(row.name)}</strong></td>
+          <td>${escapeHTML(row.colorSpec)}</td>
+          <td class="detail-number"><input class="pending-detail-input pending-number-input incoming-diff-input" type="text" inputmode="numeric" value="${escapeHTML(formatSignedQuantity(row.quantity))}" data-incoming-diff-quantity="${index}" aria-label="第${index + 1}条来货出入数量"></td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
 export function renderOrderDetailPage(orderNo) {
   if (!(orderListData.orders.some(item => item.orderNo === orderNo))) return `<article class="section-card notification-target-error"><button class="detail-back-button" type="button" data-route="/orders">‹ 返回</button><p class="page-error">内容已不可查看</p></article>`;
   const order = getOrderDetail(orderNo);
   const productFactoryRows = buildProductFactoryRows(order);
+  const incomingDiffs = order.incomingDiffs || [];
   const isDraft = order.statusKey === "draft";
   const isCompleted = order.statusKey === "completed";
   const canComplete = !isDraft && !isCompleted;
@@ -357,6 +382,26 @@ export function renderOrderDetailPage(orderNo) {
             <tbody data-order-products-body>${renderProductRows(productFactoryRows)}</tbody>
           </table>
           <datalist id="order-detail-factories">${[...new Set(orderListData.orders.flatMap((item) => item.factory.split(/[、,，]/).map((value) => value.trim())))].map((factory) => `<option value="${escapeHTML(factory)}"></option>`).join("")}</datalist>
+        </div>
+      </section>
+
+      <section class="section-card detail-section-card incoming-diff-card" data-incoming-diff-card>
+        <button class="order-audit-toggle" type="button" aria-expanded="false" data-incoming-diff-toggle ${incomingDiffs.length ? "" : "disabled"}><span class="order-audit-toggle-title">来货出入<em>（${incomingDiffs.length}）</em></span><span class="order-audit-toggle-action" data-incoming-diff-label>${incomingDiffs.length ? "展开" : "暂无记录"}</span></button>
+        <div class="detail-table-scroll incoming-diff-body" hidden data-incoming-diff-body>
+          <table class="detail-data-table incoming-diff-table data-grid-table">
+            <thead>
+              <tr>
+                <th class="detail-sequence-column" scope="col">序号</th>
+                <th scope="col">登记时间</th>
+                <th scope="col">采购单号</th>
+                <th scope="col">产品编码</th>
+                <th scope="col">产品名称</th>
+                <th scope="col">颜色/规格</th>
+                <th scope="col">数量</th>
+              </tr>
+            </thead>
+            <tbody data-incoming-diff-body-rows>${renderIncomingDiffRows(incomingDiffs)}</tbody>
+          </table>
         </div>
       </section>
 
@@ -445,6 +490,48 @@ export function bindOrderDetailPage(orderNo) {
     event.currentTarget.setAttribute("aria-expanded", String(!list.hidden));
     page.querySelector("[data-audit-label]").textContent = list.hidden ? "展开" : "收起";
   });
+  page?.querySelector("[data-incoming-diff-toggle]")?.addEventListener("click", event => {
+    const body = page.querySelector("[data-incoming-diff-body]");
+    body.hidden = !body.hidden;
+    event.currentTarget.setAttribute("aria-expanded", String(!body.hidden));
+    page.querySelector("[data-incoming-diff-label]").textContent = body.hidden ? "展开" : "收起";
+  });
+
+  const incomingDiffs = order.incomingDiffs || [];
+  const saveIncomingDiff = (input) => {
+    const index = Number(input.dataset.incomingDiffQuantity);
+    const record = incomingDiffs[index];
+    if (!record) return;
+    const raw = input.value.trim();
+    const next = /^[+-]?\d+$/.test(raw) ? Number(raw) : NaN;
+    const shipped = order.products.find((item) => item.code === record.code && item.colorSpec === record.colorSpec)?.shippedQuantity ?? 0;
+    const invalidNumber = !Number.isInteger(next) || next === 0;
+    // 少货只应用新旧差额，调整后的统一已发数量不得小于 0。
+    const belowFloor = !invalidNumber && shipped - (next - record.quantity) < 0;
+    if (invalidNumber || belowFloor) {
+      input.value = formatSignedQuantity(record.quantity);
+      showToast("保存失败", invalidNumber ? "数量必须是不为 0 的整数，多货为正数、少货为负数。" : `该规格已发数量不足，调整后不能小于 0。`);
+      return;
+    }
+    if (next === record.quantity) {
+      input.value = formatSignedQuantity(record.quantity);
+      return;
+    }
+    const previous = record.quantity;
+    record.quantity = next;
+    input.value = formatSignedQuantity(next);
+    showToast("保存成功", `第${index + 1}条已从${previous > 0 ? `多${previous}` : `少${Math.abs(previous)}`}件改为${next > 0 ? `多${next}` : `少${Math.abs(next)}`}件，只调整差额并已生成工厂通知。`);
+  };
+  page?.addEventListener("change", (event) => {
+    if (event.target.matches("[data-incoming-diff-quantity]")) saveIncomingDiff(event.target);
+  });
+  page?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.target.matches("[data-incoming-diff-quantity]")) {
+      event.preventDefault();
+      event.target.blur();
+    }
+  });
+
   page?.addEventListener("input", (event) => {
     const index = Number(event.target.dataset.detailFactory ?? event.target.dataset.detailDate ?? event.target.dataset.detailShipped ?? event.target.dataset.detailPending);
     if (!Number.isInteger(index) || !productRows[index]) return;

@@ -19,6 +19,11 @@
         { productName: "乐园游会吊带包屁衣", spec: "蓝色/100", allocated: 450, shipped: 450, pending: 0 },
         { productName: "乐园游会吊带包屁衣", spec: "杏色/90", allocated: 900, shipped: 400, pending: 500 },
       ],
+      incomingDiffs: [
+        { productName: "乐园游会吊带包屁衣", spec: "蓝色/90", quantity: -2 },
+        { productName: "乐园游会吊带包屁衣", spec: "蓝色/100", quantity: 1 },
+        { productName: "乐园游会吊带包屁衣", spec: "蓝色/90", quantity: -1 },
+      ],
     },
     {
       id: "order-092",

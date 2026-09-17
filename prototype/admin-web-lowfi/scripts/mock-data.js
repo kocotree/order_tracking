@@ -687,6 +687,11 @@ export const orderDetailData = {
       { no: "FH20260808-003", factory: "昱斌", shipDate: "2026-08-08", declared: 760, statusLabel: "已发货", tone: "info" },
       { no: "FH20260805-001", factory: "昱斌", shipDate: "2026-08-05", declared: 520, statusLabel: "已发货", tone: "info" },
     ],
+    incomingDiffs: [
+      { registeredAt: "2026-08-13 09:24", purchaseNo: "CG20260805-0187", code: "KQ26143", name: "乐园游会吊带包屁衣", colorSpec: "雾松灰 / 80", quantity: -2 },
+      { registeredAt: "2026-08-13 09:24", purchaseNo: "CG20260805-0187", code: "KQ26143", name: "乐园游会吊带包屁衣", colorSpec: "雾松灰 / 90", quantity: 1 },
+      { registeredAt: "2026-08-15 16:05", purchaseNo: "CG20260808-0203", code: "KQ26143", name: "乐园游会吊带包屁衣", colorSpec: "雾松灰 / 80", quantity: -1 },
+    ],
     logs: [
       { time: "2026-08-12 10:18", operator: "宇情工厂", action: "提交发货单 FH20260812-006", source: "工厂小程序" },
       { time: "2026-08-08 17:42", operator: "昱斌工厂", action: "提交发货单 FH20260808-003，发货记录立即生效", source: "工厂小程序" },

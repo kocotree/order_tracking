@@ -252,6 +252,7 @@ def test_first_export_allocates_stable_number_snapshot_and_private_xlsx(
         workbook_renderer=ContractWorkbookRenderer(template_path=template),
         file_store=file_store,
         clock=lambda: datetime(2026, 8, 24, 9, 30, tzinfo=UTC),
+        template_version="v1",
     )
 
     try:
@@ -295,22 +296,75 @@ def test_first_export_allocates_stable_number_snapshot_and_private_xlsx(
         _clean(test_database_engine)
 
 
+def test_new_contract_uses_v2_without_reading_factory_phone(
+    test_database_engine: Engine,
+) -> None:
+    _clean(test_database_engine)
+    _seed_published_order(test_database_engine)
+    templates = Path(__file__).resolve().parents[2] / "app/templates"
+    file_store = FakePrivateFileStore(bucket="contract-v2-test")
+    service = ContractService(
+        sessionmaker(test_database_engine, class_=Session, expire_on_commit=False),
+        workbook_renderer=ContractWorkbookRenderer(
+            template_paths={
+                "v1": templates / "processing_contract_v1.xlsx",
+                "v2": templates / "processing_contract_v2.xlsx",
+            }
+        ),
+        file_store=file_store,
+        clock=lambda: datetime(2026, 9, 17, 9, 30, tzinfo=UTC),
+    )
+
+    try:
+        result = service.create_export(
+            actor_id=ADMIN_ID,
+            order_id=ORDER_ID,
+            factory_id=FACTORY_ID,
+            signing_date=date(2026, 9, 17),
+            idempotency_key="contract-v2-first",
+            request_id="contract-v2-request",
+        )
+
+        with Session(test_database_engine) as session:
+            contract = session.get(ProcessingContract, result.contract_id)
+            export = session.get(ContractExport, result.export_id)
+            assert contract is not None and export is not None
+            assert contract.template_version == "v2"
+            assert export.template_version == "v2"
+            assert "phone" not in contract.contract_snapshot["factory"]
+        _filename, content, _content_type = service.download(
+            actor_id=ADMIN_ID, export_id=result.export_id
+        )
+        sheet = load_workbook(BytesIO(content), data_only=False)["合同"]
+        assert sheet["A4"].value == "乙方（供方）：合同测试工厂有限公司"
+        assert sheet["E49"].value.endswith("电话：")
+    finally:
+        _clean(test_database_engine)
+
+
 def test_repeat_export_reuses_first_snapshot_and_same_request_is_idempotent(
     test_database_engine: Engine,
 ) -> None:
     _clean(test_database_engine)
     _seed_published_order(test_database_engine)
     file_store = FakePrivateFileStore(bucket="contract-test")
-    template = Path(__file__).resolve().parents[2] / "app/templates/processing_contract_v1.xlsx"
-    service = ContractService(
+    templates = Path(__file__).resolve().parents[2] / "app/templates"
+    renderer = ContractWorkbookRenderer(
+        template_paths={
+            "v1": templates / "processing_contract_v1.xlsx",
+            "v2": templates / "processing_contract_v2.xlsx",
+        }
+    )
+    legacy_service = ContractService(
         sessionmaker(test_database_engine, class_=Session, expire_on_commit=False),
-        workbook_renderer=ContractWorkbookRenderer(template_path=template),
+        workbook_renderer=renderer,
         file_store=file_store,
         clock=lambda: datetime(2026, 8, 24, 9, 30, tzinfo=UTC),
+        template_version="v1",
     )
 
     try:
-        first = service.create_export(
+        first = legacy_service.create_export(
             actor_id=ADMIN_ID,
             order_id=ORDER_ID,
             factory_id=FACTORY_ID,
@@ -318,7 +372,7 @@ def test_repeat_export_reuses_first_snapshot_and_same_request_is_idempotent(
             idempotency_key="contract-repeat-first",
             request_id="contract-repeat-request-1",
         )
-        same_request = service.create_export(
+        same_request = legacy_service.create_export(
             actor_id=ADMIN_ID,
             order_id=ORDER_ID,
             factory_id=FACTORY_ID,
@@ -340,6 +394,12 @@ def test_repeat_export_reuses_first_snapshot_and_same_request_is_idempotent(
             product.name = "修改后的产品名称"
             order.order_no = "CHANGED-ORDER-NO"
 
+        service = ContractService(
+            sessionmaker(test_database_engine, class_=Session, expire_on_commit=False),
+            workbook_renderer=renderer,
+            file_store=file_store,
+            clock=lambda: datetime(2026, 9, 17, 9, 30, tzinfo=UTC),
+        )
         assert service.list_for_order(actor_id=ADMIN_ID, order_id=ORDER_ID)[0].eligible
         repeated = service.create_export(
             actor_id=ADMIN_ID,
@@ -363,6 +423,7 @@ def test_repeat_export_reuses_first_snapshot_and_same_request_is_idempotent(
         assert sheet["A4"].value == "供方：合同测试工厂有限公司"
         assert sheet["A8"].value == "MZ2026-01"
         assert sheet["B8"].value == "儿童遮阳帽"
+        assert sheet["A24"].value == "一.交货期限：    年    月    日前全部出货"
     finally:
         _clean(test_database_engine)
 
@@ -381,6 +442,7 @@ def test_same_day_same_factory_contract_numbers_keep_stable_sequence(
         workbook_renderer=ContractWorkbookRenderer(template_path=template),
         file_store=file_store,
         clock=lambda: datetime(2026, 8, 24, 10, 0, tzinfo=UTC),
+        template_version="v1",
     )
 
     try:
@@ -430,6 +492,7 @@ def test_failed_upload_keeps_contract_number_but_never_creates_downloadable_file
         workbook_renderer=ContractWorkbookRenderer(template_path=template),
         file_store=file_store,
         clock=lambda: datetime(2026, 8, 24, 10, 30, tzinfo=UTC),
+        template_version="v1",
     )
 
     try:
@@ -481,6 +544,7 @@ def test_concurrent_first_exports_for_same_order_create_one_stable_contract(
         workbook_renderer=ContractWorkbookRenderer(template_path=template),
         file_store=file_store,
         clock=lambda: datetime(2026, 8, 24, 12, 0, tzinfo=UTC),
+        template_version="v1",
     )
     barrier = Barrier(2)
 
@@ -521,6 +585,7 @@ def test_concurrent_same_day_factory_exports_allocate_unique_sequence(
         workbook_renderer=ContractWorkbookRenderer(template_path=template),
         file_store=file_store,
         clock=lambda: datetime(2026, 8, 24, 12, 30, tzinfo=UTC),
+        template_version="v1",
     )
     barrier = Barrier(2)
 
@@ -562,6 +627,7 @@ def test_empty_code_blocks_first_export_and_migration_preserves_existing_contrac
         sessions,
         workbook_renderer=ContractWorkbookRenderer(template_path=template),
         file_store=FakePrivateFileStore(bucket="contract-test"),
+        template_version="v1",
     )
     first = service.create_export(
         actor_id=ADMIN_ID,

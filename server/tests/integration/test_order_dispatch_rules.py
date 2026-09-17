@@ -332,6 +332,7 @@ def test_factory_withdrawal_isolated_from_shipped_factory_and_contract(
         workbook_renderer=ContractWorkbookRenderer(
             template_path=Path("app/templates/processing_contract_v1.xlsx")
         ),
+        template_version="v1",
     )
     exported = contracts.create_export(
         actor_id=ACTOR,

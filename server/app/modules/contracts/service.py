@@ -88,7 +88,7 @@ class ContractService:
         workbook_renderer: ContractWorkbookRenderer | None = None,
         file_store: PrivateFileStore | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-        template_version: str = "v1",
+        template_version: str = "v2",
     ) -> None:
         self._session_factory = session_factory
         self._workbook_renderer = workbook_renderer
@@ -160,6 +160,7 @@ class ContractService:
         now = self._clock()
         export_id: str
         snapshot: dict[str, Any]
+        template_version: str
         already_ready = False
         with self._session_factory() as session, session.begin():
             session.get(User, actor_id, with_for_update=True)
@@ -194,6 +195,7 @@ class ContractService:
                     raise ContractConflict("idempotency key belongs to another export")
                 export_id = existing_export.export_id
                 snapshot = dict(existing_export.export_snapshot)
+                template_version = existing_export.template_version
                 already_ready = existing_export.status == "READY"
                 if not already_ready:
                     existing_export.status = "PENDING"
@@ -234,6 +236,7 @@ class ContractService:
                         factory=factory,
                         contract_no=contract_no,
                         signing_date=signing_date,
+                        include_phone=self._template_version == "v1",
                     )
                     contract = ProcessingContract(
                         contract_id=str(uuid4()),
@@ -268,6 +271,7 @@ class ContractService:
                         created_at=now,
                     )
                 )
+                template_version = contract.template_version
                 session.add(
                     AuditLog(
                         request_id=request_id,
@@ -285,7 +289,9 @@ class ContractService:
         object_key = self._object_key(snapshot=snapshot, export_id=export_id)
         uploaded = False
         try:
-            content = self._workbook_renderer.render(snapshot)
+            content = self._workbook_renderer.render(
+                snapshot, template_version=template_version
+            )
             self._file_store.put(
                 object_key=object_key,
                 content=content,
@@ -428,6 +434,7 @@ class ContractService:
         factory: Factory,
         contract_no: str,
         signing_date: date,
+        include_phone: bool,
     ) -> dict[str, Any]:
         rows = session.execute(
             select(OrderLine, OrderAssignment, ProductVariant, Product)
@@ -449,12 +456,21 @@ class ContractService:
         ).all()
         if not rows:
             raise ContractNotFound("factory assignment not found")
-        contact = session.scalar(
-            select(FactoryContact)
-            .where(FactoryContact.factory_id == factory.factory_id)
-            .order_by(FactoryContact.is_primary.desc(), FactoryContact.display_order)
-            .limit(1)
-        )
+        factory_snapshot = {
+            "factoryId": factory.factory_id,
+            "factoryCode": factory.factory_code,
+            "legalName": factory.legal_name,
+            "address": factory.address,
+            "legalRepresentative": factory.legal_representative,
+        }
+        if include_phone:
+            contact = session.scalar(
+                select(FactoryContact)
+                .where(FactoryContact.factory_id == factory.factory_id)
+                .order_by(FactoryContact.is_primary.desc(), FactoryContact.display_order)
+                .limit(1)
+            )
+            factory_snapshot["phone"] = contact.phone if contact is not None else ""
         return {
             "contractNo": contract_no,
             "signingDate": signing_date.isoformat(),
@@ -462,14 +478,7 @@ class ContractService:
             "orderNo": order.order_no,
             "orderDate": order.order_date.isoformat() if order.order_date else None,
             "contractShipDate": None,
-            "factory": {
-                "factoryId": factory.factory_id,
-                "factoryCode": factory.factory_code,
-                "legalName": factory.legal_name,
-                "address": factory.address,
-                "legalRepresentative": factory.legal_representative,
-                "phone": contact.phone if contact is not None else "",
-            },
+            "factory": factory_snapshot,
             "lines": [
                 {
                     "productId": product.product_id,

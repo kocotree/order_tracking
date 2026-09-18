@@ -782,7 +782,7 @@ def test_admin_partially_returns_original_shipment_line_and_quantity_can_be_rese
         _clean(test_database_engine)
 
 
-def test_web_admin_downloads_shipment_workbook_from_submitted_facts(
+def test_web_admin_reexports_persisted_shipment_with_current_workbook_rules(
     test_database_engine: Engine,
     test_database_url: str,
 ) -> None:
@@ -833,9 +833,48 @@ def test_web_admin_downloads_shipment_workbook_from_submitted_facts(
             assert "filename*=UTF-8''" in response.headers["content-disposition"]
             workbook = load_workbook(BytesIO(response.content), data_only=False)
             assert workbook.sheetnames == ["发货明细", "汇总"]
-            assert workbook["发货明细"]["A3"].value == "S07-ORDER-A"
-            assert workbook["发货明细"]["F3"].value == 12
-            assert workbook["汇总"]["D2"].value == 12
+            detail = workbook["发货明细"]
+            assert [detail.cell(2, column).value for column in range(1, 8)] == [
+                "订单编号",
+                "货号",
+                "品名",
+                "颜色/规格",
+                "箱数",
+                "装箱数量",
+                "合计",
+            ]
+            assert [detail.cell(3, column).value for column in range(1, 8)] == [
+                "S07-ORDER-A",
+                "ITEM-SHIPMENT-API",
+                "S07接口测试产品",
+                "海军蓝 / 120",
+                1,
+                12,
+                12,
+            ]
+            assert [detail.cell(4, column).value for column in range(1, 8)] == [
+                "汇总",
+                None,
+                None,
+                None,
+                1,
+                None,
+                12,
+            ]
+            summary = workbook["汇总"]
+            assert [summary.cell(1, column).value for column in range(1, 6)] == [
+                "日期",
+                "货号",
+                "名称",
+                "颜色/规格",
+                "数量",
+            ]
+            assert [summary.cell(2, column).value for column in range(2, 6)] == [
+                "ITEM-SHIPMENT-API",
+                "S07接口测试产品",
+                "海军蓝 / 120",
+                12,
+            ]
             assert submitted["shipmentNo"] in response.headers["content-disposition"]
     finally:
         _clean(test_database_engine)

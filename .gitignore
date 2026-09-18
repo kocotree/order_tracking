@@ -2,6 +2,10 @@
 .playwright-cli/
 output/
 
+# Local-only working directories
+.worktrees/
+experiments/
+
 # Local environment and secrets
 .env
 .env.*

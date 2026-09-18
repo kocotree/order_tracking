@@ -27,7 +27,7 @@ const shipment: Shipment = {
   note: "已拍照留档",
   totalBoxes: 1,
   totalQuantity: 2,
-  lines: [{ assignmentId: 1, orderId: "order-1", orderNo: "092#", skuId: "KQ26721", productName: "测试童帽", propertiesValue: "蓝色 / 52", quantity: 2, lineId: 1, returnedQuantity: 0, returnableQuantity: 2 }],
+  lines: [{ assignmentId: 1, orderId: "order-1", orderNo: "092#", skuId: "SKU-SHIPMENT", itemNumber: "ITEM-SHIPMENT", productName: "测试童帽", propertiesValue: "蓝色 / 52", quantity: 2, lineId: 1, returnedQuantity: 0, returnableQuantity: 2 }],
   boxes: [],
   files: [{
     fileId: 7,
@@ -62,7 +62,7 @@ describe("shipment evidence in the administrator detail", () => {
       global: {
         stubs: {
           AdminShell: shellStub,
-          TableSortButton: { template: "<span />" },
+          TableSortButton: { props: ["label"], template: "<span>{{ label }}</span>" },
         },
       },
     });
@@ -70,6 +70,9 @@ describe("shipment evidence in the administrator detail", () => {
     const productTable = wrapper.get(".shipment-product-table");
     expect(productTable.findAll("thead th")).toHaveLength(6);
     expect(productTable.findAll("thead th").map((cell) => cell.text())).not.toContain("图片");
+    expect(productTable.text()).toContain("货号");
+    expect(productTable.text()).toContain("ITEM-SHIPMENT");
+    expect(productTable.text()).not.toContain("SKU-SHIPMENT");
     for (const row of productTable.findAll("tbody tr")) {
       expect(row.findAll("td")).toHaveLength(6);
     }
@@ -135,7 +138,7 @@ describe("receipt verification", () => {
     const confirm = vi.spyOn(shipmentApi, "confirmReceipt").mockResolvedValue({ ...value, totalQuantity: 0, receipt: { version: 1, status: "CONFIRMED", items: [{ boxItemId: 7, quantity: 0 }], confirmedAt: "2026-09-07T02:00:00", confirmedByName: "核对员" }, lines: [{ ...value.lines[0]!, quantity: 0 }], boxes: [{ ...value.boxes[0]!, items: [{ ...value.boxes[0]!.items[0]!, quantity: 0 }] }] });
     const wrapper = mount(ShipmentDetailPage, { global: { stubs: { AdminShell: shellStub, TableSortButton: true } } });
     await flushPromises();
-    await wrapper.get('input[aria-label="箱号 1 KQ26721 核对数量"]').setValue("0");
+    await wrapper.get('input[aria-label="箱号 1 ITEM-SHIPMENT 核对数量"]').setValue("0");
     expect(wrapper.get(".shipment-product-table tbody tr td:last-child").text()).toBe("0");
     await wrapper.get('[data-action="confirm-receipt"]').trigger("click");
     expect(wrapper.text()).toContain("请先保存");
@@ -152,4 +155,23 @@ describe("receipt verification", () => {
     expect(wrapper.find('[role="status"]').exists()).toBe(false);
     expect(wrapper.find('input[type="number"]').exists()).toBe(false);
   });
+});
+
+it("uses the item number in shipment lines, boxes and the return dialog", async () => {
+  vi.spyOn(shipmentApi, "get").mockResolvedValue({
+    ...shipment,
+    boxes: [{ boxNo: 1, groupKey: null, items: [{ ...shipment.lines[0]!, boxItemId: 7 }] }],
+  });
+  const wrapper = mount(ShipmentDetailPage, { global: { stubs: { AdminShell: shellStub } } });
+  await flushPromises();
+
+  expect(wrapper.get(".shipment-product-table").text()).toContain("货号");
+  expect(wrapper.get(".packing-detail-table").text()).toContain("货号");
+  expect(wrapper.get(".packing-detail-table").text()).toContain("ITEM-SHIPMENT");
+  expect(wrapper.get(".packing-detail-table").text()).not.toContain("SKU-SHIPMENT");
+
+  await wrapper.findAll("button").find((button) => button.text() === "退回")!.trigger("click");
+  expect(wrapper.get(".shipment-return-table").text()).toContain("货号");
+  expect(wrapper.get(".shipment-return-table").text()).toContain("ITEM-SHIPMENT");
+  expect(wrapper.get(".shipment-return-table").text()).not.toContain("SKU-SHIPMENT");
 });

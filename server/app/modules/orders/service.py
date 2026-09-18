@@ -104,6 +104,7 @@ class LineSnapshot:
     order_line_id: int
     variant_id: str
     sku_id: str
+    item_number: str
     product_name: str
     properties_value: str
     category: str | None
@@ -134,6 +135,7 @@ class DetailSnapshot:
     detail_id: str
     origin: str
     source_sku_id: str | None
+    item_number: str | None
     product_name: str | None
     properties_value: str | None
     category: str | None
@@ -1303,24 +1305,35 @@ class OrderService:
         dict[int, list[OrderAssignment]],
         dict[int, int],
         dict[str, list[OrderDetail]],
+        dict[str, str],
     ]:
         lines: dict[str, list[OrderLine]] = {}
         assignments: dict[int, list[OrderAssignment]] = {}
         quantities: dict[int, int] = {}
         details: dict[str, list[OrderDetail]] = {}
+        item_numbers: dict[str, str] = {}
         if not orders:
-            return lines, assignments, quantities, details
+            return lines, assignments, quantities, details, {}
         source_order_ids = [item.order_id for item in orders if item.detail_mode]
         if source_order_ids and factory_id is None:
-            for detail in session.scalars(
-                select(OrderDetail)
+            for detail, variant_id, item_number in session.execute(
+                select(OrderDetail, ProductVariant.variant_id, Product.source_i_id)
+                .outerjoin(
+                    ProductVariant,
+                    ProductVariant.variant_id == OrderDetail.matched_variant_id,
+                )
+                .outerjoin(Product, Product.product_id == ProductVariant.product_id)
                 .where(OrderDetail.order_id.in_(source_order_ids))
                 .order_by(OrderDetail.sort_order, OrderDetail.detail_id)
             ):
                 details.setdefault(detail.order_id, []).append(detail)
+                if variant_id is not None and item_number is not None:
+                    item_numbers[variant_id] = item_number
         order_ids = [item.order_id for item in orders]
-        for line in session.scalars(
-            select(OrderLine)
+        for line, item_number in session.execute(
+            select(OrderLine, Product.source_i_id)
+            .join(ProductVariant, ProductVariant.variant_id == OrderLine.product_variant_id)
+            .join(Product, Product.product_id == ProductVariant.product_id)
             .where(OrderLine.order_id.in_(order_ids))
             .where(
                 select(OrderAssignment.order_assignment_id)
@@ -1336,6 +1349,7 @@ class OrderService:
             .order_by(OrderLine.order_line_id)
         ):
             lines.setdefault(line.order_id, []).append(line)
+            item_numbers[line.product_variant_id] = item_number
         for assignment in session.scalars(
             select(OrderAssignment)
             .join(OrderLine)
@@ -1361,7 +1375,7 @@ class OrderService:
             .group_by(QuantityLedger.order_assignment_id)
         ):
             quantities[assignment_id] = int(quantity)
-        return lines, assignments, quantities, details
+        return lines, assignments, quantities, details, item_numbers
 
     def _snapshot(
         self,
@@ -1375,6 +1389,7 @@ class OrderService:
             dict[int, list[OrderAssignment]],
             dict[int, int],
             dict[str, list[OrderDetail]],
+            dict[str, str],
         ]
         | None = None,
     ) -> OrderSnapshot:
@@ -1396,6 +1411,20 @@ class OrderService:
                     .order_by(OrderLine.order_line_id)
                 )
             )
+        )
+        item_numbers = (
+            preloaded[4]
+            if preloaded is not None
+            else {
+                variant_id: source_i_id
+                for variant_id, source_i_id in session.execute(
+                    select(ProductVariant.variant_id, Product.source_i_id)
+                    .join(Product, Product.product_id == ProductVariant.product_id)
+                    .where(
+                        ProductVariant.variant_id.in_([line.product_variant_id for line in rows])
+                    )
+                )
+            }
         )
         line_snapshots: list[LineSnapshot] = []
         factory_totals: dict[str, tuple[str, int, int, int]] = {}
@@ -1477,6 +1506,7 @@ class OrderService:
                     order_line_id=line.order_line_id,
                     variant_id=line.product_variant_id,
                     sku_id=line.sku_id_snapshot,
+                    item_number=item_numbers[line.product_variant_id],
                     product_name=line.product_name_snapshot,
                     properties_value=line.properties_value_snapshot,
                     category=line.category_snapshot,
@@ -1565,6 +1595,21 @@ class OrderService:
                 )
             )
         ordered = sorted(rows, key=lambda detail: (detail.sort_order, detail.detail_id))
+        variant_ids = {row.matched_variant_id for row in ordered if row.matched_variant_id}
+        item_numbers = (
+            preloaded[4]
+            if preloaded is not None
+            else {
+                variant_id: source_i_id
+                for variant_id, source_i_id in session.execute(
+                    select(ProductVariant.variant_id, Product.source_i_id)
+                    .join(Product, Product.product_id == ProductVariant.product_id)
+                    .where(ProductVariant.variant_id.in_(variant_ids))
+                )
+            }
+            if variant_ids
+            else {}
+        )
         # Assigned details report execution quantities: the fixed initial
         # baseline plus the system ledger. Unassigned details report the
         # accepted source values. Both use the same per-detail pending floor
@@ -1627,6 +1672,7 @@ class OrderService:
                     detail_id=row.detail_id,
                     origin=row.origin,
                     source_sku_id=row.source_sku_id,
+                    item_number=item_numbers.get(row.matched_variant_id),
                     product_name=row.product_name,
                     properties_value=row.properties_value,
                     category=row.category,

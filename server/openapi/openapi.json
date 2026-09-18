@@ -603,6 +603,17 @@
             ],
             "title": "Factoryname"
           },
+          "itemNumber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Itemnumber"
+          },
           "orderQuantity": {
             "anyOf": [
               {
@@ -694,6 +705,7 @@
           "sourceContractShipDate",
           "candidateLineId",
           "sourceSkuId",
+          "itemNumber",
           "productName",
           "propertiesValue",
           "category",
@@ -2669,6 +2681,17 @@
             ],
             "title": "Factoryname"
           },
+          "itemNumber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Itemnumber"
+          },
           "matchedFactoryId": {
             "anyOf": [
               {
@@ -2804,6 +2827,7 @@
           "detailId",
           "origin",
           "sourceSkuId",
+          "itemNumber",
           "productName",
           "propertiesValue",
           "category",
@@ -2855,6 +2879,10 @@
             ],
             "title": "Imageobjectkey"
           },
+          "itemNumber": {
+            "title": "Itemnumber",
+            "type": "string"
+          },
           "orderLineId": {
             "title": "Orderlineid",
             "type": "integer"
@@ -2904,6 +2932,7 @@
           "orderLineId",
           "variantId",
           "skuId",
+          "itemNumber",
           "productName",
           "propertiesValue",
           "category",
@@ -4675,6 +4704,10 @@
             ],
             "title": "Boxitemid"
           },
+          "itemNumber": {
+            "title": "Itemnumber",
+            "type": "string"
+          },
           "lineId": {
             "anyOf": [
               {
@@ -4726,6 +4759,7 @@
           "orderId",
           "orderNo",
           "skuId",
+          "itemNumber",
           "productName",
           "propertiesValue",
           "quantity"

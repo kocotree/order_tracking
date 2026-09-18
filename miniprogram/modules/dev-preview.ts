@@ -86,7 +86,7 @@ export function previewOrder(factoryOnly = false): Order {
     totalQuantity: quantity, shippedQuantity: 0, pendingQuantity: quantity,
     overQuantity: 0, shortQuantity: quantity, progressPercent: 0,
     lines: [{
-      orderLineId: 1, variantId: "preview-variant", skuId: "SKU-E81-01",
+      orderLineId: 1, variantId: "preview-variant", skuId: "SKU-E81-01", itemNumber: "ITEM-E81",
       productName: "晴雨两用机能风衣", propertiesValue: "天蓝色 / 120",
       category: "童装", imageObjectKey: null, orderQuantity: quantity,
       shippedQuantity: 0, pendingQuantity: quantity, overQuantity: 0,

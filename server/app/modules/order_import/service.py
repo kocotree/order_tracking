@@ -70,6 +70,7 @@ class CandidateLineSnapshot:
     contract_ship_date: date | None
     source_contract_ship_date: date | None
     source_sku_id: str | None
+    item_number: str | None
     product_name: str | None
     properties_value: str | None
     category: str | None
@@ -714,15 +715,25 @@ class OrderImportService:
             lines_by_candidate: dict[str, list[OrderImportCandidateLine]] = {
                 item.candidate_id: [] for item in candidates
             }
+            item_numbers: dict[str, str] = {}
             if candidates:
-                for item_line in session.scalars(
-                    select(line)
+                for item_line, variant_id, item_number in session.execute(
+                    select(line, ProductVariant.variant_id, Product.source_i_id)
+                    .outerjoin(ProductVariant, ProductVariant.variant_id == line.matched_variant_id)
+                    .outerjoin(Product, Product.product_id == ProductVariant.product_id)
                     .where(line.candidate_id.in_(lines_by_candidate))
                     .order_by(line.candidate_line_id)
                 ):
                     lines_by_candidate[item_line.candidate_id].append(item_line)
+                    if variant_id is not None and item_number is not None:
+                        item_numbers[variant_id] = item_number
             return [
-                self._candidate_snapshot(session, item, lines=lines_by_candidate[item.candidate_id])
+                self._candidate_snapshot(
+                    session,
+                    item,
+                    lines=lines_by_candidate[item.candidate_id],
+                    item_numbers=item_numbers,
+                )
                 for item in candidates
             ], total
 
@@ -1579,9 +1590,24 @@ class OrderImportService:
         candidate: OrderImportCandidate,
         *,
         lines: list[OrderImportCandidateLine] | None = None,
+        item_numbers: dict[str, str] | None = None,
     ) -> CandidateSnapshot:
         if lines is None:
             lines = cls._candidate_lines(session, candidate.candidate_id)
+        if item_numbers is None:
+            variant_ids = {line.matched_variant_id for line in lines if line.matched_variant_id}
+            item_numbers = (
+                {
+                    variant_id: source_i_id
+                    for variant_id, source_i_id in session.execute(
+                        select(ProductVariant.variant_id, Product.source_i_id)
+                        .join(Product, Product.product_id == ProductVariant.product_id)
+                        .where(ProductVariant.variant_id.in_(variant_ids))
+                    )
+                }
+                if variant_ids
+                else {}
+            )
         return CandidateSnapshot(
             candidate_id=candidate.candidate_id,
             version=candidate.version,
@@ -1609,6 +1635,11 @@ class OrderImportService:
                     contract_ship_date=line.contract_ship_date,
                     source_contract_ship_date=line.source_contract_ship_date,
                     source_sku_id=line.source_sku_id,
+                    item_number=(
+                        item_numbers.get(line.matched_variant_id)
+                        if line.matched_variant_id
+                        else None
+                    ),
                     product_name=line.product_name,
                     properties_value=line.properties_value,
                     category=line.category,

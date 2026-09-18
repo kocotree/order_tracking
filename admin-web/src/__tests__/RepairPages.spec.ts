@@ -132,6 +132,9 @@ describe("repair web prototype alignment", () => {
     expect(wrapper.findAll(".repair-summary-matrix dt")).toHaveLength(4);
     expect(wrapper.findAll(".repair-source-file")).toHaveLength(2);
     expect(wrapper.findAll(".repair-product-table th")).toHaveLength(8);
+    expect(wrapper.get(".repair-product-table").text()).toContain("货号");
+    expect(wrapper.get(".repair-product-table").text()).toContain("P1");
+    expect(wrapper.get(".repair-product-table").text()).not.toContain("SKU1");
     expect(wrapper.get(".repair-product-table").text()).toContain("40 / 50");
     expect(wrapper.get(".repair-product-table").text()).toContain("80%");
     expect(wrapper.text()).not.toContain("工厂发回记录");

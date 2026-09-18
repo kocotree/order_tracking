@@ -50,24 +50,24 @@
             <tbody>
               <tr v-for="(line, index) in sortedLines" :key="line.candidateLineId">
                 <td class="detail-sequence-cell">{{ index + 1 }}</td>
-                <td class="detail-code" :title="line.sourceSkuId ?? undefined">{{ line.sourceSkuId ?? "—" }}</td>
+                <td class="detail-code" :title="line.itemNumber ?? undefined">{{ line.itemNumber ?? "—" }}</td>
                 <td><strong class="detail-product-name" :title="line.productName ?? undefined">{{ line.productName ?? "—" }}</strong></td>
                 <td>{{ line.propertiesValue ?? "—" }}</td>
                 <td>
-                  <input v-if="candidate.status === 'PENDING'" v-model="draft(line).factoryName" class="pending-detail-input" list="candidate-factory-options" :aria-label="`${line.sourceSkuId ?? index + 1} 工厂`" :disabled="saving || importing" @input="clearSaveError" />
+                  <input v-if="candidate.status === 'PENDING'" v-model="draft(line).factoryName" class="pending-detail-input" list="candidate-factory-options" :aria-label="`${line.itemNumber ?? index + 1} 工厂`" :disabled="saving || importing" @input="clearSaveError" />
                   <span v-else>{{ line.factoryName ?? "—" }}</span>
                 </td>
                 <td>
-                  <input v-if="candidate.status === 'PENDING'" v-model="draft(line).contractShipDate" class="pending-detail-input" type="date" :aria-label="`${line.sourceSkuId ?? index + 1} 合同出货时间`" :disabled="saving || importing" @input="clearSaveError" />
+                  <input v-if="candidate.status === 'PENDING'" v-model="draft(line).contractShipDate" class="pending-detail-input" type="date" :aria-label="`${line.itemNumber ?? index + 1} 合同出货时间`" :disabled="saving || importing" @input="clearSaveError" />
                   <span v-else>{{ line.contractShipDate || "—" }}</span>
                 </td>
                 <td class="detail-number">{{ number(line.orderQuantity) }}</td>
                 <td class="detail-number">
-                  <input v-if="candidate.status === 'PENDING'" :value="draft(line).shippedQuantity" class="pending-detail-input pending-number-input" type="number" min="0" step="1" :aria-label="`${line.sourceSkuId ?? index + 1} 已发数量`" :disabled="saving || importing" @input="changeShipped(line, $event)" />
+                  <input v-if="candidate.status === 'PENDING'" :value="draft(line).shippedQuantity" class="pending-detail-input pending-number-input" type="number" min="0" step="1" :aria-label="`${line.itemNumber ?? index + 1} 已发数量`" :disabled="saving || importing" @input="changeShipped(line, $event)" />
                   <span v-else>{{ number(line.shippedQuantity) }}</span>
                 </td>
                 <td class="detail-number">
-                  <input v-if="candidate.status === 'PENDING'" :value="draft(line).pendingQuantity" class="pending-detail-input pending-number-input" type="number" min="0" :max="line.orderQuantity ?? undefined" step="1" :aria-label="`${line.sourceSkuId ?? index + 1} 未发数量`" :disabled="saving || importing || line.orderQuantity == null" @input="changePending(line, $event)" />
+                  <input v-if="candidate.status === 'PENDING'" :value="draft(line).pendingQuantity" class="pending-detail-input pending-number-input" type="number" min="0" :max="line.orderQuantity ?? undefined" step="1" :aria-label="`${line.itemNumber ?? index + 1} 未发数量`" :disabled="saving || importing || line.orderQuantity == null" @input="changePending(line, $event)" />
                   <span v-else>{{ number(line.pendingQuantity) }}</span>
                 </td>
                 <td><span class="detail-progress"><span><i :style="{ width: `${Math.min(progress(line) ?? 0, 100)}%` }"></i></span><em>{{ progress(line) == null ? "—" : `${progress(line)}%` }}</em></span></td>
@@ -120,11 +120,11 @@ const saving = ref(false);
 const importing = ref(false);
 const errorMessage = ref("");
 const confirmOpen = ref(false);
-const lineSortBy = ref("sourceSkuId");
+const lineSortBy = ref("itemNumber");
 const lineSortOrder = ref<"asc" | "desc">("asc");
 
 const issueLabels: Record<string, string> = { PRODUCT_VARIANT_NOT_MATCHED: "产品资料未匹配", FACTORY_NOT_MATCHED: "工厂资料未匹配", FACTORY_HAS_NO_ENABLED_USER: "工厂没有已启用账号", INVALID_TRACKER: "跟单人员无效", INVALID_ORDER_QUANTITY: "下单数量无效", INVALID_INITIAL_SHIPPED_QUANTITY: "初始已发数量无效", INITIAL_SHIPPED_EXCEEDS_ORDER_QUANTITY: "初始已发数量大于订单数量", INCONSISTENT_CONTRACT_SHIP_DATE: "合同出货时间待更新" };
-const lineColumns = [{ key: "sourceSkuId", label: "产品编码" }, { key: "productName", label: "产品名称" }, { key: "propertiesValue", label: "颜色/规格" }, { key: "factoryName", label: "工厂" }, { key: "contractShipDate", label: "合同出货时间" }, { key: "orderQuantity", label: "下单数量" }, { key: "shippedQuantity", label: "已发数量" }, { key: "pendingQuantity", label: "未发数量" }, { key: "progress", label: "发货进度" }, { key: "validation", label: "校验结果" }];
+const lineColumns = [{ key: "itemNumber", label: "货号" }, { key: "productName", label: "产品名称" }, { key: "propertiesValue", label: "颜色/规格" }, { key: "factoryName", label: "工厂" }, { key: "contractShipDate", label: "合同出货时间" }, { key: "orderQuantity", label: "下单数量" }, { key: "shippedQuantity", label: "已发数量" }, { key: "pendingQuantity", label: "未发数量" }, { key: "progress", label: "发货进度" }, { key: "validation", label: "校验结果" }];
 
 const number = (value: number | null) => value == null ? "—" : value.toLocaleString("zh-CN");
 const issueText = (issues: string[]) => issues.map((issue) => issueLabels[issue] ?? "资料待处理").join("；");

@@ -477,6 +477,7 @@ def test_factory_uploads_shipment_evidence_and_authorized_terminals_can_read_it(
         with TestClient(app, base_url="https://testserver") as admin_web_client:
             admin_web_client.cookies.set("ot_web_session", admin_web.access_token)
             detail = admin_web_client.get(f"/api/v1/admin/shipments/{shipment_id}")
+            assert detail.json()["lines"][0]["itemNumber"] == "ITEM-SHIPMENT-API"
             assert detail.json()["files"] == [uploaded.json()]
             assert admin_web_client.get(uploaded.json()["contentUrl"]).content == content
     finally:

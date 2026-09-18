@@ -161,6 +161,7 @@ class ShipmentLineResponse(ApiModel):
     order_id: str
     order_no: str
     sku_id: str
+    item_number: str
     product_name: str
     properties_value: str
     quantity: int

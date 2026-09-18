@@ -1994,6 +1994,8 @@ export interface components {
             contractShipDate: string | null;
             /** Factoryname */
             factoryName: string | null;
+            /** Itemnumber */
+            itemNumber: string | null;
             /** Orderquantity */
             orderQuantity: number | null;
             /** Pendingquantity */
@@ -2662,6 +2664,8 @@ export interface components {
             dispatchState: string;
             /** Factoryname */
             factoryName: string | null;
+            /** Itemnumber */
+            itemNumber: string | null;
             /** Matchedfactoryid */
             matchedFactoryId: string | null;
             /** Matchedvariantid */
@@ -2701,6 +2705,8 @@ export interface components {
             category: string | null;
             /** Imageobjectkey */
             imageObjectKey: string | null;
+            /** Itemnumber */
+            itemNumber: string;
             /** Orderlineid */
             orderLineId: number;
             /** Orderquantity */
@@ -3369,6 +3375,8 @@ export interface components {
             assignmentId: number;
             /** Boxitemid */
             boxItemId?: number | null;
+            /** Itemnumber */
+            itemNumber: string;
             /** Lineid */
             lineId?: number | null;
             /** Orderid */

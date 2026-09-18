@@ -175,6 +175,7 @@ class OrderLineResponse(ApiModel):
     order_line_id: int
     variant_id: str
     sku_id: str
+    item_number: str
     product_name: str
     properties_value: str
     category: str | None
@@ -203,6 +204,7 @@ class OrderDetailResponse(ApiModel):
     detail_id: str
     origin: str
     source_sku_id: str | None
+    item_number: str | None
     product_name: str | None
     properties_value: str | None
     category: str | None

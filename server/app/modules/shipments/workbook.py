@@ -1,4 +1,3 @@
-from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
 from datetime import date
@@ -17,11 +16,10 @@ class ShipmentWorkbookError(RuntimeError):
 class ShipmentWorkbookLine:
     order_no: str
     box_no: str
-    sku_id: str
+    item_no: str
     product_name: str
     properties_value: str
     packed_quantity: int
-    total_quantity: int
 
 
 @dataclass(frozen=True)
@@ -49,7 +47,6 @@ class ShipmentWorkbookRenderer:
         workbook.remove(workbook["Sheet3"])
         detail = workbook["发货明细"]
         summary = workbook["汇总"]
-        self._prepare_detail_rows(detail, len(snapshot.lines))
         self._write_detail(detail, snapshot)
         self._write_summary(summary, snapshot)
         output = BytesIO()
@@ -86,35 +83,83 @@ class ShipmentWorkbookRenderer:
     def _write_detail(cls, sheet: Worksheet, snapshot: ShipmentWorkbookSnapshot) -> None:
         value = snapshot.business_date
         sheet["A1"] = (
-            f"KK发货清单 {value.year}年{value.month}月{value.day}日 "
-            f"共计{snapshot.total_boxes}箱"
+            f"KK发货清单 {value.year}年{value.month}月{value.day}日 共计{snapshot.total_boxes}箱"
         )
-        for offset, line in enumerate(snapshot.lines):
+        is_mixed = len({line.box_no for line in snapshot.lines}) < len(snapshot.lines)
+        if is_mixed:
+            headers = ("订单编号", "箱号", "货号", "品名", "颜色/规格", "装箱数量", "合计")
+            rows: list[tuple[str | int, ...]] = [
+                (
+                    line.order_no,
+                    line.box_no,
+                    line.item_no,
+                    line.product_name,
+                    line.properties_value,
+                    line.packed_quantity,
+                    line.packed_quantity,
+                )
+                for line in snapshot.lines
+            ]
+            total_box_column = 2
+        else:
+            headers = ("订单编号", "货号", "品名", "颜色/规格", "箱数", "装箱数量", "合计")
+            grouped: dict[tuple[str, str, str, int], tuple[str, int]] = {}
+            for line in snapshot.lines:
+                key = (
+                    line.order_no,
+                    line.item_no,
+                    line.properties_value,
+                    line.packed_quantity,
+                )
+                product_name, box_count = grouped.get(key, (line.product_name, 0))
+                grouped[key] = (product_name, box_count + 1)
+            rows = [
+                (
+                    order_no,
+                    item_no,
+                    product_name,
+                    properties_value,
+                    box_count,
+                    quantity,
+                    box_count * quantity,
+                )
+                for (order_no, item_no, properties_value, quantity), (
+                    product_name,
+                    box_count,
+                ) in grouped.items()
+            ]
+            total_box_column = 5
+
+        cls._prepare_detail_rows(sheet, len(rows) + 1)
+        for column, header in enumerate(headers, 1):
+            sheet.cell(2, column, header)
+        for offset, values in enumerate(rows):
             row = cls.DETAIL_START_ROW + offset
-            values: tuple[str | int, ...] = (
-                line.order_no,
-                line.box_no,
-                line.sku_id,
-                line.product_name,
-                line.properties_value,
-                line.packed_quantity,
-                line.total_quantity,
-            )
             for column, cell_value in enumerate(values, 1):
                 sheet.cell(row, column, cell_value)
+        total_row = cls.DETAIL_START_ROW + len(rows)
+        sheet.cell(total_row, 1, "汇总")
+        sheet.cell(total_row, total_box_column, snapshot.total_boxes)
+        sheet.cell(total_row, 7, sum(line.packed_quantity for line in snapshot.lines))
 
     @staticmethod
     def _write_summary(sheet: Worksheet, snapshot: ShipmentWorkbookSnapshot) -> None:
         if sheet.max_row > 1:
             sheet.delete_rows(2, sheet.max_row - 1)
-        totals: dict[tuple[str, str], int] = defaultdict(int)
+        for column, header in enumerate(("日期", "货号", "名称", "颜色/规格", "数量"), 1):
+            sheet.cell(1, column, header)
+        sheet["E1"]._style = copy(sheet["D1"]._style)
+        totals: dict[tuple[str, str], tuple[str, int]] = {}
         for line in snapshot.lines:
-            totals[(line.product_name, line.properties_value)] += line.total_quantity
-        for row, ((product_name, properties_value), quantity) in enumerate(
+            key = (line.item_no, line.properties_value)
+            product_name, quantity = totals.get(key, (line.product_name, 0))
+            totals[key] = (product_name, quantity + line.packed_quantity)
+        for row, ((item_no, properties_value), (product_name, quantity)) in enumerate(
             sorted(totals.items()), 2
         ):
             sheet.cell(row, 1, snapshot.business_date)
             sheet.cell(row, 1).number_format = "yyyy-mm-dd"
-            sheet.cell(row, 2, product_name)
-            sheet.cell(row, 3, properties_value)
-            sheet.cell(row, 4, quantity)
+            sheet.cell(row, 2, item_no)
+            sheet.cell(row, 3, product_name)
+            sheet.cell(row, 4, properties_value)
+            sheet.cell(row, 5, quantity)

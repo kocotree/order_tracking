@@ -22,6 +22,8 @@ from app.db.models import (
     OrderCompletionRecord,
     OrderLine,
     OutboxMessage,
+    Product,
+    ProductVariant,
     QuantityLedger,
     Shipment,
     ShipmentBox,
@@ -1684,7 +1686,7 @@ class ShipmentService:
             if factory is None:
                 raise ShipmentNotFound("shipment factory not found")
             rows = session.execute(
-                select(ShipmentBox, ShipmentBoxItem, ShipmentLine)
+                select(ShipmentBox, ShipmentBoxItem, ShipmentLine, Product.source_i_id)
                 .join(ShipmentBoxItem, ShipmentBoxItem.box_id == ShipmentBox.box_id)
                 .join(
                     ShipmentLine,
@@ -1694,6 +1696,16 @@ class ShipmentService:
                         == ShipmentBoxItem.order_assignment_id
                     ),
                 )
+                .join(
+                    OrderAssignment,
+                    OrderAssignment.order_assignment_id == ShipmentLine.order_assignment_id,
+                )
+                .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+                .join(
+                    ProductVariant,
+                    ProductVariant.variant_id == OrderLine.product_variant_id,
+                )
+                .join(Product, Product.product_id == ProductVariant.product_id)
                 .where(ShipmentBox.shipment_id == shipment_id)
                 .order_by(ShipmentBox.box_no, ShipmentBoxItem.item_id)
             ).all()
@@ -1701,18 +1713,17 @@ class ShipmentService:
                 raise ShipmentConflict("shipment has no exportable contents")
             snapshot = ShipmentWorkbookSnapshot(
                 business_date=shipment.business_date,
-                total_boxes=len({box.box_no for box, _item, _line in rows}),
+                total_boxes=len({box.box_no for box, _item, _line, _item_no in rows}),
                 lines=[
                     ShipmentWorkbookLine(
                         order_no=line.order_no_snapshot,
                         box_no=str(box.box_no),
-                        sku_id=line.sku_id_snapshot,
+                        item_no=item_no,
                         product_name=line.product_name_snapshot,
                         properties_value=line.properties_value_snapshot,
                         packed_quantity=item.quantity,
-                        total_quantity=item.quantity,
                     )
-                    for box, item, line in rows
+                    for box, item, line, item_no in rows
                 ],
             )
             content = self._workbook_renderer.render(snapshot)

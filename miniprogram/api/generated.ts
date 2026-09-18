@@ -1473,6 +1473,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/factory/shipments/{shipment_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Factory Shipment */
+        get: operations["export_factory_shipment_api_v1_factory_shipments__shipment_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/factory/shipments/{shipment_id}/withdraw": {
         parameters: {
             query?: never;
@@ -6980,6 +6997,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShipmentDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_factory_shipment_api_v1_factory_shipments__shipment_id__export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

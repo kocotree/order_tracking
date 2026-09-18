@@ -50,6 +50,12 @@ export const shipmentApi = {
     success(result) { if(result.statusCode===200)resolve(result.tempFilePath); else reject(new Error("发货凭证加载失败")); },
     fail:error => reject(new Error(error.errMsg)),
   })),
+  downloadExport: (shipmentId:string) => new Promise<string>((resolve,reject) => wx.downloadFile({
+    url:contentUrl(`/factory/shipments/${encodeURIComponent(shipmentId)}/export`),
+    header:{Authorization:`Bearer ${accessToken() || ""}`},
+    success(result) { if(result.statusCode===200)resolve(result.tempFilePath); else reject(new Error("发货清单下载失败")); },
+    fail:error => reject(new Error(error.errMsg)),
+  })),
   submitDraft: (shipmentId:string,version?:number,key?:string) => authorizedRequest<Shipment>({url:`/factory/shipments/drafts/${encodeURIComponent(shipmentId)}/submit${version === undefined ? "" : `?version=${version}`}`,method:"POST",header:{"Idempotency-Key":key || `shipment-${Date.now()}`}}).then(result => { invalidateFactoryLists("orders", "shipments"); return result; }),
   factoryPage: (params: {keyword?:string;shipDateFrom?:string;shipDateTo?:string;page:number}) => {
     const query = Object.entries({...params, pageSize:20}).filter(([,value])=>value!==undefined).map(([key,value]) => `${key}=${encodeURIComponent(value)}`).join("&");

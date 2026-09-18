@@ -113,6 +113,7 @@ class ShipmentLineSnapshot:
     order_id: str
     order_no: str
     sku_id: str
+    item_number: str
     product_name: str
     properties_value: str
     quantity: int
@@ -1930,6 +1931,21 @@ class ShipmentService:
             else {}
         )
         factory = session.get(Factory, shipment.factory_id)
+        item_numbers = {
+            variant_id: source_i_id
+            for variant_id, source_i_id in session.execute(
+                select(ProductVariant.variant_id, Product.source_i_id)
+                .join(Product, Product.product_id == ProductVariant.product_id)
+                .where(
+                    ProductVariant.variant_id.in_(
+                        {
+                            line.product_variant_id
+                            for _assignment, line, _order in assignments.values()
+                        }
+                    )
+                )
+            )
+        }
         persisted_lines = {
             line.order_assignment_id: line
             for line in session.scalars(
@@ -1968,6 +1984,7 @@ class ShipmentService:
                     order_id=order.order_id,
                     order_no=order.order_no,
                     sku_id=line.sku_id_snapshot,
+                    item_number=item_numbers[line.product_variant_id],
                     product_name=line.product_name_snapshot,
                     properties_value=line.properties_value_snapshot,
                     quantity=item.quantity,
@@ -2002,6 +2019,7 @@ class ShipmentService:
                     order_id=order.order_id,
                     order_no=order.order_no,
                     sku_id=line.sku_id_snapshot,
+                    item_number=item_numbers[line.product_variant_id],
                     product_name=line.product_name_snapshot,
                     properties_value=line.properties_value_snapshot,
                     quantity=quantity,
@@ -2068,6 +2086,7 @@ class ShipmentService:
                     order_id=value.order_id,
                     order_no=value.order_no,
                     sku_id=value.sku_id,
+                    item_number=value.item_number,
                     product_name=value.product_name,
                     properties_value=value.properties_value,
                     quantity=value.quantity - persisted_lines[value.assignment_id].quantity,

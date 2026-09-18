@@ -30,6 +30,7 @@ function order(overrides: Partial<Order> = {}): Order {
         orderLineId: 1,
         variantId: "variant-1",
         skuId: "SKU-1",
+        itemNumber: "ITEM-1",
         productName: "晴雨机能风衣",
         propertiesValue: "蓝色 / 120",
         category: "童装春夏",

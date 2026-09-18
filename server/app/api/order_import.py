@@ -35,6 +35,7 @@ class CandidateLineResponse(ApiModel):
     source_contract_ship_date: date | None
     candidate_line_id: int
     source_sku_id: str | None
+    item_number: str | None
     product_name: str | None
     properties_value: str | None
     category: str | None

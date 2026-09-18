@@ -44,6 +44,7 @@ export interface ShipmentLine {
   orderId: string;
   orderNo: string;
   skuId: string;
+  itemNumber: string;
   productName: string;
   propertiesValue: string;
   quantity: number;

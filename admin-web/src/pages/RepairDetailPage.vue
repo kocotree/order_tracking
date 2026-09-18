@@ -29,8 +29,8 @@
         <header class="detail-section-header"><h2>产品明细</h2></header>
         <div class="detail-table-scroll">
           <table class="detail-data-table repair-product-table data-grid-table">
-            <thead><tr><th scope="col">序号</th><th scope="col">产品编码</th><th scope="col">产品名称</th><th scope="col">颜色/规格</th><th scope="col">返修数量</th><th scope="col">报废数量</th><th scope="col">返回总数量/仓库退回数量</th><th scope="col">进度</th></tr></thead>
-            <tbody><tr v-for="(item,index) in repair.specs" :key="item.variantId"><td class="order-sequence-cell">{{index+1}}</td><td class="detail-code">{{item.sourceSkuId}}</td><td>{{item.productName}}</td><td>{{item.propertiesValue}}</td><td>{{n(item.repairedQuantity)}}</td><td>{{n(item.scrappedQuantity)}}</td><td>{{n(item.returnedQuantity)}} / {{n(item.warehouseReturnQuantity)}}</td><td>{{item.warehouseReturnQuantity ? Math.round(item.returnedQuantity/item.warehouseReturnQuantity*100) : 0}}%</td></tr></tbody>
+            <thead><tr><th scope="col">序号</th><th scope="col">货号</th><th scope="col">产品名称</th><th scope="col">颜色/规格</th><th scope="col">返修数量</th><th scope="col">报废数量</th><th scope="col">返回总数量/仓库退回数量</th><th scope="col">进度</th></tr></thead>
+            <tbody><tr v-for="(item,index) in repair.specs" :key="item.variantId"><td class="order-sequence-cell">{{index+1}}</td><td class="detail-code">{{item.sourceProductId}}</td><td>{{item.productName}}</td><td>{{item.propertiesValue}}</td><td>{{n(item.repairedQuantity)}}</td><td>{{n(item.scrappedQuantity)}}</td><td>{{n(item.returnedQuantity)}} / {{n(item.warehouseReturnQuantity)}}</td><td>{{item.warehouseReturnQuantity ? Math.round(item.returnedQuantity/item.warehouseReturnQuantity*100) : 0}}%</td></tr></tbody>
           </table>
         </div>
       </section>

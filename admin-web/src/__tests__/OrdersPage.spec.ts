@@ -10,7 +10,7 @@ const sampleOrder = {
   trackers: ["橄榄", "松子"],
   contractShipDates: ["2026-08-25"], contractShipDate: "2026-08-25", lifecycle: "PUBLISHED", displayStatus: "未完成", dispatchStatus: "部分派工", version: 1,
   totalQuantity: 100, shippedQuantity: 20, pendingQuantity: 80, overQuantity: 0, shortQuantity: 0, progressPercent: 20,
-  lines: [{ orderLineId: 1, variantId: "variant-1", skuId: "SKU-1", productName: "晴雨机能风衣", propertiesValue: "蓝色 / 120", category: "童装春夏", imageObjectKey: null, orderQuantity: 100, shippedQuantity: 20, pendingQuantity: 80, overQuantity: 0, shortQuantity: 0, progressPercent: 20, assignments: [] }],
+  lines: [{ orderLineId: 1, variantId: "variant-1", skuId: "SKU-1", itemNumber: "ITEM-1", productName: "晴雨机能风衣", propertiesValue: "蓝色 / 120", category: "童装春夏", imageObjectKey: null, orderQuantity: 100, shippedQuantity: 20, pendingQuantity: 80, overQuantity: 0, shortQuantity: 0, progressPercent: 20, assignments: [] }],
   factoryProgress: [{ factoryId: "factory-1", factoryName: "启宏", orderQuantity: 100, shippedQuantity: 20, pendingQuantity: 80, overQuantity: 0, shortQuantity: 0, progressPercent: 20 }],
   validationIssues: [], createdAt: "2026-08-20T08:00:00Z", updatedAt: "2026-08-20T08:00:00Z", requestId: "request-1",
 } satisfies Order;

@@ -162,6 +162,7 @@ def test_order_api_enforces_terminal_and_factory_visibility(
             )
             assert created.status_code == 201
             assert created.json()["orderNo"] == "API-81"
+            assert created.json()["lines"][0]["itemNumber"] == "ITEM-ORDER-API"
             order_id = created.json()["orderId"]
 
             with TestClient(app, base_url="https://testserver") as mini_admin:

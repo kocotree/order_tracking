@@ -67,7 +67,7 @@
                   <input v-if="!row.dispatched" type="checkbox" :checked="selectedDetails.has(row.key)" :disabled="interactionBusy" :aria-label="`选择第${index + 1}条`" @change="toggleRow(row.key, $event)">
                 </td>
                 <td class="dispatch-seq">{{ index + 1 }}</td>
-                <td class="dispatch-code">{{ row.skuId }}</td>
+                <td class="dispatch-code">{{ row.itemNumber }}</td>
                 <td class="dispatch-name" :title="row.productName">{{ row.productName }}</td>
                 <td>{{ row.propertiesValue }}</td>
                 <td :title="row.factoryName"><input v-if="isEditable(row.key)" v-model="detailDraft(row.key).factoryName" list="order-factory-options" :aria-label="`第${index + 1}条工厂`" :disabled="interactionBusy"><template v-else>{{ row.factoryName }}</template></td>
@@ -192,10 +192,10 @@ async function loadShipments() {
 }
 
 type Action = "publish" | "delete" | "complete" | "reopen";
-type DetailSortKey = "skuId" | "productName" | "propertiesValue" | "factoryName" | "dispatched" | "contractShipDate" | "orderQuantity" | "shippedQuantity" | "pendingQuantity" | "progressPercent";
-type DetailRow = { key: string; skuId: string; productName: string; propertiesValue: string; factoryName: string; dispatched: boolean; contractShipDate: string; orderQuantity: number | null; shippedQuantity: number | null; pendingQuantity: number | null; progressPercent: number | null };
+type DetailSortKey = "itemNumber" | "productName" | "propertiesValue" | "factoryName" | "dispatched" | "contractShipDate" | "orderQuantity" | "shippedQuantity" | "pendingQuantity" | "progressPercent";
+type DetailRow = { key: string; itemNumber: string; productName: string; propertiesValue: string; factoryName: string; dispatched: boolean; contractShipDate: string; orderQuantity: number | null; shippedQuantity: number | null; pendingQuantity: number | null; progressPercent: number | null };
 type DetailDraft = { factoryName: string; contractShipDate: string; shippedQuantity: string; pendingQuantity: string };
-const detailColumns: { key: DetailSortKey; label: string }[] = [{ key: "skuId", label: "产品编码" }, { key: "productName", label: "产品名称" }, { key: "propertiesValue", label: "颜色/规格" }, { key: "factoryName", label: "工厂" }, { key: "dispatched", label: "派工状态" }, { key: "contractShipDate", label: "合同出货时间" }, { key: "orderQuantity", label: "下单数量" }, { key: "shippedQuantity", label: "已发数量" }, { key: "pendingQuantity", label: "未发数量" }, { key: "progressPercent", label: "发货进度" }];
+const detailColumns: { key: DetailSortKey; label: string }[] = [{ key: "itemNumber", label: "货号" }, { key: "productName", label: "产品名称" }, { key: "propertiesValue", label: "颜色/规格" }, { key: "factoryName", label: "工厂" }, { key: "dispatched", label: "派工状态" }, { key: "contractShipDate", label: "合同出货时间" }, { key: "orderQuantity", label: "下单数量" }, { key: "shippedQuantity", label: "已发数量" }, { key: "pendingQuantity", label: "未发数量" }, { key: "progressPercent", label: "发货进度" }];
 const route = useRoute(); const router = useRouter(); let orderId = String(route.params.orderId);
 const order = ref<Order | null>(null); const loading = ref(true); const errorMessage = ref(""); const pendingAction = ref<Action | null>(null); const reopenReason = ref(""); const actionError = ref(""); const acting = ref(false); const detailSortKey = ref<DetailSortKey | null>(null); const detailSortOrder = ref<"asc" | "desc">("asc");
 const factories = ref<Awaited<ReturnType<typeof identityApi.listFactoryOptions>>["items"]>([]);
@@ -508,10 +508,10 @@ const contractButtonTitle = computed(() => order.value?.lifecycle === "DRAFT" ||
 const categories = computed(() => { const values = sortedCategories((order.value?.detailMode ? order.value.details : order.value?.lines)?.map((line) => line.category) ?? []); return values.length ? values : ["未分类"]; });
 const detailRows = computed(() => {
   const rows: DetailRow[] = order.value?.detailMode
-    ? order.value.details.map((detail): DetailRow => ({ key: detail.detailId, skuId: detail.sourceSkuId ?? "—", productName: detail.productName ?? "—", propertiesValue: detail.propertiesValue ?? "—", factoryName: detail.factoryName ?? "—", dispatched: detail.dispatchState === "ASSIGNED", contractShipDate: detail.contractShipDate ?? "", orderQuantity: detail.orderQuantity, shippedQuantity: detail.shippedQuantity, pendingQuantity: detail.pendingQuantity, progressPercent: detail.progressPercent }))
+    ? order.value.details.map((detail): DetailRow => ({ key: detail.detailId, itemNumber: detail.itemNumber ?? "—", productName: detail.productName ?? "—", propertiesValue: detail.propertiesValue ?? "—", factoryName: detail.factoryName ?? "—", dispatched: detail.dispatchState === "ASSIGNED", contractShipDate: detail.contractShipDate ?? "", orderQuantity: detail.orderQuantity, shippedQuantity: detail.shippedQuantity, pendingQuantity: detail.pendingQuantity, progressPercent: detail.progressPercent }))
     : (order.value?.lines ?? []).flatMap((line) => line.assignments.length
-      ? line.assignments.map((assignment): DetailRow => ({ key: `${line.orderLineId}-${assignment.assignmentId}`, skuId: line.skuId, productName: line.productName, propertiesValue: line.propertiesValue, factoryName: assignment.factoryName, dispatched: true, contractShipDate: assignment.contractShipDate ?? "", orderQuantity: assignment.assignedQuantity, shippedQuantity: assignment.shippedQuantity, pendingQuantity: assignment.pendingQuantity, progressPercent: assignment.progressPercent }))
-      : [{ key: `${line.orderLineId}-unassigned`, skuId: line.skuId, productName: line.productName, propertiesValue: line.propertiesValue, factoryName: "—", dispatched: false, contractShipDate: "", orderQuantity: line.orderQuantity, shippedQuantity: line.shippedQuantity, pendingQuantity: line.pendingQuantity, progressPercent: line.progressPercent } as DetailRow]);
+      ? line.assignments.map((assignment): DetailRow => ({ key: `${line.orderLineId}-${assignment.assignmentId}`, itemNumber: line.itemNumber, productName: line.productName, propertiesValue: line.propertiesValue, factoryName: assignment.factoryName, dispatched: true, contractShipDate: assignment.contractShipDate ?? "", orderQuantity: assignment.assignedQuantity, shippedQuantity: assignment.shippedQuantity, pendingQuantity: assignment.pendingQuantity, progressPercent: assignment.progressPercent }))
+      : [{ key: `${line.orderLineId}-unassigned`, itemNumber: line.itemNumber, productName: line.productName, propertiesValue: line.propertiesValue, factoryName: "—", dispatched: false, contractShipDate: "", orderQuantity: line.orderQuantity, shippedQuantity: line.shippedQuantity, pendingQuantity: line.pendingQuantity, progressPercent: line.progressPercent } as DetailRow]);
   return rows;
 });
 const sortedDetailRows = computed(() => { const key = detailSortKey.value; if (!key) return detailRows.value; const direction = detailSortOrder.value === "asc" ? 1 : -1; return [...detailRows.value].sort((left, right) => { const a = left[key]; const b = right[key]; if (typeof a === "boolean" && typeof b === "boolean") return (a === b ? 0 : a ? 1 : -1) * direction; return String(a).localeCompare(String(b), "zh-CN", { numeric: true }) * direction; }); });

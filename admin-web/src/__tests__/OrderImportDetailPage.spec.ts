@@ -27,7 +27,7 @@ const candidate = {
   shippedQuantity: 0,
   pendingQuantity: 100,
   importedOrderId: null,
-  lines: [{ candidateLineId: 1, contractShipDate: "2026-08-30", sourceContractShipDate: "2026-09-03", sourceSkuId: "6970000000001", productName: "测试童帽", propertiesValue: "蓝色 / 120", category: "童帽春夏", factoryName: "测试工厂", orderQuantity: 100, shippedQuantity: 0, pendingQuantity: 100, validationIssues: [] }],
+  lines: [{ candidateLineId: 1, contractShipDate: "2026-08-30", sourceContractShipDate: "2026-09-03", sourceSkuId: "6970000000001", itemNumber: "ITEM-IMPORT", productName: "测试童帽", propertiesValue: "蓝色 / 120", category: "童帽春夏", factoryName: "测试工厂", orderQuantity: 100, shippedQuantity: 0, pendingQuantity: 100, validationIssues: [] }],
   updatedAt: "2026-08-22T09:00:00",
 } satisfies ImportCandidate;
 
@@ -42,7 +42,7 @@ describe("pending order import detail page", () => {
       ...candidate,
       validationState: "INVALID",
       validationIssues: ["FACTORY_NOT_MATCHED"],
-      lines: [{ ...candidate.lines[0], validationIssues: ["FACTORY_NOT_MATCHED"] }],
+      lines: [{ ...candidate.lines[0], itemNumber: null, validationIssues: ["FACTORY_NOT_MATCHED"] }],
     });
     const wrapper = mount(OrderImportDetailPage, {
       global: { stubs: { AdminShell: { template: "<div><slot /></div>" } } },
@@ -58,6 +58,8 @@ describe("pending order import detail page", () => {
 
     expect(wrapper.get(".validation-callout").text()).toBe("工厂资料未匹配");
     expect(wrapper.get(".pending-import-detail-table tbody .status-badge").text()).toBe("未通过");
+    expect(productTable.text()).toContain("货号");
+    expect(productTable.text()).not.toContain("6970000000001");
   });
 
   it("shows the confirmed fields and imports one ready candidate as a draft", async () => {
@@ -81,7 +83,7 @@ describe("pending order import detail page", () => {
     expect(wrapper.find(".category-tag").text()).toBe("童帽春夏");
     expect(wrapper.findAll(".tracker-tag").map((item) => item.text())).toEqual(["松子", "青椒"]);
     expect(wrapper.find(".product-thumb").exists()).toBe(false);
-    expect(wrapper.get(".detail-code").attributes("title")).toBe("6970000000001");
+    expect(wrapper.get(".detail-code").attributes("title")).toBe("ITEM-IMPORT");
     expect(wrapper.get(".detail-product-name").attributes("title")).toBe("测试童帽");
     expect(wrapper.find(".detail-progress").text()).toBe("0%");
     const audit = wrapper.get(".pending-import-audit-card").text();
@@ -112,8 +114,8 @@ it("saves all changed detail fields together before importing", async () => {
   await flushPromises();
   await wrapper.get('input[list="candidate-factory-options"]').setValue("测试工厂B");
   await wrapper.get('input[type="date"]').setValue("2026-09-11");
-  const shippedInput = wrapper.get('input[aria-label="6970000000001 已发数量"]');
-  const pendingInput = wrapper.get('input[aria-label="6970000000001 未发数量"]');
+  const shippedInput = wrapper.get('input[aria-label="ITEM-IMPORT 已发数量"]');
+  const pendingInput = wrapper.get('input[aria-label="ITEM-IMPORT 未发数量"]');
   await shippedInput.setValue("25");
   expect((pendingInput.element as HTMLInputElement).value).toBe("75");
   await pendingInput.setValue("60");

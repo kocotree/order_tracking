@@ -876,6 +876,7 @@ def test_worker_reads_fake_pages_and_http_requires_admin_web_session(
         listed = client.get("/api/v1/admin/import-candidates")
         assert listed.status_code == 200
         assert listed.json()["items"][0]["orderNo"] == "E104"
+        assert listed.json()["items"][0]["lines"][0]["itemNumber"] == "ITEM-S05"
         latest = client.get("/api/v1/admin/import-runs/latest")
         assert latest.status_code == 200
         assert latest.json()["status"] == "SUCCEEDED"

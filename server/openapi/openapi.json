@@ -13095,6 +13095,62 @@
         ]
       }
     },
+    "/api/v1/factory/shipments/{shipment_id}/export": {
+      "get": {
+        "operationId": "export_factory_shipment_api_v1_factory_shipments__shipment_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipment_id",
+            "required": true,
+            "schema": {
+              "title": "Shipment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Factory Shipment",
+        "tags": [
+          "shipment-factory"
+        ]
+      }
+    },
     "/api/v1/factory/shipments/{shipment_id}/withdraw": {
       "post": {
         "operationId": "withdraw_api_v1_factory_shipments__shipment_id__withdraw_post",

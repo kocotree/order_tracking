@@ -554,6 +554,28 @@ def create_shipment_router(
         )
 
     @router.get(
+        "/factory/shipments/{shipment_id}/export",
+        tags=["shipment-factory"],
+    )
+    def export_factory_shipment(
+        shipment_id: str, authorization: str | None = Header(default=None)
+    ) -> Response:
+        actor = factory_user(authorization)
+        result = service.export_shipment(
+            shipment_id=shipment_id, factory_id=actor.factory_id
+        )
+        encoded_filename = quote(result.filename)
+        return Response(
+            content=result.content,
+            media_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+            },
+        )
+
+    @router.get(
         "/shipment-files/{file_id}/content",
         tags=["shipment-files"],
         response_class=Response,

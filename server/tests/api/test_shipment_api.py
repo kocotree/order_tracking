@@ -796,6 +796,7 @@ def test_web_admin_reexports_persisted_shipment_with_current_workbook_rules(
         phone_digest_secret=b"shipment-export-digest",
     )
     factory = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    other_factory = identity.issue_session(user_id=USER_IDS[1], terminal="mini")
     admin = identity.issue_session(user_id=ADMIN_ID, terminal="web")
     app = create_app(database_url=test_database_url, identity_service=identity)
 
@@ -822,6 +823,15 @@ def test_web_admin_reexports_persisted_shipment_with_current_workbook_rules(
                 f"/api/v1/factory/shipments/drafts/{shipment_id}/submit",
                 headers={"Idempotency-Key": "shipment-export-submit"},
             ).json()
+
+            factory_export = factory_client.get(
+                f"/api/v1/factory/shipments/{shipment_id}/export"
+            )
+            assert factory_export.status_code == 200
+            assert factory_export.headers["content-type"] == (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            assert "filename*=UTF-8''" in factory_export.headers["content-disposition"]
 
         with TestClient(app, base_url="https://testserver") as admin_client:
             admin_client.cookies.set("ot_web_session", admin.access_token)
@@ -876,6 +886,31 @@ def test_web_admin_reexports_persisted_shipment_with_current_workbook_rules(
                 12,
             ]
             assert submitted["shipmentNo"] in response.headers["content-disposition"]
+
+        with TestClient(app, base_url="https://testserver") as other_factory_client:
+            other_factory_client.headers["Authorization"] = (
+                f"Bearer {other_factory.access_token}"
+            )
+            assert (
+                other_factory_client.get(
+                    f"/api/v1/factory/shipments/{shipment_id}/export"
+                ).status_code
+                == 404
+            )
+
+        for unavailable_status in ("WITHDRAWN", "VOIDED", "VOID_PENDING"):
+            with Session(test_database_engine) as session, session.begin():
+                shipment = session.get(Shipment, shipment_id)
+                assert shipment is not None
+                shipment.status = unavailable_status
+            with TestClient(app, base_url="https://testserver") as factory_client:
+                factory_client.headers["Authorization"] = f"Bearer {factory.access_token}"
+                assert (
+                    factory_client.get(
+                        f"/api/v1/factory/shipments/{shipment_id}/export"
+                    ).status_code
+                    == 404
+                )
     finally:
         _clean(test_database_engine)
 

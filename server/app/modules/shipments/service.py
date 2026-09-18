@@ -1668,14 +1668,19 @@ class ShipmentService:
                 )
             )
 
-    def export_shipment(self, *, shipment_id: str) -> ShipmentExportResult:
+    def export_shipment(
+        self, *, shipment_id: str, factory_id: str | None = None
+    ) -> ShipmentExportResult:
         if self._workbook_renderer is None:
             raise ShipmentValidationError("shipment workbook renderer is unavailable")
         with self._sessions() as session:
             shipment = session.get(Shipment, shipment_id)
             if (
                 shipment is None
-                or shipment.status not in ("SHIPPED", "VOID_PENDING")
+                or shipment.status not in (
+                    ("SHIPPED",) if factory_id is not None else ("SHIPPED", "VOID_PENDING")
+                )
+                or (factory_id is not None and shipment.factory_id != factory_id)
                 or shipment.source_shipment_id is not None
                 or shipment.deleted_at is not None
                 or shipment.business_date is None

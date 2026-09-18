@@ -18,14 +18,15 @@ function buildLineGroups(lines: ShipmentLine[]): LineGroup[] {
 Page({
   shipmentId: "",
   withdrawKey: "",
+  previewMode: false,
   onShow() { if (this.shipmentId) void this.load(this.shipmentId); },
-  data: { receiptAtText: "", shipment: null as Shipment | null, submittedAtText: "", lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], proofs: [] as ProofView[], loading: true, withdrawStep: "" as ""|"form"|"confirm", withdrawReason: "", withdrawError: "", submitting: false, notificationId:null as number|null },
+  data: { receiptAtText: "", shipment: null as Shipment | null, submittedAtText: "", lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], proofs: [] as ProofView[], loading: true, downloadingManifest: false, canDownloadManifest: false, withdrawStep: "" as ""|"form"|"confirm", withdrawReason: "", withdrawError: "", submitting: false, notificationId:null as number|null },
   onLoad(options: Record<string, string | undefined>) {
-    if (isDevPreview(options)) { this.showShipment(PREVIEW_SHIPMENT); return; }
+    if (isDevPreview(options)) { this.previewMode = true; this.showShipment(PREVIEW_SHIPMENT); return; }
     this.setData({notificationId:notificationIdFrom(options)}); if (options.shipmentId) this.shipmentId = options.shipmentId;
   },
   showShipment(shipment: Shipment) {
-    this.setData({ shipment, receiptAtText: formatShanghaiDateTime(shipment.receipt?.confirmedAt), submittedAtText: formatShanghaiDateTime(shipment.submittedAt), lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), proofs: shipment.files.map(file => ({ ...file, localPath: "", status: "loading" })), loading: false });
+    this.setData({ shipment, receiptAtText: formatShanghaiDateTime(shipment.receipt?.confirmedAt), submittedAtText: formatShanghaiDateTime(shipment.submittedAt), lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), proofs: shipment.files.map(file => ({ ...file, localPath: "", status: "loading" })), loading: false, canDownloadManifest: shipment.status === "SHIPPED" });
     if (shipment.files.length) void this.loadProofs(shipment.files);
   },
   async loadProofs(files: ShipmentFile[]) {
@@ -54,6 +55,28 @@ Page({
   async load(id: string) {
     try { this.showShipment(await shipmentApi.factoryGet(id)); if(this.data.notificationId)await notificationApi.markRead(this.data.notificationId); }
     catch { wx.showToast({ title:this.data.notificationId?"内容已不可查看":"发货单加载失败", icon: "none" }); this.setData({ loading: false }); }
+  },
+  async downloadManifest() {
+    const shipment = this.data.shipment;
+    if (!shipment || !this.data.canDownloadManifest || this.data.downloadingManifest) return;
+    if (this.previewMode) { wx.showToast({ title: "演示模式不下载清单", icon: "none" }); return; }
+    this.setData({ downloadingManifest: true });
+    let tempFilePath = "";
+    try {
+      tempFilePath = await shipmentApi.downloadExport(shipment.shipmentId);
+      await new Promise<void>((resolve, reject) => wx.openDocument({
+        filePath: tempFilePath,
+        fileType: "xlsx",
+        showMenu: true,
+        success: () => resolve(),
+        fail: error => reject(new Error(error.errMsg)),
+      }));
+    } catch {
+      wx.showToast({ title: tempFilePath ? "清单打开失败，请稍后重试" : "清单下载失败，请稍后重试", icon: "none" });
+    } finally {
+      if (tempFilePath) wx.getFileSystemManager().unlink({ filePath: tempFilePath, fail: () => undefined });
+      this.setData({ downloadingManifest: false });
+    }
   },
   toggleLineGroup(event: WechatMiniprogram.TouchEvent) {
     const orderNo = String(event.currentTarget.dataset.orderNo);

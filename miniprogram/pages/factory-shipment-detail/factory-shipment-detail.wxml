@@ -3,7 +3,7 @@
   <view wx:if="{{loading}}" class="mini-empty">正在加载发货单…</view>
   <view wx:elif="{{shipment}}" class="ship-detail-content">
     <view class="ship-detail-hero">
-      <view class="ship-detail-title"><text>{{shipment.shipmentNo}}</text><text wx:if="{{shipment.status === 'WITHDRAWN'}}" class="withdraw-status">已撤回·待修改</text><text wx:elif="{{shipment.status === 'VOID_PENDING'}}" class="withdraw-status">撤回处理中</text><text wx:elif="{{shipment.status === 'VOIDED'}}" class="withdraw-status is-voided">已作废</text></view>
+      <view class="ship-detail-title"><text>{{shipment.shipmentNo}}</text><button wx:if="{{canDownloadManifest}}" class="shipment-download-button" disabled="{{downloadingManifest}}" bindtap="downloadManifest">{{downloadingManifest ? '下载中…' : '下载清单'}}</button><text wx:elif="{{shipment.status === 'WITHDRAWN'}}" class="withdraw-status">已撤回·待修改</text><text wx:elif="{{shipment.status === 'VOID_PENDING'}}" class="withdraw-status">撤回处理中</text><text wx:elif="{{shipment.status === 'VOIDED'}}" class="withdraw-status is-voided">已作废</text></view>
       <view class="ship-detail-meta"><view><text>发货日期</text><b>{{shipment.businessDate}}</b></view><view><text>发货数量</text><b>{{shipment.totalQuantity}}</b></view><view><text>总箱数</text><b>{{shipment.totalBoxes}}</b></view></view>
     </view>
     <view wx:if="{{shipment.receiptDifferences.length}}" class="receipt-difference-notice"><view class="receipt-difference-title">收货差异</view><view wx:for="{{shipment.receiptDifferences}}" wx:key="assignmentId" class="receipt-difference-item">{{item.orderNo}} · {{item.productName}} · {{item.skuId}} · {{item.propertiesValue}}：{{item.quantity > 0 ? '多' : '少'}}{{item.quantity > 0 ? item.quantity : -item.quantity}}件</view></view>

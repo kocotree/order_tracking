@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Any
 
-from sqlalchemy import Select, case, func, literal_column, select, true
+from sqlalchemy import Select, case, func, literal_column, or_, select, true
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import Subquery
@@ -108,12 +108,55 @@ def display_status(today: date, factory_id: str | None = None) -> ColumnElement[
     )
 
 
+def dispatch_status() -> ColumnElement[str]:
+    assigned = (
+        select(OrderDetail.detail_id)
+        .outerjoin(
+            OrderAssignment,
+            OrderAssignment.order_assignment_id == OrderDetail.assignment_id,
+        )
+        .where(
+            OrderDetail.order_id == Order.order_id,
+            OrderDetail.dispatch_state == "ASSIGNED",
+            OrderAssignment.is_active.is_(True),
+        )
+        .correlate(Order)
+        .exists()
+    )
+    unassigned = (
+        select(OrderDetail.detail_id)
+        .outerjoin(
+            OrderAssignment,
+            OrderAssignment.order_assignment_id == OrderDetail.assignment_id,
+        )
+        .where(
+            OrderDetail.order_id == Order.order_id,
+            or_(
+                OrderDetail.dispatch_state != "ASSIGNED",
+                OrderAssignment.order_assignment_id.is_(None),
+                OrderAssignment.is_active.is_not(True),
+            ),
+        )
+        .correlate(Order)
+        .exists()
+    )
+    return case(
+        (
+            Order.detail_mode.is_(True),
+            case((~assigned, "未派工"), (unassigned, "部分派工"), else_="全部派工"),
+        ),
+        (Order.lifecycle == "DRAFT", "未派工"),
+        else_="全部派工",
+    )
+
+
 def page_orders(
     session: Session,
     query: Select[tuple[Order]],
     *,
     today: date,
     status: str,
+    dispatch_state: str,
     ship_date_from: date | None,
     ship_date_to: date | None,
     sort_by: str,
@@ -138,6 +181,8 @@ def page_orders(
     )
     if status != "all":
         query = query.where(state == status)
+    if dispatch_state != "all":
+        query = query.where(dispatch_status() == dispatch_state)
     dates = (
         select(OrderAssignment.contract_ship_date)
         .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)

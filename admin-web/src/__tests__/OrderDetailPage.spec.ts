@@ -17,7 +17,7 @@ const sampleOrder = {
     detailMode: false, details: [],
   orderId: "order-1", orderNo: "092#", source: "manual", orderDate: "2026-08-22", tracker: "青椒",
   trackers: ["青椒"],
-  contractShipDates: ["2026-09-15"], contractShipDate: "2026-09-15", lifecycle: "DRAFT", displayStatus: "草稿", version: 1,
+  contractShipDates: ["2026-09-15"], contractShipDate: "2026-09-15", lifecycle: "DRAFT", displayStatus: "草稿", dispatchStatus: "未派工", version: 1,
   totalQuantity: 400, shippedQuantity: 0, pendingQuantity: 400, overQuantity: 0, shortQuantity: 0, progressPercent: 0,
   lines: [{ orderLineId: 1, variantId: "variant-1", skuId: "KQ26721", productName: "轻量防风马甲", propertiesValue: "雾蓝 / 110", category: "服装", imageObjectKey: null, orderQuantity: 400, shippedQuantity: 0, pendingQuantity: 400, overQuantity: 0, shortQuantity: 0, progressPercent: 0, assignments: [{ contractShipDate: "2026-08-30", assignmentId: 1, factoryId: "factory-1", factoryName: "盛泰", assignedQuantity: 400, shippedQuantity: 0, pendingQuantity: 400, overQuantity: 0, shortQuantity: 0, progressPercent: 0 }] }],
   factoryProgress: [{ factoryId: "factory-1", factoryName: "盛泰", orderQuantity: 400, shippedQuantity: 0, pendingQuantity: 400, overQuantity: 0, shortQuantity: 0, progressPercent: 0 }],

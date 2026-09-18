@@ -11,7 +11,7 @@ it("edits each factory date and saves it without a whole-order date", async () =
     detailMode: false, details: [],
     requestId: "test", orderId: "draft", orderNo: "DATE-1", orderDate: null, source: "feishu", tracker: "松子", trackers: ["松子"],
     contractShipDate: "2026-09-10", contractShipDates: ["2026-09-10", "2026-09-20"],
-    lifecycle: "DRAFT", displayStatus: "草稿", version: 3, totalQuantity: 100,
+    lifecycle: "DRAFT", displayStatus: "草稿", dispatchStatus: "未派工", version: 3, totalQuantity: 100,
     shippedQuantity: 0, pendingQuantity: 100, overQuantity: 0, shortQuantity: 100, progressPercent: 0,
     lines: [{ orderLineId: 1, variantId: "sku", skuId: "SKU", productName: "帽子", propertiesValue: "蓝色",
       category: "童帽春夏", imageObjectKey: null, orderQuantity: 100, shippedQuantity: 0, pendingQuantity: 100,

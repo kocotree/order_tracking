@@ -28,11 +28,12 @@ describe("orderApi", () => {
         }),
       );
 
-    await orderApi.list({ status: "已逾期", includeDrafts: true, trackers: ["松子"] });
+    await orderApi.list({ status: "已逾期", dispatchStatus: "部分派工", includeDrafts: true, trackers: ["松子"] });
     await orderApi.publish("order-1", 3);
 
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("status=%E5%B7%B2%E9%80%BE%E6%9C%9F");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("includeDrafts=true");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("dispatchStatus=%E9%83%A8%E5%88%86%E6%B4%BE%E5%B7%A5");
     const publish = fetchMock.mock.calls[1]?.[1];
     expect(new Headers(publish?.headers).get("Idempotency-Key")).toBe(
       "00000000-0000-4000-8000-000000000001",

@@ -17,6 +17,7 @@ function order(overrides: Partial<Order> = {}): Order {
     contractShipDates: ["2026-08-25"], contractShipDate: "2026-08-25",
     lifecycle: "PUBLISHED",
     displayStatus: "未完成",
+    dispatchStatus: "全部派工",
     version: 1,
     totalQuantity: 100,
     shippedQuantity: 20,

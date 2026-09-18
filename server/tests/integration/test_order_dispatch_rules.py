@@ -50,6 +50,40 @@ def dispatch(service, order_id, ids, key):
     return service.dispatch_confirm(**args, preview_id=preview["preview_id"], idempotency_key=key)
 
 
+def test_dispatch_status_value_filter_and_count_share_one_source_detail_rule(
+    test_database_engine: Engine,
+):
+    sessions, source, oid = setup_dispatch_order(
+        test_database_engine,
+        rows=[_row("a"), _row("b"), _row("c")],
+    )
+    service = OrderDispatchService(sessions, source=source, clock=lambda: NOW)
+
+    draft = service.get(order_id=oid)
+    assert draft.dispatch_status == "未派工"
+    items, total = service.list_visible(
+        actor_id=ACTOR, include_drafts=True, dispatch_status="未派工"
+    )
+    assert total == 1 and [item.order_id for item in items] == [oid]
+
+    partial = dispatch(service, oid, [draft.details[0].detail_id], "partial")
+    assert partial.dispatch_status == "部分派工"
+    items, total = service.list_visible(actor_id=ACTOR, dispatch_status="部分派工")
+    assert total == 1 and [item.order_id for item in items] == [oid]
+    assert service.list_visible(actor_id=ACTOR, dispatch_status="未派工")[1] == 0
+
+    complete = dispatch(
+        service,
+        oid,
+        [detail.detail_id for detail in partial.details if detail.dispatch_state == "UNASSIGNED"],
+        "complete",
+    )
+    assert complete.dispatch_status == "全部派工"
+    items, total = service.list_visible(actor_id=ACTOR, dispatch_status="全部派工")
+    assert total == 1 and [item.order_id for item in items] == [oid]
+    assert service.list_visible(actor_id=ACTOR, dispatch_status="部分派工")[1] == 0
+
+
 def test_source_overdue_filter_count_and_completion(test_database_engine: Engine):
     sessions, source, oid = setup_dispatch_order(
         test_database_engine,

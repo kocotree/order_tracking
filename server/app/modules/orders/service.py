@@ -164,6 +164,7 @@ class OrderSnapshot:
     contract_ship_dates: list[date]
     lifecycle: str
     display_status: str
+    dispatch_status: str
     version: int
     total_quantity: int | None
     shipped_quantity: int | None
@@ -733,6 +734,7 @@ class OrderService:
         include_drafts: bool = False,
         keyword: str = "",
         status: str = "all",
+        dispatch_status: str = "all",
         category: str | None = None,
         factory_id: str | None = None,
         factory_ids: list[str] | None = None,
@@ -891,11 +893,14 @@ class OrderService:
                 query = query.where(matched)
             if status not in {"all", "草稿", "已完成", "已逾期", "未完成"}:
                 raise OrderValidationError("invalid status")
+            if dispatch_status not in {"all", "未派工", "部分派工", "全部派工"}:
+                raise OrderValidationError("invalid dispatch status")
             orders, total = page_orders(
                 session,
                 query,
                 today=business_today,
                 status=status,
+                dispatch_state=dispatch_status,
                 ship_date_from=ship_date_from,
                 ship_date_to=ship_date_to,
                 sort_by=sort_by,
@@ -1523,6 +1528,7 @@ class OrderService:
             contract_ship_dates=dates,
             lifecycle=order.lifecycle,
             display_status=self._display_status(order, overdue),
+            dispatch_status="未派工" if order.lifecycle == "DRAFT" else "全部派工",
             version=order.version,
             total_quantity=total,
             shipped_quantity=total_shipped,
@@ -1659,6 +1665,7 @@ class OrderService:
             ]
         )
         dates = sorted({item.contract_ship_date for item in details if item.contract_ship_date})
+        assigned_count = sum(item.dispatch_state == "ASSIGNED" for item in details)
         return OrderSnapshot(
             order_id=order.order_id,
             order_no=order.order_no,
@@ -1677,6 +1684,13 @@ class OrderService:
                     and item.contract_ship_date < (today or self._business_today())
                     for item in details
                 ),
+            ),
+            dispatch_status=(
+                "未派工"
+                if assigned_count == 0
+                else "全部派工"
+                if assigned_count == len(details)
+                else "部分派工"
             ),
             version=order.version,
             total_quantity=quantity,

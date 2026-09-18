@@ -232,6 +232,7 @@ class OrderResponse(ApiModel):
     trackers: list[str]
     lifecycle: str
     display_status: str
+    dispatch_status: str
     version: int
     total_quantity: int | None
     shipped_quantity: int | None
@@ -703,6 +704,7 @@ def create_order_router(
         request: Request,
         keyword: str = Query(default="", max_length=255),
         status: str = Query(default="all"),
+        dispatch_status: Annotated[str, Query(alias="dispatchStatus")] = "all",
         category: str | None = Query(default=None),
         factory_id: Annotated[str | None, Query(alias="factoryId")] = None,
         factory_ids: Annotated[list[str] | None, Query(alias="factoryIds")] = None,
@@ -723,6 +725,7 @@ def create_order_router(
             include_drafts=allow_drafts,
             keyword=keyword,
             status=status,
+            dispatch_status=dispatch_status,
             category=category,
             factory_id=factory_id,
             factory_ids=factory_ids,

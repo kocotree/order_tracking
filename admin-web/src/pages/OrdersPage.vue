@@ -52,9 +52,10 @@
               </div>
             </div>
 
-            <label class="order-date-field"><span class="sr-only">合同出货开始日期</span><input v-model="shipDateFrom" type="date" @change="search" /></label>
-            <span class="order-date-separator">—</span>
-            <label class="order-date-field"><span class="sr-only">合同出货结束日期</span><input v-model="shipDateTo" type="date" @change="search" /></label>
+            <label class="order-select-field">
+              <span class="sr-only">派工状态</span>
+              <select v-model="dispatchStatus" aria-label="派工状态" @change="search"><option value="all">全部派工状态</option><option value="全部派工">全部派工</option><option value="部分派工">部分派工</option><option value="未派工">未派工</option></select>
+            </label>
             <button class="order-secondary-button" type="button" @click="reset">重置</button>
             <button class="order-primary-button" type="submit">搜索</button>
           </div>
@@ -70,17 +71,20 @@
             <thead>
               <tr>
                 <th class="order-sequence-column" scope="col">序号</th>
-                <th v-for="column in sortableColumns" :key="column.key" scope="col">
-                  <button
-                    class="data-grid-sort-button"
-                    :class="{ 'is-sorted': tableSortKey === column.key, 'is-sort-desc': tableSortKey === column.key && tableSortDirection === 'desc' }"
-                    type="button"
-                    @click="toggleSort(column.key)"
-                  >
-                    {{ column.label }}
-                    <span class="data-grid-sort-arrows" aria-hidden="true"><span class="data-grid-sort-arrow is-up"></span><span class="data-grid-sort-arrow is-down"></span></span>
-                  </button>
-                </th>
+                <template v-for="column in sortableColumns" :key="column.key">
+                  <th v-if="column.key === 'status'" scope="col">派工状态</th>
+                  <th scope="col">
+                    <button
+                      class="data-grid-sort-button"
+                      :class="{ 'is-sorted': tableSortKey === column.key, 'is-sort-desc': tableSortKey === column.key && tableSortDirection === 'desc' }"
+                      type="button"
+                      @click="toggleSort(column.key)"
+                    >
+                      {{ column.label }}
+                      <span class="data-grid-sort-arrows" aria-hidden="true"><span class="data-grid-sort-arrow is-up"></span><span class="data-grid-sort-arrow is-down"></span></span>
+                    </button>
+                  </th>
+                </template>
                 <th scope="col">操作</th>
               </tr>
             </thead>
@@ -98,10 +102,11 @@
                 <td class="date-summary" :title="item.contractShipDates.join('、')">{{ item.contractShipDates.join("、") || "—" }}</td>
                 <td><div class="list-progress-line"><span class="progress-track"><span class="progress-bar" :style="{ width: `${Math.min(item.progressPercent ?? 0, 100)}%` }"></span></span><span class="list-progress-percent">{{ item.progressPercent == null ? "—" : `${item.progressPercent}%` }}</span></div></td>
                 <td class="order-shipment-count">{{ number(item.shippedQuantity) }} / {{ number(item.totalQuantity) }}</td>
+                <td class="order-dispatch-status">{{ item.dispatchStatus }}</td>
                 <td><span class="status-badge" :class="statusTone(item)">{{ item.displayStatus }}</span></td>
                 <td><div class="order-row-actions"><RouterLink class="order-view-button" :to="detailRoute(item.orderId)">详情</RouterLink><button v-if="item.lifecycle === 'DRAFT'" class="order-delete-button" type="button" @click="deleteTarget = item">删除</button></div></td>
               </tr>
-              <tr v-if="items.length === 0"><td colspan="11"><div class="empty-state"><strong>没有符合当前条件的订单</strong><p>可以调整搜索词、状态或筛选条件后重新查询。</p></div></td></tr>
+              <tr v-if="items.length === 0"><td colspan="12"><div class="empty-state"><strong>没有符合当前条件的订单</strong><p>可以调整搜索词、状态或筛选条件后重新查询。</p></div></td></tr>
             </tbody>
           </table>
         </div>
@@ -157,8 +162,7 @@ const status = ref(statuses.some((item) => item.value === route?.query.status) ?
 const category = ref(queryValue("category"));
 const factoryIds = ref<string[]>(queryValues("factoryId"));
 const selectedTrackers = ref<string[]>(queryValues("tracker"));
-const shipDateFrom = ref(queryValue("shipDateFrom"));
-const shipDateTo = ref(queryValue("shipDateTo"));
+const dispatchStatus = ref(["全部派工", "部分派工", "未派工"].includes(queryValue("dispatchStatus")) ? queryValue("dispatchStatus") : "all");
 const sortBy = ref(initialTableSort ? initialSort : "priority");
 const tableSortKey = ref<TableSortKey | null>(initialTableSort?.[1] as TableSortKey | undefined ?? null);
 const tableSortDirection = ref<"asc" | "desc">(initialTableSort?.[2] === "Desc" ? "desc" : "asc");
@@ -193,8 +197,7 @@ function listQuery() {
   if (category.value) query.category = category.value;
   if (factoryIds.value.length) query.factoryId = factoryIds.value;
   if (selectedTrackers.value.length) query.tracker = selectedTrackers.value;
-  if (shipDateFrom.value) query.shipDateFrom = shipDateFrom.value;
-  if (shipDateTo.value) query.shipDateTo = shipDateTo.value;
+  if (dispatchStatus.value !== "all") query.dispatchStatus = dispatchStatus.value;
   if (sortBy.value !== "priority") query.sortBy = sortBy.value;
   if (page.value !== 1) query.page = String(page.value);
   return query;
@@ -206,7 +209,7 @@ async function load() { const requestId = ++requestSequence;
   loading.value = true;
   errorMessage.value = "";
   try {
-    const result = await orderApi.list({ keyword: keyword.value, status: status.value, category: category.value || undefined, factoryIds: factoryIds.value, trackers: selectedTrackers.value, shipDateFrom: shipDateFrom.value || undefined, shipDateTo: shipDateTo.value || undefined, sortBy: sortBy.value, includeDrafts: true, page: page.value, pageSize });
+    const result = await orderApi.list({ keyword: keyword.value, status: status.value, dispatchStatus: dispatchStatus.value, category: category.value || undefined, factoryIds: factoryIds.value, trackers: selectedTrackers.value, sortBy: sortBy.value, includeDrafts: true, page: page.value, pageSize });
     if (requestId !== requestSequence) return;
     const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
     if (page.value > lastPage) { page.value = lastPage; await router?.replace({ path: "/orders", query: listQuery() }); await load(); return; }
@@ -233,8 +236,8 @@ async function toggleSort(key: TableSortKey) {
 
 async function reset() {
   factorySearch.value = "";
-  keyword.value = ""; status.value = "all"; category.value = ""; factoryIds.value = []; selectedTrackers.value = [];
-  shipDateFrom.value = ""; shipDateTo.value = ""; sortBy.value = "priority"; tableSortKey.value = null; tableSortDirection.value = "asc";
+  keyword.value = ""; status.value = "all"; dispatchStatus.value = "all"; category.value = ""; factoryIds.value = []; selectedTrackers.value = [];
+  sortBy.value = "priority"; tableSortKey.value = null; tableSortDirection.value = "asc";
   await search();
 }
 

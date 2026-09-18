@@ -2741,6 +2741,8 @@ export interface components {
              * @default []
              */
             details: components["schemas"]["OrderDetailResponse"][];
+            /** Dispatchstatus */
+            dispatchStatus: string;
             /** Displaystatus */
             displayStatus: string;
             /** Factoryprogress */
@@ -7464,6 +7466,7 @@ export interface operations {
             query?: {
                 keyword?: string;
                 status?: string;
+                dispatchStatus?: string;
                 category?: string | null;
                 factoryId?: string | null;
                 factoryIds?: string[] | null;

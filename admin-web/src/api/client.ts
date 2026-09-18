@@ -302,6 +302,7 @@ export const orderApi = {
   list: (params: {
     keyword?: string;
     status?: string;
+    dispatchStatus?: string;
     category?: string;
     factoryId?: string;
     factoryIds?: string[];
@@ -316,6 +317,7 @@ export const orderApi = {
     const query = new URLSearchParams({
       keyword: params.keyword ?? "",
       status: params.status ?? "all",
+      dispatchStatus: params.dispatchStatus ?? "all",
       sortBy: params.sortBy ?? "priority",
       includeDrafts: String(params.includeDrafts ?? true),
       page: String(params.page ?? 1),

@@ -710,7 +710,7 @@ h1, h2, p { margin-top: 0; }
 .order-list-page .order-list-card-header { height: 54px; padding: 0 16px; }
 .order-list-page .order-list-card-header h1 { margin: 0; color: var(--ink-strong); font-size: 18px; font-weight: 800; }
 .order-list-table { width: 100%; min-width: 1516px; table-layout: fixed; }
-.order-list-table th:nth-child(1) { width: 52px; }.order-list-table th:nth-child(2) { width: 8%; }.order-list-table th:nth-child(3) { width: calc(max(1515px, 100cqi - 1px) * .40 - 280px); }.order-list-table th:nth-child(4) { width: 120px; }.order-list-table th:nth-child(5) { width: 160px; }.order-list-table th:nth-child(6) { width: 6%; }.order-list-table th:nth-child(7) { width: 10%; }.order-list-table th:nth-child(8) { width: 10%; }.order-list-table th:nth-child(9) { width: 10%; }.order-list-table th:nth-child(10) { width: auto; }.order-list-table th:nth-child(11) { width: 104px; }
+.order-list-table th:nth-child(1) { width: 52px; }.order-list-table th:nth-child(2) { width: 8%; }.order-list-table th:nth-child(3) { width: calc(max(1515px, 100cqi - 1px) * .40 - 392px); }.order-list-table th:nth-child(4) { width: 120px; }.order-list-table th:nth-child(5) { width: 160px; }.order-list-table th:nth-child(6) { width: 6%; }.order-list-table th:nth-child(7) { width: 10%; }.order-list-table th:nth-child(8) { width: 10%; }.order-list-table th:nth-child(9) { width: 10%; }.order-list-table th:nth-child(10) { width: 112px; }.order-list-table th:nth-child(11) { width: auto; }.order-list-table th:nth-child(12) { width: 104px; }
 .order-list-table th, .order-list-table td { padding: 0 14px; font-size: 13px; text-align: left; }
 .order-list-table th { font-weight: 800; }
 .order-list-table td { height: 40px; font-weight: 700; vertical-align: middle; }
@@ -737,6 +737,10 @@ h1, h2, p { margin-top: 0; }
 .progress-bar { display: block; height: 100%; background: var(--erp-blue); border-radius: inherit; }
 .list-progress-percent { font-size: 10px; text-align: right; }
 .order-shipment-count { font-variant-numeric: tabular-nums; }
+.dispatch-status-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 64px; height: 22px; padding: 0 10px; font-size: 12px; font-weight: 700; line-height: 1; border-radius: 999px; }
+.dispatch-status-badge[data-status="未派工"] { color: #616b78; background: #eef1f4; }
+.dispatch-status-badge[data-status="部分派工"] { color: #a45d00; background: #fff3dc; }
+.dispatch-status-badge[data-status="全部派工"] { color: var(--success); background: var(--success-bg); }
 .order-list-table .status-badge { gap: 0; justify-content: center; min-width: 44px; min-height: 22px; height: 22px; padding: 0 10px; font-size: 13px; font-weight: 700; line-height: 1; }
 .order-list-table .status-badge::before { display: none; }
 .status-badge.is-danger { color: var(--danger); background: var(--danger-bg); }

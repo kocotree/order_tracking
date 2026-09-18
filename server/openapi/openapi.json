@@ -2995,6 +2995,10 @@
             "title": "Details",
             "type": "array"
           },
+          "dispatchStatus": {
+            "title": "Dispatchstatus",
+            "type": "string"
+          },
           "displayStatus": {
             "title": "Displaystatus",
             "type": "string"
@@ -3158,6 +3162,7 @@
           "trackers",
           "lifecycle",
           "displayStatus",
+          "dispatchStatus",
           "version",
           "totalQuantity",
           "shippedQuantity",
@@ -13903,6 +13908,16 @@
             "schema": {
               "default": "all",
               "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dispatchStatus",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Dispatchstatus",
               "type": "string"
             }
           },

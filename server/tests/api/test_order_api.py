@@ -215,6 +215,11 @@ def test_order_api_enforces_terminal_and_factory_visibility(
             assert client.get("/api/v1/orders?category=童帽春夏").json()["total"] == 2
             assert client.get("/api/v1/orders?category=儿童手套").json()["total"] == 0
             assert client.get("/api/v1/orders?category=帽子").status_code == 400
+            dispatched = client.get(
+                "/api/v1/orders", params={"dispatchStatus": "全部派工"}
+            ).json()
+            assert dispatched["total"] == 2
+            assert {item["dispatchStatus"] for item in dispatched["items"]} == {"全部派工"}
             multi_factory = client.get(
                 "/api/v1/orders",
                 params=[

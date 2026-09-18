@@ -8,7 +8,7 @@ import OrdersPage from "@/pages/OrdersPage.vue";
 const sampleOrder = {
   detailMode: false, details: [], orderId: "order-1", orderNo: "090#", source: "manual", orderDate: "2026-08-20", tracker: "橄榄",
   trackers: ["橄榄", "松子"],
-  contractShipDates: ["2026-08-25"], contractShipDate: "2026-08-25", lifecycle: "PUBLISHED", displayStatus: "未完成", version: 1,
+  contractShipDates: ["2026-08-25"], contractShipDate: "2026-08-25", lifecycle: "PUBLISHED", displayStatus: "未完成", dispatchStatus: "部分派工", version: 1,
   totalQuantity: 100, shippedQuantity: 20, pendingQuantity: 80, overQuantity: 0, shortQuantity: 0, progressPercent: 20,
   lines: [{ orderLineId: 1, variantId: "variant-1", skuId: "SKU-1", productName: "晴雨机能风衣", propertiesValue: "蓝色 / 120", category: "童装春夏", imageObjectKey: null, orderQuantity: 100, shippedQuantity: 20, pendingQuantity: 80, overQuantity: 0, shortQuantity: 0, progressPercent: 20, assignments: [] }],
   factoryProgress: [{ factoryId: "factory-1", factoryName: "启宏", orderQuantity: 100, shippedQuantity: 20, pendingQuantity: 80, overQuantity: 0, shortQuantity: 0, progressPercent: 20 }],
@@ -31,20 +31,35 @@ describe("order list prototype alignment", () => {
     expect(wrapper.get('.order-select-field select').findAll('option').map((item) => item.text())).toEqual([
       "全部分类", "童帽春夏", "童配春夏", "童装春夏", "童帽秋冬", "童配秋冬", "童装秋冬", "儿童手套",
     ]);
-    expect(wrapper.findAll('.data-grid-sort-button')).toHaveLength(9);
+    expect(wrapper.findAll('.data-grid-sort-button')).toHaveLength(10);
     expect(wrapper.get('.status-badge').classes()).toContain('is-info');
     expect(wrapper.findAll('.tracker-tag').map((item) => item.text())).toEqual(['橄榄', '松子']);
+    expect(wrapper.get('select[aria-label="派工状态"]').findAll('option').map((item) => item.text())).toEqual([
+      "全部派工状态", "全部派工", "部分派工", "未派工",
+    ]);
+    expect(wrapper.find('input[type="date"]').exists()).toBe(false);
+    expect(wrapper.get('.order-dispatch-status').text()).toBe("部分派工");
+    expect(wrapper.get('.dispatch-status-badge').attributes('data-status')).toBe("部分派工");
+    expect(wrapper.findAll('thead th').map((item) => item.text())).toEqual([
+      "序号", "订单编号", "产品名称", "分类", "跟单人员", "工厂", "合同出货时间",
+      "发货进度", "已发/订单数", "派工状态", "状态", "操作",
+    ]);
 
     await wrapper.get('.order-select-field select').setValue("童装春夏");
     await flushPromises();
     await wrapper.get('.order-multiselect-trigger').trigger('click');
     await wrapper.get('.order-multiselect-option input').setValue(true);
     await flushPromises();
+    await wrapper.get('select[aria-label="派工状态"]').setValue("部分派工");
+    await flushPromises();
     const categoryHeader = wrapper.findAll('.data-grid-sort-button').find((item) => item.text().includes("分类"));
     await categoryHeader?.trigger('click');
     await flushPromises();
+    const dispatchHeader = wrapper.findAll('.data-grid-sort-button').find((item) => item.text().includes("派工状态"));
+    await dispatchHeader?.trigger('click');
+    await flushPromises();
 
-    expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ category: "童装春夏", factoryIds: ["factory-1"], sortBy: "categoryAsc" }));
+    expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ category: "童装春夏", factoryIds: ["factory-1"], dispatchStatus: "部分派工", sortBy: "dispatchStatusAsc" }));
   });
 });
 
@@ -69,19 +84,20 @@ it("restores filters from the URL and carries them into order details", async ()
   ] });
   await router.push({ path: "/orders", query: {
     keyword: "蓝色", status: "未完成", category: "童装春夏", factoryId: ["factory-1", "factory-2"],
-    tracker: ["松子", "橄榄"], shipDateFrom: "2026-09-01", shipDateTo: "2026-09-30", sortBy: "categoryDesc", page: "2",
+    tracker: ["松子", "橄榄"], dispatchStatus: "部分派工", sortBy: "categoryDesc", page: "2",
   } });
   const wrapper = mount(OrdersPage, { global: { plugins: [router], stubs: { AdminShell: { template: "<div><slot/></div>" } } } });
   await flushPromises();
 
   expect(list).toHaveBeenCalledWith(expect.objectContaining({
     keyword: "蓝色", status: "未完成", category: "童装春夏", factoryIds: ["factory-1", "factory-2"],
-    trackers: ["松子", "橄榄"], shipDateFrom: "2026-09-01", shipDateTo: "2026-09-30", sortBy: "categoryDesc", page: 2,
+    trackers: ["松子", "橄榄"], dispatchStatus: "部分派工", sortBy: "categoryDesc", page: 2,
   }));
   const detailUrl = new URL(wrapper.get('a[href^="/orders/order-1"]').attributes("href")!, "https://example.test");
   expect(detailUrl.searchParams.get("keyword")).toBe("蓝色");
   expect(detailUrl.searchParams.getAll("factoryId")).toEqual(["factory-1", "factory-2"]);
   expect(detailUrl.searchParams.getAll("tracker")).toEqual(["松子", "橄榄"]);
+  expect(detailUrl.searchParams.get("dispatchStatus")).toBe("部分派工");
   expect(detailUrl.searchParams.get("page")).toBe("2");
   wrapper.unmount();
 });

@@ -31,7 +31,7 @@ describe("order list prototype alignment", () => {
     expect(wrapper.get('.order-select-field select').findAll('option').map((item) => item.text())).toEqual([
       "全部分类", "童帽春夏", "童配春夏", "童装春夏", "童帽秋冬", "童配秋冬", "童装秋冬", "儿童手套",
     ]);
-    expect(wrapper.findAll('.data-grid-sort-button')).toHaveLength(9);
+    expect(wrapper.findAll('.data-grid-sort-button')).toHaveLength(10);
     expect(wrapper.get('.status-badge').classes()).toContain('is-info');
     expect(wrapper.findAll('.tracker-tag').map((item) => item.text())).toEqual(['橄榄', '松子']);
     expect(wrapper.get('select[aria-label="派工状态"]').findAll('option').map((item) => item.text())).toEqual([
@@ -39,6 +39,7 @@ describe("order list prototype alignment", () => {
     ]);
     expect(wrapper.find('input[type="date"]').exists()).toBe(false);
     expect(wrapper.get('.order-dispatch-status').text()).toBe("部分派工");
+    expect(wrapper.get('.dispatch-status-badge').attributes('data-status')).toBe("部分派工");
     expect(wrapper.findAll('thead th').map((item) => item.text())).toEqual([
       "序号", "订单编号", "产品名称", "分类", "跟单人员", "工厂", "合同出货时间",
       "发货进度", "已发/订单数", "派工状态", "状态", "操作",
@@ -54,8 +55,11 @@ describe("order list prototype alignment", () => {
     const categoryHeader = wrapper.findAll('.data-grid-sort-button').find((item) => item.text().includes("分类"));
     await categoryHeader?.trigger('click');
     await flushPromises();
+    const dispatchHeader = wrapper.findAll('.data-grid-sort-button').find((item) => item.text().includes("派工状态"));
+    await dispatchHeader?.trigger('click');
+    await flushPromises();
 
-    expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ category: "童装春夏", factoryIds: ["factory-1"], dispatchStatus: "部分派工", sortBy: "categoryAsc" }));
+    expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ category: "童装春夏", factoryIds: ["factory-1"], dispatchStatus: "部分派工", sortBy: "dispatchStatusAsc" }));
   });
 });
 

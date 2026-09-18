@@ -770,6 +770,8 @@ class OrderService:
             "progressPercentDesc",
             "shippedQuantityAsc",
             "shippedQuantityDesc",
+            "dispatchStatusAsc",
+            "dispatchStatusDesc",
             "statusAsc",
             "statusDesc",
         }

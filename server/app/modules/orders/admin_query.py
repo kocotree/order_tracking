@@ -165,6 +165,7 @@ def page_orders(
     factory_id: str | None = None,
 ) -> tuple[list[Order], int]:
     state = display_status(today, factory_id)
+    dispatch = dispatch_status()
     visible_line = (
         (
             select(OrderAssignment.order_assignment_id)
@@ -182,7 +183,7 @@ def page_orders(
     if status != "all":
         query = query.where(state == status)
     if dispatch_state != "all":
-        query = query.where(dispatch_status() == dispatch_state)
+        query = query.where(dispatch == dispatch_state)
     dates = (
         select(OrderAssignment.contract_ship_date)
         .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
@@ -389,6 +390,11 @@ def page_orders(
         keys = [value, order_no]
     elif normalized == "status":
         keys = [string_key(state), order_no]
+    elif normalized == "dispatchStatus":
+        keys = [
+            case((dispatch == "未派工", 0), (dispatch == "部分派工", 1), else_=2),
+            order_no,
+        ]
     elif sort_by == "orderDateDesc":
         keys = [Order.order_date.is_(None), Order.order_date.desc(), order_no]
         reverse = False

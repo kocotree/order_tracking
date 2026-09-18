@@ -71,20 +71,17 @@
             <thead>
               <tr>
                 <th class="order-sequence-column" scope="col">序号</th>
-                <template v-for="column in sortableColumns" :key="column.key">
-                  <th v-if="column.key === 'status'" scope="col">派工状态</th>
-                  <th scope="col">
-                    <button
-                      class="data-grid-sort-button"
-                      :class="{ 'is-sorted': tableSortKey === column.key, 'is-sort-desc': tableSortKey === column.key && tableSortDirection === 'desc' }"
-                      type="button"
-                      @click="toggleSort(column.key)"
-                    >
-                      {{ column.label }}
-                      <span class="data-grid-sort-arrows" aria-hidden="true"><span class="data-grid-sort-arrow is-up"></span><span class="data-grid-sort-arrow is-down"></span></span>
-                    </button>
-                  </th>
-                </template>
+                <th v-for="column in sortableColumns" :key="column.key" scope="col">
+                  <button
+                    class="data-grid-sort-button"
+                    :class="{ 'is-sorted': tableSortKey === column.key, 'is-sort-desc': tableSortKey === column.key && tableSortDirection === 'desc' }"
+                    type="button"
+                    @click="toggleSort(column.key)"
+                  >
+                    {{ column.label }}
+                    <span class="data-grid-sort-arrows" aria-hidden="true"><span class="data-grid-sort-arrow is-up"></span><span class="data-grid-sort-arrow is-down"></span></span>
+                  </button>
+                </th>
                 <th scope="col">操作</th>
               </tr>
             </thead>
@@ -102,7 +99,7 @@
                 <td class="date-summary" :title="item.contractShipDates.join('、')">{{ item.contractShipDates.join("、") || "—" }}</td>
                 <td><div class="list-progress-line"><span class="progress-track"><span class="progress-bar" :style="{ width: `${Math.min(item.progressPercent ?? 0, 100)}%` }"></span></span><span class="list-progress-percent">{{ item.progressPercent == null ? "—" : `${item.progressPercent}%` }}</span></div></td>
                 <td class="order-shipment-count">{{ number(item.shippedQuantity) }} / {{ number(item.totalQuantity) }}</td>
-                <td class="order-dispatch-status">{{ item.dispatchStatus }}</td>
+                <td class="order-dispatch-status"><span class="dispatch-status-badge" :data-status="item.dispatchStatus">{{ item.dispatchStatus }}</span></td>
                 <td><span class="status-badge" :class="statusTone(item)">{{ item.displayStatus }}</span></td>
                 <td><div class="order-row-actions"><RouterLink class="order-view-button" :to="detailRoute(item.orderId)">详情</RouterLink><button v-if="item.lifecycle === 'DRAFT'" class="order-delete-button" type="button" @click="deleteTarget = item">删除</button></div></td>
               </tr>
@@ -136,13 +133,13 @@ import { ApiError, identityApi, orderApi, type Factory, type Order } from "@/api
 import NumberPagination from "@/components/NumberPagination.vue";
 import AdminShell from "@/components/AdminShell.vue";
 
-type TableSortKey = "orderNo" | "productName" | "category" | "tracker" | "factory" | "contractShipDate" | "progressPercent" | "shippedQuantity" | "status";
+type TableSortKey = "orderNo" | "productName" | "category" | "tracker" | "factory" | "contractShipDate" | "progressPercent" | "shippedQuantity" | "dispatchStatus" | "status";
 
 const statuses = [{ label: "全部", value: "all" }, { label: "未完成", value: "未完成" }, { label: "已逾期", value: "已逾期" }, { label: "已完成", value: "已完成" }, { label: "草稿", value: "草稿" }];
 const sortableColumns: { key: TableSortKey; label: string }[] = [
   { key: "orderNo", label: "订单编号" }, { key: "productName", label: "产品名称" }, { key: "category", label: "分类" },
   { key: "tracker", label: "跟单人员" }, { key: "factory", label: "工厂" }, { key: "contractShipDate", label: "合同出货时间" },
-  { key: "progressPercent", label: "发货进度" }, { key: "shippedQuantity", label: "已发/订单数" }, { key: "status", label: "状态" },
+  { key: "progressPercent", label: "发货进度" }, { key: "shippedQuantity", label: "已发/订单数" }, { key: "dispatchStatus", label: "派工状态" }, { key: "status", label: "状态" },
 ];
 const trackers = ["烧麦", "松子", "橄榄", "大葱", "青椒"];
 const route = useRoute();
@@ -151,7 +148,7 @@ const queryValue = (key: string) => { const value = route?.query[key]; return Ar
 const queryValues = (key: string) => { const value = route?.query[key]; return Array.isArray(value) ? value.filter((item): item is string => Boolean(item)) : value ? [value] : []; };
 const initialPage = Number.parseInt(queryValue("page"), 10);
 const initialSort = queryValue("sortBy");
-const initialTableSort = initialSort.match(/^(orderNo|productName|category|tracker|factory|contractShipDate|progressPercent|shippedQuantity|status)(Asc|Desc)$/);
+const initialTableSort = initialSort.match(/^(orderNo|productName|category|tracker|factory|contractShipDate|progressPercent|shippedQuantity|dispatchStatus|status)(Asc|Desc)$/);
 const items = ref<Order[]>([]);
 const factories = ref<Pick<Factory, "factoryId" | "factoryName" | "supplierNumber">[]>([]);
 const total = ref(0);

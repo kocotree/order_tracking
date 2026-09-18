@@ -70,7 +70,40 @@ def test_dispatch_status_value_filter_and_count_share_one_source_detail_rule(
     assert partial.dispatch_status == "部分派工"
     items, total = service.list_visible(actor_id=ACTOR, dispatch_status="部分派工")
     assert total == 1 and [item.order_id for item in items] == [oid]
-    assert service.list_visible(actor_id=ACTOR, dispatch_status="未派工")[1] == 0
+    from app.db.models import Order
+
+    with sessions() as session, session.begin():
+        session.add_all(
+            [
+                Order(
+                    order_id="legacy-unassigned",
+                    order_no="LEGACY-UNASSIGNED",
+                    source="manual",
+                    lifecycle="DRAFT",
+                    tracker="松子",
+                    created_by=ACTOR,
+                    updated_by=ACTOR,
+                ),
+                Order(
+                    order_id="legacy-complete",
+                    order_no="LEGACY-COMPLETE",
+                    source="manual",
+                    lifecycle="PUBLISHED",
+                    tracker="松子",
+                    created_by=ACTOR,
+                    updated_by=ACTOR,
+                ),
+            ]
+        )
+    ascending, total = service.list_visible(
+        actor_id=ACTOR, include_drafts=True, sort_by="dispatchStatusAsc", page_size=100
+    )
+    assert total == 3
+    assert [item.dispatch_status for item in ascending] == ["未派工", "部分派工", "全部派工"]
+    descending, _ = service.list_visible(
+        actor_id=ACTOR, include_drafts=True, sort_by="dispatchStatusDesc", page_size=100
+    )
+    assert [item.dispatch_status for item in descending] == ["全部派工", "部分派工", "未派工"]
 
     complete = dispatch(
         service,
@@ -80,7 +113,7 @@ def test_dispatch_status_value_filter_and_count_share_one_source_detail_rule(
     )
     assert complete.dispatch_status == "全部派工"
     items, total = service.list_visible(actor_id=ACTOR, dispatch_status="全部派工")
-    assert total == 1 and [item.order_id for item in items] == [oid]
+    assert total == 2 and oid in [item.order_id for item in items]
     assert service.list_visible(actor_id=ACTOR, dispatch_status="部分派工")[1] == 0
 
 

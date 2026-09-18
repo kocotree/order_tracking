@@ -19,6 +19,7 @@ def test_database_engine(test_database_url: str) -> Engine:
     config.set_main_option("sqlalchemy.url", test_database_url)
     command.upgrade(config, "head")
     engine = create_database_engine(test_database_url)
+    _truncate_business_tables(engine)
     yield engine
     engine.dispose()
 
@@ -35,6 +36,9 @@ def _truncate_business_tables(engine: Engine) -> None:
         try:
             for table_name in table_names:
                 quoted_table_name = preparer.quote(table_name)
+                probe = text(f"SELECT 1 FROM {quoted_table_name} LIMIT 1")
+                if connection.execute(probe).first() is None:
+                    continue
                 connection.execute(text(f"TRUNCATE TABLE {quoted_table_name}"))
         finally:
             connection.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
@@ -48,7 +52,6 @@ def isolate_database_test(request: pytest.FixtureRequest):  # type: ignore[no-un
         return
 
     engine = request.getfixturevalue("test_database_engine")
-    _truncate_business_tables(engine)
     try:
         yield
     finally:

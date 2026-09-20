@@ -14,13 +14,34 @@ from app.adapters.product import JstPurchaseSource, ProductSourceError, SourcePu
 from app.modules.order_import import SourceOrderRow
 
 BUSINESS_TZ = ZoneInfo("Asia/Shanghai")
+ORDER_FIELD_TYPES = {
+    "下单明细ID": {1, 19, 20, 1005},
+    "订单编号": {1, 19, 20, 1005},
+    "商品名称": {1, 3, 19, 20},
+    "产品颜色&规格": {1, 19, 20},
+    "工厂": {1, 3, 4, 19, 20},
+    "下单数": {2, 19, 20},
+    "跟单人员": {1, 3, 4, 19, 20},
+    "下单时间": {5, 19, 20},
+    "合同出货时间": {5, 19, 20},
+    "采购子订单号-映射": {1, 2, 19, 20},
+    "采购子订单号-人工确认": {1, 2, 19, 20},
+    "采购单号": {1, 2, 19, 20},
+    "产品编码": {1, 2, 19, 20},
+    "一级分类": {1, 3, 4, 19, 20},
+}
 
 
 class FeishuOrderSource(Protocol):
     @property
     def source_scope(self) -> str: ...
 
-    def read_records(self, record_ids: list[str]) -> list[SourceOrderRow]: ...
+    def read_records(
+        self,
+        record_ids: list[str],
+        *,
+        purchase_links: dict[str, tuple[str, str]] | None = None,
+    ) -> list[SourceOrderRow]: ...
 
     def read_pages(
         self, *, modified_since: datetime | None = None
@@ -30,7 +51,12 @@ class FeishuOrderSource(Protocol):
 class DisabledFeishuOrderSource:
     source_scope = "unconfigured-feishu-order-source"
 
-    def read_records(self, record_ids: list[str]) -> list[SourceOrderRow]:
+    def read_records(
+        self,
+        record_ids: list[str],
+        *,
+        purchase_links: dict[str, tuple[str, str]] | None = None,
+    ) -> list[SourceOrderRow]:
         raise ExternalAdapterUnavailable("feishu_order_source_not_configured")
 
     def read_pages(
@@ -48,7 +74,12 @@ class FakeFeishuOrderSource:
         self.source_scope = "fake-feishu-order-source"
         self.modified_since_requests: list[datetime | None] = []
 
-    def read_records(self, record_ids: list[str]) -> list[SourceOrderRow]:
+    def read_records(
+        self,
+        record_ids: list[str],
+        *,
+        purchase_links: dict[str, tuple[str, str]] | None = None,
+    ) -> list[SourceOrderRow]:
         return [row for page in self.read_pages() for row in page if row.record_id in record_ids]
 
     def read_pages(
@@ -68,7 +99,7 @@ class FeishuOrderSourceConfig:
     app_token: str
     table_id: str
     view_id: str
-    purchase_detail_table_id: str = ""
+    field_ids: dict[str, str]
     incremental_table_scope_confirmed: bool = False
     base_url: str = "https://open.feishu.cn"
 
@@ -84,7 +115,12 @@ class AppCredentialFeishuOrderSource:
         scope = f"{config.app_token}:{config.table_id}:{config.view_id}".encode()
         self.source_scope = f"feishu:{sha256(scope).hexdigest()[:32]}"
 
-    def read_records(self, record_ids: list[str]) -> list[SourceOrderRow]:
+    def read_records(
+        self,
+        record_ids: list[str],
+        *,
+        purchase_links: dict[str, tuple[str, str]] | None = None,
+    ) -> list[SourceOrderRow]:
         try:
             with httpx.Client(base_url=self._config.base_url, timeout=30) as client:
                 response = client.post(
@@ -100,7 +136,7 @@ class AppCredentialFeishuOrderSource:
                 if payload.get("code") != 0 or not isinstance(token, str):
                     raise ExternalAdapterUnavailable("feishu_app_auth_failed")
                 headers = {"Authorization": f"Bearer {token}"}
-                self._validate_fields(client, headers)
+                field_names, _ = self._validate_fields(client, headers)
                 rows = []
                 for record_id in record_ids:
                     response = client.get(
@@ -113,8 +149,8 @@ class AppCredentialFeishuOrderSource:
                     payload = response.json()
                     if payload.get("code") != 0:
                         raise ExternalAdapterUnavailable("feishu_source_record_missing")
-                    rows.append(self._parse_record(payload["data"]["record"]))
-                return self._enrich_purchase_quantities(client, headers, rows)
+                    rows.append(self._parse_record(payload["data"]["record"], field_names))
+                return self._enrich_purchase_quantities(rows, purchase_links=purchase_links)
         except (httpx.HTTPError, ValueError, TypeError, KeyError) as error:
             raise ExternalAdapterUnavailable("feishu_order_source_unavailable") from error
 
@@ -140,7 +176,7 @@ class AppCredentialFeishuOrderSource:
                 if token_payload.get("code") != 0 or not isinstance(token, str):
                     raise ExternalAdapterUnavailable("feishu_app_auth_failed")
                 headers = {"Authorization": f"Bearer {token}"}
-                modified_field_name = self._validate_fields(client, headers)
+                field_names, modified_field_name = self._validate_fields(client, headers)
                 page_token: str | None = None
                 while True:
                     params: dict[str, str | int] = {
@@ -178,7 +214,7 @@ class AppCredentialFeishuOrderSource:
                     data = payload.get("data") or {}
                     items = data.get("items") or []
                     yield self._enrich_purchase_quantities(
-                        client, headers, [self._parse_record(item) for item in items]
+                        [self._parse_record(item, field_names) for item in items]
                     )
                     if not data.get("has_more"):
                         break
@@ -190,7 +226,9 @@ class AppCredentialFeishuOrderSource:
                 raise
             raise ExternalAdapterUnavailable("feishu_order_source_unavailable") from error
 
-    def _validate_fields(self, client: httpx.Client, headers: dict[str, str]) -> str:
+    def _validate_fields(
+        self, client: httpx.Client, headers: dict[str, str]
+    ) -> tuple[dict[str, str], str]:
         response = client.get(
             f"/open-apis/bitable/v1/apps/{self._config.app_token}"
             f"/tables/{self._config.table_id}/fields",
@@ -201,43 +239,48 @@ class AppCredentialFeishuOrderSource:
         payload = response.json()
         if payload.get("code") != 0:
             raise ExternalAdapterUnavailable("feishu_base_field_read_failed")
-        fields = {
-            item.get("field_name"): item
-            for item in (payload.get("data") or {}).get("items", [])
-        }
-        compatible_types = {
-            "订单编号": {1, 19, 20, 1005},
-            "商品名称": {1, 3, 19, 20},
-            "产品颜色&规格": {1, 19, 20},
-            "工厂": {1, 3, 4, 19, 20},
-            "下单数": {2, 19, 20},
-            "跟单人员": {1, 3, 4, 19, 20},
-            "下单时间": {5, 19, 20},
-            "合同出货时间": {5, 19, 20},
-            "采购子订单号-映射": {1, 2, 19, 20},
-            "采购子订单号-人工确认": {1, 2, 19, 20},
-            "产品编码": {1, 2, 19, 20},
-            "一级分类": {1, 3, 4, 19, 20},
-        }
-        if any(
-            name not in fields or fields[name].get("type") not in allowed_types
-            for name, allowed_types in compatible_types.items()
+        items = (payload.get("data") or {}).get("items", [])
+        fields_by_id = {item.get("field_id"): item for item in items}
+        configured_ids = [self._config.field_ids.get(name) for name in ORDER_FIELD_TYPES]
+        if any(not field_id for field_id in configured_ids) or len(set(configured_ids)) != len(
+            configured_ids
         ):
             raise ExternalAdapterUnavailable("feishu_order_field_contract_drift")
+        field_names: dict[str, str] = {}
+        for name, allowed_types in ORDER_FIELD_TYPES.items():
+            field = fields_by_id.get(self._config.field_ids[name])
+            current_name = field.get("field_name") if field else None
+            if (
+                field is None
+                or field.get("type") not in allowed_types
+                or not isinstance(current_name, str)
+                or not current_name
+            ):
+                raise ExternalAdapterUnavailable("feishu_order_field_contract_drift")
+            field_names[name] = current_name
+        if len(set(field_names.values())) != len(field_names):
+            raise ExternalAdapterUnavailable("feishu_order_field_contract_drift")
         modified_fields = [
-            name for name, item in fields.items() if item.get("type") == 1002
+            item.get("field_name") for item in items if item.get("type") == 1002
         ]
         if len(modified_fields) != 1 or not isinstance(modified_fields[0], str):
             raise ExternalAdapterUnavailable("feishu_order_modified_time_field_missing")
-        return modified_fields[0]
+        return field_names, modified_fields[0]
 
     @classmethod
-    def _parse_record(cls, item: dict[str, Any]) -> SourceOrderRow:
+    def _parse_record(
+        cls, item: dict[str, Any], field_names: dict[str, str] | None = None
+    ) -> SourceOrderRow:
         fields = item.get("fields") or {}
-        trackers = cls._tracker_names(fields.get("跟单人员"))
+        names = field_names or {}
+
+        def value(name: str) -> Any:
+            return fields.get(names.get(name, name))
+
+        trackers = cls._tracker_names(value("跟单人员"))
         allowed_fields = {
-            name: fields.get(name)
-            for name in {
+            name: value(name)
+            for name in (
                 "下单明细ID",
                 "订单编号",
                 "商品名称",
@@ -249,26 +292,27 @@ class AppCredentialFeishuOrderSource:
                 "合同出货时间",
                 "采购子订单号-映射",
                 "采购子订单号-人工确认",
+                "采购单号",
                 "产品编码",
                 "一级分类",
-            }
+            )
         }
         return SourceOrderRow(
             record_id=str(item.get("record_id") or ""),
-            order_no=cls._text(fields.get("订单编号")),
-            source_sku_id=cls._code(fields.get("产品编码")),
-            product_name=cls._text(fields.get("商品名称")),
-            properties_value=cls._text(fields.get("产品颜色&规格")),
-            category=cls._text(fields.get("一级分类")),
-            factory_name=cls._text(fields.get("工厂")),
-            order_quantity=cls._integer(fields.get("下单数")),
+            order_no=cls._text(value("订单编号")),
+            source_sku_id=cls._code(value("产品编码")),
+            product_name=cls._text(value("商品名称")),
+            properties_value=cls._text(value("产品颜色&规格")),
+            category=cls._text(value("一级分类")),
+            factory_name=cls._text(value("工厂")),
+            order_quantity=cls._integer(value("下单数")),
             shipped_quantity=None,
             pending_quantity=None,
             tracker=trackers[0] if trackers else None,
-            order_date=cls._date(fields.get("下单时间")),
-            contract_ship_date=cls._contract_date(fields.get("合同出货时间")),
+            order_date=cls._date(value("下单时间")),
+            contract_ship_date=cls._contract_date(value("合同出货时间")),
             raw_fields=allowed_fields,
-            source_detail_id=cls._text(fields.get("下单明细ID")),
+            source_detail_id=cls._text(value("下单明细ID")),
             source_modified_at=cls._modified_at(item.get("last_modified_time")),
             trackers=tuple(trackers),
         )
@@ -289,15 +333,17 @@ class AppCredentialFeishuOrderSource:
 
     def _enrich_purchase_quantities(
         self,
-        client: httpx.Client,
-        headers: dict[str, str],
         rows: list[SourceOrderRow],
+        *,
+        purchase_links: dict[str, tuple[str, str]] | None = None,
     ) -> list[SourceOrderRow]:
-        child_ids: dict[str, list[int]] = {}
+        links: dict[int, tuple[str, str]] = {}
         result = list(rows)
         for index, row in enumerate(rows):
-            child_id = self._purchase_child_id(row.raw_fields)
-            if child_id is None:
+            link = self._purchase_link(row.raw_fields)
+            if link is None and purchase_links is not None:
+                link = purchase_links.get(row.record_id)
+            if link is None:
                 if not self._has_purchase_number(row.raw_fields):
                     result[index] = replace(
                         row,
@@ -307,15 +353,14 @@ class AppCredentialFeishuOrderSource:
                         ),
                     )
                 continue
-            child_ids.setdefault(child_id, []).append(index)
-        if not child_ids:
+            links[index] = link
+        if not links:
             return result
-        if not self._config.purchase_detail_table_id or self._purchase_source is None:
+        if self._purchase_source is None:
             return result
-        main_orders = self._lookup_main_orders(client, headers, list(child_ids))
         try:
             items = self._purchase_source.fetch_purchase_items(
-                list(dict.fromkeys(main_orders.values()))
+                list(dict.fromkeys(po_id for po_id, _ in links.values()))
             )
         except ProductSourceError as error:
             raise ExternalAdapterUnavailable("jst_purchase_source_unavailable") from error
@@ -323,98 +368,55 @@ class AppCredentialFeishuOrderSource:
         for item in items:
             by_identity.setdefault((item.po_id, item.poi_id), []).append(item)
         read_at = datetime.now(UTC).replace(tzinfo=None).isoformat()
-        for child_id, indexes in child_ids.items():
-            po_id = main_orders.get(child_id)
-            matched = by_identity.get((po_id, child_id), []) if po_id else []
+        for index, (po_id, child_id) in links.items():
+            matched = by_identity.get((po_id, child_id), [])
             if len(matched) != 1:
                 continue
             item = matched[0]
-            for index in indexes:
-                row = result[index]
-                if item.sku_id and row.source_sku_id and item.sku_id != row.source_sku_id:
-                    continue
-                remaining = item.qty - item.in_qty
-                raw = dict(row.raw_fields)
-                raw["_purchase"] = {
-                    "childOrderId": child_id,
-                    "mainOrderId": po_id,
-                    "skuId": item.sku_id,
-                    "qty": item.qty,
-                    "inQty": item.in_qty,
-                    "returnQty": item.return_qty,
-                    "readAt": read_at,
-                }
-                result[index] = replace(
-                    row,
-                    order_quantity=item.qty,
-                    shipped_quantity=item.in_qty,
-                    pending_quantity=remaining,
-                    raw_fields=raw,
-                )
+            row = result[index]
+            if item.sku_id and row.source_sku_id and item.sku_id != row.source_sku_id:
+                continue
+            remaining = item.qty - item.in_qty
+            raw = dict(row.raw_fields)
+            raw["_purchase"] = {
+                "childOrderId": child_id,
+                "mainOrderId": po_id,
+                "skuId": item.sku_id,
+                "qty": item.qty,
+                "inQty": item.in_qty,
+                "returnQty": item.return_qty,
+                "readAt": read_at,
+            }
+            result[index] = replace(
+                row,
+                order_quantity=item.qty,
+                shipped_quantity=item.in_qty,
+                pending_quantity=remaining,
+                raw_fields=raw,
+            )
         return result
 
-    def _lookup_main_orders(
-        self, client: httpx.Client, headers: dict[str, str], child_ids: list[str]
-    ) -> dict[str, str]:
-        matches: dict[str, set[str]] = {value: set() for value in child_ids}
-        path = (
-            f"/open-apis/bitable/v1/apps/{self._config.app_token}/tables/"
-            f"{self._config.purchase_detail_table_id}/records/search"
-        )
-        for start in range(0, len(child_ids), 50):
-            chunk = child_ids[start : start + 50]
-            page_token: str | None = None
-            while True:
-                body: dict[str, object] = {
-                    "automatic_fields": True,
-                    "filter": {
-                        "conjunction": "or",
-                        "conditions": [
-                            {
-                                "field_name": "采购子订单号",
-                                "operator": "is",
-                                "value": [child_id],
-                            }
-                            for child_id in chunk
-                        ],
-                    },
-                }
-                params: dict[str, str | int] = {"page_size": 500}
-                if page_token:
-                    params["page_token"] = page_token
-                response = client.post(path, params=params, json=body, headers=headers)
-                response.raise_for_status()
-                payload = response.json()
-                if payload.get("code") != 0:
-                    raise ExternalAdapterUnavailable("feishu_purchase_mapping_failed")
-                data = payload.get("data") or {}
-                for record in data.get("items") or []:
-                    fields = record.get("fields") or {}
-                    child = self._text(fields.get("采购子订单号"))
-                    main = self._text(fields.get("采购主订单号"))
-                    if child in matches and main:
-                        matches[child].add(main)
-                if not data.get("has_more"):
-                    break
-                page_token = data.get("page_token")
-                if not isinstance(page_token, str) or not page_token:
-                    raise ExternalAdapterUnavailable("feishu_base_page_token_missing")
-        return {child: next(iter(values)) for child, values in matches.items() if len(values) == 1}
-
     @classmethod
-    def _purchase_child_id(cls, fields: dict[str, object]) -> str | None:
-        value = cls._text(fields.get("采购子订单号-人工确认")) or cls._text(
-            fields.get("采购子订单号-映射")
-        )
+    def _purchase_identifier(cls, value: object) -> str | None:
+        value = cls._text(value)
         if not value or any(separator in value for separator in (",", "，", "、")):
             return None
         return value.strip()
+
+    @classmethod
+    def _purchase_link(cls, fields: dict[str, object]) -> tuple[str, str] | None:
+        child_id = cls._purchase_identifier(fields.get("采购子订单号-人工确认"))
+        if child_id is None and not cls._text(fields.get("采购子订单号-人工确认")):
+            child_id = cls._purchase_identifier(fields.get("采购子订单号-映射"))
+        po_id = cls._purchase_identifier(fields.get("采购单号"))
+        return (po_id, child_id) if po_id and child_id else None
 
     @classmethod
     def _has_purchase_number(cls, fields: dict[str, object]) -> bool:
         return bool(
             cls._text(fields.get("采购子订单号-人工确认"))
             or cls._text(fields.get("采购子订单号-映射"))
+            or cls._text(fields.get("采购单号"))
         )
 
     @classmethod

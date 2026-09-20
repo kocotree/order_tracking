@@ -184,12 +184,12 @@ def test_purchase_links_persist_on_import_and_source_confirm(
     service.confirm(
         **{**args, "version": refreshed.version},
         preview_id=preview["preview_id"],
-        idempotency_key="purchase-links-clear",
+        idempotency_key="purchase-links-preserved",
     )
     with sessions() as session:
         detail = session.scalar(select(OrderDetail).where(OrderDetail.order_id == order_id))
-        assert detail.purchase_order_id is None
-        assert detail.purchase_order_item_id is None
+        assert detail.purchase_order_id == "PO-REFRESH"
+        assert detail.purchase_order_item_id == "POI-REFRESH"
         assert detail.accepted_raw_fields == {}
 
 
@@ -426,7 +426,7 @@ def test_partial_refresh_protects_assigned_snapshot_and_locked_tracker(
         session.get(Order, order_id).lifecycle = "PUBLISHED"
     requested = []
 
-    def read(ids):
+    def read(ids, *, purchase_links=None):
         requested.extend(ids)
         return [replace(row, record_id="rec90", shipped_quantity=30, tracker="青椒")]
 

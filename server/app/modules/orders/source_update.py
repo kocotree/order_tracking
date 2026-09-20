@@ -306,6 +306,7 @@ class OrderSourceUpdateService(OrderService):
             identities = {}
             versions = {}
             legacy = {}
+            purchase_links = {}
             for row in selected:
                 source = (
                     session.get(OrderImportSourceRecord, row.source_record_pk)
@@ -335,8 +336,17 @@ class OrderSourceUpdateService(OrderService):
                     raise OrderConflict("明细没有可靠的来源关联，不能更新")
                 identities[source.source_record_id] = (row.detail_id, source.source_detail_id)
                 versions[row.detail_id] = row.version
+                if row.purchase_order_id and row.purchase_order_item_id:
+                    purchase_links[source.source_record_id] = (
+                        row.purchase_order_id,
+                        row.purchase_order_item_id,
+                    )
             order_no = order.order_no
-        fetched = self._source.read_records(list(identities)) if identities else []
+        fetched = (
+            self._source.read_records(list(identities), purchase_links=purchase_links)
+            if identities
+            else []
+        )
         if len(fetched) != len(identities) or {r.record_id for r in fetched} != set(identities):
             raise OrderConflict("来源明细缺失或重复，原资料保持不变")
         result = dict(legacy)
@@ -355,6 +365,9 @@ class OrderSourceUpdateService(OrderService):
         purchase_order_id, purchase_order_item_id = OrderImportService.purchase_link_ids(
             row.raw_fields
         )
+        if not purchase_order_id or not purchase_order_item_id:
+            purchase_order_id = detail.purchase_order_id
+            purchase_order_item_id = detail.purchase_order_item_id
         if detail.factory_override_enabled:
             factory = session.get(Factory, detail.matched_factory_id)
             issues = [

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     feishu_order_app_token: str = ""
     feishu_order_table_id: str = ""
     feishu_order_view_id: str = ""
-    feishu_purchase_detail_table_id: str = ""
+    feishu_order_field_ids: dict[str, str] = Field(default_factory=dict)
     feishu_order_incremental_table_scope_confirmed: bool = False
     oss_region: str = ""
     oss_endpoint: str = ""
@@ -153,7 +153,6 @@ class Settings(BaseSettings):
             self.feishu_order_app_token,
             self.feishu_order_table_id,
             self.feishu_order_view_id,
-            self.feishu_purchase_detail_table_id,
             self.oss_region,
             self.oss_endpoint,
             self.oss_access_key_id,
@@ -168,8 +167,14 @@ class Settings(BaseSettings):
         )
         if self.ops_alerts_enabled:
             required_values += (self.ops_alert_recipient_user_id,)
-        if not self.feishu_order_incremental_table_scope_confirmed or not all(
-            self._is_real_value(value) for value in required_values
+        if (
+            not self.feishu_order_incremental_table_scope_confirmed
+            or not self.feishu_order_field_ids
+            or not all(
+                self._is_real_value(value)
+                for value in self.feishu_order_field_ids.values()
+            )
+            or not all(self._is_real_value(value) for value in required_values)
         ):
             return False
         return all(

@@ -9,6 +9,24 @@ from app.adapters.order_source import (
     FeishuOrderSourceConfig,
 )
 
+FIELD_TYPES = {
+    "下单明细ID": 1005,
+    "订单编号": 1,
+    "商品名称": 3,
+    "产品颜色&规格": 1,
+    "工厂": 4,
+    "下单数": 2,
+    "跟单人员": 4,
+    "下单时间": 5,
+    "合同出货时间": 20,
+    "采购子订单号-映射": 20,
+    "采购子订单号-人工确认": 1,
+    "采购单号": 20,
+    "产品编码": 2,
+    "一级分类": 20,
+}
+FIELD_IDS = {name: f"fld-{index}" for index, name in enumerate(FIELD_TYPES)}
+
 
 class _Response:
     def __init__(self, payload: dict[str, Any]) -> None:
@@ -39,28 +57,24 @@ class _Client:
     def get(self, path: str, **_kwargs: object) -> _Response:
         self.requests.append((path, _kwargs))
         if path.endswith("/fields"):
-            field_types = {
-                "订单编号": 1,
-                "商品名称": 3,
-                "产品颜色&规格": 1,
-                "工厂": 4,
-                "下单数": 2,
-                "跟单人员": 4,
-                "下单时间": 5,
-                "合同出货时间": 20,
-                "采购子订单号-映射": 20,
-                "采购子订单号-人工确认": 1,
-                "产品编码": 2,
-                "一级分类": 20,
-                "更新时间": 1002,
-            }
             return _Response(
                 {
                     "code": 0,
                     "data": {
                         "items": [
-                            {"field_name": name, "type": field_type}
-                            for name, field_type in field_types.items()
+                            {
+                                "field_id": FIELD_IDS[name],
+                                "field_name": name,
+                                "type": field_type,
+                            }
+                            for name, field_type in FIELD_TYPES.items()
+                        ]
+                        + [
+                            {
+                                "field_id": "fld-modified",
+                                "field_name": "更新时间",
+                                "type": 1002,
+                            }
                         ]
                     },
                 }
@@ -95,6 +109,7 @@ def test_feishu_order_source_accepts_single_select_product_name(monkeypatch: Any
             app_token="test-base",
             table_id="test-table",
             view_id="test-view",
+            field_ids=FIELD_IDS,
             incremental_table_scope_confirmed=True,
         )
     )
@@ -124,6 +139,7 @@ def test_feishu_order_source_rejects_incremental_table_read_without_scope_confir
             app_token="test-base",
             table_id="test-table",
             view_id="test-view",
+            field_ids=FIELD_IDS,
         )
     )
 
@@ -145,6 +161,7 @@ def test_feishu_order_source_uses_safe_modified_day_overlap(monkeypatch: Any) ->
             app_token="test-base",
             table_id="test-table",
             view_id="test-view",
+            field_ids=FIELD_IDS,
             incremental_table_scope_confirmed=True,
         )
     )
@@ -196,7 +213,12 @@ def test_source_reads_contract_formula_without_plan_date(
     monkeypatch.setattr(order_source_module.httpx, "Client", lambda **_kwargs: client)
     source = AppCredentialFeishuOrderSource(
         FeishuOrderSourceConfig(
-            app_id="test", app_secret="test", app_token="test", table_id="test", view_id="test"
+            app_id="test",
+            app_secret="test",
+            app_token="test",
+            table_id="test",
+            view_id="test",
+            field_ids=FIELD_IDS,
         )
     )
     row = list(source.read_pages())[0][0]
@@ -259,7 +281,12 @@ def test_known_record_read_uses_only_requested_ids(monkeypatch: Any) -> None:
     monkeypatch.setattr(order_source_module.httpx, "Client", lambda **_kwargs: client)
     source = AppCredentialFeishuOrderSource(
         FeishuOrderSourceConfig(
-            app_id="app", app_secret="fake", app_token="base", table_id="table", view_id="view"
+            app_id="app",
+            app_secret="fake",
+            app_token="base",
+            table_id="table",
+            view_id="view",
+            field_ids=FIELD_IDS,
         )
     )
     rows = source.read_records(["rec89", "rec90"])

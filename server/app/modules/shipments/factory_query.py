@@ -19,7 +19,8 @@ WITH visible AS (
 ), packed AS (
  SELECT b.shipment_id, b.box_no, i.item_id, o.order_no,
  l.product_name_snapshot AS product_name,
- CASE WHEN r.status = 'CONFIRMED' THEN ri.quantity ELSE i.quantity END AS quantity,
+ CASE WHEN r.status = 'CONFIRMED' THEN COALESCE(ri.quantity, i.quantity)
+      ELSE i.quantity END AS quantity,
  ROW_NUMBER() OVER (PARTITION BY b.shipment_id, o.order_no COLLATE utf8mb4_0900_bin
                     ORDER BY b.box_no, i.item_id) AS order_rank,
  ROW_NUMBER() OVER (

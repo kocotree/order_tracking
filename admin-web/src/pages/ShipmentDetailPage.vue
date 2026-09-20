@@ -106,7 +106,7 @@ function setProofState(fileId: number, state: "ready" | "error") { proofStates.v
 async function load() { shipment.value = await shipmentApi.get(String(route.params.shipmentId)); proofStates.value = Object.fromEntries(shipment.value.files.map((file) => [file.fileId, "loading"])); receiptDraft.value = null;
   if (canVerify.value) { try { const value = await shipmentApi.getReceipt(shipment.value.shipmentId); if (value.status === "CONFIRMED") shipment.value = await shipmentApi.get(shipment.value.shipmentId); else useReceipt(value); } catch { receiptError.value = "核对数据读取失败，请重新读取"; } }
 }
-function goBack() { return router.push(typeof route.query.notificationReturnTo === "string" ? route.query.notificationReturnTo : "/shipments"); }
+function goBack() { return router.push(typeof route.query.notificationReturnTo === "string" ? route.query.notificationReturnTo : { path: "/shipments", query: route.query }); }
 async function downloadWorkbook() { if (!shipment.value) return; acting.value = true; actionError.value = ""; try { await shipmentApi.download(shipment.value); } catch (value) { actionError.value = value instanceof ApiError ? value.message : "下载失败"; } finally { acting.value = false; } }
 
 function openReturn() { actionError.value = ""; returnReason.value = ""; returnSelection.value = {}; returnQuantities.value = {}; returnOpen.value = true; }

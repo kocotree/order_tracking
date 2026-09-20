@@ -5,13 +5,14 @@ import { ApiError, shipmentApi, type Shipment } from "@/api/client";
 import ShipmentDetailPage from "@/pages/ShipmentDetailPage.vue";
 
 const routerPush = vi.hoisted(() => vi.fn());
+const routeState = vi.hoisted(() => ({ params: { shipmentId: "shipment-1" }, query: {} as Record<string, string | string[]> }));
 
 vi.mock("vue-router", async (importOriginal) => {
   const original = await importOriginal<typeof import("vue-router")>();
   return {
     ...original,
     useRouter: () => ({ push: routerPush }),
-    useRoute: () => ({ params: { shipmentId: "shipment-1" }, query: {} }),
+    useRoute: () => routeState,
   };
 });
 
@@ -47,7 +48,17 @@ const shipment: Shipment = {
 const shellStub = { template: "<div><slot /></div>" };
 
 beforeEach(() => {
+  routeState.query = {};
   vi.spyOn(shipmentApi, "getReceipt").mockResolvedValue({ version: 0, status: "DRAFT", items: [], confirmedAt: null, confirmedByName: null });
+});
+
+it("returns to the shipment list with its query context", async () => {
+  routeState.query = { keyword: "442", factory: ["工厂甲", "工厂乙"], page: "2" };
+  vi.spyOn(shipmentApi, "get").mockResolvedValue(shipment);
+  const wrapper = mount(ShipmentDetailPage, { global: { stubs: { AdminShell: shellStub, TableSortButton: true } } });
+  await flushPromises();
+  await wrapper.get(".detail-back-button").trigger("click");
+  expect(routerPush).toHaveBeenCalledWith({ path: "/shipments", query: routeState.query });
 });
 
 afterEach(() => {

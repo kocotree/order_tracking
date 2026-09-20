@@ -6,7 +6,7 @@ import { shipmentApi, type ShipmentSummary } from "@/api/client";
 const row = (name: string, receiptStatus: "RECEIVED" | "UNRECEIVED" = "UNRECEIVED"): ShipmentSummary => ({ shipmentId: name, shipmentNo: name, businessDate: "2026-09-05", status: "SHIPPED", receiptStatus, factoryId: "a", factoryName: "工厂甲", orderNos: "ORDER1", productNames: "产品", totalQuantity: 1 });
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
 async function setup(url = "/shipments") {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/shipments", component: ShipmentsPage }] });
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/shipments", component: ShipmentsPage }, { path: "/shipments/:shipmentId", component: { template: "<div />" } }] });
   await router.push(url);
   const wrapper = mount(ShipmentsPage, { global: { plugins: [router], stubs: { AdminShell: { template: "<div><slot/></div>" } } } });
   await flushPromises();
@@ -65,6 +65,17 @@ it("requests global sort and falls back when a page becomes empty", async () => 
   expect(wrapper.text()).toContain("FALLBACK");
   await wrapper.get('[aria-label="按发货单号升序排序"]').trigger("click"); await flushPromises();
   expect(list).toHaveBeenLastCalledWith(expect.objectContaining({sortBy:"shipmentNo",sortOrder:"asc",page:1}));
+  wrapper.unmount();
+});
+it("restores list context and carries it into detail links", async () => {
+  vi.spyOn(shipmentApi, "listFactoryOptions").mockResolvedValue({items:["工厂甲", "工厂乙"]});
+  const list = vi.spyOn(shipmentApi, "listSummary").mockResolvedValue({items:[row("CONTEXT")],total:11});
+  const wrapper = await setup("/shipments?keyword=442&factory=工厂甲&factory=工厂乙&receiptStatus=RECEIVED&dateFrom=2026-09-01&dateTo=2026-09-20&sortBy=totalQuantity&sortOrder=desc&page=2");
+  expect(list).toHaveBeenCalledWith(expect.objectContaining({keyword:"442",factories:["工厂甲","工厂乙"],receiptStatus:"RECEIVED",dateFrom:"2026-09-01",dateTo:"2026-09-20",sortBy:"totalQuantity",sortOrder:"desc",page:2}));
+  const detailUrl = new URL(wrapper.get('a[href^="/shipments/CONTEXT"]').attributes("href")!, "https://example.test");
+  expect(detailUrl.searchParams.getAll("factory")).toEqual(["工厂甲", "工厂乙"]);
+  expect(detailUrl.searchParams.get("page")).toBe("2");
+  expect(detailUrl.searchParams.get("sortBy")).toBe("totalQuantity");
   wrapper.unmount();
 });
 it("keeps the main list available if factory options fail", async () => {

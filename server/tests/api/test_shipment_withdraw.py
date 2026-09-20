@@ -257,6 +257,29 @@ def test_repeated_withdraw_resubmit_and_stale_pages_do_not_duplicate_quantities(
     assert len(admin.get(f"/api/v1/admin/shipments/{sid}").json()["operations"]) == 5
 
 
+def test_resubmitted_shipment_confirmation_keeps_list_quantity(withdrawal_clients):
+    admin, factory, colleague, _, _, sid = withdrawal_clients
+    assert withdraw(colleague, sid).status_code == 200
+    edit = factory.get(f"/api/v1/factory/shipments/{sid}/withdraw-draft").json()
+    submitted = factory.post(
+        f"/api/v1/factory/shipments/drafts/{edit['shipmentId']}"
+        f"/submit?version={edit['version']}",
+        headers={"Idempotency-Key": "resubmit-before-receipt"},
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    receipt_url = f"/api/v1/admin/shipments/{sid}/receipt"
+    receipt = admin.get(receipt_url).json()
+    confirmed = admin.post(receipt_url + "/confirm", json={"version": receipt["version"]})
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["totalQuantity"] == 12
+    assert confirmed.json()["lines"][0]["returnableQuantity"] == 12
+
+    summary = admin.get("/api/v1/admin/shipments/summary").json()["items"]
+    assert next(item for item in summary if item["shipmentId"] == sid)["totalQuantity"] == 12
+    assert factory.get("/api/v1/factory/shipment-page").json()["items"][0]["totalQuantity"] == 12
+
+
 def test_file_retry_cannot_adopt_another_edit_version(withdrawal_clients):
     _, factory, colleague, _, _, sid = withdrawal_clients
     assert withdraw(colleague, sid).status_code == 200

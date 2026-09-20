@@ -213,6 +213,7 @@ class ShipmentSummaryResponse(ApiModel):
     shipment_id: str
     shipment_no: str | None
     status: str
+    receipt_status: Literal["RECEIVED", "UNRECEIVED"]
     factory_id: str
     factory_name: str
     business_date: date | None
@@ -620,6 +621,9 @@ def create_shipment_router(
         factories: Annotated[list[str] | None, Query()] = None,
         date_from: Annotated[date | None, Query(alias="dateFrom")] = None,
         date_to: Annotated[date | None, Query(alias="dateTo")] = None,
+        receipt_status: Annotated[
+            Literal["", "RECEIVED", "UNRECEIVED"], Query(alias="receiptStatus")
+        ] = "",
         sort_by: Annotated[
             Literal[
                 "",
@@ -647,6 +651,7 @@ def create_shipment_router(
             factories=factories,
             date_from=date_from,
             date_to=date_to,
+            receipt_status=receipt_status,
             sort_by=sort_by,
             sort_order=sort_order,
             page=page,

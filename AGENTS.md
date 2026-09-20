@@ -24,7 +24,7 @@
 
 ## CI、GHCR 与部署边界
 
-- `.github/workflows/ci.yml` 是仓库持续集成基线：普通分支推送和 Pull Request 必须执行仓库空白检查、MySQL 8 迁移与后端检查、管理员网页端检查、小程序检查，以及 server、admin-web Docker 镜像构建；只有全部任务成功才称为远程 CI 通过。
+- `.github/workflows/ci.yml` 是仓库持续集成基线：Pull Request 和 `main` 分支推送必须执行仓库空白检查、MySQL 8 迁移与后端检查、管理员网页端检查、小程序检查，以及 server、admin-web Docker 镜像构建；功能分支普通推送不重复运行远程 CI；只有全部任务成功才称为远程 CI 通过。
 - 本地测试或构建通过不能替代 GitHub Actions；远程 CI 失败时必须先说明失败任务、原因和影响，不得继续把该提交描述为可发布版本。
 - `.github/workflows/release.yml` 只由明确推送的 `v*` 版本标签触发，先核验标签对应的同一提交已通过 `main` push 的完整 CI，不重复运行 CI；缺失、未结束或失败时不得发布任何 GHCR 镜像。
 - GHCR 只发布 `ghcr.io/kocotree/order-tracking-server:<version>` 和 `ghcr.io/kocotree/order-tracking-admin-web:<version>`。API 与 worker 共用 server 镜像并使用不同启动命令；微信小程序不发布 Docker 镜像。

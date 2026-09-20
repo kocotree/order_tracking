@@ -5083,6 +5083,14 @@
             "title": "Productnames",
             "type": "string"
           },
+          "receiptStatus": {
+            "enum": [
+              "RECEIVED",
+              "UNRECEIVED"
+            ],
+            "title": "Receiptstatus",
+            "type": "string"
+          },
           "shipmentId": {
             "title": "Shipmentid",
             "type": "string"
@@ -5111,6 +5119,7 @@
           "shipmentId",
           "shipmentNo",
           "status",
+          "receiptStatus",
           "factoryId",
           "factoryName",
           "businessDate",
@@ -10761,6 +10770,21 @@
                 }
               ],
               "title": "Dateto"
+            }
+          },
+          {
+            "in": "query",
+            "name": "receiptStatus",
+            "required": false,
+            "schema": {
+              "default": "",
+              "enum": [
+                "",
+                "RECEIVED",
+                "UNRECEIVED"
+              ],
+              "title": "Receiptstatus",
+              "type": "string"
             }
           },
           {

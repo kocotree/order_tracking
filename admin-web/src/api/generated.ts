@@ -3534,6 +3534,11 @@ export interface components {
             orderNos: string;
             /** Productnames */
             productNames: string;
+            /**
+             * Receiptstatus
+             * @enum {string}
+             */
+            receiptStatus: "RECEIVED" | "UNRECEIVED";
             /** Shipmentid */
             shipmentId: string;
             /** Shipmentno */
@@ -5884,6 +5889,7 @@ export interface operations {
                 factories?: string[] | null;
                 dateFrom?: string | null;
                 dateTo?: string | null;
+                receiptStatus?: "" | "RECEIVED" | "UNRECEIVED";
                 sortBy?: "" | "shipmentNo" | "orderNos" | "factory" | "productNames" | "totalQuantity" | "businessDate";
                 sortOrder?: "asc" | "desc";
                 page?: number;

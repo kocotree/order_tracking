@@ -741,8 +741,8 @@ h1, h2, p { margin-top: 0; }
 .dispatch-status-badge[data-status="未派工"] { color: #616b78; background: #eef1f4; }
 .dispatch-status-badge[data-status="部分派工"] { color: #a45d00; background: #fff3dc; }
 .dispatch-status-badge[data-status="全部派工"] { color: var(--success); background: var(--success-bg); }
-.order-list-table .status-badge { gap: 0; justify-content: center; min-width: 44px; min-height: 22px; height: 22px; padding: 0 10px; font-size: 13px; font-weight: 700; line-height: 1; }
-.order-list-table .status-badge::before { display: none; }
+.order-list-table .status-badge, .shipment-list-table .status-badge { gap: 0; justify-content: center; min-width: 44px; min-height: 22px; height: 22px; padding: 0 10px; font-size: 13px; font-weight: 700; line-height: 1; }
+.order-list-table .status-badge::before, .shipment-list-table .status-badge::before { display: none; }
 .status-badge.is-danger { color: var(--danger); background: var(--danger-bg); }
 .status-badge.is-info { color: var(--erp-blue-dark); background: var(--erp-blue-soft); }
 .status-badge.is-neutral { color: #616b78; background: #eef1f4; }
@@ -872,6 +872,10 @@ h1, h2, p { margin-top: 0; }
   flex: 1 1 150px;
 }
 
+.shipment-filter-row .shipment-receipt-field {
+  flex: 2 1 240px;
+}
+
 .shipment-filter-row .shipment-factory-field select {
   width: 100%;
 }
@@ -902,25 +906,27 @@ h1, h2, p { margin-top: 0; }
 }
 
 .shipment-list-table th:nth-child(1) { width: 52px; }
-.shipment-list-table th:nth-child(2) { width: 168px; }
+.shipment-list-table th:nth-child(2) { width: 132px; }
 .shipment-list-table th:nth-child(3) { width: 150px; }
 .shipment-list-table th:nth-child(4) { width: 100px; }
 .shipment-list-table th:nth-child(5) { width: 260px; }
 .shipment-list-table th:nth-child(6) { width: 112px; }
 .shipment-list-table th:nth-child(7) { width: 120px; }
-.shipment-list-table th:nth-child(8) { width: 92px; }
+.shipment-list-table th:nth-child(8) { width: 76px; }
+.shipment-list-table th:nth-child(9) { width: 64px; }
 
 .shipment-list-table col.shipment-sequence-col {
   width: 52px;
 }
 
-.shipment-list-table col.shipment-number-col { width: 16.225%; }
+.shipment-list-table col.shipment-number-col { width: 12.225%; }
 .shipment-list-table col.shipment-order-col { width: 14.487%; }
 .shipment-list-table col.shipment-factory-col { width: 9.657%; }
 .shipment-list-table col.shipment-product-col { width: 25.11%; }
 .shipment-list-table col.shipment-quantity-col { width: 10.818%; }
 .shipment-list-table col.shipment-date-col { width: 11.591%; }
-.shipment-list-table col.shipment-action-col { width: 8.884%; }
+.shipment-list-table col.shipment-receipt-col { width: 7%; }
+.shipment-list-table col.shipment-action-col { width: 5.884%; }
 
 .shipment-list-table .shipment-sequence-column,
 .shipment-list-table .shipment-sequence-cell {

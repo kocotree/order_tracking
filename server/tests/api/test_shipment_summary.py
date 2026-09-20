@@ -413,6 +413,15 @@ def test_multiple_factories_filter_before_count_and_page(
     seed_shipments(test_database_engine, 12)
     with Session(test_database_engine) as session, session.begin():
         session.get(Shipment, "list-0000").factory_id = FACTORY_IDS[1]
+        session.add(
+            ShipmentReceipt(
+                shipment_id="list-0000",
+                status="CONFIRMED",
+                version=1,
+                saved_by=ADMIN_ID,
+                saved_at=datetime(2026, 9, 1),
+            )
+        )
     identity = IdentityAccessService(
         sessionmaker(test_database_engine, expire_on_commit=False),
         token_secret=b"list-token", phone_encryption_secret=b"list-encryption",
@@ -427,6 +436,10 @@ def test_multiple_factories_filter_before_count_and_page(
         result = client.get(path, params=[("factories", "S07接口工厂2")]).json()
         assert result["total"] == 1
         assert result["items"][0]["shipmentId"] == "list-0000"
+        assert result["items"][0]["receiptStatus"] == "RECEIVED"
+        assert client.get(path, params={"receiptStatus": "RECEIVED"}).json()["total"] == 1
+        assert client.get(path, params={"receiptStatus": "UNRECEIVED"}).json()["total"] == 11
+        assert client.get(path, params={"receiptStatus": "INVALID"}).status_code == 422
         params = [("factories", "S07接口工厂1"), ("factories", "S07接口工厂2"),
                   ("factories", "S07接口工厂1"), ("sortBy", "shipmentNo"), ("page", "2")]
         result = client.get(path, params=params).json()

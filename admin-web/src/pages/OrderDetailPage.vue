@@ -90,9 +90,9 @@
             <tr v-else-if="shipmentsError"><td colspan="4" class="detail-empty-row" role="alert">{{ shipmentsError }}</td></tr>
             <template v-else>
               <tr v-for="shipment in relatedShipments" :key="shipment.shipmentId">
-                <td><RouterLink class="row-link" :to="`/shipments/${shipment.shipmentId}`">{{ shipment.shipmentNo }}</RouterLink></td>
+                <td><RouterLink class="row-link" :to="{ path: `/shipments/${shipment.shipmentId}`, query: { notificationReturnTo: route.fullPath } }">{{ shipment.shipmentNo }}</RouterLink></td>
                 <td>{{ shipment.businessDate || "—" }}</td><td>{{ shipment.totalQuantity.toLocaleString() }}</td>
-                <td><RouterLink class="row-link" :to="`/shipments/${shipment.shipmentId}`">详情</RouterLink></td>
+                <td><RouterLink class="row-link" :to="{ path: `/shipments/${shipment.shipmentId}`, query: { notificationReturnTo: route.fullPath } }">详情</RouterLink></td>
               </tr>
               <tr v-if="!relatedShipments.length"><td class="detail-empty-row" colspan="4">当前订单暂无关联发货单</td></tr>
             </template>

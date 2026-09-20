@@ -107,3 +107,23 @@ it("serializes multiple shipment factories as repeated parameters", async () => 
   expect(query.get("page")).toBe("2");
   fetchMock.mockRestore();
 });
+
+it("downloads a shipment summary by factory and business date", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(new Blob(["xlsx"]), {status:200}),
+  );
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:shipment-summary");
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+  await shipmentApi.downloadDaily({
+    factoryId: "factory/a",
+    factoryName: "工厂甲",
+    businessDate: "2026-09-20",
+  });
+
+  const url = new URL(String(fetchMock.mock.calls[0]?.[0]), "http://localhost");
+  expect(url.pathname).toBe("/api/v1/admin/shipments/daily-export");
+  expect(url.searchParams.get("factoryId")).toBe("factory/a");
+  expect(url.searchParams.get("businessDate")).toBe("2026-09-20");
+});

@@ -76,6 +76,18 @@ it("keeps the main list available if factory options fail", async () => {
   wrapper.unmount();
 });
 
+it("downloads the factory-day summary from the list operation column", async () => {
+  vi.spyOn(shipmentApi, "listFactoryOptions").mockResolvedValue({items:[]});
+  vi.spyOn(shipmentApi, "listSummary").mockResolvedValue({items:[row("DOWNLOAD"), {...row("WITHDRAWN"), status:"WITHDRAWN"}],total:2});
+  const download = vi.spyOn(shipmentApi, "downloadDaily").mockResolvedValue();
+  const wrapper = await setup();
+  await wrapper.get('[aria-label="下载发货汇总 工厂甲 2026-09-05"]').trigger("click");
+  expect(download).toHaveBeenCalledWith(expect.objectContaining({factoryId:"a", businessDate:"2026-09-05"}));
+  expect(wrapper.findAll('[aria-label^="下载发货汇总"]')).toHaveLength(1);
+  expect(wrapper.get("tbody td:last-child").text()).toBe("详情下载");
+  wrapper.unmount();
+});
+
 it("searches candidates without querying and retains selections across keywords", async () => {
   const list = vi.spyOn(shipmentApi, "listSummary").mockResolvedValue({items:[row("VISIBLE")],total:21});
   vi.spyOn(shipmentApi, "listFactoryOptions").mockResolvedValue({items:["工厂甲", "工厂乙", "远方工厂"]});

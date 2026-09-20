@@ -29,6 +29,26 @@ class ShipmentWorkbookSnapshot:
     lines: list[ShipmentWorkbookLine]
 
 
+@dataclass(frozen=True)
+class DailyShipmentWorkbookLine:
+    shipment_no: str
+    order_no: str
+    box_no: int
+    item_no: str
+    product_name: str
+    properties_value: str
+    packed_quantity: int
+
+
+@dataclass(frozen=True)
+class DailyShipmentWorkbookSnapshot:
+    factory_name: str
+    business_date: date
+    shipment_count: int
+    total_boxes: int
+    lines: list[DailyShipmentWorkbookLine]
+
+
 class ShipmentWorkbookRenderer:
     DETAIL_START_ROW = 3
     DETAIL_TEMPLATE_END_ROW = 23
@@ -49,6 +69,36 @@ class ShipmentWorkbookRenderer:
         summary = workbook["汇总"]
         self._write_detail(detail, snapshot)
         self._write_summary(summary, snapshot)
+        output = BytesIO()
+        workbook.save(output)
+        return output.getvalue()
+
+    def render_daily(self, snapshot: DailyShipmentWorkbookSnapshot) -> bytes:
+        if not snapshot.lines:
+            raise ShipmentWorkbookError("daily shipment workbook requires detail lines")
+        workbook = load_workbook(self._template_path)
+        if workbook.sheetnames != ["发货明细", "汇总", "Sheet3"]:
+            raise ShipmentWorkbookError("shipment template sheets are invalid")
+        workbook.remove(workbook["Sheet3"])
+        self._write_daily_detail(workbook["发货明细"], snapshot)
+        self._write_summary(
+            workbook["汇总"],
+            ShipmentWorkbookSnapshot(
+                business_date=snapshot.business_date,
+                total_boxes=snapshot.total_boxes,
+                lines=[
+                    ShipmentWorkbookLine(
+                        order_no=line.order_no,
+                        box_no=str(line.box_no),
+                        item_no=line.item_no,
+                        product_name=line.product_name,
+                        properties_value=line.properties_value,
+                        packed_quantity=line.packed_quantity,
+                    )
+                    for line in snapshot.lines
+                ],
+            ),
+        )
         output = BytesIO()
         workbook.save(output)
         return output.getvalue()
@@ -141,6 +191,40 @@ class ShipmentWorkbookRenderer:
         sheet.cell(total_row, 1, "汇总")
         sheet.cell(total_row, total_box_column, snapshot.total_boxes)
         sheet.cell(total_row, 7, sum(line.packed_quantity for line in snapshot.lines))
+
+    @classmethod
+    def _write_daily_detail(
+        cls, sheet: Worksheet, snapshot: DailyShipmentWorkbookSnapshot
+    ) -> None:
+        total_quantity = sum(line.packed_quantity for line in snapshot.lines)
+        sheet["A1"] = (
+            f"KK发货汇总 {snapshot.factory_name} {snapshot.business_date:%Y-%m-%d} "
+            f"共计{snapshot.shipment_count}单 {snapshot.total_boxes}箱 {total_quantity}件"
+        )
+        cls._prepare_detail_rows(sheet, len(snapshot.lines) + 1)
+        headers = ("发货单号", "订单编号", "箱号", "货号", "品名", "颜色/规格", "装箱数量")
+        for column, header in enumerate(headers, 1):
+            sheet.cell(2, column, header)
+        for offset, line in enumerate(snapshot.lines):
+            row = cls.DETAIL_START_ROW + offset
+            values: tuple[str | int, ...] = (
+                line.shipment_no,
+                line.order_no,
+                line.box_no,
+                line.item_no,
+                line.product_name,
+                line.properties_value,
+                line.packed_quantity,
+            )
+            for column, value in enumerate(
+                values,
+                1,
+            ):
+                sheet.cell(row, column, value)
+        total_row = cls.DETAIL_START_ROW + len(snapshot.lines)
+        sheet.cell(total_row, 1, "汇总")
+        sheet.cell(total_row, 3, snapshot.total_boxes)
+        sheet.cell(total_row, 7, total_quantity)
 
     @staticmethod
     def _write_summary(sheet: Worksheet, snapshot: ShipmentWorkbookSnapshot) -> None:

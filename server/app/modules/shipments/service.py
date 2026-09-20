@@ -40,6 +40,8 @@ from app.db.models import (
     User,
 )
 from app.modules.shipments.workbook import (
+    DailyShipmentWorkbookLine,
+    DailyShipmentWorkbookSnapshot,
     ShipmentWorkbookLine,
     ShipmentWorkbookRenderer,
     ShipmentWorkbookSnapshot,
@@ -1739,6 +1741,88 @@ class ShipmentService:
                 f"{shipment.shipment_no}.xlsx"
             )
             return ShipmentExportResult(filename=filename, content=content)
+
+    def export_daily_shipments(
+        self, *, factory_id: str, business_date: date
+    ) -> ShipmentExportResult:
+        if self._workbook_renderer is None:
+            raise ShipmentValidationError("shipment workbook renderer is unavailable")
+        with self._sessions() as session:
+            factory = session.get(Factory, factory_id)
+            if factory is None:
+                raise ShipmentNotFound("shipment factory not found")
+            rows = session.execute(
+                select(
+                    Shipment,
+                    ShipmentBox,
+                    ShipmentBoxItem,
+                    ShipmentLine,
+                    Product.source_i_id,
+                )
+                .join(ShipmentBox, ShipmentBox.shipment_id == Shipment.shipment_id)
+                .join(ShipmentBoxItem, ShipmentBoxItem.box_id == ShipmentBox.box_id)
+                .join(
+                    ShipmentLine,
+                    (ShipmentLine.shipment_id == Shipment.shipment_id)
+                    & (
+                        ShipmentLine.order_assignment_id
+                        == ShipmentBoxItem.order_assignment_id
+                    ),
+                )
+                .join(
+                    OrderAssignment,
+                    OrderAssignment.order_assignment_id == ShipmentLine.order_assignment_id,
+                )
+                .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+                .join(
+                    ProductVariant,
+                    ProductVariant.variant_id == OrderLine.product_variant_id,
+                )
+                .join(Product, Product.product_id == ProductVariant.product_id)
+                .where(
+                    Shipment.factory_id == factory_id,
+                    Shipment.business_date == business_date,
+                    Shipment.status.in_(("SHIPPED", "VOID_PENDING")),
+                    Shipment.source_shipment_id.is_(None),
+                    Shipment.deleted_at.is_(None),
+                    Shipment.shipment_no.is_not(None),
+                )
+                .order_by(Shipment.shipment_no, ShipmentBox.box_no, ShipmentBoxItem.item_id)
+            ).all()
+            if not rows:
+                raise ShipmentNotFound("daily shipment summary not found")
+            shipment_ids = {shipment.shipment_id for shipment, *_rest in rows}
+            total_boxes = len(
+                {
+                    (shipment.shipment_id, box.box_no)
+                    for shipment, box, _item, _line, _item_no in rows
+                }
+            )
+            snapshot = DailyShipmentWorkbookSnapshot(
+                factory_name=factory.factory_name or factory_id,
+                business_date=business_date,
+                shipment_count=len(shipment_ids),
+                total_boxes=total_boxes,
+                lines=[
+                    DailyShipmentWorkbookLine(
+                        shipment_no=shipment.shipment_no or "",
+                        order_no=line.order_no_snapshot,
+                        box_no=box.box_no,
+                        item_no=item_no,
+                        product_name=line.product_name_snapshot,
+                        properties_value=line.properties_value_snapshot,
+                        packed_quantity=item.quantity,
+                    )
+                    for shipment, box, item, line, item_no in rows
+                ],
+            )
+            safe_factory_name = re.sub(
+                r"[\\/:*?\"<>|\x00-\x1f]+", "_", factory.factory_name or factory_id
+            )
+            return ShipmentExportResult(
+                filename=f"{safe_factory_name}_{business_date:%Y-%m-%d}_发货汇总.xlsx",
+                content=self._workbook_renderer.render_daily(snapshot),
+            )
 
     def has_pending_void_requests(self, *, order_id: str) -> bool:
         with self._sessions() as session:

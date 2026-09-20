@@ -445,6 +445,14 @@ export const shipmentApi = {
     `/v1/admin/shipments/${encodeURIComponent(shipment.shipmentId)}/export`,
     `${shipment.factoryName || shipment.factoryId}_${shipment.businessDate || ""}_${shipment.shipmentNo || shipment.shipmentId}.xlsx`,
   ),
+  downloadDaily: (shipment: Pick<ShipmentSummary, "factoryId" | "factoryName" | "businessDate">) => {
+    if (!shipment.businessDate) throw new Error("shipment business date is required");
+    const query = new URLSearchParams({ factoryId: shipment.factoryId, businessDate: shipment.businessDate });
+    return download(
+      `/v1/admin/shipments/daily-export?${query}`,
+      `${shipment.factoryName || shipment.factoryId}_${shipment.businessDate}_发货汇总.xlsx`,
+    );
+  },
   createReturn: (shipmentId: string, reason: string, lines: { shipmentLineId:number; quantity:number }[]) => request<ShipmentReturnEvent>(
     `/v1/admin/shipments/${encodeURIComponent(shipmentId)}/returns`,
     { method: "POST", headers: idempotencyHeaders(), body: JSON.stringify({ reason, lines }) },

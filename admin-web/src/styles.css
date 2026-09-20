@@ -909,11 +909,11 @@ h1, h2, p { margin-top: 0; }
 .shipment-list-table th:nth-child(2) { width: 132px; }
 .shipment-list-table th:nth-child(3) { width: 150px; }
 .shipment-list-table th:nth-child(4) { width: 100px; }
-.shipment-list-table th:nth-child(5) { width: 260px; }
+.shipment-list-table th:nth-child(5) { width: 244px; }
 .shipment-list-table th:nth-child(6) { width: 112px; }
 .shipment-list-table th:nth-child(7) { width: 120px; }
 .shipment-list-table th:nth-child(8) { width: 76px; }
-.shipment-list-table th:nth-child(9) { width: 64px; }
+.shipment-list-table th:nth-child(9) { width: 80px; }
 
 .shipment-list-table col.shipment-sequence-col {
   width: 52px;
@@ -922,11 +922,17 @@ h1, h2, p { margin-top: 0; }
 .shipment-list-table col.shipment-number-col { width: 12.225%; }
 .shipment-list-table col.shipment-order-col { width: 14.487%; }
 .shipment-list-table col.shipment-factory-col { width: 9.657%; }
-.shipment-list-table col.shipment-product-col { width: 25.11%; }
+.shipment-list-table col.shipment-product-col { width: 23.554%; }
 .shipment-list-table col.shipment-quantity-col { width: 10.818%; }
 .shipment-list-table col.shipment-date-col { width: 11.591%; }
 .shipment-list-table col.shipment-receipt-col { width: 7%; }
-.shipment-list-table col.shipment-action-col { width: 5.884%; }
+.shipment-list-table col.shipment-action-col { width: 7.44%; }
+
+.shipment-list-table th:last-child,
+.shipment-list-table td:last-child {
+  padding-right: 8px;
+  padding-left: 8px;
+}
 
 .shipment-list-table .shipment-sequence-column,
 .shipment-list-table .shipment-sequence-cell {

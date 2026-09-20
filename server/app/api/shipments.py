@@ -689,6 +689,30 @@ def create_shipment_router(
         return ShipmentListResponse(items=items, total=len(items))
 
     @router.get(
+        "/admin/shipments/daily-export",
+        tags=["shipment-admin"],
+    )
+    def export_daily_shipments(
+        factory_id: Annotated[str, Query(alias="factoryId", min_length=1)],
+        business_date: Annotated[date, Query(alias="businessDate")],
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> Response:
+        web_admin(ot_web_session, None, require_csrf=False)
+        result = service.export_daily_shipments(
+            factory_id=factory_id, business_date=business_date
+        )
+        encoded_filename = quote(result.filename)
+        return Response(
+            content=result.content,
+            media_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+            },
+        )
+
+    @router.get(
         "/admin/shipments/{shipment_id}",
         response_model=ShipmentDraftResponse,
         tags=["shipment-admin"],

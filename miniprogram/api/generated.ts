@@ -926,6 +926,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/shipments/daily-export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Daily Shipments */
+        get: operations["export_daily_shipments_api_v1_admin_shipments_daily_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/shipments/factory-options": {
         parameters: {
             query?: never;
@@ -5785,6 +5802,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShipmentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_daily_shipments_api_v1_admin_shipments_daily_export_get: {
+        parameters: {
+            query: {
+                factoryId: string;
+                businessDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

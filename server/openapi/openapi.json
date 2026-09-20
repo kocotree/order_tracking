@@ -10526,6 +10526,73 @@
         ]
       }
     },
+    "/api/v1/admin/shipments/daily-export": {
+      "get": {
+        "operationId": "export_daily_shipments_api_v1_admin_shipments_daily_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "factoryId",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Factoryid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "businessDate",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Businessdate",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Daily Shipments",
+        "tags": [
+          "shipment-admin"
+        ]
+      }
+    },
     "/api/v1/admin/shipments/factory-options": {
       "get": {
         "operationId": "admin_shipment_factory_options_api_v1_admin_shipments_factory_options_get",

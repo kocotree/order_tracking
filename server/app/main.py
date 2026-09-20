@@ -290,7 +290,7 @@ def create_app(
                     app_token=settings.feishu_order_app_token,
                     table_id=settings.feishu_order_table_id,
                     view_id=settings.feishu_order_view_id,
-                    purchase_detail_table_id=settings.feishu_purchase_detail_table_id,
+                    field_ids=settings.feishu_order_field_ids,
                 ),
                 purchase_source,
             )
@@ -302,7 +302,7 @@ def create_app(
                     settings.feishu_order_app_token,
                     settings.feishu_order_table_id,
                     settings.feishu_order_view_id,
-                    settings.feishu_purchase_detail_table_id,
+                    settings.feishu_order_field_ids,
                 ]
             )
             else DisabledFeishuOrderSource()

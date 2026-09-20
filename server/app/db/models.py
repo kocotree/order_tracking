@@ -1698,7 +1698,16 @@ class IncomingDiffBatch(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     recognition_error_code: Mapped[str | None] = mapped_column(String(64))
     recognition_error_summary: Mapped[str | None] = mapped_column(String(500))
-    current_workbook_id: Mapped[str | None] = mapped_column(String(36))
+    # 与 incoming_diff_workbooks.batch_id 互为环形外键，建表顺序由迁移控制
+    current_workbook_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey(
+            "incoming_diff_workbooks.workbook_id",
+            ondelete="RESTRICT",
+            name="fk_incoming_diff_batches_current_workbook",
+            use_alter=True,
+        ),
+    )
     confirmed_by: Mapped[str | None] = mapped_column(
         ForeignKey("users.user_id", ondelete="RESTRICT")
     )

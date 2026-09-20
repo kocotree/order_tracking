@@ -424,7 +424,7 @@ export const contractApi = {
 
 export type ShipmentSummary = components["schemas"]["ShipmentSummaryResponse"];
 export interface ShipmentSummaryQuery {
-  keyword?: string; factory?: string; factories?: string[]; dateFrom?: string; dateTo?: string;
+  keyword?: string; factory?: string; factories?: string[]; receiptStatus?: "RECEIVED" | "UNRECEIVED" | ""; dateFrom?: string; dateTo?: string;
   sortBy?: string; sortOrder?: "asc" | "desc"; page?: number; pageSize?: number;
 }
 

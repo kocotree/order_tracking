@@ -414,14 +414,17 @@ class ShipmentService:
                 )
                 session.add(receipt)
                 session.flush()
-                session.add_all(
-                    [
-                        ShipmentReceiptItem(
-                            shipment_id=shipment_id, box_item_id=i.box_item_id, quantity=i.quantity
-                        )
-                        for i in before.items
-                    ]
-                )
+            session.execute(
+                delete(ShipmentReceiptItem).where(ShipmentReceiptItem.shipment_id == shipment_id)
+            )
+            session.add_all(
+                [
+                    ShipmentReceiptItem(
+                        shipment_id=shipment_id, box_item_id=i.box_item_id, quantity=i.quantity
+                    )
+                    for i in before.items
+                ]
+            )
             originals = list(
                 session.scalars(
                     select(ShipmentBoxItem)
@@ -552,11 +555,15 @@ class ShipmentService:
         return {
             int(assignment_id): int(quantity)
             for assignment_id, quantity in session.execute(
-                select(ShipmentBoxItem.order_assignment_id, func.sum(ShipmentReceiptItem.quantity))
-                .join(
+                select(
+                    ShipmentBoxItem.order_assignment_id,
+                    func.sum(func.coalesce(ShipmentReceiptItem.quantity, ShipmentBoxItem.quantity)),
+                )
+                .join(ShipmentBox, ShipmentBox.box_id == ShipmentBoxItem.box_id)
+                .outerjoin(
                     ShipmentReceiptItem, ShipmentReceiptItem.box_item_id == ShipmentBoxItem.item_id
                 )
-                .where(ShipmentReceiptItem.shipment_id == shipment_id)
+                .where(ShipmentBox.shipment_id == shipment_id)
                 .group_by(ShipmentBoxItem.order_assignment_id)
             )
         }

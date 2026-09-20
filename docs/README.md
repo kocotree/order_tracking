@@ -18,6 +18,8 @@
 
 ## 当前入口
 
+[Issue #147](https://github.com/kocotree/order_tracking/issues/147) 发货单列表按工厂日期实时汇总下载：列表操作列按当前行工厂与发货日期下载当天汇总，详情继续下载当前发货单；汇总实时读取有效原始发货事实，文件名为“工厂名称_YYYY-MM-DD_发货汇总.xlsx”。独立分支已完成本地实施与全量检查，结果见[里程碑记录](一期/project/一期里程碑与决策记录.md#2026-09-20-issue-147-发货单列表按工厂日期实时汇总下载)；本轮无数据库迁移，不修改小程序业务，不部署生产。
+
 [Issue #145](https://github.com/kocotree/order_tracking/issues/145) 飞书采购明细表脱钩：用户已确认跟单管理系统只读取飞书下单表中的最终采购单号和采购子单号，MySQL 持久化 `po_id + poi_id` 后直接查询聚水潭；已有有效关联在下单表为空或多匹配时保留。飞书“采购单号”字段已按人工采购子单优先、唯一自动映射其次的规则完成修改和 `435#` 回读，本轮实施不删除飞书采购明细表、不改变数量口径、不部署生产。
 
 [Issue #122](https://github.com/kocotree/order_tracking/issues/122) 二期来货出入开发计划与切片 Issues：需求 V1.2、两处原型（[Issue #117](https://github.com/kocotree/order_tracking/issues/117)）与[技术设计](二期/project/来货出入技术设计.md)（[Issue #120](https://github.com/kocotree/order_tracking/issues/120)）均已确认。本轮交付[开发计划草案](二期/project/来货出入开发计划.md)并创建六张切片 Issue：#123 数据模型与整批确认事务、#124 数量调整、#125 两端展示与编辑、#126 Excel 生成与回传校验、#127 识别与离线模型 AB 评测、#128 飞书机器人闭环。#123 是其余五片的前置；#123–#125 不依赖飞书与模型服务。本轮未修改运行代码、未新增迁移、未配置任何凭据、未运行业务测试或浏览器验收，计划待用户确认后才开工。

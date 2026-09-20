@@ -2,6 +2,7 @@ import base64
 import hashlib
 from datetime import date, datetime
 from io import BytesIO
+from urllib.parse import unquote
 
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
@@ -912,6 +913,139 @@ def test_web_admin_reexports_persisted_shipment_with_current_workbook_rules(
                     ).status_code
                     == 404
                 )
+    finally:
+        _clean(test_database_engine)
+
+
+def test_web_admin_downloads_realtime_factory_day_shipment_summary(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    _clean(test_database_engine)
+    assignment_id = _seed(test_database_engine)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"shipment-daily-export-token",
+        phone_encryption_secret=b"shipment-daily-export-phone",
+        phone_digest_secret=b"shipment-daily-export-digest",
+    )
+    factory = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
+    admin = identity.issue_session(user_id=ADMIN_ID, terminal="web")
+    app = create_app(database_url=test_database_url, identity_service=identity)
+
+    def submit(client: TestClient, quantity: int, key: str) -> dict[str, object]:
+        shipment_id = client.post(
+            "/api/v1/factory/shipments/drafts", json={"preferredOrderId": ORDER_ID}
+        ).json()["shipmentId"]
+        saved = client.put(
+            f"/api/v1/factory/shipments/drafts/{shipment_id}",
+            json={
+                "boxes": [
+                    {
+                        "boxNo": 1,
+                        "groupKey": None,
+                        "items": [{"assignmentId": assignment_id, "quantity": quantity}],
+                    }
+                ],
+                "note": "",
+            },
+        )
+        assert saved.status_code == 200, saved.text
+        response = client.post(
+            f"/api/v1/factory/shipments/drafts/{shipment_id}/submit",
+            headers={"Idempotency-Key": key},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    try:
+        with TestClient(app, base_url="https://testserver") as factory_client:
+            factory_client.headers["Authorization"] = f"Bearer {factory.access_token}"
+            first = submit(factory_client, 12, "daily-export-first")
+
+        path = "/api/v1/admin/shipments/daily-export"
+        params = {"factoryId": FACTORY_IDS[0], "businessDate": first["businessDate"]}
+        with TestClient(app, base_url="https://testserver") as admin_client:
+            admin_client.cookies.set("ot_web_session", admin.access_token)
+            first_export = admin_client.get(path, params=params)
+            assert first_export.status_code == 200, first_export.text
+            first_book = load_workbook(BytesIO(first_export.content), data_only=False)
+            assert first_book["发货明细"]["A1"].value == (
+                f"KK发货汇总 S07接口工厂1 {first['businessDate']} 共计1单 1箱 12件"
+            )
+
+        with TestClient(app, base_url="https://testserver") as factory_client:
+            factory_client.headers["Authorization"] = f"Bearer {factory.access_token}"
+            second = submit(factory_client, 8, "daily-export-second")
+
+        with TestClient(app, base_url="https://testserver") as admin_client:
+            admin_client.cookies.set("ot_web_session", admin.access_token)
+            response = admin_client.get(path, params=params)
+            assert response.status_code == 200, response.text
+            assert unquote(response.headers["content-disposition"]).endswith(
+                "S07接口工厂1_" + str(first["businessDate"]) + "_发货汇总.xlsx"
+            )
+            workbook = load_workbook(BytesIO(response.content), data_only=False)
+            assert workbook.sheetnames == ["发货明细", "汇总"]
+            detail = workbook["发货明细"]
+            assert [detail.cell(2, column).value for column in range(1, 8)] == [
+                "发货单号",
+                "订单编号",
+                "箱号",
+                "货号",
+                "品名",
+                "颜色/规格",
+                "装箱数量",
+            ]
+            assert [detail.cell(row, 1).value for row in (3, 4)] == [
+                first["shipmentNo"],
+                second["shipmentNo"],
+            ]
+            assert [detail.cell(row, 3).value for row in (3, 4)] == [1, 1]
+            assert [detail.cell(row, 7).value for row in (3, 4, 5)] == [12, 8, 20]
+            assert detail["A1"].value == (
+                f"KK发货汇总 S07接口工厂1 {first['businessDate']} 共计2单 2箱 20件"
+            )
+            summary = workbook["汇总"]
+            assert [summary.cell(1, column).value for column in range(1, 6)] == [
+                "日期",
+                "货号",
+                "名称",
+                "颜色/规格",
+                "数量",
+            ]
+            assert [summary.cell(2, column).value for column in range(2, 6)] == [
+                "ITEM-SHIPMENT-API",
+                "S07接口测试产品",
+                "海军蓝 / 120",
+                20,
+            ]
+
+        with Session(test_database_engine) as session, session.begin():
+            stored = session.get(Shipment, second["shipmentId"])
+            assert stored is not None
+            stored.status = "VOID_PENDING"
+        with TestClient(app, base_url="https://testserver") as admin_client:
+            admin_client.cookies.set("ot_web_session", admin.access_token)
+            pending = load_workbook(
+                BytesIO(admin_client.get(path, params=params).content), data_only=False
+            )
+            assert pending["汇总"]["E2"].value == 20
+
+        with Session(test_database_engine) as session, session.begin():
+            stored = session.get(Shipment, second["shipmentId"])
+            assert stored is not None
+            stored.status = "WITHDRAWN"
+        with TestClient(app, base_url="https://testserver") as admin_client:
+            admin_client.cookies.set("ot_web_session", admin.access_token)
+            withdrawn = load_workbook(
+                BytesIO(admin_client.get(path, params=params).content), data_only=False
+            )
+            assert withdrawn["发货明细"]["A1"].value == (
+                f"KK发货汇总 S07接口工厂1 {first['businessDate']} 共计1单 1箱 12件"
+            )
+            assert withdrawn["汇总"]["E2"].value == 12
     finally:
         _clean(test_database_engine)
 

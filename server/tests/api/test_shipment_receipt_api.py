@@ -74,7 +74,7 @@ def test_saved_receipt_reopens_without_changing_published_quantities(
     assert admin.put(url, json={"version": 0, "items": draft["items"]}).status_code == 409
 
 
-def test_confirm_applies_delta_once_and_preserves_original_export(
+def test_confirm_applies_delta_once_and_preserves_original_exports(
     receipt_clients: tuple[TestClient, TestClient, str],
 ) -> None:
     from io import BytesIO
@@ -83,7 +83,15 @@ def test_confirm_applies_delta_once_and_preserves_original_export(
 
     admin, factory, shipment_id = receipt_clients
     url = f"/api/v1/admin/shipments/{shipment_id}"
+    shipment = admin.get(url).json()
     original_export = admin.get(url + "/export").content
+    daily_params = {
+        "factoryId": shipment["factoryId"],
+        "businessDate": shipment["businessDate"],
+    }
+    original_daily_export = admin.get(
+        "/api/v1/admin/shipments/daily-export", params=daily_params
+    ).content
     draft = admin.get(url + "/receipt").json()
     draft["items"][0]["quantity"] = 0
     draft["items"][1]["quantity"] = 28
@@ -114,6 +122,15 @@ def test_confirm_applies_delta_once_and_preserves_original_export(
     after = load_workbook(BytesIO(admin.get(url + "/export").content))
     assert [[list(row) for row in sheet.values] for sheet in before] == [
         [list(row) for row in sheet.values] for sheet in after
+    ]
+    daily_before = load_workbook(BytesIO(original_daily_export))
+    daily_after = load_workbook(
+        BytesIO(
+            admin.get("/api/v1/admin/shipments/daily-export", params=daily_params).content
+        )
+    )
+    assert [[list(row) for row in sheet.values] for sheet in daily_before] == [
+        [list(row) for row in sheet.values] for sheet in daily_after
     ]
 
 

@@ -21,6 +21,7 @@ it("loads one database page with dashboard dates and resets filters", async () =
   expect(list).toHaveBeenLastCalledWith(expect.objectContaining({dateFrom: "2026-09-05", dateTo: "2026-09-05", page: 1, pageSize: 10}));
   expect(wrapper.text()).toContain("TODAY");
   expect(wrapper.text()).toContain("未收货");
+  expect(wrapper.get("tbody .status-badge").classes()).toContain("is-neutral");
   await wrapper.get(".shipment-factory-field button").trigger("click");
   expect(wrapper.get(".shipment-factory-field").text()).toContain("非当前页工厂");
   list.mockResolvedValue({items: [row("RECEIVED", "RECEIVED")], total: 1});
@@ -28,6 +29,7 @@ it("loads one database page with dashboard dates and resets filters", async () =
   await flushPromises();
   expect(list).toHaveBeenLastCalledWith(expect.objectContaining({receiptStatus: "RECEIVED", page: 1}));
   expect(wrapper.text()).toContain("已收货");
+  expect(wrapper.get("tbody .status-badge").classes()).toContain("is-success");
   list.mockResolvedValue({items: [row("YESTERDAY")], total: 1});
   await wrapper.get(".order-secondary-button").trigger("click");
   await flushPromises();

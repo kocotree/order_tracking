@@ -13,17 +13,21 @@ from app.db.natural_sort import natural_sort_keys
 SUMMARY_CTE = """
 WITH visible AS (
  SELECT s.shipment_id, s.shipment_no, s.status, s.factory_id, s.business_date,
-        s.submitted_at, COALESCE(NULLIF(f.factory_name, ''), s.factory_id) AS factory_name
+        s.submitted_at, COALESCE(NULLIF(f.factory_name, ''), s.factory_id) AS factory_name,
+        CASE WHEN r.status = 'CONFIRMED' THEN 'RECEIVED' ELSE 'UNRECEIVED' END AS receipt_status
  FROM shipments s LEFT JOIN factories f ON f.factory_id = s.factory_id
+ LEFT JOIN shipment_receipts r ON r.shipment_id = s.shipment_id
  WHERE s.status != 'DRAFT' AND s.deleted_at IS NULL AND s.source_shipment_id IS NULL
  AND (:all_factories = 1 OR COALESCE(NULLIF(f.factory_name, ''), s.factory_id)
       COLLATE utf8mb4_0900_bin IN :factories)
  AND (:date_from IS NULL OR COALESCE(s.business_date, '') >= :date_from)
  AND (:date_to IS NULL OR COALESCE(s.business_date, '') <= :date_to)
+ AND (:receipt_status = '' OR CASE WHEN r.status = 'CONFIRMED' THEN 'RECEIVED'
+      ELSE 'UNRECEIVED' END = :receipt_status)
 ), packed AS (
  SELECT b.shipment_id, b.box_no, i.item_id, o.order_no,
         l.product_name_snapshot AS product_name,
-        CASE WHEN r.status = 'CONFIRMED' THEN ri.quantity ELSE i.quantity END AS quantity,
+        CASE WHEN s.receipt_status = 'RECEIVED' THEN ri.quantity ELSE i.quantity END AS quantity,
         ROW_NUMBER() OVER (PARTITION BY b.shipment_id, o.order_no COLLATE utf8mb4_0900_bin
                           ORDER BY b.box_no, i.item_id) AS order_rank,
         ROW_NUMBER() OVER (
@@ -34,7 +38,6 @@ WITH visible AS (
  JOIN order_assignments a ON a.order_assignment_id = i.order_assignment_id
  JOIN order_lines l ON l.order_line_id = a.order_line_id
  JOIN orders o ON o.order_id = l.order_id
- LEFT JOIN shipment_receipts r ON r.shipment_id = s.shipment_id
  LEFT JOIN shipment_receipt_items ri ON ri.box_item_id = i.item_id
 ), summaries AS (
  SELECT shipment_id,
@@ -44,7 +47,7 @@ WITH visible AS (
               ORDER BY box_no, item_id SEPARATOR '、') AS product_names,
  SUM(quantity) AS total_quantity FROM packed GROUP BY shipment_id
 ), rows_to_filter AS (
- SELECT s.shipment_id, s.shipment_no, s.status, s.factory_id, s.factory_name,
+ SELECT s.shipment_id, s.shipment_no, s.status, s.receipt_status, s.factory_id, s.factory_name,
  s.business_date, s.submitted_at, COALESCE(NULLIF(p.order_nos, ''), '—') AS order_nos,
  COALESCE(NULLIF(p.product_names, ''), '—') AS product_names,
  COALESCE(p.total_quantity, 0) AS total_quantity
@@ -76,6 +79,7 @@ def page_shipments(
     factories: list[str] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    receipt_status: str = "",
     sort_by: str = "",
     sort_order: str = "asc",
     page: int = 1,
@@ -90,6 +94,7 @@ def page_shipments(
         factories=selected_factories,
         date_from=date_from,
         date_to=date_to,
+        receipt_status=receipt_status,
     )
     total = int(
         session.scalar(
@@ -108,6 +113,7 @@ def page_shipments(
             shipment_id=String,
             shipment_no=String,
             status=String,
+            receipt_status=String,
             factory_id=String,
             factory_name=String,
             business_date=Date,

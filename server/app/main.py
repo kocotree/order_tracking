@@ -410,6 +410,9 @@ def create_app(
         mcp_server, transport_security = create_agent_mcp(
             oauth=oauth, identity=identity_service,
             orders=order_service, imports=order_import_service,
+            repair_workflow=repair_workflow, repair_previews=repair_previews,
+            repair_confirmations=repair_confirmations, repair_returns=repair_returns,
+            sessions=session_factory, file_hosts=settings.mcp_file_host_set,
         )
         mcp_http_app = mcp_server.streamable_http_app(
             stateless_http=True, json_response=True,

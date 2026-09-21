@@ -134,6 +134,39 @@ def test_confirm_applies_delta_once_and_preserves_original_exports(
     ]
 
 
+def test_receipt_confirmation_key_cannot_confirm_another_shipment(
+    receipt_clients: tuple[TestClient, TestClient, str],
+) -> None:
+    admin, factory, first_id = receipt_clients
+    first = admin.post(
+        f"/api/v1/admin/shipments/{first_id}/receipt/confirm", json={"version": 0}
+    )
+    assert first.status_code == 200, first.text
+    assignment_id = first.json()["lines"][0]["assignmentId"]
+    second_id = factory.post(
+        "/api/v1/factory/shipments/drafts", json={"preferredOrderId": ORDER_ID}
+    ).json()["shipmentId"]
+    saved = factory.put(
+        f"/api/v1/factory/shipments/drafts/{second_id}",
+        json={"boxes": [{"boxNo": 1, "items": [
+            {"assignmentId": assignment_id, "quantity": 1}
+        ]}]},
+    )
+    assert saved.status_code == 200, saved.text
+    submitted = factory.post(
+        f"/api/v1/factory/shipments/drafts/{second_id}/submit",
+        headers={"Idempotency-Key": "second-receipt-submit"},
+    )
+    assert submitted.status_code == 200, submitted.text
+    reused = admin.post(
+        f"/api/v1/admin/shipments/{second_id}/receipt/confirm", json={"version": 0}
+    )
+    assert reused.status_code == 409
+    assert admin.get(f"/api/v1/admin/shipments/{second_id}/receipt").json()[
+        "status"
+    ] == "DRAFT"
+
+
 @pytest.mark.parametrize("quantity", [0, 28, 35])
 def test_confirmed_quantity_cannot_be_autonomously_withdrawn(
     receipt_clients: tuple[TestClient, TestClient, str], quantity: int

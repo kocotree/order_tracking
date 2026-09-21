@@ -396,15 +396,34 @@ class ShipmentService:
         self, *, shipment_id: str, actor_id: str, expected_version: int, idempotency_key: str,
         source_terminal: str = "admin-web",
     ) -> ShipmentDraftSnapshot:
+        if not idempotency_key.strip() or len(idempotency_key) > 191:
+            raise ShipmentValidationError("invalid Idempotency-Key")
+        scope = f"shipment.receipt.confirm:{actor_id}"
+        request_hash = hashlib.sha256(f"{shipment_id}\0{expected_version}".encode()).hexdigest()
         with self._sessions.begin() as session:
+            if session.get(User, actor_id, with_for_update=True) is None:
+                raise ShipmentPermissionDenied("actor not found")
             shipment = self._receipt_shipment(session, shipment_id)
             before = self._receipt_snapshot(session, shipment_id)
+            existing = session.scalar(select(IdempotencyRecord).where(
+                IdempotencyRecord.scope == scope,
+                IdempotencyRecord.idempotency_key == idempotency_key,
+            ))
+            if existing is not None and existing.request_hash != request_hash:
+                raise ShipmentConflict("Idempotency-Key was used with different receipt details")
             if expected_version != before.version:
                 raise ShipmentConflict("核对版本已变化，请重新读取后再确认")
             if before.status == "CONFIRMED":
                 return self._detail_snapshot(session, shipment)
+            if existing is not None:
+                raise ShipmentConflict("收货确认结果与幂等记录不一致")
             self._require_receivable(session, shipment)
             current = datetime.now(UTC)
+            session.add(IdempotencyRecord(
+                scope=scope, idempotency_key=idempotency_key,
+                status="completed", request_hash=request_hash,
+                result={"shipmentId": shipment_id, "version": expected_version},
+            ))
             receipt = session.get(ShipmentReceipt, shipment_id)
             if receipt is None:
                 receipt = ShipmentReceipt(

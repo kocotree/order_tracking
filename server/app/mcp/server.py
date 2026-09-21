@@ -23,13 +23,17 @@ from app.api.orders import (
     _order_response,
 )
 from app.mcp.directory import register_directory_tools
+from app.mcp.order_tools import register_order_tools
 from app.mcp.repairs import register_repair_tools
+from app.modules.contracts import ContractService
 from app.modules.factory_access import FactoryAccessService
 from app.modules.identity_access.agent_oauth import AgentOAuthService
 from app.modules.identity_access.service import IdentityAccessService
 from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.order_import import OrderImportService
 from app.modules.orders import OrderService
+from app.modules.orders.dispatch import OrderDispatchService
+from app.modules.orders.source_update import OrderSourceUpdateService
 from app.modules.product_sync import ProductCatalogService
 from app.modules.repairs.confirmation import RepairConfirmationService
 from app.modules.repairs.preview import RepairPreviewService
@@ -60,6 +64,9 @@ def create_agent_mcp(
     identity: IdentityAccessService,
     orders: OrderService,
     imports: OrderImportService | None,
+    source_updates: OrderSourceUpdateService,
+    dispatch: OrderDispatchService,
+    contracts: ContractService,
     repair_workflow: RepairWorkflowService,
     repair_previews: RepairPreviewService,
     repair_confirmations: RepairConfirmationService,
@@ -110,6 +117,12 @@ def create_agent_mcp(
         if isinstance(result, dict):
             return {"requestId": request_id, **result}
         return {"requestId": request_id, "result": result}
+
+    register_order_tools(
+        mcp, read, orders=orders, imports=imports,
+        source_updates=source_updates, dispatch=dispatch, contracts=contracts,
+        origin=origin,
+    )
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     def get_me() -> dict[str, Any]:

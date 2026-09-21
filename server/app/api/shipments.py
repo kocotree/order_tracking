@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, File, Header, Query, Request, Response, UploadFile
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from app.modules.identity_access import IdentityAccessService, PermissionDenied, SessionInvalid
@@ -711,6 +712,35 @@ def create_shipment_router(
                 "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
             },
         )
+
+    @router.get("/agent-shipments/daily-export/{factory_id}/{business_date}")
+    def export_agent_daily_shipments(
+        factory_id: str,
+        business_date: date,
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> Response:
+        path = f"/api/v1/agent-shipments/daily-export/{quote(factory_id, safe='')}/{business_date}"
+        login = RedirectResponse(f"/login?returnTo={quote(path, safe='')}", status_code=303)
+        if ot_web_session is None:
+            return login
+        try:
+            return export_daily_shipments(factory_id, business_date, ot_web_session)
+        except SessionInvalid:
+            return login
+
+    @router.get("/agent-shipments/{shipment_id}/export")
+    def export_agent_shipment(
+        shipment_id: str,
+        ot_web_session: str | None = Cookie(default=None),
+    ) -> Response:
+        path = f"/api/v1/agent-shipments/{quote(shipment_id, safe='')}/export"
+        login = RedirectResponse(f"/login?returnTo={quote(path, safe='')}", status_code=303)
+        if ot_web_session is None:
+            return login
+        try:
+            return export_shipment(shipment_id, ot_web_session)
+        except SessionInvalid:
+            return login
 
     @router.get(
         "/admin/shipments/{shipment_id}",

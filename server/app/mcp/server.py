@@ -20,10 +20,12 @@ from app.api.orders import (
     _audit_response,
     _order_response,
 )
+from app.mcp.shipments import register_shipment_tools
 from app.modules.identity_access.agent_oauth import AgentOAuthService
 from app.modules.identity_access.service import IdentityAccessService
 from app.modules.order_import import OrderImportService
 from app.modules.orders import OrderService
+from app.modules.shipments import ShipmentService
 
 
 class AgentTokenVerifier(TokenVerifier):
@@ -49,6 +51,7 @@ def create_agent_mcp(
     identity: IdentityAccessService,
     orders: OrderService,
     imports: OrderImportService | None,
+    shipments: ShipmentService,
 ) -> tuple[MCPServer, TransportSecuritySettings]:
     origin = oauth.resource.removesuffix("/mcp")
     host = AnyHttpUrl(oauth.resource).host
@@ -86,6 +89,8 @@ def create_agent_mcp(
             payload = cast(dict[str, Any], result.model_dump(mode="json", by_alias=True))
             payload["requestId"] = request_id
             return payload
+        if isinstance(result, dict):
+            return {**result, "requestId": request_id}
         return {"requestId": request_id, "result": result}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -173,4 +178,5 @@ def create_agent_mcp(
         identity.revoke_shared(auth_id=auth_id, user_id=user_id, request_id=request_id)
         return {"revoked": True, "requestId": request_id}
 
+    register_shipment_tools(mcp, shipments, read)
     return mcp, transport_security

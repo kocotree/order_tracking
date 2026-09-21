@@ -411,6 +411,8 @@ def create_app(
             oauth=oauth, identity=identity_service,
             orders=order_service, imports=order_import_service,
             shipments=shipment_service,
+            source_updates=source_updates, dispatch=dispatch_svc,
+            contracts=contract_service,
             repair_workflow=repair_workflow, repair_previews=repair_previews,
             repair_confirmations=repair_confirmations, repair_returns=repair_returns,
             sessions=session_factory, file_hosts=settings.mcp_file_host_set,

@@ -64,7 +64,7 @@ OAuth 标准要求包括资源发现、客户端注册、PKCE、令牌受众验�
 |---|---|
 | 资源与 issuer | 从服务端受控公开 HTTPS origin 配置生成；resource 固定为该环境 `/mcp`，不信任任意 Host 头 |
 | 客户端识别 | 首次只验收 Codex，优先采用预注册公共客户端并随插件分发公开 client ID；不分发 client secret。Codex 实际客户端配置支持是 A01 的必验项 |
-| 回调 | 精确登记与匹配；原生客户端 loopback 端口按 OAuth 标准处理，限制路径及本机回环地址；禁止任意回调、开放重定向 |
+| 回调 | 精确匹配本次授权请求；当前 Codex 使用 `http://127.0.0.1:<动态端口>/callback/<随机串>`，服务端限制回环地址、路径格式与端口；禁止任意回调、开放重定向 |
 | scope | `order_tracking.admin` 表示使用本人当前管理员能力；不据此授予最高管理员角色 |
 | 时效 | 授权事务和一次性码 5 分钟；两端访问凭据采用短期有效期，MCP 为 15 分钟。Web/Plugin 刷新资格统一取共同授权 `last_activity_at + 30 天`，不再分别按各端闲置时间失效 |
 | 令牌 | 随机不透明值、数据库仅存摘要；MCP 绑定 client、user、resource、grant，Web 与 MCP 分别保管凭据。两端刷新令牌轮换但共用授权期限；检测刷新重放时撤销共同授权 |
@@ -74,17 +74,16 @@ OAuth 标准要求包括资源发现、客户端注册、PKCE、令牌受众验�
 
 预注册不需要建设面向任意客户端的动态注册服务。Codex 版本若不能使用该配置，应在 A01 中给出真实兼容证据并修订设计，不能在运行时降级为共享密钥。
 
-拟新增五张授权元数据表，全部放现有 MySQL；现有 `user_sessions` 增加可空 `shared_auth_id` 外键，关联管理员网页会话：
+新增四张授权元数据表，全部放现有 MySQL；预注册公共客户端 ID 与 MCP 资源 URL 由服务端配置提供，不建客户端表。现有 `user_sessions` 增加可空 `shared_auth_id` 外键，关联管理员网页会话：
 
 | 表 | 核心内容与约束 |
 |---|---|
-| `admin_shared_authorizations` | 共同授权 ID、user 外键、创建、最近有效活动、到期与撤销时间。每账号至多一个有效共同授权，创建/重建在用户行锁下串行化 |
-| `agent_oauth_clients` | client ID、名称、允许回调、启用状态；client ID 唯一，无公共客户端 secret |
+| `admin_shared_authorizations` | 共同授权 ID、user 外键、创建、最近有效活动与撤销时间；到期由最近活动时间加 30 天计算。每账号至多一个有效共同授权，创建/重建在用户行锁下串行化 |
 | `agent_oauth_requests` | 授权请求、client、redirect、resource、scope、PKCE、登录事务关联、已验证 user、一次性 code 摘要、到期/使用状态；code 摘要唯一，交换在行锁内一次消费 |
 | `agent_oauth_grants` | grant ID、client、user 外键、共同授权外键、resource、scope、首次允许时间；其用户必须与共同授权用户一致，每次使用验证父授权 |
 | `agent_oauth_tokens` | token 摘要、access/refresh 类型、grant、到期、消费/撤销时间；摘要唯一。access 按短期到期时间校验，refresh 按共同授权期限与消费/撤销状态校验；消费记录保留到父授权失效以检测重放 |
 
-授权事务只在数据库保存必要字段；访问令牌、刷新令牌、授权码、verifier、临时文件 URL 和 Cookie 不进入日志、审计正文、业务响应或 Skill。授权拒绝和无效 code 直接失败，错误不泄露账号存在性。到期元数据使用既有 worker 的维护方式清理；不删除业务审计。
+授权事务只在数据库保存必要字段；访问令牌、刷新令牌、授权码、verifier、临时文件 URL 和 Cookie 不进入日志、审计正文、业务响应或 Skill。授权拒绝和无效 code 直接失败，错误不泄露账号存在性。当前工单不增加后台清理任务；到期记录无法再用于授权，后续维护任务须保留重放检测所需记录和业务审计。
 
 ### 3.3 共同续期、迁移与失效
 
@@ -200,4 +199,4 @@ Plugin 使用官方支持的根目录 `plugin.json`、`mcp.json`、`skills/` 布
 
 测试复用项目 pytest、现有隔离 MySQL 与前端测试体系，按共享业务与工具入口两层验证；不另建通用评测平台。每个能力对照项有正向用例，身份越权、版本、重放、批量部分失败、文件大小和外部地址校验重点覆盖。最终在隔离环境由真实 Codex 与网页对同一数据验收，再走完整 CI 和授权发布。
 
-参考规范核对日期为 2026-09-21；实施锁定 SDK、MCP 协议协商范围、Codex 版本与插件格式后保存实际联调证据。本文尚未执行客户端联调或生产验证。
+参考规范核对日期为 2026-09-21。#151 在隔离 MySQL 与 `local_demo` 环境使用 `codex-cli 0.149.1`、预注册 client ID 和资源 URL 完成两次实际 OAuth 登录：首次经本地模拟飞书页，第二次复用浏览器 Web 登录直达授权码交换。CLI 实际使用 `/callback/<随机串>`，授权请求重复携带同值 `resource`；服务端已按此收窄兼容。订单查询已通过 MCP 协议集成测试；真实飞书、HTTPS/Nginx 端到端、Codex 对话调用订单工具及生产环境尚未联调。

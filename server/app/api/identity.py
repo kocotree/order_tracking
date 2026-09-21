@@ -153,6 +153,28 @@ def _mini_login_response(result: MiniLoginResult) -> MiniLoginResponse:
     )
 
 
+def set_web_session_cookies(
+    response: Response,
+    *,
+    access_token: str,
+    refresh_token: str,
+    csrf_token: str,
+    secure: bool,
+) -> None:
+    response.set_cookie(
+        "ot_web_session", access_token, max_age=12 * 60 * 60,
+        secure=secure, httponly=True, samesite="lax", path="/",
+    )
+    response.set_cookie(
+        "ot_web_refresh", refresh_token, max_age=365 * 24 * 60 * 60,
+        secure=secure, httponly=True, samesite="lax", path="/",
+    )
+    response.set_cookie(
+        "ot_csrf", csrf_token, max_age=12 * 60 * 60,
+        secure=secure, httponly=False, samesite="lax", path="/",
+    )
+
+
 def create_identity_router(
     service: IdentityAccessService,
     *,
@@ -161,46 +183,12 @@ def create_identity_router(
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1")
 
-    def set_web_session_cookies(
-        response: Response,
-        *,
-        access_token: str,
-        refresh_token: str,
-        csrf_token: str,
-    ) -> None:
-        response.set_cookie(
-            "ot_web_session",
-            access_token,
-            max_age=12 * 60 * 60,
-            secure=secure_web_cookies,
-            httponly=True,
-            samesite="lax",
-            path="/",
-        )
-        response.set_cookie(
-            "ot_web_refresh",
-            refresh_token,
-            max_age=30 * 24 * 60 * 60,
-            secure=secure_web_cookies,
-            httponly=True,
-            samesite="lax",
-            path="/",
-        )
-        response.set_cookie(
-            "ot_csrf",
-            csrf_token,
-            max_age=12 * 60 * 60,
-            secure=secure_web_cookies,
-            httponly=False,
-            samesite="lax",
-            path="/",
-        )
-
     def web_user(
         *,
         web_session: str | None,
         csrf_token: str | None = None,
         require_csrf: bool = False,
+        activity: bool = True,
     ) -> UserSnapshot:
         if not web_session:
             raise SessionInvalid("web session is missing")
@@ -209,6 +197,7 @@ def create_identity_router(
             terminal="web",
             csrf_token=csrf_token,
             require_csrf=require_csrf,
+            activity=activity,
         )
 
     def bearer_token(authorization: str | None) -> str:
@@ -253,6 +242,7 @@ def create_identity_router(
             access_token=result.web_session_token,
             refresh_token=result.refresh_token,
             csrf_token=result.csrf_token,
+            secure=secure_web_cookies,
         )
         return response
 
@@ -271,6 +261,7 @@ def create_identity_router(
             access_token=tokens.access_token,
             refresh_token=tokens.refresh_token,
             csrf_token=tokens.csrf_token,
+            secure=secure_web_cookies,
         )
         return response
 
@@ -280,7 +271,7 @@ def create_identity_router(
         authorization: str | None = Header(default=None),
     ) -> UserResponse:
         user = (
-            web_user(web_session=ot_web_session)
+            web_user(web_session=ot_web_session, activity=False)
             if ot_web_session is not None
             else mini_user(authorization)
         )
@@ -303,6 +294,7 @@ def create_identity_router(
             web_session=ot_web_session,
             csrf_token=x_csrf_token,
             require_csrf=True,
+            activity=False,
         )
         service.logout_session(
             token=ot_web_session or "",

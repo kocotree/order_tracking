@@ -93,6 +93,7 @@ def create_notifications_audit_router(
         csrf_token: str | None = None,
         *,
         require_csrf: bool = False,
+        activity: bool = True,
     ) -> UserSnapshot:
         if not token:
             raise SessionInvalid("web session is missing")
@@ -101,6 +102,7 @@ def create_notifications_audit_router(
             terminal="web",
             csrf_token=csrf_token,
             require_csrf=require_csrf,
+            activity=activity,
         )
         if actor.role != "admin":
             raise PermissionDenied("administrator role required")
@@ -158,7 +160,7 @@ def create_notifications_audit_router(
         request: Request,
         ot_web_session: str | None = Cookie(default=None),
     ) -> UnreadCountResponse:
-        actor = web_admin(ot_web_session)
+        actor = web_admin(ot_web_session, activity=False)
         return UnreadCountResponse(
             count=service.unread_count(user_id=actor.user_id),
             request_id=request.state.request_id,

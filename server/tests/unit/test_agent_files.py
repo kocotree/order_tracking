@@ -66,17 +66,28 @@ def test_file_transfer_rejects_redirect_and_oversize(monkeypatch):
         def getheader(self, _name):
             return None
 
+    class FakeSocket:
+        timeouts = []
+
+        def settimeout(self, value):
+            self.timeouts.append(value)
+
+        def close(self):
+            pass
+
     class FakeConnection:
         response = FakeResponse(b"x" * (20 * 1024 * 1024 + 1))
-        sock = None
+        last_sock = None
 
         def __init__(self, *_args, **_kwargs):
-            pass
+            self.sock = FakeSocket()
+            FakeConnection.last_sock = self.sock
 
         def request(self, *_args, **_kwargs):
             pass
 
         def getresponse(self):
+            self.sock = None
             return self.response
 
         def close(self):
@@ -90,6 +101,7 @@ def test_file_transfer_rejects_redirect_and_oversize(monkeypatch):
     )
     with pytest.raises(FileTransferError):
         fetch_file(file, frozenset({"files.example.test"}))
+    assert FakeConnection.last_sock.timeouts
     FakeConnection.response = FakeResponse(b"")
     FakeConnection.response.status = 302
     with pytest.raises(FileTransferError):

@@ -79,8 +79,16 @@ def fetch_file(file: AgentFile, allowed_hosts: frozenset[str]) -> bytes:
     host, path = _target(file.download_url, allowed_hosts)
     address = _public_addresses(host)[0]
     connection = _PinnedHTTPSConnection(host, address, timeout=TRANSFER_TIMEOUT_SECONDS)
+    deadline = monotonic() + TRANSFER_TIMEOUT_SECONDS
+    transport: socket.socket | None = None
     try:
         connection.request("GET", path, headers={"Accept": XLSX_MIME})
+        transport = connection.sock
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            raise FileTransferError("文件获取超时")
+        if transport is not None:
+            transport.settimeout(remaining)
         response = connection.getresponse()
         if response.status != 200:
             raise FileTransferError("文件获取失败或下载链接已失效")
@@ -94,13 +102,12 @@ def fetch_file(file: AgentFile, allowed_hosts: frozenset[str]) -> bytes:
                 raise FileTransferError("质检 Excel 超过文件大小上限")
         chunks: list[bytes] = []
         size = 0
-        deadline = monotonic() + TRANSFER_TIMEOUT_SECONDS
         while True:
             remaining = deadline - monotonic()
             if remaining <= 0:
                 raise FileTransferError("文件获取超时")
-            if connection.sock is not None:
-                connection.sock.settimeout(remaining)
+            if transport is not None:
+                transport.settimeout(remaining)
             chunk = response.read(65536)
             if not chunk:
                 break
@@ -112,6 +119,8 @@ def fetch_file(file: AgentFile, allowed_hosts: frozenset[str]) -> bytes:
     except (OSError, ssl.SSLError, http.client.HTTPException) as error:
         raise FileTransferError("文件获取失败或下载链接已失效") from error
     finally:
+        if transport is not None:
+            transport.close()
         connection.close()
 
 

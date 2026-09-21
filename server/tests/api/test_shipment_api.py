@@ -741,6 +741,18 @@ def test_admin_partially_returns_original_shipment_line_and_quantity_can_be_rese
             )
             assert repeated.status_code == 200
             assert repeated.json()["eventId"] == response.json()["eventId"]
+            changed_replay = admin_client.post(
+                f"/api/v1/admin/shipments/{shipment_id}/returns",
+                headers={
+                    "Idempotency-Key": "shipment-return-once",
+                    "X-CSRF-Token": admin.csrf_token or "",
+                },
+                json={
+                    "reason": "换一个原因",
+                    "lines": [{"shipmentLineId": shipment_line_id, "quantity": 4}],
+                },
+            )
+            assert changed_replay.status_code == 409
             detail = admin_client.get(f"/api/v1/admin/shipments/{shipment_id}").json()
             assert detail["lines"][0]["lineId"] == shipment_line_id
             assert detail["lines"][0]["quantity"] == 12

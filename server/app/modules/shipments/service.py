@@ -329,6 +329,7 @@ class ShipmentService:
         actor_id: str,
         expected_version: int,
         items: list[ReceiptItemInput],
+        source_terminal: str = "admin-web",
     ) -> ReceiptSnapshot:
         with self._sessions.begin() as session:
             shipment = self._receipt_shipment(session, shipment_id)
@@ -380,7 +381,7 @@ class ShipmentService:
                     target_type="shipment",
                     target_id=shipment_id,
                     actor_id=actor_id,
-                    source_terminal="admin-web",
+                    source_terminal=source_terminal,
                     changes={
                         "before": {str(i.box_item_id): i.quantity for i in before.items},
                         "after": {str(i.box_item_id): i.quantity for i in items},
@@ -392,17 +393,37 @@ class ShipmentService:
             return self._receipt_snapshot(session, shipment_id)
 
     def confirm_receipt(
-        self, *, shipment_id: str, actor_id: str, expected_version: int, idempotency_key: str
+        self, *, shipment_id: str, actor_id: str, expected_version: int, idempotency_key: str,
+        source_terminal: str = "admin-web",
     ) -> ShipmentDraftSnapshot:
+        if not idempotency_key.strip() or len(idempotency_key) > 191:
+            raise ShipmentValidationError("invalid Idempotency-Key")
+        scope = f"shipment.receipt.confirm:{actor_id}"
+        request_hash = hashlib.sha256(f"{shipment_id}\0{expected_version}".encode()).hexdigest()
         with self._sessions.begin() as session:
+            if session.get(User, actor_id, with_for_update=True) is None:
+                raise ShipmentPermissionDenied("actor not found")
             shipment = self._receipt_shipment(session, shipment_id)
             before = self._receipt_snapshot(session, shipment_id)
+            existing = session.scalar(select(IdempotencyRecord).where(
+                IdempotencyRecord.scope == scope,
+                IdempotencyRecord.idempotency_key == idempotency_key,
+            ))
+            if existing is not None and existing.request_hash != request_hash:
+                raise ShipmentConflict("Idempotency-Key was used with different receipt details")
             if expected_version != before.version:
                 raise ShipmentConflict("核对版本已变化，请重新读取后再确认")
             if before.status == "CONFIRMED":
                 return self._detail_snapshot(session, shipment)
+            if existing is not None:
+                raise ShipmentConflict("收货确认结果与幂等记录不一致")
             self._require_receivable(session, shipment)
             current = datetime.now(UTC)
+            session.add(IdempotencyRecord(
+                scope=scope, idempotency_key=idempotency_key,
+                status="completed", request_hash=request_hash,
+                result={"shipmentId": shipment_id, "version": expected_version},
+            ))
             receipt = session.get(ShipmentReceipt, shipment_id)
             if receipt is None:
                 receipt = ShipmentReceipt(
@@ -473,7 +494,7 @@ class ShipmentService:
                         target_type="order",
                         target_id=order.order_id,
                         actor_id=actor_id,
-                        source_terminal="admin-web",
+                        source_terminal=source_terminal,
                         changes={
                             "shipmentId": shipment_id,
                             "orderAssignmentId": assignment_id,
@@ -503,7 +524,7 @@ class ShipmentService:
                         action="REOPEN",
                         reason=f"发货单 {shipment.shipment_no} 确认少收",
                         actor_id=actor_id,
-                        source_terminal="admin-web",
+                        source_terminal=source_terminal,
                         before_lifecycle="COMPLETED",
                         after_lifecycle="PUBLISHED",
                         quantity_snapshot={"shipmentId": shipment_id, "delta": delta},
@@ -520,7 +541,7 @@ class ShipmentService:
                     target_type="shipment",
                     target_id=shipment_id,
                     actor_id=actor_id,
-                    source_terminal="admin-web",
+                    source_terminal=source_terminal,
                     changes={
                         "version": receipt.version,
                         "before": {str(i.item_id): i.quantity for i in originals},
@@ -1489,6 +1510,7 @@ class ShipmentService:
         reason: str,
         idempotency_key: str,
         now: datetime | None = None,
+        source_terminal: str = "admin-web",
     ) -> tuple[ShipmentReturnEventSnapshot, bool]:
         normalized_reason = reason.strip()
         if not normalized_reason:
@@ -1512,6 +1534,18 @@ class ShipmentService:
             if existing is not None:
                 if existing.shipment_id != shipment_id:
                     raise ShipmentConflict("Idempotency-Key was used for another shipment")
+                existing_lines = {
+                    line.shipment_line_id: line.quantity
+                    for line in session.scalars(
+                        select(ShipmentReturnLine).where(
+                            ShipmentReturnLine.event_id == existing.event_id
+                        )
+                    )
+                }
+                if existing.reason != normalized_reason or existing_lines != {
+                    line.shipment_line_id: line.quantity for line in lines
+                }:
+                    raise ShipmentConflict("Idempotency-Key was used with different return details")
                 return self._return_event_snapshot(session, existing), False
 
             shipment = session.scalar(
@@ -1619,7 +1653,7 @@ class ShipmentService:
                             "reason": normalized_reason,
                         },
                         actor_id=actor_id,
-                        source_terminal="admin-web",
+                        source_terminal=source_terminal,
                     )
                 )
             for order in affected_orders.values():
@@ -1637,7 +1671,7 @@ class ShipmentService:
                         action="REOPEN",
                         reason=f"发货单 {shipment.shipment_no or shipment.shipment_id} 发生退回",
                         actor_id=actor_id,
-                        source_terminal="admin-web",
+                        source_terminal=source_terminal,
                         before_lifecycle="COMPLETED",
                         after_lifecycle="PUBLISHED",
                         quantity_snapshot={"shipmentId": shipment_id, "eventId": event.event_id},
@@ -1755,10 +1789,49 @@ class ShipmentService:
         if self._workbook_renderer is None:
             raise ShipmentValidationError("shipment workbook renderer is unavailable")
         with self._sessions() as session:
-            factory = session.get(Factory, factory_id)
-            if factory is None:
-                raise ShipmentNotFound("shipment factory not found")
-            rows = session.execute(
+            factory, rows = self._daily_shipment_rows(session, factory_id, business_date)
+            shipment_ids = {shipment.shipment_id for shipment, *_rest in rows}
+            total_boxes = len(
+                {
+                    (shipment.shipment_id, box.box_no)
+                    for shipment, box, _item, _line, _item_no in rows
+                }
+            )
+            snapshot = DailyShipmentWorkbookSnapshot(
+                factory_name=factory.factory_name or factory_id,
+                business_date=business_date,
+                shipment_count=len(shipment_ids),
+                total_boxes=total_boxes,
+                lines=[
+                    DailyShipmentWorkbookLine(
+                        shipment_no=shipment.shipment_no or "",
+                        order_no=line.order_no_snapshot,
+                        box_no=box.box_no,
+                        item_no=item_no,
+                        product_name=line.product_name_snapshot,
+                        properties_value=line.properties_value_snapshot,
+                        packed_quantity=item.quantity,
+                    )
+                    for shipment, box, item, line, item_no in rows
+                ],
+            )
+            safe_factory_name = re.sub(
+                r"[\\/:*?\"<>|\x00-\x1f]+", "_", factory.factory_name or factory_id
+            )
+            return ShipmentExportResult(
+                filename=f"{safe_factory_name}_{business_date:%Y-%m-%d}_发货汇总.xlsx",
+                content=self._workbook_renderer.render_daily(snapshot),
+            )
+
+    @staticmethod
+    def _daily_shipment_rows(
+        session: Session, factory_id: str, business_date: date
+    ) -> tuple[Factory, list[Any]]:
+        factory = session.get(Factory, factory_id)
+        if factory is None:
+            raise ShipmentNotFound("shipment factory not found")
+        rows = list(
+            session.execute(
                 select(
                     Shipment,
                     ShipmentBox,
@@ -1796,40 +1869,94 @@ class ShipmentService:
                 )
                 .order_by(Shipment.shipment_no, ShipmentBox.box_no, ShipmentBoxItem.item_id)
             ).all()
-            if not rows:
-                raise ShipmentNotFound("daily shipment summary not found")
-            shipment_ids = {shipment.shipment_id for shipment, *_rest in rows}
-            total_boxes = len(
-                {
-                    (shipment.shipment_id, box.box_no)
-                    for shipment, box, _item, _line, _item_no in rows
-                }
+        )
+        if not rows:
+            raise ShipmentNotFound("daily shipment summary not found")
+        return factory, rows
+
+    def get_daily_shipment_summary(
+        self, *, factory_id: str, business_date: date
+    ) -> dict[str, Any]:
+        with self._sessions() as session:
+            return self._daily_summary_in_session(session, factory_id, business_date)
+
+    def _daily_summary_in_session(
+        self, session: Session, factory_id: str, business_date: date
+    ) -> dict[str, Any]:
+        factory, rows = self._daily_shipment_rows(session, factory_id, business_date)
+        box_item_ids = [item.item_id for _shipment, _box, item, _line, _number in rows]
+        confirmed = {
+            item.box_item_id: item.quantity
+            for item in session.scalars(
+                select(ShipmentReceiptItem)
+                .join(
+                    ShipmentReceipt,
+                    ShipmentReceipt.shipment_id == ShipmentReceiptItem.shipment_id,
+                )
+                .where(
+                    ShipmentReceipt.status == "CONFIRMED",
+                    ShipmentReceiptItem.box_item_id.in_(box_item_ids),
+                )
             )
-            snapshot = DailyShipmentWorkbookSnapshot(
-                factory_name=factory.factory_name or factory_id,
-                business_date=business_date,
-                shipment_count=len(shipment_ids),
-                total_boxes=total_boxes,
-                lines=[
-                    DailyShipmentWorkbookLine(
-                        shipment_no=shipment.shipment_no or "",
-                        order_no=line.order_no_snapshot,
-                        box_no=box.box_no,
-                        item_no=item_no,
-                        product_name=line.product_name_snapshot,
-                        properties_value=line.properties_value_snapshot,
-                        packed_quantity=item.quantity,
-                    )
-                    for shipment, box, item, line, item_no in rows
-                ],
-            )
-            safe_factory_name = re.sub(
-                r"[\\/:*?\"<>|\x00-\x1f]+", "_", factory.factory_name or factory_id
-            )
-            return ShipmentExportResult(
-                filename=f"{safe_factory_name}_{business_date:%Y-%m-%d}_发货汇总.xlsx",
-                content=self._workbook_renderer.render_daily(snapshot),
-            )
+        }
+        items = [
+            {
+                "shipmentId": shipment.shipment_id,
+                "shipmentNo": shipment.shipment_no,
+                "boxNo": box.box_no,
+                "boxItemId": item.item_id,
+                "shipmentLineId": line.line_id,
+                "orderNo": line.order_no_snapshot,
+                "itemNumber": item_no,
+                "productName": line.product_name_snapshot,
+                "propertiesValue": line.properties_value_snapshot,
+                "originalQuantity": item.quantity,
+                "confirmedQuantity": confirmed.get(item.item_id),
+            }
+            for shipment, box, item, line, item_no in rows
+        ]
+        return {
+            "factoryId": factory_id,
+            "factoryName": factory.factory_name or factory_id,
+            "businessDate": business_date.isoformat(),
+            "timezone": "Asia/Shanghai",
+            "basis": "original_reported",
+            "shipmentCount": len({row["shipmentId"] for row in items}),
+            "totalBoxes": len({(row["shipmentId"], row["boxNo"]) for row in items}),
+            "totalOriginalQuantity": sum(row["originalQuantity"] for row in items),
+            "items": items,
+        }
+
+    def list_daily_shipment_summaries(self, *, business_date: date) -> dict[str, Any]:
+        with self._sessions() as session:
+            factory_ids = list(session.scalars(
+                select(Shipment.factory_id)
+                .join(ShipmentBox, ShipmentBox.shipment_id == Shipment.shipment_id)
+                .join(ShipmentBoxItem, ShipmentBoxItem.box_id == ShipmentBox.box_id)
+                .where(
+                    Shipment.business_date == business_date,
+                    Shipment.status.in_(("SHIPPED", "VOID_PENDING")),
+                    Shipment.source_shipment_id.is_(None),
+                    Shipment.deleted_at.is_(None),
+                    Shipment.shipment_no.is_not(None),
+                )
+                .distinct()
+                .order_by(Shipment.factory_id)
+            ))
+            factories = [
+                self._daily_summary_in_session(session, factory_id, business_date)
+                for factory_id in factory_ids
+            ]
+        return {
+            "businessDate": business_date.isoformat(),
+            "timezone": "Asia/Shanghai",
+            "basis": "original_reported",
+            "factoryCount": len(factories),
+            "shipmentCount": sum(item["shipmentCount"] for item in factories),
+            "totalBoxes": sum(item["totalBoxes"] for item in factories),
+            "totalOriginalQuantity": sum(item["totalOriginalQuantity"] for item in factories),
+            "factories": factories,
+        }
 
     def has_pending_void_requests(self, *, order_id: str) -> bool:
         with self._sessions() as session:

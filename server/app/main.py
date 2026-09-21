@@ -410,6 +410,7 @@ def create_app(
         mcp_server, transport_security = create_agent_mcp(
             oauth=oauth, identity=identity_service,
             orders=order_service, imports=order_import_service,
+            shipments=shipment_service,
             source_updates=source_updates, dispatch=dispatch_svc,
             contracts=contract_service,
             repair_workflow=repair_workflow, repair_previews=repair_previews,

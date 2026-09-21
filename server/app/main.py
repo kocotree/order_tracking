@@ -410,6 +410,8 @@ def create_app(
         mcp_server, transport_security = create_agent_mcp(
             oauth=oauth, identity=identity_service,
             orders=order_service, imports=order_import_service,
+            source_updates=source_updates, dispatch=dispatch_svc,
+            contracts=contract_service,
         )
         mcp_http_app = mcp_server.streamable_http_app(
             stateless_http=True, json_response=True,

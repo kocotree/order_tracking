@@ -27,7 +27,7 @@ from app.db.models import (
     ProductVariant,
     User,
 )
-from app.modules.orders.service import TRACKERS
+from app.modules.orders.service import TRACKERS, OrderAuditSnapshot, OrderService
 from app.modules.product_sync.categories import PRODUCT_CATEGORY_ALLOWLIST, category_summary
 
 ACTIVE_KEY = "feishu-order-import"
@@ -744,6 +744,30 @@ class OrderImportService:
             if candidate is None or candidate.status == "EXCLUDED":
                 raise ValueError("candidate not found")
             return self._candidate_snapshot(session, candidate)
+
+    def list_candidate_audit(
+        self, *, actor_id: str, candidate_id: str
+    ) -> list[OrderAuditSnapshot]:
+        with self._session_factory() as session:
+            self._require_admin(session, actor_id)
+            if session.get(OrderImportCandidate, candidate_id) is None:
+                raise ValueError("candidate not found")
+            entries = session.scalars(
+                select(AuditLog).where(
+                    AuditLog.target_type == "order_import_candidate",
+                    AuditLog.target_id == candidate_id,
+                ).order_by(AuditLog.id.desc())
+            )
+            result = []
+            for item in entries:
+                actor = session.get(User, item.actor_id) if item.actor_id else None
+                result.append(OrderAuditSnapshot(
+                    action=item.action, changes=item.changes, actor_id=item.actor_id,
+                    operator_name=actor.feishu_display_name if actor else "系统",
+                    content=OrderService._audit_content(item.action, item.changes),
+                    source_terminal=item.source_terminal, created_at=item.created_at,
+                ))
+            return result
 
     def save_candidate_date(
         self,

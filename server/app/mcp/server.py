@@ -20,10 +20,14 @@ from app.api.orders import (
     _audit_response,
     _order_response,
 )
+from app.mcp.order_tools import register_order_tools
+from app.modules.contracts import ContractService
 from app.modules.identity_access.agent_oauth import AgentOAuthService
 from app.modules.identity_access.service import IdentityAccessService
 from app.modules.order_import import OrderImportService
 from app.modules.orders import OrderService
+from app.modules.orders.dispatch import OrderDispatchService
+from app.modules.orders.source_update import OrderSourceUpdateService
 
 
 class AgentTokenVerifier(TokenVerifier):
@@ -49,6 +53,9 @@ def create_agent_mcp(
     identity: IdentityAccessService,
     orders: OrderService,
     imports: OrderImportService | None,
+    source_updates: OrderSourceUpdateService,
+    dispatch: OrderDispatchService,
+    contracts: ContractService,
 ) -> tuple[MCPServer, TransportSecuritySettings]:
     origin = oauth.resource.removesuffix("/mcp")
     host = AnyHttpUrl(oauth.resource).host
@@ -87,6 +94,11 @@ def create_agent_mcp(
             payload["requestId"] = request_id
             return payload
         return {"requestId": request_id, "result": result}
+
+    register_order_tools(
+        mcp, read, orders=orders, imports=imports,
+        source_updates=source_updates, dispatch=dispatch, contracts=contracts,
+    )
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     def get_me() -> dict[str, Any]:

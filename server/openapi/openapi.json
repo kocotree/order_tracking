@@ -11636,6 +11636,62 @@
         ]
       }
     },
+    "/api/v1/agent-files/{file_id}/download": {
+      "get": {
+        "operationId": "download_agent_file_api_v1_agent_files__file_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Agent File",
+        "tags": [
+          "repair-files"
+        ]
+      }
+    },
     "/api/v1/auth/feishu/callback": {
       "get": {
         "operationId": "complete_feishu_login_api_v1_auth_feishu_callback_get",

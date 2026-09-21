@@ -11,6 +11,7 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.private_files import PrivateFileStore
 from app.api.identity import _user_response
@@ -22,6 +23,7 @@ from app.api.orders import (
     _order_response,
 )
 from app.mcp.directory import register_directory_tools
+from app.mcp.repairs import register_repair_tools
 from app.modules.factory_access import FactoryAccessService
 from app.modules.identity_access.agent_oauth import AgentOAuthService
 from app.modules.identity_access.service import IdentityAccessService
@@ -29,6 +31,10 @@ from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.order_import import OrderImportService
 from app.modules.orders import OrderService
 from app.modules.product_sync import ProductCatalogService
+from app.modules.repairs.confirmation import RepairConfirmationService
+from app.modules.repairs.preview import RepairPreviewService
+from app.modules.repairs.returns import RepairReturnService
+from app.modules.repairs.workflow import RepairWorkflowService
 
 
 class AgentTokenVerifier(TokenVerifier):
@@ -54,6 +60,12 @@ def create_agent_mcp(
     identity: IdentityAccessService,
     orders: OrderService,
     imports: OrderImportService | None,
+    repair_workflow: RepairWorkflowService,
+    repair_previews: RepairPreviewService,
+    repair_confirmations: RepairConfirmationService,
+    repair_returns: RepairReturnService,
+    sessions: sessionmaker[Session],
+    file_hosts: frozenset[str],
     factories: FactoryAccessService,
     products: ProductCatalogService,
     notifications: NotificationsAuditService,
@@ -96,7 +108,7 @@ def create_agent_mcp(
             payload["requestId"] = request_id
             return payload
         if isinstance(result, dict):
-            return {**result, "requestId": request_id}
+            return {"requestId": request_id, **result}
         return {"requestId": request_id, "result": result}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -184,6 +196,11 @@ def create_agent_mcp(
         identity.revoke_shared(auth_id=auth_id, user_id=user_id, request_id=request_id)
         return {"revoked": True, "requestId": request_id}
 
+    register_repair_tools(
+        mcp, read=read, workflow=repair_workflow, previews=repair_previews,
+        confirmations=repair_confirmations, returns=repair_returns,
+        sessions=sessions, origin=origin, file_hosts=file_hosts,
+    )
     register_directory_tools(
         mcp, read, identity=identity, factories=factories, products=products,
         notifications=notifications, file_store=file_store,

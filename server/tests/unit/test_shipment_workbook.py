@@ -1,10 +1,13 @@
 from datetime import date
 from io import BytesIO
 from pathlib import Path
+from time import sleep
 
 from openpyxl import load_workbook
 
 from app.modules.shipments.workbook import (
+    DailyShipmentWorkbookLine,
+    DailyShipmentWorkbookSnapshot,
     ShipmentWorkbookLine,
     ShipmentWorkbookRenderer,
     ShipmentWorkbookSnapshot,
@@ -115,3 +118,35 @@ def test_any_mixed_box_keeps_each_box_line_and_adds_totals() -> None:
         None,
         12,
     ]
+
+
+def test_repeated_exports_have_identical_bytes() -> None:
+    template = Path(__file__).resolve().parents[3] / "docs/reference/厂家发货模版.xlsx"
+    renderer = ShipmentWorkbookRenderer(template_path=template)
+    shipment = ShipmentWorkbookSnapshot(
+        business_date=date(2026, 9, 21),
+        total_boxes=1,
+        lines=[ShipmentWorkbookLine("ORDER-A", "1", "ITEM-001", "遮阳帽", "米白", 6)],
+    )
+    daily = DailyShipmentWorkbookSnapshot(
+        factory_name="工厂A",
+        business_date=date(2026, 9, 21),
+        shipment_count=1,
+        total_boxes=1,
+        lines=[
+            DailyShipmentWorkbookLine(
+                "SHIP-001",
+                "ORDER-A",
+                1,
+                "ITEM-001",
+                "遮阳帽",
+                "米白",
+                6,
+            )
+        ],
+    )
+    first_shipment = renderer.render(shipment)
+    first_daily = renderer.render_daily(daily)
+    sleep(2.1)
+    assert renderer.render(shipment) == first_shipment
+    assert renderer.render_daily(daily) == first_daily

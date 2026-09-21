@@ -1,11 +1,14 @@
 from copy import copy
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, time
 from io import BytesIO
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from openpyxl import load_workbook
+from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
+from openpyxl.writer.excel import ExcelWriter
 
 
 class ShipmentWorkbookError(RuntimeError):
@@ -69,9 +72,7 @@ class ShipmentWorkbookRenderer:
         summary = workbook["汇总"]
         self._write_detail(detail, snapshot)
         self._write_summary(summary, snapshot)
-        output = BytesIO()
-        workbook.save(output)
-        return output.getvalue()
+        return self._save(workbook, snapshot.business_date)
 
     def render_daily(self, snapshot: DailyShipmentWorkbookSnapshot) -> bytes:
         if not snapshot.lines:
@@ -99,9 +100,20 @@ class ShipmentWorkbookRenderer:
                 ],
             ),
         )
+        return self._save(workbook, snapshot.business_date)
+
+    @staticmethod
+    def _save(workbook: Workbook, business_date: date) -> bytes:
+        workbook.properties.modified = datetime.combine(business_date, time.min)
         output = BytesIO()
-        workbook.save(output)
-        return output.getvalue()
+        ExcelWriter(workbook, ZipFile(output, "w", ZIP_DEFLATED, allowZip64=True)).save()
+        normalized = BytesIO()
+        with ZipFile(output) as source, ZipFile(normalized, "w") as target:
+            for entry in source.infolist():
+                content = source.read(entry)
+                entry.date_time = (1980, 1, 1, 0, 0, 0)
+                target.writestr(entry, content)
+        return normalized.getvalue()
 
     @classmethod
     def _prepare_detail_rows(cls, sheet: Worksheet, line_count: int) -> None:

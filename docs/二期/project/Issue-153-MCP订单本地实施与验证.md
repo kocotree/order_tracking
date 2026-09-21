@@ -20,7 +20,7 @@
 | 完成、带原因重开 | `complete_order`、`reopen_order` | `OrderService`；`test_agent_order_tools.py`、`test_order_dispatch_rules.py` |
 | 合同资格、首次及重复导出、受权下载 | `list_order_contracts`、`export_contract`、`get_contract_download` | `ContractService` 稳定编号、模板、快照和本人文件元数据；`test_agent_order_tools.py`、`test_contracts.py` |
 
-工具经 #151 的 MCP 令牌校验取得本人管理员 ID，写入继续走服务层权限、版本、状态、事务、幂等和通知逻辑。批量候选默认有任一预检失败即不提交；明确 `allow_partial` 时只执行合格项。执行中出现版本冲突会报告已成功、失败、未执行项。已导入候选重试回读原订单 ID。
+工具经 #151 的 MCP 令牌校验取得本人管理员 ID，写入继续走服务层权限、版本、状态、事务、幂等和通知逻辑。批量候选默认有任一预检失败即不提交；明确 `allow_partial` 时只执行合格项。执行中出现版本冲突会报告已成功、失败、未执行项；数据库异常或超时会停止并标记结果待核实。已导入候选重试回读原订单 ID。合同同幂等键传入不同签订日期时拒绝覆盖。
 
 ## 验证
 

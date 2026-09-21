@@ -193,6 +193,8 @@ class ContractService:
                     or existing_contract.factory_id != factory_id
                 ):
                     raise ContractConflict("idempotency key belongs to another export")
+                if signing_date is not None and signing_date != existing_contract.signing_date:
+                    raise ContractConflict("idempotency key belongs to another signing date")
                 export_id = existing_export.export_id
                 snapshot = dict(existing_export.export_snapshot)
                 template_version = existing_export.template_version

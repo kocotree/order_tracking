@@ -5,6 +5,7 @@ from typing import Any
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import Field
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.contracts import ContractFactoryStatusResponse
 from app.api.order_import import _candidate_response, _run_response
@@ -140,7 +141,11 @@ def register_order_tools(
         def execute(uid: str, rid: str) -> dict[str, Any]:
             checked: list[tuple[str, int, str | None, str | None]] = []
             for candidate_id, version in targets:
-                candidate = imports.get_candidate(actor_id=uid, candidate_id=candidate_id)
+                try:
+                    candidate = imports.get_candidate(actor_id=uid, candidate_id=candidate_id)
+                except ValueError as failure:
+                    checked.append((candidate_id, version, str(failure), None))
+                    continue
                 error = None
                 imported_order_id = candidate.imported_order_id
                 if imported_order_id and candidate.status == "IMPORTED":
@@ -177,6 +182,10 @@ def register_order_tools(
                 except ValueError as failure:
                     results.append({**result, "status": "failed", "error": str(failure)})
                     stopped = not allow_partial
+                except (SQLAlchemyError, TimeoutError):
+                    results.append({**result, "status": "needsReconciliation",
+                                    "error": "结果待核实，请以原候选 ID 重查后重试"})
+                    stopped = True
                 else:
                     results.append({**result, "status": "succeeded", "orderId": order_id})
             return {"items": results}

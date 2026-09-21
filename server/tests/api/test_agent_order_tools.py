@@ -106,6 +106,11 @@ def test_agent_order_draft_publish_and_contract_qualification(
         assert exported.get("isError") is not True
         first = exported["structuredContent"]
         assert first["status"] == "READY"
+        changed_date = _call(client, access, "export_contract", {
+            "order_id": order_id, "factory_id": "order-api-factory-a",
+            "signing_date": "2026-09-22", "idempotency_key": "mcp-153-export-1",
+        })
+        assert changed_date["isError"] is True
         repeated_export = _call(client, access, "export_contract", {
             "order_id": order_id, "factory_id": "order-api-factory-a",
             "idempotency_key": "mcp-153-export-2",

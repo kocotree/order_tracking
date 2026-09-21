@@ -19,6 +19,8 @@ class Imports:
         self.confirmed = []
 
     def get_candidate(self, *, candidate_id, **_kwargs):
+        if candidate_id == "missing":
+            raise ValueError("candidate not found")
         return SimpleNamespace(
             status="PENDING", version=1,
             validation_state="INVALID" if candidate_id == "bad" else "READY",
@@ -29,6 +31,8 @@ class Imports:
         self.confirmed.append(candidate_id)
         if candidate_id == "conflict":
             raise ValueError("candidate version changed")
+        if candidate_id == "timeout":
+            raise TimeoutError
         return f"order-{candidate_id}"
 
 
@@ -58,3 +62,13 @@ def test_import_batch_prechecks_all_and_reports_committed_items() -> None:
         "succeeded", "failed", "notExecuted",
     ]
     assert imports.confirmed == ["good", "good", "conflict"]
+
+    missing = run([{"candidateId": "missing", "version": 1},
+                   {"candidateId": "last", "version": 1}], allow_partial=True)
+    assert [item["status"] for item in missing["items"]] == ["notExecuted", "succeeded"]
+
+    uncertain = run([{"candidateId": "timeout", "version": 1},
+                     {"candidateId": "last", "version": 1}], allow_partial=True)
+    assert [item["status"] for item in uncertain["items"]] == [
+        "needsReconciliation", "notExecuted",
+    ]

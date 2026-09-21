@@ -12,6 +12,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 
+from app.adapters.private_files import PrivateFileStore
 from app.api.identity import _user_response
 from app.api.orders import (
     AuditLogListResponse,
@@ -20,10 +21,14 @@ from app.api.orders import (
     _audit_response,
     _order_response,
 )
+from app.mcp.directory import register_directory_tools
+from app.modules.factory_access import FactoryAccessService
 from app.modules.identity_access.agent_oauth import AgentOAuthService
 from app.modules.identity_access.service import IdentityAccessService
+from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.order_import import OrderImportService
 from app.modules.orders import OrderService
+from app.modules.product_sync import ProductCatalogService
 
 
 class AgentTokenVerifier(TokenVerifier):
@@ -49,6 +54,10 @@ def create_agent_mcp(
     identity: IdentityAccessService,
     orders: OrderService,
     imports: OrderImportService | None,
+    factories: FactoryAccessService,
+    products: ProductCatalogService,
+    notifications: NotificationsAuditService,
+    file_store: PrivateFileStore,
 ) -> tuple[MCPServer, TransportSecuritySettings]:
     origin = oauth.resource.removesuffix("/mcp")
     host = AnyHttpUrl(oauth.resource).host
@@ -86,6 +95,8 @@ def create_agent_mcp(
             payload = cast(dict[str, Any], result.model_dump(mode="json", by_alias=True))
             payload["requestId"] = request_id
             return payload
+        if isinstance(result, dict):
+            return {**result, "requestId": request_id}
         return {"requestId": request_id, "result": result}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -173,4 +184,8 @@ def create_agent_mcp(
         identity.revoke_shared(auth_id=auth_id, user_id=user_id, request_id=request_id)
         return {"revoked": True, "requestId": request_id}
 
+    register_directory_tools(
+        mcp, read, identity=identity, factories=factories, products=products,
+        notifications=notifications, file_store=file_store,
+    )
     return mcp, transport_security

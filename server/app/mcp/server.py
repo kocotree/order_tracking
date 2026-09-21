@@ -11,6 +11,7 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.identity import _user_response
 from app.api.orders import (
@@ -20,11 +21,16 @@ from app.api.orders import (
     _audit_response,
     _order_response,
 )
+from app.mcp.repairs import register_repair_tools
 from app.mcp.shipments import register_shipment_tools
 from app.modules.identity_access.agent_oauth import AgentOAuthService
 from app.modules.identity_access.service import IdentityAccessService
 from app.modules.order_import import OrderImportService
 from app.modules.orders import OrderService
+from app.modules.repairs.confirmation import RepairConfirmationService
+from app.modules.repairs.preview import RepairPreviewService
+from app.modules.repairs.returns import RepairReturnService
+from app.modules.repairs.workflow import RepairWorkflowService
 from app.modules.shipments import ShipmentService
 
 
@@ -52,6 +58,12 @@ def create_agent_mcp(
     orders: OrderService,
     imports: OrderImportService | None,
     shipments: ShipmentService,
+    repair_workflow: RepairWorkflowService,
+    repair_previews: RepairPreviewService,
+    repair_confirmations: RepairConfirmationService,
+    repair_returns: RepairReturnService,
+    sessions: sessionmaker[Session],
+    file_hosts: frozenset[str],
 ) -> tuple[MCPServer, TransportSecuritySettings]:
     origin = oauth.resource.removesuffix("/mcp")
     host = AnyHttpUrl(oauth.resource).host
@@ -178,5 +190,10 @@ def create_agent_mcp(
         identity.revoke_shared(auth_id=auth_id, user_id=user_id, request_id=request_id)
         return {"revoked": True, "requestId": request_id}
 
-    register_shipment_tools(mcp, shipments, read)
+    register_repair_tools(
+        mcp, read=read, workflow=repair_workflow, previews=repair_previews,
+        confirmations=repair_confirmations, returns=repair_returns,
+        sessions=sessions, origin=origin, file_hosts=file_hosts,
+    )
+    register_shipment_tools(mcp, shipments, read, origin=origin)
     return mcp, transport_security

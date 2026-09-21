@@ -13,6 +13,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -805,5 +806,19 @@ def create_repair_router(
                     )
                 },
             )
+
+    @router.get("/agent-files/{file_id}/download", tags=["repair-files"])
+    def download_agent_file(
+        file_id: int,
+        web_token: str | None = Cookie(default=None, alias="ot_web_session"),
+    ) -> Response:
+        path = f"/api/v1/agent-files/{file_id}/download"
+        login = RedirectResponse(f"/login?returnTo={quote(path, safe='')}", status_code=303)
+        if web_token is None:
+            return login
+        try:
+            return download_file(file_id, web_token=web_token, authorization=None)
+        except SessionInvalid:
+            return login
 
     return router

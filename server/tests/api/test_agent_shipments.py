@@ -1,5 +1,6 @@
 from datetime import date
 from hashlib import sha256
+from urllib.parse import urlsplit
 
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
@@ -89,18 +90,20 @@ def test_mcp_shipment_receipt_return_matches_web_and_original_daily_export(
         single_export = _call(client, access, "export_shipment", {
             "shipment_id": shipment_id,
         })["structuredContent"]
+        single_path = urlsplit(single_export["downloadUrl"]).path
         assert single_export["sha256"] == sha256(
-            admin.get(single_export["downloadPath"]).content
+            admin.get(single_path).content
         ).hexdigest()
         daily_export = _call(client, access, "export_daily_shipments", daily_args)[
             "structuredContent"
         ]
+        daily_path = urlsplit(daily_export["downloadUrl"]).path
         assert daily_export["sha256"] == sha256(
-            admin.get(daily_export["downloadPath"]).content
+            admin.get(daily_path).content
         ).hexdigest()
         client.cookies.clear()
         assert client.get(
-            single_export["downloadPath"], follow_redirects=False
+            single_path, follow_redirects=False
         ).status_code == 303
         receipt = _call(client, access, "get_receipt", {"shipment_id": shipment_id})
         items = receipt["structuredContent"]["items"]

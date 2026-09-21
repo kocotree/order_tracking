@@ -15,6 +15,7 @@ from app.api.shipments import (
     _receipt_response,
     _return_event_response,
 )
+from app.mcp.files import download_descriptor
 from app.modules.shipments import ShipmentReturnInput, ShipmentService, ShipmentValidationError
 from app.modules.shipments.service import ReceiptItemInput
 
@@ -23,6 +24,8 @@ def register_shipment_tools(
     mcp: MCPServer,
     shipments: ShipmentService,
     execute: Callable[[str, Callable[[str, str], Any]], dict[str, Any]],
+    *,
+    origin: str,
 ) -> None:
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     def list_shipments(
@@ -96,12 +99,15 @@ def register_shipment_tools(
         def query(_user: str, _request: str) -> dict[str, Any]:
             result = shipments.export_shipment(shipment_id=shipment_id)
             return {
-                "fileName": result.filename,
-                "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "sizeBytes": len(result.content),
-                "sha256": sha256(result.content).hexdigest(),
-                "downloadPath": f"/api/v1/agent-shipments/{quote(shipment_id, safe='')}/export",
+                "shipmentId": shipment_id,
                 "basis": "original_reported",
+                **download_descriptor(
+                    origin=origin,
+                    path=f"/api/v1/agent-shipments/{quote(shipment_id, safe='')}/export",
+                    filename=result.filename,
+                    size_bytes=len(result.content),
+                    sha256=sha256(result.content).hexdigest(),
+                ),
             }
         return execute("export_shipment", query)
 
@@ -113,15 +119,19 @@ def register_shipment_tools(
                 factory_id=factory_id, business_date=business_date,
             )
             return {
-                "fileName": result.filename,
-                "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "sizeBytes": len(result.content),
-                "sha256": sha256(result.content).hexdigest(),
-                "downloadPath": (
-                    f"/api/v1/agent-shipments/daily-export/"
-                    f"{quote(factory_id, safe='')}/{business_date}"
-                ),
+                "factoryId": factory_id,
+                "businessDate": business_date.isoformat(),
                 "basis": "original_reported",
+                **download_descriptor(
+                    origin=origin,
+                    path=(
+                        f"/api/v1/agent-shipments/daily-export/"
+                        f"{quote(factory_id, safe='')}/{business_date}"
+                    ),
+                    filename=result.filename,
+                    size_bytes=len(result.content),
+                    sha256=sha256(result.content).hexdigest(),
+                ),
             }
         return execute("export_daily_shipments", query)
 

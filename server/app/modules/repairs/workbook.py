@@ -2,10 +2,11 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
 from xml.etree import ElementTree
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.worksheet.worksheet import Worksheet
 
 InspectionWorkbookIssue = dict[str, str | int]
@@ -74,8 +75,17 @@ class InspectionWorkbookParser:
                     },
                 )
             )
-        self._validate_archive(content)
-        workbook = load_workbook(BytesIO(content), data_only=False, read_only=False)
+        try:
+            self._validate_archive(content)
+            workbook = load_workbook(BytesIO(content), data_only=False, read_only=False)
+        except (BadZipFile, InvalidFileException, KeyError, ElementTree.ParseError) as error:
+            raise InspectionWorkbookValidationError(
+                ({"code": "invalid_workbook", "message": "质检 Excel 文件已损坏或格式错误"},)
+            ) from error
+        if "Sheet1" not in workbook or workbook["Sheet1"].max_row < 2:
+            raise InspectionWorkbookValidationError(
+                ({"code": "invalid_workbook", "message": "质检 Excel 缺少 Sheet1 明细"},)
+            )
         for extra_sheet in workbook.worksheets:
             if extra_sheet.title == "Sheet1":
                 continue

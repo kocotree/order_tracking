@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     admin_web_base_url: str = ""
     mcp_public_url: str = ""
     mcp_client_id: str = ""
+    mcp_file_hosts: str = ""
     ops_alert_recipient_user_id: str = ""
     notification_due_scan_hour: int = 9
 
@@ -94,6 +95,13 @@ class Settings(BaseSettings):
                 or (mcp_url.scheme not in {"https", "http"})
             ):
                 raise ValueError("MCP public URL must identify the /mcp endpoint")
+        if self.mcp_file_hosts and not self.mcp_public_url:
+            raise ValueError("MCP file hosts require the MCP endpoint")
+        if any(
+            not host or ":" in host or "/" in host or "*" in host
+            for host in self.mcp_file_hosts.split(",")
+        ) and self.mcp_file_hosts:
+            raise ValueError("MCP file hosts must be exact hostnames")
         if deployment_env:
             database = urlparse(self.database_url)
             if database.username == "root" or database.hostname in {
@@ -222,6 +230,10 @@ class Settings(BaseSettings):
             for subject in self.feishu_super_admin_subjects.split(",")
             if subject.strip()
         )
+
+    @property
+    def mcp_file_host_set(self) -> frozenset[str]:
+        return frozenset(host.strip().lower() for host in self.mcp_file_hosts.split(",") if host)
 
     @property
     def wechat_notification_template_ids(self) -> dict[str, str]:

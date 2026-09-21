@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     jst_product_retry_attempts: int = 3
     jst_product_retry_base_delay_seconds: float = 1.0
     admin_web_base_url: str = ""
+    mcp_public_url: str = ""
+    mcp_client_id: str = ""
     ops_alert_recipient_user_id: str = ""
     notification_due_scan_hour: int = 9
 
@@ -79,6 +81,19 @@ class Settings(BaseSettings):
             raise ValueError(
                 "secure web cookies are required in shared_test and production"
             )
+        if bool(self.mcp_public_url) != bool(self.mcp_client_id):
+            raise ValueError("MCP public URL and client ID must be configured together")
+        if self.mcp_public_url:
+            mcp_url = urlparse(self.mcp_public_url)
+            if (
+                mcp_url.path != "/mcp"
+                or mcp_url.query
+                or mcp_url.fragment
+                or not mcp_url.hostname
+                or (deployment_env and mcp_url.scheme != "https")
+                or (mcp_url.scheme not in {"https", "http"})
+            ):
+                raise ValueError("MCP public URL must identify the /mcp endpoint")
         if deployment_env:
             database = urlparse(self.database_url)
             if database.username == "root" or database.hostname in {

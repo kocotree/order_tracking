@@ -120,6 +120,9 @@ class UserSession(Base):
     user_id: Mapped[str] = mapped_column(
         ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
     )
+    shared_auth_id: Mapped[str | None] = mapped_column(
+        ForeignKey("admin_shared_authorizations.auth_id", ondelete="SET NULL")
+    )
     terminal: Mapped[str] = mapped_column(String(32), nullable=False)
     token_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     refresh_token_digest: Mapped[str | None] = mapped_column(String(64))
@@ -131,6 +134,77 @@ class UserSession(Base):
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
     )
+
+
+class AdminSharedAuthorization(Base):
+    __tablename__ = "admin_shared_authorizations"
+    __table_args__ = (Index("ix_admin_shared_auth_user", "user_id", "revoked_at"),)
+
+    auth_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False
+    )
+    last_activity_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class AgentOAuthRequest(Base):
+    __tablename__ = "agent_oauth_requests"
+    __table_args__ = (Index("code_digest", "code_digest", unique=True),)
+
+    request_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(191), nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(String(500), nullable=False)
+    resource: Mapped[str] = mapped_column(String(500), nullable=False)
+    scope: Mapped[str] = mapped_column(String(191), nullable=False)
+    state: Mapped[str] = mapped_column(String(500), nullable=False)
+    code_challenge: Mapped[str] = mapped_column(String(128), nullable=False)
+    browser_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    code_digest: Mapped[str | None] = mapped_column(String(64))
+    user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="SET NULL")
+    )
+    shared_auth_id: Mapped[str | None] = mapped_column(
+        ForeignKey("admin_shared_authorizations.auth_id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+
+
+class AgentOAuthGrant(Base):
+    __tablename__ = "agent_oauth_grants"
+
+    grant_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False
+    )
+    shared_auth_id: Mapped[str] = mapped_column(
+        ForeignKey("admin_shared_authorizations.auth_id", ondelete="CASCADE"), nullable=False
+    )
+    client_id: Mapped[str] = mapped_column(String(191), nullable=False)
+    resource: Mapped[str] = mapped_column(String(500), nullable=False)
+    scope: Mapped[str] = mapped_column(String(191), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class AgentOAuthToken(Base):
+    __tablename__ = "agent_oauth_tokens"
+    __table_args__ = (Index("token_digest", "token_digest", unique=True),)
+
+    token_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    grant_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_oauth_grants.grant_id", ondelete="CASCADE"), nullable=False
+    )
+    token_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    consumed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    revoked_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
 
 
 class SmsChallenge(Base):

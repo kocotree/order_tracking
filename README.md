@@ -110,6 +110,8 @@ pnpm dev
 
 API 存活和就绪入口分别为 `/health/live`、`/health/ready`。正式客户端只能通过同一套 HTTPS API 访问业务数据，不得直接连接 MySQL。
 
+二期 #151 的 MCP 入口默认关闭。隔离环境联调时同时配置 `ORDER_TRACKING_MCP_PUBLIC_URL`（公开地址，路径为 `/mcp`）和 `ORDER_TRACKING_MCP_CLIENT_ID`（预登记的公开客户端 ID）；共享测试及生产地址必须使用 HTTPS。预登记 ID、Codex 连接方式和共同授权规则见[Codex 管理员接入技术设计](docs/二期/project/Codex管理员接入技术设计.md)。
+
 ## 持续集成与镜像发布
 
 普通分支推送和 Pull Request 会运行 `.github/workflows/ci.yml`，包括仓库空白检查、MySQL 8 迁移与后端测试、管理员网页端和小程序检查，以及 server、admin-web Docker 镜像构建。只有全部任务显示绿色勾才表示 CI 通过。

@@ -16,6 +16,7 @@ from app.adapters.sms import SmsSender
 from app.adapters.wechat import WechatIdentity
 from app.db.models import (
     AdminApplication,
+    AdminSharedAuthorization,
     AuditLog,
     ExternalIdentity,
     FactoryApplication,
@@ -191,6 +192,92 @@ class IdentityAccessService:
     def _digest(self, raw_value: str) -> str:
         return hmac.new(self._token_secret, raw_value.encode(), hashlib.sha256).hexdigest()
 
+    def _shared_for_user(
+        self, session: Session, *, user_id: str, now: datetime
+    ) -> AdminSharedAuthorization:
+        user = session.scalar(select(User).where(User.user_id == user_id).with_for_update())
+        if user is None or user.role != "admin" or not user.is_enabled:
+            raise SessionInvalid("administrator is unavailable")
+        shared = session.scalar(
+            select(AdminSharedAuthorization)
+            .where(
+                AdminSharedAuthorization.user_id == user_id,
+                AdminSharedAuthorization.revoked_at.is_(None),
+            )
+            .order_by(AdminSharedAuthorization.created_at.desc())
+            .with_for_update()
+        )
+        if shared is not None and shared.last_activity_at + timedelta(days=30) > now:
+            return shared
+        if shared is not None:
+            shared.revoked_at = now
+        shared = AdminSharedAuthorization(
+            auth_id=str(uuid4()), user_id=user_id, last_activity_at=now
+        )
+        session.add(shared)
+        return shared
+
+    @staticmethod
+    def _require_shared(
+        session: Session, auth_id: str | None, user_id: str, now: datetime, *, lock: bool = False
+    ) -> AdminSharedAuthorization:
+        if auth_id is None:
+            raise SessionInvalid("shared authorization is missing")
+        statement = select(AdminSharedAuthorization).where(
+            AdminSharedAuthorization.auth_id == auth_id
+        )
+        shared = session.scalar(statement.with_for_update() if lock else statement)
+        if (
+            shared is None
+            or shared.user_id != user_id
+            or shared.revoked_at is not None
+            or shared.last_activity_at + timedelta(days=30) <= now
+        ):
+            raise SessionInvalid("shared authorization is invalid")
+        return shared
+
+    def web_authorization_id(self, *, token: str) -> tuple[str, str]:
+        now = self._now()
+        with self._session_factory() as session:
+            active = session.scalar(
+                select(UserSession).where(
+                    UserSession.token_digest == self._digest(token),
+                    UserSession.terminal == "web",
+                )
+            )
+            if active is None or active.revoked_at is not None or active.expires_at <= now:
+                raise SessionInvalid("web session is invalid")
+            self._require_shared(session, active.shared_auth_id, active.user_id, now)
+            user = session.get(User, active.user_id)
+            if user is None or user.role != "admin" or not user.is_enabled:
+                raise SessionInvalid("administrator is unavailable")
+            return user.user_id, active.shared_auth_id or ""
+
+    def touch_shared(self, *, auth_id: str, user_id: str) -> UserSnapshot:
+        now = self._now()
+        with self._session_factory() as session, session.begin():
+            shared = self._require_shared(session, auth_id, user_id, now, lock=True)
+            user = session.get(User, user_id)
+            if user is None or user.role != "admin" or not user.is_enabled:
+                raise SessionInvalid("administrator is unavailable")
+            shared.last_activity_at = now
+            return self._user_snapshot(user)
+
+    def revoke_shared(self, *, auth_id: str, user_id: str, request_id: str) -> None:
+        now = self._now()
+        with self._session_factory() as session, session.begin():
+            shared = self._require_shared(session, auth_id, user_id, now, lock=True)
+            shared.revoked_at = now
+            session.add(AuditLog(
+                request_id=request_id,
+                action="session.shared.logout",
+                target_type="admin_shared_authorization",
+                target_id=auth_id,
+                changes={"result": "revoked"},
+                actor_id=user_id,
+                source_terminal="agent",
+            ))
+
     def start_feishu_login(self, *, return_to: str, request_id: str) -> FeishuLoginStart:
         del request_id
         if self._feishu_identity is None:
@@ -251,10 +338,12 @@ class IdentityAccessService:
         refresh_token = secrets.token_urlsafe(32)
         csrf_token = secrets.token_urlsafe(32)
         with self._session_factory() as session, session.begin():
+            shared = self._shared_for_user(session, user_id=user.user_id, now=now)
             session.add(
                 UserSession(
                     session_id=str(uuid4()),
                     user_id=user.user_id,
+                    shared_auth_id=shared.auth_id,
                     terminal="web",
                     token_digest=self._digest(session_token),
                     refresh_token_digest=self._digest(refresh_token),
@@ -533,10 +622,15 @@ class IdentityAccessService:
                 raise SessionInvalid("user is unavailable")
             if terminal == "mini" and user.role == "factory" and user.factory_id is None:
                 raise SessionInvalid("factory user affiliation is unavailable")
+            shared_auth_id = (
+                self._shared_for_user(session, user_id=user_id, now=now).auth_id
+                if terminal == "web" and user.role == "admin" else None
+            )
             session.add(
                 UserSession(
                     session_id=str(uuid4()),
                     user_id=user_id,
+                    shared_auth_id=shared_auth_id,
                     terminal=terminal,
                     token_digest=self._digest(access_token),
                     refresh_token_digest=self._digest(refresh_token),
@@ -560,6 +654,7 @@ class IdentityAccessService:
         terminal: str,
         csrf_token: str | None = None,
         require_csrf: bool = False,
+        activity: bool = True,
     ) -> UserSnapshot:
         now = self._now()
         with self._session_factory() as session, session.begin():
@@ -590,7 +685,14 @@ class IdentityAccessService:
                 raise SessionInvalid("session user is unavailable")
             if terminal == "mini" and user.role == "factory" and user.factory_id is None:
                 raise SessionInvalid("session user is unavailable")
-            active_session.last_activity_at = now
+            if terminal == "web" and user.role == "admin":
+                shared = self._require_shared(
+                    session, active_session.shared_auth_id, user.user_id, now, lock=activity
+                )
+                if activity:
+                    shared.last_activity_at = now
+            if activity:
+                active_session.last_activity_at = now
             return self._user_snapshot(user)
 
     def get_my_application(self, *, user_id: str) -> AdminApplicationSnapshot | None:
@@ -659,19 +761,19 @@ class IdentityAccessService:
             if (
                 active_session is None
                 or active_session.revoked_at is not None
-                or active_session.refresh_expires_at is None
-                or active_session.refresh_expires_at <= now
             ):
                 raise SessionInvalid("refresh token is invalid")
             user = session.get(User, active_session.user_id)
             if user is None or not user.is_enabled or user.role == "factory":
                 raise SessionInvalid("refresh token user is unavailable")
+            self._require_shared(
+                session, active_session.shared_auth_id, user.user_id, now, lock=True
+            )
             active_session.token_digest = self._digest(new_access)
             active_session.refresh_token_digest = self._digest(new_refresh)
             active_session.csrf_digest = self._digest(new_csrf)
             active_session.expires_at = expires_at
             active_session.refresh_expires_at = now + timedelta(days=30)
-            active_session.last_activity_at = now
         return SessionTokens(
             access_token=new_access,
             refresh_token=new_refresh,
@@ -693,6 +795,19 @@ class IdentityAccessService:
             if active_session is None or active_session.revoked_at is not None:
                 return
             active_session.revoked_at = now
+            if terminal == "web":
+                shared = self._require_shared(
+                    session, active_session.shared_auth_id, active_session.user_id, now, lock=True
+                )
+                shared.revoked_at = now
+                session.execute(
+                    update(UserSession)
+                    .where(
+                        UserSession.shared_auth_id == shared.auth_id,
+                        UserSession.revoked_at.is_(None),
+                    )
+                    .values(revoked_at=now)
+                )
             session.add(
                 AuditLog(
                     request_id=request_id,
@@ -735,6 +850,14 @@ class IdentityAccessService:
                     .where(
                         UserSession.user_id == target_user_id,
                         UserSession.revoked_at.is_(None),
+                    )
+                    .values(revoked_at=now)
+                )
+                session.execute(
+                    update(AdminSharedAuthorization)
+                    .where(
+                        AdminSharedAuthorization.user_id == target_user_id,
+                        AdminSharedAuthorization.revoked_at.is_(None),
                     )
                     .values(revoked_at=now)
                 )

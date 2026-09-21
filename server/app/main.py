@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse, Response
+from mcp.server import MCPServer
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -39,6 +40,7 @@ from app.adapters.wechat import (
     WechatIdentity,
     WechatIdentityConfig,
 )
+from app.api.agent_oauth import create_agent_oauth_router
 from app.api.contracts import create_contract_router
 from app.api.factory_access import create_factory_router
 from app.api.identity import create_identity_router
@@ -57,6 +59,7 @@ from app.local_demo import (
     local_demo_order_source,
 )
 from app.logging import StructuredLogger, configure_uvicorn_access_log_redaction
+from app.mcp.server import create_agent_mcp
 from app.modules.contracts import (
     ContractConflict,
     ContractError,
@@ -80,6 +83,7 @@ from app.modules.identity_access import (
     SmsRateLimited,
     VerificationInvalid,
 )
+from app.modules.identity_access.agent_oauth import AgentOAuthService, OAuthInvalid
 from app.modules.identity_access.service import IdentityAccessService
 from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.order_import import OrderImportService
@@ -155,9 +159,16 @@ def create_app(
         else:
             private_file_store = DisabledPrivateFileStore(bucket=settings.oss_bucket)
 
+    mcp_server: MCPServer | None = None
+    mcp_http_app: Any = None
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
-        yield
+        if mcp_server is None:
+            yield
+        else:
+            async with mcp_server.session_manager.run():
+                yield
         engine.dispose()
 
     app = FastAPI(title="Order Tracking API", version="0.1.0", lifespan=lifespan)
@@ -382,6 +393,28 @@ def create_app(
     )
     if local_demo_enabled:
         app.include_router(create_local_demo_router())
+    if settings.mcp_public_url:
+        oauth = AgentOAuthService(
+            session_factory,
+            resource=settings.mcp_public_url,
+            client_id=settings.mcp_client_id,
+            token_secret=(
+                settings.identity_token_secret.encode()
+                if settings.identity_token_secret else secrets.token_bytes(32)
+            ),
+        )
+        app.include_router(create_agent_oauth_router(
+            oauth, identity_service,
+            secure_cookies=(settings.web_cookie_secure if not local_demo_enabled else False),
+        ))
+        mcp_server, transport_security = create_agent_mcp(
+            oauth=oauth, identity=identity_service,
+            orders=order_service, imports=order_import_service,
+        )
+        mcp_http_app = mcp_server.streamable_http_app(
+            stateless_http=True, json_response=True,
+            transport_security=transport_security,
+        )
 
     @app.middleware("http")
     async def attach_request_id(
@@ -419,6 +452,14 @@ def create_app(
                 "message": "服务器内部错误",
                 "requestId": request_id,
             },
+        )
+
+    @app.exception_handler(OAuthInvalid)
+    async def handle_oauth_error(request: Request, error: OAuthInvalid) -> JSONResponse:
+        return JSONResponse(
+            status_code=401 if error.error == "invalid_client" else 400,
+            content={"error": error.error},
+            headers={"Cache-Control": "no-store"},
         )
 
     @app.exception_handler(IdentityAccessError)
@@ -557,4 +598,6 @@ def create_app(
     for router in extra_routers:
         app.include_router(router)
 
+    if mcp_http_app is not None:
+        app.mount("/", mcp_http_app)
     return app

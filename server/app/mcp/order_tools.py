@@ -16,6 +16,7 @@ from app.api.orders import (
     _draft_lines,
     _order_response,
 )
+from app.mcp.files import download_descriptor
 from app.modules.contracts import ContractService
 from app.modules.order_import import OrderImportService
 from app.modules.orders import OrderService
@@ -32,6 +33,7 @@ def register_order_tools(
     source_updates: OrderSourceUpdateService,
     dispatch: OrderDispatchService,
     contracts: ContractService,
+    origin: str,
 ) -> None:
     if imports is None:
         raise ValueError("order import service is required for MCP")
@@ -346,3 +348,20 @@ def register_order_tools(
                     "signingDate": result.signing_date.isoformat(),
                     "filename": result.filename, "status": result.status}
         return read("export_contract", execute)
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    def get_contract_download(export_id: str) -> dict[str, Any]:
+        """取得本人网页登录后可下载的合同 Excel 链接及文件校验信息。"""
+        def query(uid: str, _rid: str) -> dict[str, Any]:
+            contract_id, file_id, filename, size_bytes, sha256 = contracts.download_metadata(
+                actor_id=uid, export_id=export_id,
+            )
+            return {
+                "exportId": export_id, "contractId": contract_id, "fileId": file_id,
+                **download_descriptor(
+                    origin=origin,
+                    path=f"/api/v1/admin/contract-exports/{export_id}/download",
+                    filename=filename, size_bytes=size_bytes, sha256=sha256,
+                ),
+            }
+        return read("get_contract_download", query)

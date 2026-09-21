@@ -38,7 +38,7 @@ def test_import_batch_prechecks_all_and_reports_committed_items() -> None:
     register_order_tools(
         tools, lambda _name, callback: callback("admin", "request"),
         orders=object(), imports=imports, source_updates=object(),
-        dispatch=object(), contracts=object(),
+        dispatch=object(), contracts=object(), origin="http://testserver",
     )
     run = tools.functions["import_candidates"]
     targets = [{"candidateId": "good", "version": 1},

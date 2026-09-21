@@ -128,6 +128,13 @@ def test_parser_rejects_source_before_opening_ooxml_when_file_limit_is_exceeded(
     )
 
 
+@pytest.mark.parametrize("content", [b"not a workbook", b""])
+def test_parser_reports_damaged_or_spoofed_xlsx_as_validation_error(content):
+    with pytest.raises(InspectionWorkbookValidationError) as caught:
+        InspectionWorkbookParser().parse(content)
+    assert caught.value.issues[0]["code"] == "invalid_workbook"
+
+
 def test_parser_rejects_ooxml_when_zip_entry_limit_is_exceeded() -> None:
     source = Path(__file__).resolve().parents[3] / "docs/reference/E28质检.xlsx"
     parser = InspectionWorkbookParser(limits=InspectionWorkbookLimits(max_zip_entries=1))

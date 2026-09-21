@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import date
+from hashlib import sha256
 
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
@@ -85,7 +86,7 @@ def test_agent_order_draft_publish_and_contract_qualification(
 
         contracts = _call(client, access, "list_order_contracts", {"order_id": order_id})
         assert contracts.get("isError") is not True
-        statuses = contracts["structuredContent"]["result"]["items"]
+        statuses = contracts["structuredContent"]["items"]
         assert statuses[0]["factoryId"] == "order-api-factory-a"
         assert statuses[0]["contractReady"] is False
 
@@ -97,19 +98,35 @@ def test_agent_order_draft_publish_and_contract_qualification(
             factory.address = "测试地址"
             factory.legal_representative = "测试法人"
         ready = _call(client, access, "list_order_contracts", {"order_id": order_id})
-        assert ready["structuredContent"]["result"]["items"][0]["eligible"] is True
+        assert ready["structuredContent"]["items"][0]["eligible"] is True
         exported = _call(client, access, "export_contract", {
             "order_id": order_id, "factory_id": "order-api-factory-a",
             "signing_date": "2026-09-21", "idempotency_key": "mcp-153-export-1",
         })
         assert exported.get("isError") is not True
-        first = exported["structuredContent"]["result"]
+        first = exported["structuredContent"]
         assert first["status"] == "READY"
         repeated_export = _call(client, access, "export_contract", {
             "order_id": order_id, "factory_id": "order-api-factory-a",
             "idempotency_key": "mcp-153-export-2",
         })
-        assert repeated_export["structuredContent"]["result"]["contractNo"] == first["contractNo"]
+        assert repeated_export["structuredContent"]["contractNo"] == first["contractNo"]
+        descriptor = _call(client, access, "get_contract_download", {
+            "export_id": first["exportId"],
+        })["structuredContent"]
+        assert descriptor["contractId"] == first["contractId"]
+        assert descriptor["fileId"] > 0
+        assert descriptor["filename"] == first["filename"]
+        assert len(descriptor["sha256"]) == 64
+        assert descriptor["downloadUrl"].endswith(
+            f"/api/v1/admin/contract-exports/{first['exportId']}/download"
+        )
+        downloaded = client.get(descriptor["downloadUrl"])
+        assert downloaded.status_code == 200
+        assert sha256(downloaded.content).hexdigest() == descriptor["sha256"]
+        assert len(downloaded.content) == descriptor["sizeBytes"]
+        client.cookies.clear()
+        assert client.get(descriptor["downloadUrl"]).status_code == 401
 
         blocked = _call(client, access, "complete_order", {
             "order_id": order_id, "idempotency_key": "mcp-153-complete",
@@ -145,7 +162,7 @@ def test_agent_456_source_snapshot_date_and_dispatch(
         access = _exchange(client, _code(client)).json()["access_token"]
         candidates = _call(client, access, "list_import_candidates", {
             "status": "IMPORTED",
-        })["structuredContent"]["result"]["items"]
+        })["structuredContent"]["items"]
         assert len(candidates) == 1
         audit = _call(client, access, "get_candidate_audit", {
             "candidate_id": candidates[0]["candidateId"],
@@ -161,7 +178,7 @@ def test_agent_456_source_snapshot_date_and_dispatch(
         )]]
         preview = _call(client, access, "preview_source_refresh", {
             "order_id": order_id, "version": current["version"],
-        })["structuredContent"]["result"]
+        })["structuredContent"]
         assert any(item["field"] == "已发数量" for item in preview["differences"])
         refreshed = _call(client, access, "confirm_source_refresh", {
             "order_id": order_id, "version": current["version"],
@@ -179,7 +196,7 @@ def test_agent_456_source_snapshot_date_and_dispatch(
         dispatch_preview = _call(client, access, "preview_dispatch", {
             "order_id": order_id, "version": saved["version"],
             "detail_ids": [detail["detailId"]],
-        })["structuredContent"]["result"]
+        })["structuredContent"]
         assert dispatch_preview["all_ok"] is True
         assigned = _call(client, access, "confirm_dispatch", {
             "order_id": order_id, "version": saved["version"],

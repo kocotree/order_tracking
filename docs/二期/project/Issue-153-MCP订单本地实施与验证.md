@@ -1,6 +1,6 @@
 # Issue #153 MCP 订单、派工与合同本地实施与验证
 
-基线：`c791bed`（#151 授权基础）；分支：`codex/issue-153-mcp-orders-dispatch-contracts`。本记录只描述本 worktree 的本地结果。#157 仍需合并；本分支未推送、未建 PR、未合并或部署。
+基线：`c791bed`（#151 授权基础）；分支：`codex/issue-153-mcp-orders-dispatch-contracts`。已将 #155 本地提交 `84919c0` 作为文件依赖合入本分支，并手动保留两项中央注册。本记录只描述本 worktree 的本地结果。#157 仍需合并；本分支未推送、未建 PR 或部署。
 
 ## 工具与 Web 动作对应
 
@@ -18,19 +18,19 @@
 | 选中明细派工预览、确认 | `preview_dispatch`、`confirm_dispatch` | 原派工快照与确认事务；`test_agent_order_tools.py`、`test_order_dispatch.py` |
 | 可撤回工厂、按厂撤回 | `list_withdrawable_factories`、`withdraw_factory_dispatch` | `OrderService`；`test_order_dispatch_rules.py` |
 | 完成、带原因重开 | `complete_order`、`reopen_order` | `OrderService`；`test_agent_order_tools.py`、`test_order_dispatch_rules.py` |
-| 合同资格、首次及重复导出 | `list_order_contracts`、`export_contract` | `ContractService` 稳定编号、模板和快照；`test_agent_order_tools.py`、`test_contracts.py` |
+| 合同资格、首次及重复导出、受权下载 | `list_order_contracts`、`export_contract`、`get_contract_download` | `ContractService` 稳定编号、模板、快照和本人文件元数据；`test_agent_order_tools.py`、`test_contracts.py` |
 
 工具经 #151 的 MCP 令牌校验取得本人管理员 ID，写入继续走服务层权限、版本、状态、事务、幂等和通知逻辑。批量候选默认有任一预检失败即不提交；明确 `allow_partial` 时只执行合格项。执行中出现版本冲突会报告已成功、失败、未执行项。已导入候选重试回读原订单 ID。
 
 ## 验证
 
 - 显式隔离库：`order_tracking_mcp153_test`，本地 MySQL 8，`ORDER_TRACKING_DATABASE_URL` 与 `ORDER_TRACKING_TEST_DATABASE_URL` 均显式指向此库。
-- MCP 实际协议调用：手工草稿、发布幂等、合同资格及首次/重复导出；456# 来源变化预览/确认、补日期、派工预览/确认与回读；候选审计读取。相关测试见 `server/tests/api/test_agent_order_tools.py`。
+- MCP 实际协议调用：手工草稿、发布幂等、合同资格及首次/重复导出、下载描述；Web 已登录下载字节与 SHA-256 一致，无 Web 登录时拒绝下载；456# 来源变化预览/确认、补日期、派工预览/确认与回读；候选审计读取。相关测试见 `server/tests/api/test_agent_order_tools.py`。
 - 批量候选全部预检、允许部分执行和中途冲突结果见 `server/tests/unit/test_mcp_import_batch.py`。
-- Ruff、mypy、OpenAPI 快照检查、`alembic check` 均通过。隔离 MySQL 全量后端：481 passed、1 skipped（隔离 OSS 测试桶未配置）；新增工具定向复跑 3 passed。没有运行真实飞书、真实通知、HTTPS 代理或 Codex 对话工具调用。
+- Ruff、mypy、OpenAPI 快照检查与 Alembic `check` 通过；合并后的隔离 MySQL 全量后端 495 passed、1 skipped（隔离 OSS 测试桶未配置）；#153 与 #155 定向测试 15 passed。没有运行真实飞书、真实通知、HTTPS 代理或 Codex 对话工具调用。
 
 ## 跨工单接线
 
-- #155 已确定 `app.mcp.files.download_descriptor(origin, path, filename, size_bytes, sha256)` 契约。待其提交进入本分支后，合同侧用 `ContractExport.stored_file_id` 关联的 `StoredFile` 元数据生成描述，下载路径为现有本人 Web 授权的 `/api/v1/admin/contract-exports/{exportId}/download`。当前只生成合同并返回导出标识、文件名和状态；该路径仍需本人 Web 登录，Codex 本地接收尚未验收。
+- #155 的 `app.mcp.files.download_descriptor(origin, path, filename, size_bytes, sha256)` 已接入合同工具。合同侧从 `ContractExport.stored_file_id` 读取受权限保护的 `StoredFile` 元数据；下载走现有本人 Web 授权的 `/api/v1/admin/contract-exports/{exportId}/download`。#153 分支当前包含 #155 依赖提交，后续 PR 应以 #155 分支为基底或等 #155 合入主线后核对差异。Codex 本地接收尚未验收。
 - #152 承载对话授权引导和完整 Codex 对话验收；模型传入的确认参数不作为后端授权证据。
 - 与 #154、#155、#156 合并前核对 `server/app/mcp/server.py` 的中央注册接线及工具名；本工单未新增迁移号。

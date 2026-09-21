@@ -351,6 +351,25 @@ class ContractService:
                 raise ContractGenerationError("contract file checksum mismatch")
             return stored_file.original_filename, content, stored_file.mime_type
 
+    def download_metadata(
+        self, *, actor_id: str, export_id: str
+    ) -> tuple[str, int, str, int, str]:
+        with self._session_factory() as session:
+            self._require_admin(session, actor_id)
+            export = session.get(ContractExport, export_id)
+            if export is None or export.status != "READY" or export.stored_file_id is None:
+                raise ContractNotFound("contract export not found")
+            stored_file = session.get(StoredFile, export.stored_file_id)
+            if (
+                stored_file is None or self._file_store is None
+                or stored_file.bucket != self._file_store.bucket
+            ):
+                raise ContractNotFound("contract file not found")
+            return (
+                export.contract_id, stored_file.file_id, stored_file.original_filename,
+                stored_file.size_bytes, stored_file.content_sha256,
+            )
+
     def _export_result(self, export_id: str) -> ContractExportResult:
         with self._session_factory() as session:
             export = session.get(ContractExport, export_id)

@@ -1,0 +1,12 @@
+{
+  "_说明": "元 / 百万 token，来自百炼控制台模型广场。in = 输入（图片 token 也算输入），out = 输出。不含折扣，按刊例价算。",
+  "_下线": "qwen-turbo、qwen3-vl-flash 即将下线；qwen-plus、qwen3-vl-plus 即将部分下线。只作为已有数据的对照，不作为选型结论。",
+  "qwen3.5-plus": {"in": 0.8, "out": 4.8},
+  "qwen3.5-flash": {"in": 0.2, "out": 2.0},
+  "qwen3.5-ocr": {"in": 0.5, "out": 2.0},
+  "qwen-flash": {"in": 0.15, "out": 1.5},
+  "qwen3-vl-plus": {"in": 1.0, "out": 10.0},
+  "qwen3-vl-flash": {"in": 0.15, "out": 1.5},
+  "qwen-plus": {"in": 0.8, "out": 2.0},
+  "qwen-turbo": {"in": 0.3, "out": 0.6}
+}

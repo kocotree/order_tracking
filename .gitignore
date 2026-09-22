@@ -4,7 +4,18 @@ output/
 
 # Local-only working directories
 .worktrees/
-experiments/
+# OCR experiment: track scripts, prompts and pricing; keep sample data and outputs local.
+experiments/*
+!experiments/incoming-diff-vision/
+experiments/incoming-diff-vision/*
+!experiments/incoming-diff-vision/*.py
+!experiments/incoming-diff-vision/prices.json
+!experiments/incoming-diff-vision/prompts/
+!experiments/incoming-diff-vision/legacy/
+experiments/incoming-diff-vision/prompts/*
+!experiments/incoming-diff-vision/prompts/*.txt
+experiments/incoming-diff-vision/legacy/*
+!experiments/incoming-diff-vision/legacy/*.py
 
 # Local environment and secrets
 .env

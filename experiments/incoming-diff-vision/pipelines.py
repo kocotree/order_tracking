@@ -47,6 +47,19 @@ PIPELINES = {
         "prompt": "single_v2_color",
         "max_side": 960,
     },
+    "s1_35flash_v3_multibox": {
+        "kind": "single",
+        "vision": "qwen3.5-flash",
+        "prompt": "single_v3_multibox_color",
+        "box_color_list": True,
+    },
+    "s1_35flash_small_v3_multibox": {
+        "kind": "single",
+        "vision": "qwen3.5-flash",
+        "prompt": "single_v3_multibox_color",
+        "box_color_list": True,
+        "max_side": 960,
+    },
     "s1_35plus_color": {
         "kind": "single",
         "vision": "qwen3.5-plus",

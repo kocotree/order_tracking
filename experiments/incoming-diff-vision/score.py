@@ -105,6 +105,16 @@ def verdict(truth_value: str, got) -> str:
     return "ok" if norm_text(truth_value) == norm_text(got) else "wrong"
 
 
+def scored_fields(spec: dict) -> list[str]:
+    # 真值表没有「同图所有箱贴颜色」这一列；逐条颜色在 holdout 的 lines 中评分。
+    return [f for f in FIELDS if f != "color"] if spec.get("box_color_list") else FIELDS
+
+
+def valid_box_colors(parsed: dict) -> bool:
+    colors = parsed.get("color")
+    return isinstance(colors, list) and all(isinstance(color, str) and color.strip() for color in colors)
+
+
 def lines_verdict(truth_lines, parsed, with_line_color: bool = False) -> tuple[str, set, set]:
     if truth_lines is None:
         return "skip", set(), set()
@@ -143,6 +153,8 @@ def canonical(parsed, with_line_color: bool = False) -> str:
     if parsed is None:
         return "FAIL"
     payload = {f: parsed.get(f) for f in FIELDS}
+    if isinstance(payload["color"], list):
+        payload["color"] = sorted(norm_color(color) for color in payload["color"])
     payload["diffNoteText"] = parsed.get("diffNoteText")
     payload["lines"] = sorted(
         ((norm_color(l.get("color")),) if with_line_color else ())
@@ -220,7 +232,13 @@ def main() -> None:
         parsed_by_image[name][image].add(canonical(parsed, with_line_color=args.holdout))
 
         dirty = False
-        for field in FIELDS:
+        if record["spec"].get("box_color_list") and parsed is not None and not valid_box_colors(parsed):
+            dirty = True
+            errors.append(
+                {"image": image, "pipeline": name, "run": run, "field": "color_schema",
+                 "truth": "颜色字符串数组", "got": parsed.get("color"), "verdict": "wrong"}
+            )
+        for field in scored_fields(record["spec"]):
             result = verdict(entry["fields"][field], (parsed or {}).get(field))
             if result == "skip":
                 continue
@@ -300,6 +318,9 @@ def write_report(summary, by_tag, parsed_by_image, truth, records, unlabeled, ou
     for row in rows:
         lines.append("| " + " | ".join(str(row[h]) for h in header) + " |")
 
+    if any(record["spec"].get("box_color_list") for record in records):
+        lines += ["", "注：v3 顶层 color 为箱贴颜色数组，现有真值表未标注该数组，不计入文本字段；holdout 仍逐条评分 lines.color。"]
+
     tags = sorted({t for t, _ in by_tag})
     names = [r["方案"] for r in rows]
     if tags:
@@ -327,6 +348,13 @@ def selftest() -> None:
     assert verdict("", None) == "skip"
     assert verdict("-", None) == "ok" and verdict("-", "2023-5-1") == "invent"
     assert verdict("豆豆", None) == "miss" and verdict("豆豆", "豆豆 ") == "ok" and verdict("豆豆", "雄浩") == "wrong"
+    assert scored_fields({}) == FIELDS
+    assert scored_fields({"box_color_list": True}) == ["factoryName", "productCode", "productName"]
+    assert valid_box_colors({"color": []}) and valid_box_colors({"color": ["碧潭灰", "暮山紫"]})
+    assert not valid_box_colors({"color": "碧潭灰"}) and not valid_box_colors({"color": [None]})
+    assert canonical({"color": ["碧潭灰", "暮山紫"], "lines": []}) == canonical({
+        "color": ["暮山紫", "碧潭灰"], "lines": []
+    })
     assert lines_verdict(None, {})[0] == "skip"
     assert lines_verdict([], {"lines": []})[0] == "ok"
     assert lines_verdict([], {"lines": [{"size": "M", "direction": "少", "quantity": 1}]})[0] == "invent"

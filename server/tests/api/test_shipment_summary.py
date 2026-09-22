@@ -21,6 +21,8 @@ from app.db.models import (
     ShipmentLine,
     ShipmentReceipt,
     ShipmentReceiptItem,
+    ShipmentReturnEvent,
+    ShipmentReturnLine,
 )
 from app.main import create_app
 from app.modules.identity_access import IdentityAccessService
@@ -452,3 +454,48 @@ def test_multiple_factories_filter_before_count_and_page(
         assert client.get(path, params={"factory": "S07接口工厂2",
                                       "factories": "S07接口工厂1"}).json()["total"] == 12
         assert client.get(path, params={"factories": "%"}).json()["total"] == 0
+
+
+def test_returned_receipt_status_overrides_confirmation_and_filters(
+    test_database_engine: Engine, test_database_url: str,
+) -> None:
+    seed_shipments(test_database_engine, 9)
+    with Session(test_database_engine) as session, session.begin():
+        for shipment_id in ("list-0000", "list-0008"):
+            session.add(ShipmentReceipt(
+                shipment_id=shipment_id, status="CONFIRMED", version=1,
+                saved_by=ADMIN_ID, saved_at=datetime(2026, 9, 1),
+            ))
+        for shipment_id in ("list-0000", "list-0004"):
+            event_id = f"return-{shipment_id}"
+            session.add(ShipmentReturnEvent(
+                event_id=event_id, shipment_id=shipment_id, returned_by=ADMIN_ID,
+                return_date=date(2026, 9, 2), reason="部分退回",
+                idempotency_key=event_id, created_at=datetime(2026, 9, 2),
+            ))
+            line = session.scalar(
+                select(ShipmentLine).where(ShipmentLine.shipment_id == shipment_id)
+            )
+            assert line is not None
+            session.add(ShipmentReturnLine(
+                event_id=event_id, shipment_line_id=line.line_id, quantity=1,
+                before_shipped_quantity=10, after_shipped_quantity=9,
+            ))
+    identity = IdentityAccessService(
+        sessionmaker(test_database_engine, expire_on_commit=False),
+        token_secret=b"list-token", phone_encryption_secret=b"list-encryption",
+        phone_digest_secret=b"list-digest",
+    )
+    admin = identity.issue_session(user_id=ADMIN_ID, terminal="mini")
+    with TestClient(
+        create_app(database_url=test_database_url, identity_service=identity)
+    ) as client:
+        client.headers["Authorization"] = f"Bearer {admin.access_token}"
+        path = "/api/v1/admin/shipments/summary"
+        result = client.get(path).json()
+        statuses = {item["shipmentId"]: item["receiptStatus"] for item in result["items"]}
+        assert statuses["list-0000"] == statuses["list-0004"] == "RETURNED"
+        assert statuses["list-0008"] == "RECEIVED"
+        assert client.get(path, params={"receiptStatus": "RETURNED"}).json()["total"] == 2
+        assert client.get(path, params={"receiptStatus": "RECEIVED"}).json()["total"] == 1
+        assert client.get(path, params={"receiptStatus": "UNRECEIVED"}).json()["total"] == 6

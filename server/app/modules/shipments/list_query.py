@@ -14,7 +14,11 @@ SUMMARY_CTE = """
 WITH visible AS (
  SELECT s.shipment_id, s.shipment_no, s.status, s.factory_id, s.business_date,
         s.submitted_at, COALESCE(NULLIF(f.factory_name, ''), s.factory_id) AS factory_name,
-        CASE WHEN r.status = 'CONFIRMED' THEN 'RECEIVED' ELSE 'UNRECEIVED' END AS receipt_status
+        r.status = 'CONFIRMED' AS receipt_confirmed,
+        CASE WHEN EXISTS (SELECT 1 FROM shipment_return_events e
+                          WHERE e.shipment_id = s.shipment_id) THEN 'RETURNED'
+             WHEN r.status = 'CONFIRMED' THEN 'RECEIVED'
+             ELSE 'UNRECEIVED' END AS receipt_status
  FROM shipments s LEFT JOIN factories f ON f.factory_id = s.factory_id
  LEFT JOIN shipment_receipts r ON r.shipment_id = s.shipment_id
  WHERE s.status != 'DRAFT' AND s.deleted_at IS NULL AND s.source_shipment_id IS NULL
@@ -22,12 +26,14 @@ WITH visible AS (
       COLLATE utf8mb4_0900_bin IN :factories)
  AND (:date_from IS NULL OR COALESCE(s.business_date, '') >= :date_from)
  AND (:date_to IS NULL OR COALESCE(s.business_date, '') <= :date_to)
- AND (:receipt_status = '' OR CASE WHEN r.status = 'CONFIRMED' THEN 'RECEIVED'
+ AND (:receipt_status = '' OR CASE WHEN EXISTS (
+      SELECT 1 FROM shipment_return_events e WHERE e.shipment_id = s.shipment_id
+      ) THEN 'RETURNED' WHEN r.status = 'CONFIRMED' THEN 'RECEIVED'
       ELSE 'UNRECEIVED' END = :receipt_status)
 ), packed AS (
  SELECT b.shipment_id, b.box_no, i.item_id, o.order_no,
         l.product_name_snapshot AS product_name,
-        CASE WHEN s.receipt_status = 'RECEIVED' THEN COALESCE(ri.quantity, i.quantity)
+        CASE WHEN s.receipt_confirmed THEN COALESCE(ri.quantity, i.quantity)
              ELSE i.quantity END AS quantity,
         ROW_NUMBER() OVER (PARTITION BY b.shipment_id, o.order_no COLLATE utf8mb4_0900_bin
                           ORDER BY b.box_no, i.item_id) AS order_rank,
@@ -36,10 +42,12 @@ WITH visible AS (
           ORDER BY b.box_no, i.item_id) AS product_rank
  FROM visible s JOIN shipment_boxes b ON b.shipment_id = s.shipment_id
  JOIN shipment_box_items i ON i.box_id = b.box_id
- JOIN order_assignments a ON a.order_assignment_id = i.order_assignment_id
+ LEFT JOIN shipment_receipt_items ri ON ri.box_item_id = i.item_id
+ JOIN order_assignments a ON a.order_assignment_id = CASE
+      WHEN s.receipt_confirmed THEN COALESCE(ri.order_assignment_id, i.order_assignment_id)
+      ELSE i.order_assignment_id END
  JOIN order_lines l ON l.order_line_id = a.order_line_id
  JOIN orders o ON o.order_id = l.order_id
- LEFT JOIN shipment_receipt_items ri ON ri.box_item_id = i.item_id
 ), summaries AS (
  SELECT shipment_id,
  GROUP_CONCAT(CASE WHEN order_rank = 1 THEN order_no END

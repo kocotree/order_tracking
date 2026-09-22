@@ -30,7 +30,7 @@
         </table></div>
       </section>
 
-      <section class="section-card detail-section-card"><header class="detail-section-header"><h2>装箱明细</h2><button v-if="canVerify" type="button" class="detail-outline-button" data-action="save-receipt" :disabled="acting || !receiptDraft" @click="saveReceipt">{{ acting ? "处理中…" : "保存" }}</button></header><div class="detail-table-scroll"><table class="detail-data-table packing-detail-table data-grid-table"><thead><tr><th scope="col">箱号</th><th scope="col">关联订单</th><th scope="col">货号</th><th scope="col">产品名称</th><th scope="col">颜色/规格</th><th scope="col">装箱数量</th><th scope="col">合计</th></tr></thead><tbody v-for="box in sortedBoxes" :key="box.boxNo" class="packing-box-group"><tr v-for="(item,index) in box.items" :key="item.assignmentId"><td v-if="index===0" class="packing-box-number" :rowspan="box.items.length">{{ box.boxNo }}</td><td>{{ item.orderNo }}</td><td>{{ item.itemNumber }}</td><td>{{ item.productName }}</td><td>{{ item.propertiesValue }}</td><td class="detail-number"><input v-if="canVerify && receiptDraft && item.boxItemId" v-model.number="receiptQuantities[item.boxItemId]" class="return-quantity-input" type="number" min="0" max="2147483647" step="1" :disabled="acting" :aria-label="`箱号 ${box.boxNo} ${item.itemNumber} 核对数量`" /><span v-else>{{ number(item.quantity) }}</span></td><td class="packing-total-cell">{{ index === box.items.length - 1 ? number(boxTotal(box)) : '' }}</td></tr></tbody></table></div></section>
+      <section class="section-card detail-section-card"><header class="detail-section-header"><h2>装箱明细</h2><button v-if="canVerify" type="button" class="detail-outline-button" data-action="save-receipt" :disabled="acting || !receiptDraft" @click="saveReceipt">{{ acting ? "处理中…" : "保存" }}</button></header><div class="detail-table-scroll"><table class="detail-data-table packing-detail-table data-grid-table"><thead><tr><th scope="col">箱号</th><th scope="col">关联订单</th><th scope="col">货号</th><th scope="col">产品名称</th><th scope="col">颜色/规格</th><th scope="col">装箱数量</th><th scope="col">合计</th></tr></thead><tbody v-for="box in sortedBoxes" :key="box.boxNo" class="packing-box-group"><tr v-for="(item,index) in box.items" :key="item.boxItemId ?? item.assignmentId"><td v-if="index===0" class="packing-box-number" :rowspan="box.items.length">{{ box.boxNo }}</td><td>{{ item.orderNo }}</td><td>{{ item.itemNumber }}</td><td>{{ item.productName }}</td><td><select v-if="canVerify && receiptDraft && item.boxItemId" v-model.number="receiptAssignments[item.boxItemId]" class="receipt-spec-select" :disabled="acting" :aria-label="`箱号 ${box.boxNo} ${item.itemNumber} 颜色规格`"><option v-for="option in receiptOptions[item.boxItemId] || []" :key="option.assignmentId" :value="option.assignmentId">{{ option.orderNo }} · {{ option.propertiesValue }}</option></select><span v-else>{{ item.propertiesValue }}</span></td><td class="detail-number"><input v-if="canVerify && receiptDraft && item.boxItemId" v-model.number="receiptQuantities[item.boxItemId]" class="return-quantity-input" type="number" min="0" max="2147483647" step="1" :disabled="acting" :aria-label="`箱号 ${box.boxNo} ${item.itemNumber} 核对数量`" /><span v-else>{{ number(item.quantity) }}</span></td><td class="packing-total-cell">{{ index === box.items.length - 1 ? number(boxTotal(box)) : '' }}</td></tr></tbody></table></div></section>
 
       <section class="shipment-support-grid"><section class="section-card detail-section-card"><header class="detail-section-header"><h2>发货凭证与工厂备注</h2></header><div class="shipment-support-content"><div><h3>发货凭证（{{ shipment.files.length }} 张）</h3><div v-if="shipment.files.length" class="shipment-proof-list"><a v-for="file in shipment.files" :key="file.fileId" class="shipment-proof-item" :href="file.contentUrl" target="_blank" rel="noopener"><img v-show="proofState(file.fileId) !== 'error'" class="shipment-proof-image" :src="file.contentUrl" :alt="`发货凭证 ${file.displayOrder + 1}`" @load="setProofState(file.fileId, 'ready')" @error="setProofState(file.fileId, 'error')" /><span v-if="proofState(file.fileId) === 'loading'">凭证加载中…</span><span v-else-if="proofState(file.fileId) === 'error'">凭证加载失败</span></a></div><div v-else class="shipment-proof-empty">工厂未上传发货凭证</div></div><div><h3>工厂备注</h3><p class="shipment-factory-remark">{{ shipment.note || '—' }}</p></div></div></section><section class="section-card detail-section-card"><header class="detail-section-header"><h2>操作记录</h2></header><ol class="shipment-log-list"><li v-for="event in shipment.operations" :key="event.createdAt" class="shipment-log-item"><span class="shipment-log-dot is-warning"></span><div><strong>{{ event.action === 'shipment_withdrawn' ? '撤回发货' : event.action === 'shipment_submitted' ? '提交发货单' : '重新发货' }}</strong><span>{{ dateTime(event.createdAt) }} · {{ event.actorName }} · {{ event.reason }}</span></div></li><li v-for="event in shipment.returnEvents" :key="event.eventId" class="shipment-log-item"><span class="shipment-log-dot is-warning"></span><div><strong>按发货单退回 {{ number(returnTotal(event)) }} 件</strong><span>{{ event.returnDate }} · {{ event.reason }}</span></div></li><li v-if="shipment.voidRequest" class="shipment-log-item"><span class="shipment-log-dot is-warning"></span><div><strong>提交撤回发货 · {{ voidLabel }}</strong><span>{{ dateTime(shipment.voidRequest.requestedAt) }} · {{ shipment.voidRequest.reason }}</span></div></li><li v-if="!shipment.operations?.length" class="shipment-log-item"><span class="shipment-log-dot"></span><div><strong>提交发货单，发货记录立即生效</strong><span>{{ displayTime }} · {{ shipment.factoryName || shipment.factoryId }} · 工厂小程序</span></div></li></ol></section></section>
     </article>
@@ -45,32 +45,43 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, shipmentApi, type Shipment, type ShipmentBox, type ShipmentLine, type ShipmentReturnEvent, type ShipmentReceipt } from "@/api/client";
+import { ApiError, shipmentApi, type Shipment, type ShipmentBox, type ShipmentLine, type ShipmentReturnEvent, type ShipmentReceipt, type ShipmentReceiptOptions } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 import TableSortButton from "@/components/TableSortButton.vue";
 
 const route = useRoute(); const router = useRouter(); const shipment = ref<Shipment | null>(null); const error = ref(""); const acting = ref(false); const actionError = ref("");
 const receiptDraft = ref<ShipmentReceipt | null>(null);
 const receiptQuantities = ref<Record<number, number | string>>({});
+const receiptAssignments = ref<Record<number, number>>({});
+const receiptOptions = ref<Record<number, ShipmentReceiptOptions["items"][number]["options"]>>({});
 const receiptError = ref(""); const receiptMessage = ref("");
 const canVerify = computed(() => shipment.value?.status === "SHIPPED" && !shipment.value.receipt && shipment.value.returnEvents.length === 0);
-const receiptDirty = computed(() => !!receiptDraft.value?.items.some(item => receiptQuantities.value[item.boxItemId] !== item.quantity));
-const displayBoxes = computed(() => (shipment.value?.boxes ?? []).map(box => ({ ...box, items: box.items.map(item => ({ ...item, quantity: canVerify.value && receiptDraft.value && item.boxItemId ? Number(receiptQuantities.value[item.boxItemId]) || 0 : item.quantity })) })));
+const receiptDirty = computed(() => !!receiptDraft.value?.items.some(item => receiptQuantities.value[item.boxItemId] !== item.quantity || receiptAssignments.value[item.boxItemId] !== item.assignmentId));
+const displayBoxes = computed(() => (shipment.value?.boxes ?? []).map(box => ({ ...box, items: box.items.map(item => {
+  const boxItemId = item.boxItemId;
+  if (!canVerify.value || !receiptDraft.value || !boxItemId) return item;
+  const option = receiptOptions.value[boxItemId]?.find(value => value.assignmentId === receiptAssignments.value[boxItemId]);
+  return { ...item, assignmentId: option?.assignmentId ?? item.assignmentId, orderNo: option?.orderNo ?? item.orderNo, propertiesValue: option?.propertiesValue ?? item.propertiesValue, quantity: Number(receiptQuantities.value[boxItemId]) || 0 };
+}) })));
 const displayLines = computed(() => {
-  if (!canVerify.value || !receiptDraft.value) return shipment.value?.lines ?? [];
-  const totals = new Map<number, number>();
-  for (const box of displayBoxes.value) for (const item of box.items) totals.set(item.assignmentId, (totals.get(item.assignmentId) ?? 0) + item.quantity);
-  return (shipment.value?.lines ?? []).map(line => ({ ...line, quantity: totals.get(line.assignmentId) ?? line.quantity }));
+  if (!canVerify.value || !receiptDraft.value || !shipment.value?.boxes.length) return shipment.value?.lines ?? [];
+  const totals = new Map<number, ShipmentLine>();
+  for (const box of displayBoxes.value) for (const item of box.items) {
+    const existing = totals.get(item.assignmentId);
+    totals.set(item.assignmentId, { ...item, quantity: (existing?.quantity ?? 0) + item.quantity });
+  }
+  return [...totals.values()];
 });
 const displayTotal = computed(() => displayLines.value.reduce((sum, line) => sum + line.quantity, 0));
-function useReceipt(value: ShipmentReceipt) { receiptDraft.value = value; receiptQuantities.value = Object.fromEntries(value.items.map(item => [item.boxItemId, item.quantity])); }
+function useReceipt(value: ShipmentReceipt) { receiptDraft.value = value; receiptQuantities.value = Object.fromEntries(value.items.map(item => [item.boxItemId, item.quantity])); receiptAssignments.value = Object.fromEntries(value.items.map(item => [item.boxItemId, item.assignmentId])); }
 async function reloadReceipt() { if (acting.value) return; try { receiptError.value = ""; receiptMessage.value = ""; await load(); } catch { receiptError.value = "核对数据读取失败，请重试"; } }
 async function saveReceipt() {
   if (!shipment.value || !receiptDraft.value || acting.value) return;
-  const items = receiptDraft.value.items.map(item => ({ boxItemId: item.boxItemId, quantity: receiptQuantities.value[item.boxItemId] }));
+  const items = receiptDraft.value.items.map(item => ({ boxItemId: item.boxItemId, quantity: receiptQuantities.value[item.boxItemId], assignmentId: receiptAssignments.value[item.boxItemId] }));
   if (items.some(item => typeof item.quantity !== "number" || !Number.isInteger(item.quantity) || item.quantity < 0 || item.quantity > 2147483647)) { receiptError.value = "核对数量必须为非负整数"; return; }
+  if (items.some(item => !Number.isInteger(item.assignmentId) || !receiptOptions.value[item.boxItemId]?.some(option => option.assignmentId === item.assignmentId))) { receiptError.value = "请选择有效的订单规格"; return; }
   acting.value = true; receiptError.value = ""; receiptMessage.value = "";
-  try { useReceipt(await shipmentApi.saveReceipt(shipment.value.shipmentId, receiptDraft.value.version, items as {boxItemId:number;quantity:number}[])); receiptMessage.value = "核对草稿已保存，确认收货后生效"; }
+  try { useReceipt(await shipmentApi.saveReceipt(shipment.value.shipmentId, receiptDraft.value.version, items as {boxItemId:number;quantity:number;assignmentId:number}[])); receiptMessage.value = "核对草稿已保存，确认收货后生效"; }
   catch (value) { receiptError.value = value instanceof ApiError ? value.message : "保存失败，请重试"; if (value instanceof ApiError && value.status === 409) await refreshAfterConflict(); }
   finally { acting.value = false; }
 }
@@ -83,7 +94,7 @@ async function confirmReceipt() {
   catch (value) { receiptError.value = value instanceof ApiError ? value.message : "确认失败，请重试"; if (value instanceof ApiError && value.status === 409) await refreshAfterConflict(); }
   finally { acting.value = false; }
 }
-async function refreshAfterConflict() { try { if (shipment.value) { shipment.value = await shipmentApi.get(shipment.value.shipmentId); if (shipment.value.status !== "SHIPPED") receiptDraft.value = null; } } catch { /* Keep the original save error visible. */ } }
+async function refreshAfterConflict() { try { await load(); } catch { /* Keep the original save error visible. */ } }
 function receiptTime(value: string | null | undefined) {
   if (!value) return "—";
   const utc = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
@@ -93,7 +104,7 @@ const proofStates = ref<Record<number, "loading" | "ready" | "error">>({});
 const returnOpen = ref(false); const returnReason = ref(""); const returnSelection = ref<Record<number, boolean>>({}); const returnQuantities = ref<Record<number, number>>({});
 const number = (value: number) => value.toLocaleString("zh-CN"); const dateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { hour12: false });
 const lineSortKey = ref(""); const lineSortDirection = ref<"asc" | "desc">("asc");
-const orderNos = computed(() => [...new Set(shipment.value?.lines.map((line) => line.orderNo) ?? [])].join("、") || "—"); const displayTime = computed(() => shipment.value?.submittedAt ? dateTime(shipment.value.submittedAt) : shipment.value?.businessDate || "—");
+const orderNos = computed(() => [...new Set(displayLines.value.map((line) => line.orderNo))].join("、") || "—"); const displayTime = computed(() => shipment.value?.submittedAt ? dateTime(shipment.value.submittedAt) : shipment.value?.businessDate || "—");
 const statusLabel = computed(() => ({ SHIPPED: shipment.value?.receipt ? "已收货" : "已发货", VOID_PENDING: "撤回处理中", WITHDRAWN: "已撤回", VOIDED: "已作废" }[shipment.value?.status || "SHIPPED"] || shipment.value?.status)); const statusTone = computed(() => shipment.value?.status === "VOIDED" ? "danger" : ["VOID_PENDING", "WITHDRAWN"].includes(shipment.value?.status || "") ? "warning" : "success");
 const voidLabels: Record<string, string> = { PENDING: "待审核", APPROVED: "已通过", REJECTED: "已拒绝" }; const voidLabel = computed(() => voidLabels[shipment.value?.voidRequest?.status || ""] || ""); const voidTone = computed(() => shipment.value?.voidRequest?.status === "APPROVED" ? "success" : shipment.value?.voidRequest?.status === "REJECTED" ? "danger" : "warning");
 const returnableLines = computed(() => (shipment.value?.lines || []).filter((line) => line.lineId && line.returnableQuantity > 0)); const canReturn = computed(() => shipment.value?.status === "SHIPPED" && returnableLines.value.length > 0);
@@ -104,7 +115,7 @@ function sortLines(field: string) { if (lineSortKey.value === field) lineSortDir
 function proofState(fileId: number) { return proofStates.value[fileId] || "loading"; }
 function setProofState(fileId: number, state: "ready" | "error") { proofStates.value = { ...proofStates.value, [fileId]: state }; }
 async function load() { shipment.value = await shipmentApi.get(String(route.params.shipmentId)); proofStates.value = Object.fromEntries(shipment.value.files.map((file) => [file.fileId, "loading"])); receiptDraft.value = null;
-  if (canVerify.value) { try { const value = await shipmentApi.getReceipt(shipment.value.shipmentId); if (value.status === "CONFIRMED") shipment.value = await shipmentApi.get(shipment.value.shipmentId); else useReceipt(value); } catch { receiptError.value = "核对数据读取失败，请重新读取"; } }
+  if (canVerify.value) { try { const [value, options] = await Promise.all([shipmentApi.getReceipt(shipment.value.shipmentId), shipmentApi.getReceiptOptions(shipment.value.shipmentId)]); if (value.status === "CONFIRMED") shipment.value = await shipmentApi.get(shipment.value.shipmentId); else { receiptOptions.value = Object.fromEntries(options.items.map(item => [item.boxItemId, item.options])); useReceipt(value); } } catch { receiptError.value = "核对数据读取失败，请重新读取"; } }
 }
 function goBack() { return router.push(typeof route.query.notificationReturnTo === "string" ? route.query.notificationReturnTo : { path: "/shipments", query: route.query }); }
 async function downloadWorkbook() { if (!shipment.value) return; acting.value = true; actionError.value = ""; try { await shipmentApi.download(shipment.value); } catch (value) { actionError.value = value instanceof ApiError ? value.message : "下载失败"; } finally { acting.value = false; } }

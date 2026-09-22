@@ -74,6 +74,106 @@ def test_saved_receipt_reopens_without_changing_published_quantities(
     assert admin.put(url, json={"version": 0, "items": draft["items"]}).status_code == 409
 
 
+@pytest.mark.parametrize("move_all", [False, True])
+def test_receipt_reassigns_box_item_to_same_factory_product_in_another_order(
+    receipt_clients: tuple[TestClient, TestClient, str], test_database_engine: Engine,
+    move_all: bool,
+) -> None:
+    from datetime import date, datetime
+
+    from app.db.models import Order, OrderAssignment, OrderLine, ProductVariant
+    from tests.api.test_shipment_api import FACTORY_IDS, PRODUCT_ID
+
+    admin, factory, shipment_id = receipt_clients
+    now = datetime(2026, 9, 1)
+    with Session(test_database_engine) as session, session.begin():
+        session.add(ProductVariant(
+            variant_id="receipt-target-variant", product_id=PRODUCT_ID,
+            source_sku_id="RECEIPT-TARGET-SKU", properties_value="奶白 / 120",
+            source_category="童帽春夏", source_enabled=1, is_available=True,
+            source_modified_at=now, first_synced_at=now, last_synced_at=now,
+        ))
+        session.add(Order(
+            order_id="receipt-target-order", order_no="RECEIPT-B", source="manual",
+            order_date=date(2026, 9, 1), tracker="松子", lifecycle="PUBLISHED",
+            version=1, published_at=now, published_by=ADMIN_ID,
+            created_by=ADMIN_ID, updated_by=ADMIN_ID, created_at=now, updated_at=now,
+        ))
+        session.flush()
+        line = OrderLine(
+            order_id="receipt-target-order", product_variant_id="receipt-target-variant",
+            order_quantity=40, sku_id_snapshot="RECEIPT-TARGET-SKU",
+            product_name_snapshot="S07接口测试产品", properties_value_snapshot="奶白 / 120",
+            created_at=now, updated_at=now,
+        )
+        session.add(line)
+        session.flush()
+        assignment = OrderAssignment(
+            order_line_id=line.order_line_id, factory_id=FACTORY_IDS[0],
+            assigned_quantity=40, initial_shipped_quantity=0,
+            factory_name_snapshot="S07接口工厂1", created_at=now, updated_at=now,
+        )
+        session.add(assignment)
+        other_factory_assignment = OrderAssignment(
+            order_line_id=line.order_line_id, factory_id=FACTORY_IDS[1],
+            assigned_quantity=40, initial_shipped_quantity=0,
+            factory_name_snapshot="S07接口工厂2", created_at=now, updated_at=now,
+        )
+        session.add(other_factory_assignment)
+        session.flush()
+        target_id = assignment.order_assignment_id
+        other_factory_id = other_factory_assignment.order_assignment_id
+    url = f"/api/v1/admin/shipments/{shipment_id}"
+    original_export = admin.get(url + "/export").content
+    draft = admin.get(url + "/receipt").json()
+    options = admin.get(url + "/receipt/options")
+    assert options.status_code == 200
+    assert any(
+        option["assignmentId"] == target_id and option["orderNo"] == "RECEIPT-B"
+        for option in options.json()["items"][0]["options"]
+    )
+    invalid_items = [dict(item) for item in draft["items"]]
+    invalid_items[0]["assignmentId"] = other_factory_id
+    invalid = admin.put(url + "/receipt", json={"version": 0, "items": invalid_items})
+    assert invalid.status_code == 404
+    draft["items"][0]["assignmentId"] = target_id
+    if move_all:
+        draft["items"][1]["assignmentId"] = target_id
+    saved = admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]})
+    assert saved.status_code == 200, saved.text
+    assert admin.get(url + "/receipt").json()["items"][0]["assignmentId"] == target_id
+    assert factory.get(url.replace("/admin/", "/factory/")).json()["totalQuantity"] == 30
+    confirmed = admin.post(url + "/receipt/confirm", json={"version": 1})
+    assert confirmed.status_code == 200, confirmed.text
+    detail = confirmed.json()
+    assert [(item["orderNo"], item["propertiesValue"], item["quantity"])
+            for item in detail["boxes"][0]["items"]] == [("RECEIPT-B", "奶白 / 120", 10)]
+    expected_lines = {("RECEIPT-B", 30)} if move_all else {
+        ("S07-ORDER-A", 20), ("RECEIPT-B", 10),
+    }
+    assert {(line["orderNo"], line["quantity"]) for line in detail["lines"]} == expected_lines
+    assert admin.get(url + "/export").content == original_export
+    summary_order_nos = "RECEIPT-B" if move_all else "RECEIPT-B、S07-ORDER-A"
+    summary = admin.get("/api/v1/admin/shipments/summary").json()["items"][0]
+    assert summary["orderNos"] == summary_order_nos
+    target_shipments = admin.get(
+        "/api/v1/admin/shipments", params={"orderId": "receipt-target-order"}
+    ).json()["items"]
+    assert target_shipments
+    if move_all:
+        original_shipments = admin.get(
+            "/api/v1/admin/shipments", params={"orderId": ORDER_ID}
+        ).json()["items"]
+        assert original_shipments == []
+    target_line = next(line for line in detail["lines"] if line["orderNo"] == "RECEIPT-B")
+    returned = admin.post(url + "/returns", json={
+        "reason": "规格纠错后退回",
+        "lines": [{"shipmentLineId": target_line["lineId"], "quantity": 3}],
+    })
+    assert returned.status_code == 201, returned.text
+    assert admin.get(url).json()["returnEvents"][-1]["lines"][0]["orderNo"] == "RECEIPT-B"
+
+
 def test_confirm_applies_delta_once_and_preserves_original_exports(
     receipt_clients: tuple[TestClient, TestClient, str],
 ) -> None:

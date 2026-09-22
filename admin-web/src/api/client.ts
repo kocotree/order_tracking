@@ -37,6 +37,7 @@ export type ContractFactoryStatusList = components["schemas"]["ContractFactorySt
 export type ContractExport = components["schemas"]["ContractExportResponse"];
 
 export type ShipmentReceipt = components["schemas"]["ReceiptResponse"];
+export type ShipmentReceiptOptions = components["schemas"]["ReceiptOptionsResponse"];
 
 export interface ShipmentLine {
   boxItemId?: number | null;
@@ -424,7 +425,7 @@ export const contractApi = {
 
 export type ShipmentSummary = components["schemas"]["ShipmentSummaryResponse"];
 export interface ShipmentSummaryQuery {
-  keyword?: string; factory?: string; factories?: string[]; receiptStatus?: "RECEIVED" | "UNRECEIVED" | ""; dateFrom?: string; dateTo?: string;
+  keyword?: string; factory?: string; factories?: string[]; receiptStatus?: "RECEIVED" | "UNRECEIVED" | "RETURNED" | ""; dateFrom?: string; dateTo?: string;
   sortBy?: string; sortOrder?: "asc" | "desc"; page?: number; pageSize?: number;
 }
 
@@ -436,7 +437,8 @@ export const shipmentApi = {
   },
   listFactoryOptions: () => request<components["schemas"]["ShipmentFactoryOptionsResponse"]>("/v1/admin/shipments/factory-options"),
   getReceipt: (id: string) => request<ShipmentReceipt>(`/v1/admin/shipments/${encodeURIComponent(id)}/receipt`),
-  saveReceipt: (id: string, version: number, items: { boxItemId: number; quantity: number }[]) => request<ShipmentReceipt>(`/v1/admin/shipments/${encodeURIComponent(id)}/receipt`, { method: "PUT", body: JSON.stringify({ version, items }) }),
+  getReceiptOptions: (id: string) => request<ShipmentReceiptOptions>(`/v1/admin/shipments/${encodeURIComponent(id)}/receipt/options`),
+  saveReceipt: (id: string, version: number, items: { boxItemId: number; quantity: number; assignmentId: number }[]) => request<ShipmentReceipt>(`/v1/admin/shipments/${encodeURIComponent(id)}/receipt`, { method: "PUT", body: JSON.stringify({ version, items }) }),
   confirmReceipt: (id: string, version: number) => request<Shipment>(`/v1/admin/shipments/${encodeURIComponent(id)}/receipt/confirm`, { method: "POST", headers: idempotencyHeaders(), body: JSON.stringify({ version }) }),
   list: (orderId?: string) => request<ShipmentList>(`/v1/admin/shipments${orderId ? `?orderId=${encodeURIComponent(orderId)}` : ""}`),
   get: (shipmentId: string) =>

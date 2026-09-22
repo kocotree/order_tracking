@@ -1337,6 +1337,7 @@ h1, h2, p { margin-top: 0; }
 .shipment-return-table th:nth-child(8) { width: 125px; }
 .shipment-return-table td:first-child { padding: 0 8px; text-align: center; }
 .return-quantity-input { box-sizing: border-box; width: 100%; height: 30px; padding: 0 8px; border: 1px solid #cfd6de; border-radius: 4px; }
+.receipt-spec-select { box-sizing: border-box; width: 100%; height: 30px; padding: 0 8px; border: 1px solid #cfd6de; border-radius: 4px; background: #fff; font: inherit; }
 .return-reason-field, .reopen-field { display: grid; gap: 8px; color: var(--ink-strong); font-size: 13px; font-weight: 700; }
 .return-reason-field textarea, .reopen-field textarea { box-sizing: border-box; width: 100%; min-height: 84px; padding: 10px 12px; resize: vertical; border: 1px solid #cfd6de; border-radius: 4px; font: inherit; font-weight: 500; }
 @media (max-width: 760px) { .shipment-void-content { align-items: stretch; flex-direction: column; } .shipment-void-content dl { grid-template-columns: 1fr; } .shipment-void-content dl > div.is-wide { grid-column: auto; } }

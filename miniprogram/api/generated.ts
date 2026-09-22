@@ -1046,6 +1046,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/shipments/{shipment_id}/receipt/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Receipt Options */
+        get: operations["receipt_options_api_v1_admin_shipments__shipment_id__receipt_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/shipments/{shipment_id}/returns": {
         parameters: {
             query?: never;
@@ -2911,17 +2928,51 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** ReceiptAssignmentOption */
+        ReceiptAssignmentOption: {
+            /** Assignmentid */
+            assignmentId: number;
+            /** Orderno */
+            orderNo: string;
+            /** Productname */
+            productName: string;
+            /** Propertiesvalue */
+            propertiesValue: string;
+        };
         /** ReceiptConfirm */
         ReceiptConfirm: {
             /** Version */
             version: number;
         };
-        /** ReceiptItemWrite */
-        ReceiptItemWrite: {
+        /** ReceiptItemOptions */
+        ReceiptItemOptions: {
+            /** Boxitemid */
+            boxItemId: number;
+            /** Options */
+            options: components["schemas"]["ReceiptAssignmentOption"][];
+        };
+        /** ReceiptItemResponse */
+        ReceiptItemResponse: {
+            /** Assignmentid */
+            assignmentId: number;
             /** Boxitemid */
             boxItemId: number;
             /** Quantity */
             quantity: number;
+        };
+        /** ReceiptItemWrite */
+        ReceiptItemWrite: {
+            /** Assignmentid */
+            assignmentId?: number | null;
+            /** Boxitemid */
+            boxItemId: number;
+            /** Quantity */
+            quantity: number;
+        };
+        /** ReceiptOptionsResponse */
+        ReceiptOptionsResponse: {
+            /** Items */
+            items: components["schemas"]["ReceiptItemOptions"][];
         };
         /** ReceiptResponse */
         ReceiptResponse: {
@@ -2930,7 +2981,7 @@ export interface components {
             /** Confirmedbyname */
             confirmedByName?: string | null;
             /** Items */
-            items: components["schemas"]["ReceiptItemWrite"][];
+            items: components["schemas"]["ReceiptItemResponse"][];
             /** Status */
             status: string;
             /** Version */
@@ -3556,7 +3607,7 @@ export interface components {
              * Receiptstatus
              * @enum {string}
              */
-            receiptStatus: "RECEIVED" | "UNRECEIVED";
+            receiptStatus: "RECEIVED" | "UNRECEIVED" | "RETURNED";
             /** Shipmentid */
             shipmentId: string;
             /** Shipmentno */
@@ -5941,7 +5992,7 @@ export interface operations {
                 factories?: string[] | null;
                 dateFrom?: string | null;
                 dateTo?: string | null;
-                receiptStatus?: "" | "RECEIVED" | "UNRECEIVED";
+                receiptStatus?: "" | "RECEIVED" | "UNRECEIVED" | "RETURNED";
                 sortBy?: "" | "shipmentNo" | "orderNos" | "factory" | "productNames" | "totalQuantity" | "businessDate";
                 sortOrder?: "asc" | "desc";
                 page?: number;
@@ -6144,6 +6195,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShipmentDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    receipt_options_api_v1_admin_shipments__shipment_id__receipt_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptOptionsResponse"];
                 };
             };
             /** @description Validation Error */

@@ -976,6 +976,9 @@ class ShipmentReceiptItem(Base):
         ForeignKey("shipment_receipts.shipment_id", ondelete="RESTRICT"), nullable=False
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    order_assignment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("order_assignments.order_assignment_id", ondelete="RESTRICT")
+    )
 
 
 class ShipmentLine(Base):

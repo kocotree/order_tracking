@@ -33,6 +33,13 @@ class ApiModel(BaseModel):
 class ReceiptItemWrite(ApiModel):
     box_item_id: StrictInt = Field(gt=0)
     quantity: StrictInt = Field(ge=0, le=2147483647)
+    assignment_id: StrictInt | None = Field(default=None, gt=0)
+
+
+class ReceiptItemResponse(ApiModel):
+    box_item_id: int
+    quantity: int
+    assignment_id: int
 
 
 class ReceiptConfirm(ApiModel):
@@ -47,9 +54,25 @@ class ReceiptSave(ApiModel):
 class ReceiptResponse(ApiModel):
     version: int
     status: str
-    items: list[ReceiptItemWrite]
+    items: list[ReceiptItemResponse]
     confirmed_by_name: str | None = None
     confirmed_at: datetime | None = None
+
+
+class ReceiptAssignmentOption(ApiModel):
+    assignment_id: int
+    order_no: str
+    product_name: str
+    properties_value: str
+
+
+class ReceiptItemOptions(ApiModel):
+    box_item_id: int
+    options: list[ReceiptAssignmentOption]
+
+
+class ReceiptOptionsResponse(ApiModel):
+    items: list[ReceiptItemOptions]
 
 
 def _receipt_response(value: ReceiptSnapshot) -> ReceiptResponse:
@@ -214,7 +237,7 @@ class ShipmentSummaryResponse(ApiModel):
     shipment_id: str
     shipment_no: str | None
     status: str
-    receipt_status: Literal["RECEIVED", "UNRECEIVED"]
+    receipt_status: Literal["RECEIVED", "UNRECEIVED", "RETURNED"]
     factory_id: str
     factory_name: str
     business_date: date | None
@@ -623,7 +646,7 @@ def create_shipment_router(
         date_from: Annotated[date | None, Query(alias="dateFrom")] = None,
         date_to: Annotated[date | None, Query(alias="dateTo")] = None,
         receipt_status: Annotated[
-            Literal["", "RECEIVED", "UNRECEIVED"], Query(alias="receiptStatus")
+            Literal["", "RECEIVED", "UNRECEIVED", "RETURNED"], Query(alias="receiptStatus")
         ] = "",
         sort_by: Annotated[
             Literal[
@@ -792,6 +815,19 @@ def create_shipment_router(
         web_admin(ot_web_session, None, require_csrf=False)
         return _receipt_response(service.get_receipt(shipment_id=shipment_id))
 
+    @router.get(
+        "/admin/shipments/{shipment_id}/receipt/options",
+        response_model=ReceiptOptionsResponse,
+        tags=["shipment-admin"],
+    )
+    def receipt_options(
+        shipment_id: str, ot_web_session: str | None = Cookie(default=None)
+    ) -> ReceiptOptionsResponse:
+        web_admin(ot_web_session, None, require_csrf=False)
+        return ReceiptOptionsResponse.model_validate({
+            "items": service.receipt_options(shipment_id=shipment_id)
+        })
+
     @router.put(
         "/admin/shipments/{shipment_id}/receipt",
         response_model=ReceiptResponse,
@@ -809,7 +845,10 @@ def create_shipment_router(
                 shipment_id=shipment_id,
                 actor_id=actor.user_id,
                 expected_version=payload.version,
-                items=[ReceiptItemInput(i.box_item_id, i.quantity) for i in payload.items],
+                items=[
+                    ReceiptItemInput(i.box_item_id, i.quantity, i.assignment_id)
+                    for i in payload.items
+                ],
             )
         )
 

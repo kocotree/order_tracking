@@ -170,6 +170,22 @@ it("copies 33 boxes, saves and restores the group, and detaches only the edited 
 });
 
 
+it("can add an initially fully shipped assignment and confirms the extra quantity", async () => {
+  catalog=[{assignmentId:7,orderId:"order-7",orderNo:"E81",productName:"风衣",propertiesValue:"蓝 / 120",pendingQuantity:0,assignedQuantity:15,shippedQuantity:15,contractShipDate:"2026-09-10"}];
+  page.onLoad({});
+  await vi.waitFor(() => expect(page.data.ready).toBe(true));
+  page.setData({boxCount:"1"});
+  await page.generateBoxes();
+  await page.next();
+  page.setData({quantity:"1"});
+  page.addItem();
+  expect(page.data.boxes[0].items).toEqual([{assignmentId:7,quantity:1}]);
+  modalConfirm=false;
+  await page.submit();
+  expect(submitted).toBe(false);
+  expect(wx.showModal).toHaveBeenLastCalledWith(expect.objectContaining({content:expect.stringContaining("多发 1 件")}));
+});
+
 it("allows batch over-shipment but requires confirmation naming its order before submitting", async () => {
   catalog=[{assignmentId:7,orderId:"order-7",orderNo:"E81",productName:"风衣",propertiesValue:"蓝 / 120",pendingQuantity:15,assignedQuantity:15,shippedQuantity:0,contractShipDate:"2026-09-10"}];
   page.onLoad({});

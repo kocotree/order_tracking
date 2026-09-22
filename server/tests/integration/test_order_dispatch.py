@@ -360,16 +360,17 @@ def test_over_shipment_dispatches_with_zero_pending(test_database_engine: Engine
     rows = [
         _row("rec-a", order_quantity=100, shipped_quantity=0),  # 0% → pull order
         _row("rec-b", order_quantity=900, shipped_quantity=915),  # already over-shipped
+        _row("rec-c", order_quantity=50, shipped_quantity=50),
     ]
     sessions, source, order_id = setup_dispatch_order(test_database_engine, rows=rows)
     service = OrderDispatchService(sessions, source=source)
     args = dict(actor_id="admin-order-import", order_id=order_id, request_id="t90")
     order = service.get(order_id=order_id)
-    assert len(order.details) == 2
+    assert len(order.details) == 3
     rec_b = next(d for d in order.details if d.order_quantity == 900)
     assert rec_b.shipped_quantity == 915
 
-    # dispatch both
+    # 派工全部规格。
     detail_ids = [d.detail_id for d in order.details]
     preview = service.dispatch_preview(**args, version=order.version, detail_ids=detail_ids)
     assert preview["all_ok"] is True
@@ -383,13 +384,14 @@ def test_over_shipment_dispatches_with_zero_pending(test_database_engine: Engine
     assert b.pending_quantity == 0
     assert b.progress_percent is not None and b.progress_percent > 100
 
-    # The over-shipped assignment must NOT enter the shipment catalog
+    # 已派工规格在未发为 0 或已超发时仍可继续选择。
     from app.modules.shipments import ShipmentService
 
     sessions_local = sessionmaker(test_database_engine, expire_on_commit=False)
     catalog = ShipmentService(sessions_local).list_catalog(factory_id="factory-import")
     catalog_qty = {c.assigned_quantity: c.pending_quantity for c in catalog}
-    assert 900 not in catalog_qty
+    assert catalog_qty[900] == 0
+    assert catalog_qty[50] == 0
     assert 100 in catalog_qty
     assert catalog_qty[100] > 0
 

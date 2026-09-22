@@ -189,7 +189,9 @@ def test_confirmed_quantity_cannot_be_autonomously_withdrawn(
     assert result.status_code == 409
     items = factory.get("/api/v1/factory/shipment-catalog").json()["items"]
     if quantity == 35:
-        assert items == []
+        assert len(items) == 1
+        assert items[0]["shippedQuantity"] == 40
+        assert items[0]["pendingQuantity"] == 0
     else:
         assert items[0]["shippedQuantity"] == quantity + 5
 

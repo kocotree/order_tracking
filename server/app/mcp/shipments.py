@@ -34,7 +34,7 @@ def register_shipment_tools(
         factories: list[str] | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
-        receipt_status: Literal["", "RECEIVED", "UNRECEIVED"] = "",
+        receipt_status: Literal["", "RECEIVED", "UNRECEIVED", "RETURNED"] = "",
         sort_by: Literal[
             "", "shipmentNo", "orderNos", "factory", "productNames",
             "totalQuantity", "businessDate",
@@ -150,7 +150,10 @@ def register_shipment_tools(
         return execute("save_receipt", lambda user_id, _request: _receipt_response(
             shipments.save_receipt(
                 shipment_id=shipment_id, actor_id=user_id, expected_version=version,
-                items=[ReceiptItemInput(item.box_item_id, item.quantity) for item in items],
+                items=[
+                    ReceiptItemInput(item.box_item_id, item.quantity, item.assignment_id)
+                    for item in items
+                ],
                 source_terminal="agent",
             )
         ))

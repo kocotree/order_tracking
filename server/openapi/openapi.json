@@ -3301,6 +3301,34 @@
         "title": "ProductListResponse",
         "type": "object"
       },
+      "ReceiptAssignmentOption": {
+        "properties": {
+          "assignmentId": {
+            "title": "Assignmentid",
+            "type": "integer"
+          },
+          "orderNo": {
+            "title": "Orderno",
+            "type": "string"
+          },
+          "productName": {
+            "title": "Productname",
+            "type": "string"
+          },
+          "propertiesValue": {
+            "title": "Propertiesvalue",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assignmentId",
+          "orderNo",
+          "productName",
+          "propertiesValue"
+        ],
+        "title": "ReceiptAssignmentOption",
+        "type": "object"
+      },
       "ReceiptConfirm": {
         "properties": {
           "version": {
@@ -3315,8 +3343,64 @@
         "title": "ReceiptConfirm",
         "type": "object"
       },
+      "ReceiptItemOptions": {
+        "properties": {
+          "boxItemId": {
+            "title": "Boxitemid",
+            "type": "integer"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptAssignmentOption"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "boxItemId",
+          "options"
+        ],
+        "title": "ReceiptItemOptions",
+        "type": "object"
+      },
+      "ReceiptItemResponse": {
+        "properties": {
+          "assignmentId": {
+            "title": "Assignmentid",
+            "type": "integer"
+          },
+          "boxItemId": {
+            "title": "Boxitemid",
+            "type": "integer"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "boxItemId",
+          "quantity",
+          "assignmentId"
+        ],
+        "title": "ReceiptItemResponse",
+        "type": "object"
+      },
       "ReceiptItemWrite": {
         "properties": {
+          "assignmentId": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignmentid"
+          },
           "boxItemId": {
             "exclusiveMinimum": 0.0,
             "title": "Boxitemid",
@@ -3334,6 +3418,22 @@
           "quantity"
         ],
         "title": "ReceiptItemWrite",
+        "type": "object"
+      },
+      "ReceiptOptionsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptItemOptions"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ReceiptOptionsResponse",
         "type": "object"
       },
       "ReceiptResponse": {
@@ -3363,7 +3463,7 @@
           },
           "items": {
             "items": {
-              "$ref": "#/components/schemas/ReceiptItemWrite"
+              "$ref": "#/components/schemas/ReceiptItemResponse"
             },
             "title": "Items",
             "type": "array"
@@ -4982,7 +5082,8 @@
           "receiptStatus": {
             "enum": [
               "RECEIVED",
-              "UNRECEIVED"
+              "UNRECEIVED",
+              "RETURNED"
             ],
             "title": "Receiptstatus",
             "type": "string"
@@ -10744,7 +10845,8 @@
               "enum": [
                 "",
                 "RECEIVED",
-                "UNRECEIVED"
+                "UNRECEIVED",
+                "RETURNED"
               ],
               "title": "Receiptstatus",
               "type": "string"
@@ -11232,6 +11334,64 @@
           }
         },
         "summary": "Confirm Receipt",
+        "tags": [
+          "shipment-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/shipments/{shipment_id}/receipt/options": {
+      "get": {
+        "operationId": "receipt_options_api_v1_admin_shipments__shipment_id__receipt_options_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipment_id",
+            "required": true,
+            "schema": {
+              "title": "Shipment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptOptionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Receipt Options",
         "tags": [
           "shipment-admin"
         ]

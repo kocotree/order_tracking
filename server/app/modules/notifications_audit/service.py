@@ -33,9 +33,12 @@ from app.db.models import (
     RepairReturnBatch,
     RepairReturnLine,
     Shipment,
+    ShipmentBox,
+    ShipmentBoxItem,
     ShipmentLine,
     ShipmentReceipt,
     ShipmentReceiptItem,
+    ShipmentReturnLine,
     ShipmentVoidRequest,
     User,
 )
@@ -1088,9 +1091,15 @@ class NotificationsAuditService:
         fact_id = str(message.payload.get("factShipmentId", shipment.shipment_id))
         lines = session.scalars(
             select(ShipmentLine)
+            .join(
+                ShipmentBoxItem,
+                ShipmentBoxItem.order_assignment_id == ShipmentLine.order_assignment_id,
+            )
+            .join(ShipmentBox, ShipmentBox.box_id == ShipmentBoxItem.box_id)
             .where(ShipmentLine.shipment_id == fact_id)
+            .where(ShipmentBox.shipment_id == fact_id)
             .order_by(ShipmentLine.line_id)
-        ).all()
+        ).unique().all()
         # ShipmentLine already totals boxes per assignment. Merge equivalent snapshots too.
         quantities: dict[tuple[str, str, str, str], int] = {}
         for line in lines:
@@ -1272,7 +1281,11 @@ class NotificationsAuditService:
                 ShipmentLine,
                 ShipmentLine.order_assignment_id == OrderAssignment.order_assignment_id,
             )
-            .where(ShipmentLine.shipment_id == shipment.shipment_id)
+            .join(ShipmentReturnLine, ShipmentReturnLine.shipment_line_id == ShipmentLine.line_id)
+            .where(
+                ShipmentLine.shipment_id == shipment.shipment_id,
+                ShipmentReturnLine.event_id == message.payload["eventId"],
+            )
             .order_by(OrderLine.order_id)
             .limit(1)
         )

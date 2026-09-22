@@ -9,7 +9,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from PIL import Image, UnidentifiedImageError
-from sqlalchemy import Select, delete, func, select
+from sqlalchemy import Select, case, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.private_files import PrivateFileStore
@@ -98,6 +98,7 @@ class DraftBoxInput:
 class ReceiptItemInput:
     box_item_id: int
     quantity: int
+    assignment_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -267,11 +268,61 @@ class ShipmentService:
                 raise ShipmentNotFound("shipment not found")
             return self._receipt_snapshot(session, shipment_id)
 
+    def receipt_options(self, *, shipment_id: str) -> list[dict[str, Any]]:
+        with self._sessions() as session:
+            shipment = session.get(Shipment, shipment_id)
+            if (
+                shipment is None or shipment.deleted_at is not None
+                or shipment.status == "DRAFT" or shipment.source_shipment_id is not None
+            ):
+                raise ShipmentNotFound("shipment not found")
+            sources = session.execute(
+                select(ShipmentBoxItem.item_id, ProductVariant.product_id)
+                .join(ShipmentBox, ShipmentBox.box_id == ShipmentBoxItem.box_id)
+                .join(
+                    OrderAssignment,
+                    OrderAssignment.order_assignment_id == ShipmentBoxItem.order_assignment_id,
+                )
+                .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+                .join(ProductVariant, ProductVariant.variant_id == OrderLine.product_variant_id)
+                .where(ShipmentBox.shipment_id == shipment_id)
+                .order_by(ShipmentBox.box_no, ShipmentBoxItem.item_id)
+            ).all()
+            choices: dict[str, list[dict[str, Any]]] = defaultdict(list)
+            for assignment_id, order_no, product_name, properties_value, product_id in (
+                session.execute(
+                select(
+                    OrderAssignment.order_assignment_id, Order.order_no,
+                    OrderLine.product_name_snapshot, OrderLine.properties_value_snapshot,
+                    ProductVariant.product_id,
+                )
+                .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+                .join(Order, Order.order_id == OrderLine.order_id)
+                .join(ProductVariant, ProductVariant.variant_id == OrderLine.product_variant_id)
+                .where(
+                    OrderAssignment.factory_id == shipment.factory_id,
+                    OrderAssignment.is_active.is_(True),
+                    Order.deleted_at.is_(None),
+                    Order.lifecycle.in_(("PUBLISHED", "COMPLETED")),
+                    ProductVariant.product_id.in_({product_id for _, product_id in sources}),
+                )
+                .order_by(Order.order_no, OrderLine.properties_value_snapshot)
+                )
+            ):
+                choices[product_id].append({
+                    "assignmentId": assignment_id, "orderNo": order_no,
+                    "productName": product_name, "propertiesValue": properties_value,
+                })
+            return [
+                {"boxItemId": box_item_id, "options": choices[product_id]}
+                for box_item_id, product_id in sources
+            ]
+
     @staticmethod
     def _receipt_snapshot(session: Session, shipment_id: str) -> ReceiptSnapshot:
         receipt = session.get(ShipmentReceipt, shipment_id)
-        quantities = {
-            item.box_item_id: item.quantity
+        saved_items = {
+            item.box_item_id: item
             for item in session.scalars(
                 select(ShipmentReceiptItem).where(ShipmentReceiptItem.shipment_id == shipment_id)
             )
@@ -285,13 +336,19 @@ class ShipmentService:
         actor = (
             session.get(User, receipt.confirmed_by) if receipt and receipt.confirmed_by else None
         )
+        items = []
+        for item in originals:
+            saved = saved_items.get(item.item_id)
+            items.append(ReceiptItemInput(
+                item.item_id,
+                saved.quantity if saved else item.quantity,
+                (saved.order_assignment_id or item.order_assignment_id)
+                if saved else item.order_assignment_id,
+            ))
         return ReceiptSnapshot(
             version=receipt.version if receipt else 0,
             status=receipt.status if receipt else "DRAFT",
-            items=[
-                ReceiptItemInput(item.item_id, quantities.get(item.item_id, item.quantity))
-                for item in originals
-            ],
+            items=items,
             confirmed_by_name=actor.feishu_display_name if actor else None,
             confirmed_at=receipt.confirmed_at if receipt else None,
         )
@@ -322,6 +379,60 @@ class ShipmentService:
         ):
             raise ShipmentConflict("发货单已作废、撤回处理中或已有退回，不能核对收货")
 
+    @staticmethod
+    def _validate_receipt_assignments(
+        session: Session, shipment: Shipment, items: list[ReceiptItemInput]
+    ) -> list[ReceiptItemInput]:
+        originals = {
+            item.item_id: item.order_assignment_id
+            for item in session.scalars(
+                select(ShipmentBoxItem).join(ShipmentBox).where(
+                    ShipmentBox.shipment_id == shipment.shipment_id
+                )
+            )
+        }
+        if len(items) != len(originals) or {item.box_item_id for item in items} != set(originals):
+            raise ShipmentValidationError("必须保留全部原箱内明细")
+        resolved = [
+            ReceiptItemInput(
+                item.box_item_id, item.quantity,
+                item.assignment_id if item.assignment_id is not None
+                else originals[item.box_item_id],
+            )
+            for item in items
+        ]
+        assignment_ids = set(originals.values())
+        for item in resolved:
+            if item.assignment_id is None:
+                raise ShipmentValidationError("目标订单规格无效")
+            assignment_ids.add(item.assignment_id)
+        assignments = ShipmentService._load_assignments(
+            session, assignment_ids, shipment.factory_id, lock=True, require_published=False
+        )
+        product_ids = {
+            variant_id: product_id
+            for variant_id, product_id in session.execute(
+                select(ProductVariant.variant_id, ProductVariant.product_id).where(
+                    ProductVariant.variant_id.in_(
+                        {line.product_variant_id for _, line, _ in assignments.values()}
+                    )
+                )
+            )
+        }
+        for item in resolved:
+            assert item.assignment_id is not None
+            _target_assignment, target_line, target_order = assignments[item.assignment_id]
+            _original_assignment, original_line, _original_order = assignments[
+                originals[item.box_item_id]
+            ]
+            if (
+                target_order.lifecycle not in ("PUBLISHED", "COMPLETED")
+                or product_ids[target_line.product_variant_id]
+                != product_ids[original_line.product_variant_id]
+            ):
+                raise ShipmentValidationError("只能选择同厂同产品的有效订单规格")
+        return resolved
+
     def save_receipt(
         self,
         *,
@@ -347,6 +458,7 @@ class ShipmentService:
                 )
             ):
                 raise ShipmentValidationError("必须保留全部原箱内明细，数量为非负整数")
+            items = self._validate_receipt_assignments(session, shipment, items)
             current = datetime.now(UTC)
             receipt = session.get(ShipmentReceipt, shipment_id)
             if receipt is None:
@@ -369,7 +481,8 @@ class ShipmentService:
             session.add_all(
                 [
                     ShipmentReceiptItem(
-                        shipment_id=shipment_id, box_item_id=i.box_item_id, quantity=i.quantity
+                        shipment_id=shipment_id, box_item_id=i.box_item_id, quantity=i.quantity,
+                        order_assignment_id=i.assignment_id,
                     )
                     for i in items
                 ]
@@ -383,8 +496,16 @@ class ShipmentService:
                     actor_id=actor_id,
                     source_terminal=source_terminal,
                     changes={
-                        "before": {str(i.box_item_id): i.quantity for i in before.items},
-                        "after": {str(i.box_item_id): i.quantity for i in items},
+                        "before": {
+                            str(i.box_item_id): {
+                                "quantity": i.quantity, "assignmentId": i.assignment_id,
+                            } for i in before.items
+                        },
+                        "after": {
+                            str(i.box_item_id): {
+                                "quantity": i.quantity, "assignmentId": i.assignment_id,
+                            } for i in items
+                        },
                         "version": receipt.version,
                     },
                 )
@@ -418,6 +539,7 @@ class ShipmentService:
             if existing is not None:
                 raise ShipmentConflict("收货确认结果与幂等记录不一致")
             self._require_receivable(session, shipment)
+            confirmed_items = self._validate_receipt_assignments(session, shipment, before.items)
             current = datetime.now(UTC)
             session.add(IdempotencyRecord(
                 scope=scope, idempotency_key=idempotency_key,
@@ -441,9 +563,10 @@ class ShipmentService:
             session.add_all(
                 [
                     ShipmentReceiptItem(
-                        shipment_id=shipment_id, box_item_id=i.box_item_id, quantity=i.quantity
+                        shipment_id=shipment_id, box_item_id=i.box_item_id, quantity=i.quantity,
+                        order_assignment_id=i.assignment_id,
                     )
-                    for i in before.items
+                    for i in confirmed_items
                 ]
             )
             originals = list(
@@ -453,13 +576,34 @@ class ShipmentService:
                     .where(ShipmentBox.shipment_id == shipment_id)
                 )
             )
-            quantities = {i.box_item_id: i.quantity for i in before.items}
+            confirmed = {i.box_item_id: i for i in confirmed_items}
             deltas: dict[int, int] = defaultdict(int)
+            effective_totals: dict[int, int] = defaultdict(int)
             for item in originals:
-                deltas[item.order_assignment_id] += quantities[item.item_id] - item.quantity
+                target = confirmed[item.item_id]
+                assert target.assignment_id is not None
+                deltas[item.order_assignment_id] -= item.quantity
+                deltas[target.assignment_id] += target.quantity
+                effective_totals[target.assignment_id] += target.quantity
             assignments = self._load_assignments(
                 session, set(deltas), shipment.factory_id, lock=True, require_published=False
             )
+            original_line_ids = set(session.scalars(
+                select(ShipmentLine.order_assignment_id).where(
+                    ShipmentLine.shipment_id == shipment_id
+                )
+            ))
+            for assignment_id, quantity in effective_totals.items():
+                if assignment_id in original_line_ids or quantity == 0:
+                    continue
+                _assignment, line, order = assignments[assignment_id]
+                session.add(ShipmentLine(
+                    shipment_id=shipment_id, order_assignment_id=assignment_id,
+                    quantity=quantity, order_no_snapshot=order.order_no,
+                    sku_id_snapshot=line.sku_id_snapshot,
+                    product_name_snapshot=line.product_name_snapshot,
+                    properties_value_snapshot=line.properties_value_snapshot,
+                ))
             order_deltas: dict[str, int] = defaultdict(int)
             orders: dict[str, Order] = {}
             for assignment_id, delta in deltas.items():
@@ -545,7 +689,11 @@ class ShipmentService:
                     changes={
                         "version": receipt.version,
                         "before": {str(i.item_id): i.quantity for i in originals},
-                        "after": {str(i.box_item_id): i.quantity for i in before.items},
+                        "after": {
+                            str(i.box_item_id): {
+                                "quantity": i.quantity, "assignmentId": i.assignment_id,
+                            } for i in confirmed_items
+                        },
                     },
                 )
             )
@@ -577,15 +725,19 @@ class ShipmentService:
             int(assignment_id): int(quantity)
             for assignment_id, quantity in session.execute(
                 select(
-                    ShipmentBoxItem.order_assignment_id,
+                    func.coalesce(
+                        ShipmentReceiptItem.order_assignment_id,
+                        ShipmentBoxItem.order_assignment_id,
+                    ).label("assignment_id"),
                     func.sum(func.coalesce(ShipmentReceiptItem.quantity, ShipmentBoxItem.quantity)),
                 )
+                .select_from(ShipmentBoxItem)
                 .join(ShipmentBox, ShipmentBox.box_id == ShipmentBoxItem.box_id)
                 .outerjoin(
                     ShipmentReceiptItem, ShipmentReceiptItem.box_item_id == ShipmentBoxItem.item_id
                 )
                 .where(ShipmentBox.shipment_id == shipment_id)
-                .group_by(ShipmentBoxItem.order_assignment_id)
+                .group_by("assignment_id")
             )
         }
 
@@ -1084,13 +1236,41 @@ class ShipmentService:
                 query = query.where(Shipment.factory_id == factory_id)
             if order_id is not None:
                 related_ids = (
-                    select(ShipmentLine.shipment_id)
+                    select(ShipmentBox.shipment_id)
+                    .join(ShipmentBoxItem, ShipmentBoxItem.box_id == ShipmentBox.box_id)
+                    .outerjoin(
+                        ShipmentReceiptItem,
+                        ShipmentReceiptItem.box_item_id == ShipmentBoxItem.item_id,
+                    )
+                    .outerjoin(
+                        ShipmentReceipt, ShipmentReceipt.shipment_id == ShipmentBox.shipment_id
+                    )
                     .join(
                         OrderAssignment,
-                        OrderAssignment.order_assignment_id == ShipmentLine.order_assignment_id,
+                        OrderAssignment.order_assignment_id == case(
+                            (
+                                ShipmentReceipt.status == "CONFIRMED",
+                                func.coalesce(
+                                    ShipmentReceiptItem.order_assignment_id,
+                                    ShipmentBoxItem.order_assignment_id,
+                                ),
+                            ),
+                            else_=ShipmentBoxItem.order_assignment_id,
+                        ),
                     )
                     .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-                    .where(OrderLine.order_id == order_id)
+                    .where(
+                        OrderLine.order_id == order_id,
+                        case(
+                            (
+                                ShipmentReceipt.status == "CONFIRMED",
+                                func.coalesce(
+                                    ShipmentReceiptItem.quantity, ShipmentBoxItem.quantity
+                                ),
+                            ),
+                            else_=ShipmentBoxItem.quantity,
+                        ) > 0,
+                    )
                 )
                 query = query.where(Shipment.shipment_id.in_(related_ids))
             shipments = list(
@@ -2107,21 +2287,24 @@ class ShipmentService:
 
     def _detail_snapshot(self, session: Session, shipment: Shipment) -> ShipmentDraftSnapshot:
         box_inputs = self._box_inputs(session, shipment.shipment_id)
+        original_assignment_ids = {
+            item.assignment_id for box in box_inputs for item in box.items
+        }
         receipt_record = session.get(ShipmentReceipt, shipment.shipment_id)
         receipt = (
             self._receipt_snapshot(session, shipment.shipment_id)
             if receipt_record and receipt_record.status == "CONFIRMED"
             else None
         )
-        box_item_ids = {
-            (box.box_no, item.order_assignment_id): item.item_id
-            for box, item in session.execute(
-                select(ShipmentBox, ShipmentBoxItem)
-                .join(ShipmentBoxItem)
-                .where(ShipmentBox.shipment_id == shipment.shipment_id)
-            )
-        }
-        confirmed_quantities = {i.box_item_id: i.quantity for i in receipt.items} if receipt else {}
+        box_items_by_no: dict[int, list[ShipmentBoxItem]] = defaultdict(list)
+        for box, item in session.execute(
+            select(ShipmentBox, ShipmentBoxItem)
+            .join(ShipmentBoxItem)
+            .where(ShipmentBox.shipment_id == shipment.shipment_id)
+            .order_by(ShipmentBox.box_no, ShipmentBoxItem.item_id)
+        ):
+            box_items_by_no[box.box_no].append(item)
+        confirmed_items = {i.box_item_id: i for i in receipt.items} if receipt else {}
         if receipt:
             box_inputs = [
                 DraftBoxInput(
@@ -2129,16 +2312,19 @@ class ShipmentService:
                     box.group_key,
                     [
                         DraftItemInput(
-                            item.assignment_id,
-                            confirmed_quantities[box_item_ids[(box.box_no, item.assignment_id)]],
+                            confirmed_items[original.item_id].assignment_id
+                            or original.order_assignment_id,
+                            confirmed_items[original.item_id].quantity,
                         )
-                        for item in box.items
+                        for original in box_items_by_no[box.box_no]
                     ],
                 )
                 for box in box_inputs
             ]
         effective_lines = self._effective_line_quantities(session, shipment.shipment_id)
-        assignment_ids = {item.assignment_id for box in box_inputs for item in box.items}
+        assignment_ids = original_assignment_ids | {
+            item.assignment_id for box in box_inputs for item in box.items
+        }
         assignments = (
             self._load_assignments(
                 session,
@@ -2190,7 +2376,8 @@ class ShipmentService:
         totals: dict[int, int] = defaultdict(int)
         for box in box_inputs:
             items = []
-            for item in box.items:
+            for index, item in enumerate(box.items):
+                box_item_id = box_items_by_no[box.box_no][index].item_id
                 assignment, line, order = assignments[item.assignment_id]
                 persisted_line = persisted_lines.get(item.assignment_id)
                 returned_quantity = (
@@ -2207,7 +2394,7 @@ class ShipmentService:
                     product_name=line.product_name_snapshot,
                     properties_value=line.properties_value_snapshot,
                     quantity=item.quantity,
-                    box_item_id=box_item_ids[(box.box_no, item.assignment_id)],
+                    box_item_id=box_item_id,
                     line_id=persisted_line.line_id if persisted_line is not None else None,
                     returned_quantity=returned_quantity,
                     returnable_quantity=(
@@ -2301,17 +2488,23 @@ class ShipmentService:
             receipt=receipt,
             receipt_differences=[
                 ShipmentLineSnapshot(
-                    assignment_id=value.assignment_id,
-                    order_id=value.order_id,
-                    order_no=value.order_no,
-                    sku_id=value.sku_id,
-                    item_number=value.item_number,
-                    product_name=value.product_name,
-                    properties_value=value.properties_value,
-                    quantity=value.quantity - persisted_lines[value.assignment_id].quantity,
+                    assignment_id=assignment_id,
+                    order_id=assignments[assignment_id][2].order_id,
+                    order_no=assignments[assignment_id][2].order_no,
+                    sku_id=assignments[assignment_id][1].sku_id_snapshot,
+                    item_number=item_numbers[assignments[assignment_id][1].product_variant_id],
+                    product_name=assignments[assignment_id][1].product_name_snapshot,
+                    properties_value=assignments[assignment_id][1].properties_value_snapshot,
+                    quantity=totals.get(assignment_id, 0) - (
+                        persisted_lines[assignment_id].quantity
+                        if assignment_id in original_assignment_ids else 0
+                    ),
                 )
-                for value in lines
-                if receipt and value.quantity != persisted_lines[value.assignment_id].quantity
+                for assignment_id in sorted(assignment_ids)
+                if receipt and totals.get(assignment_id, 0) != (
+                    persisted_lines[assignment_id].quantity
+                    if assignment_id in original_assignment_ids else 0
+                )
             ],
             operations=[
                 {

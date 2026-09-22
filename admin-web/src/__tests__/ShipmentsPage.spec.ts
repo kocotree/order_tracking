@@ -3,7 +3,7 @@ import { createRouter, createMemoryHistory } from "vue-router";
 import { afterEach, expect, it, vi } from "vitest";
 import ShipmentsPage from "@/pages/ShipmentsPage.vue";
 import { shipmentApi, type ShipmentSummary } from "@/api/client";
-const row = (name: string, receiptStatus: "RECEIVED" | "UNRECEIVED" = "UNRECEIVED"): ShipmentSummary => ({ shipmentId: name, shipmentNo: name, businessDate: "2026-09-05", status: "SHIPPED", receiptStatus, factoryId: "a", factoryName: "工厂甲", orderNos: "ORDER1", productNames: "产品", totalQuantity: 1 });
+const row = (name: string, receiptStatus: "RECEIVED" | "UNRECEIVED" | "RETURNED" = "UNRECEIVED"): ShipmentSummary => ({ shipmentId: name, shipmentNo: name, businessDate: "2026-09-05", status: "SHIPPED", receiptStatus, factoryId: "a", factoryName: "工厂甲", orderNos: "ORDER1", productNames: "产品", totalQuantity: 1 });
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
 async function setup(url = "/shipments") {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/shipments", component: ShipmentsPage }, { path: "/shipments/:shipmentId", component: { template: "<div />" } }] });
@@ -30,10 +30,16 @@ it("loads one database page with dashboard dates and resets filters", async () =
   expect(list).toHaveBeenLastCalledWith(expect.objectContaining({receiptStatus: "RECEIVED", page: 1}));
   expect(wrapper.text()).toContain("已收货");
   expect(wrapper.get("tbody .status-badge").classes()).toContain("is-success");
+  list.mockResolvedValue({items: [row("RETURNED", "RETURNED")], total: 1});
+  await wrapper.get('[aria-label="收货状态"]').setValue("RETURNED");
+  await flushPromises();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({receiptStatus: "RETURNED", page: 1}));
+  expect(wrapper.get("tbody .status-badge").text()).toBe("退回");
+  expect(wrapper.get("tbody .status-badge").classes()).toContain("is-warning");
   list.mockResolvedValue({items: [row("YESTERDAY")], total: 1});
   await wrapper.get(".order-secondary-button").trigger("click");
   await flushPromises();
-  expect(list).toHaveBeenCalledTimes(3);
+  expect(list).toHaveBeenCalledTimes(4);
   expect(list).toHaveBeenLastCalledWith(expect.objectContaining({dateFrom: "", dateTo: "", receiptStatus: "", page: 1}));
   expect(wrapper.text()).toContain("YESTERDAY");
   wrapper.unmount();

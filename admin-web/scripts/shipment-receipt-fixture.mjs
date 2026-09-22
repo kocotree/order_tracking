@@ -10,7 +10,7 @@ export default async function setupReceiptFixture(page) {
     {boxNo:4,groupKey:null,items:[{...line2,boxItemId:5,quantity:100}]},
     {boxNo:5,groupKey:null,items:[{...line2,boxItemId:6,quantity:100}]}
   ], files:[],returnEvents:[],voidRequest:null,receipt:null,receiptDifferences:[] };
-  let receipt = {version:0,status:'DRAFT',items:shipment.boxes.flatMap(b=>b.items.map(i=>({boxItemId:i.boxItemId,quantity:i.quantity}))),confirmedAt:null,confirmedByName:null};
+  let receipt = {version:0,status:'DRAFT',items:shipment.boxes.flatMap(b=>b.items.map(i=>({boxItemId:i.boxItemId,quantity:i.quantity,assignmentId:i.assignmentId}))),confirmedAt:null,confirmedByName:null};
   await page.route('**/api/v1/**', async route => {
     const path = route.request().url().split('?')[0].replace(/^https?:\/\/[^/]+/, '');
     const method = route.request().method();
@@ -24,7 +24,8 @@ export default async function setupReceiptFixture(page) {
       shipment.lines=shipment.lines.map(l=>({...l,quantity:shipment.boxes.flatMap(b=>b.items).filter(i=>i.assignmentId===l.assignmentId).reduce((a,i)=>a+i.quantity,0)}));
       shipment.totalQuantity=shipment.lines.reduce((a,l)=>a+l.quantity,0);
       data=shipment;
-    } else if(path.endsWith('/receipt')) {
+    } else if(path.endsWith('/receipt/options')) data={items:shipment.boxes.flatMap(b=>b.items.map(i=>({boxItemId:i.boxItemId,options:[line,line2].map(l=>({assignmentId:l.assignmentId,orderNo:l.orderNo,productName:l.productName,propertiesValue:l.propertiesValue}))})))};
+    else if(path.endsWith('/receipt')) {
       if(method==='PUT') {const body=route.request().postDataJSON();receipt={...receipt,version:receipt.version+1,items:body.items};}
       data=receipt;
     } else if(path.endsWith('/shipments/issue44')) data=shipment;

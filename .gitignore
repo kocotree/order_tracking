@@ -4,7 +4,8 @@ output/
 
 # Local-only working directories
 .worktrees/
-experiments/
+# 实验文件及历史记录仅保留在本地
+/experiments/
 
 # Local environment and secrets
 .env

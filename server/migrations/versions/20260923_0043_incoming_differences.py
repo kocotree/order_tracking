@@ -6,8 +6,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import mysql
 
-revision: str = "20260918_0041"
-down_revision: str | None = "20260916_0040"
+revision: str = "20260923_0043"
+down_revision: str | None = "20260922_0042"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

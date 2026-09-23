@@ -43,7 +43,7 @@ beforeEach(() => {
 });
 
 describe("order detail prototype alignment", () => {
-  it("shows the S06 export entry disabled for draft orders", async () => {
+  it("shows the export entry disabled when the order has no matched factory", async () => {
     vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
     const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
     await flushPromises();
@@ -66,7 +66,7 @@ describe("order detail prototype alignment", () => {
     expect(wrapper.text()).not.toContain("删除订单");
     const contractButton = wrapper.find('[data-testid="contract-export-open"]');
     expect(contractButton.attributes("disabled")).toBeDefined();
-    expect(contractButton.attributes("title")).toContain("订单尚未派工");
+    expect(contractButton.attributes("title")).toContain("订单暂无匹配工厂");
     expect(wrapper.text()).not.toContain("工厂派工与进度");
     expect(wrapper.text()).toContain("操作记录（1）");
     expect(wrapper.find(".order-audit-list").exists()).toBe(false);
@@ -112,6 +112,56 @@ describe("order detail prototype alignment", () => {
     expect(wrapper.text()).toContain("合同资料");
     expect(wrapper.text()).toContain("首次导出后生成");
     expect(wrapper.find('input[type="date"]').attributes("readonly")).toBeUndefined();
+  });
+
+  it("opens contract export for a draft with a matched factory and no contract ship date", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue({ ...sampleOrder, contractShipDates: [], contractShipDate: null });
+    const listSpy = vi.spyOn(contractApi, "list").mockResolvedValue({
+      items: [{ factoryId: "factory-1", factoryName: "盛泰", contractReady: true, missingContractFields: [], eligible: true, ineligibleReason: null, contractNo: null, signingDate: null }],
+      requestId: "contract-draft-list",
+    });
+    const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
+    await flushPromises();
+
+    expect(listSpy).toHaveBeenCalledWith("order-1");
+    const button = wrapper.get('[data-testid="contract-export-open"]');
+    expect(button.attributes("disabled")).toBeUndefined();
+    await button.trigger("click");
+    expect(wrapper.find(".contract-export-dialog").exists()).toBe(true);
+    expect(wrapper.text()).toContain("签订日期");
+  });
+
+  it("explains why matched draft details cannot be exported", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    vi.spyOn(contractApi, "list").mockResolvedValue({
+      items: [{ factoryId: "factory-1", factoryName: "盛泰", contractReady: true, missingContractFields: [], eligible: false, ineligibleReason: "contract_details_incomplete", contractNo: null, signingDate: null }],
+      requestId: "contract-invalid-details",
+    });
+    const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="contract-export-open"]').trigger("click");
+    expect(wrapper.get(".contract-export-warning").text()).toContain("产品匹配和下单数量");
+    expect(wrapper.get(".contract-export-dialog .order-primary-button").attributes("disabled")).toBeDefined();
+  });
+
+  it("shows invalid detail status when choosing among multiple factories", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    vi.spyOn(contractApi, "list").mockResolvedValue({
+      items: [
+        { factoryId: "factory-1", factoryName: "盛泰", contractReady: true, missingContractFields: [], eligible: false, ineligibleReason: "contract_details_incomplete", contractNo: null, signingDate: null },
+        { factoryId: "factory-2", factoryName: "汇丰", contractReady: true, missingContractFields: [], eligible: true, ineligibleReason: null, contractNo: null, signingDate: null },
+      ],
+      requestId: "contract-multiple-factories",
+    });
+    const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="contract-export-open"]').trigger("click");
+    const rows = wrapper.findAll(".contract-factory-table tbody tr");
+    expect(rows[0].text()).toContain("明细待补齐");
+    expect(rows[0].get("button").attributes("disabled")).toBeDefined();
+    expect(rows[1].get("button").attributes("disabled")).toBeUndefined();
   });
 
   it("re-exports with the immutable signing date and downloads the generated workbook", async () => {

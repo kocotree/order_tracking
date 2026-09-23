@@ -16,6 +16,7 @@ from app.db.models import (
     Factory,
     Order,
     OrderAssignment,
+    OrderDetail,
     OrderLine,
     ProcessingContract,
     Product,
@@ -25,7 +26,10 @@ from app.db.models import (
     UserSession,
 )
 from app.modules.contracts import ContractService
+from app.modules.contracts.service import ContractValidationError
 from app.modules.contracts.workbook import ContractWorkbookRenderer
+from app.modules.orders.dispatch import OrderDispatchService
+from tests.integration.test_order_dispatch import _row, _seed_factory_b, setup_dispatch_order
 
 ADMIN_ID = "contract-admin"
 FACTORY_ID = "contract-factory"
@@ -218,6 +222,262 @@ def test_published_order_lists_factory_as_ready_for_first_contract_export(
         assert state.signing_date is None
     finally:
         _clean(test_database_engine)
+
+
+def test_matched_draft_without_contract_ship_date_can_export_factory_contract(
+    test_database_engine: Engine,
+) -> None:
+    sessions, _source, order_id = setup_dispatch_order(
+        test_database_engine, rows=[_row(contract_ship_date=None)]
+    )
+    with Session(test_database_engine) as session, session.begin():
+        factory = session.get(Factory, "factory-import")
+        assert factory is not None
+        factory.legal_name = "测试工厂有限公司"
+        factory.address = "浙江省杭州市测试路1号"
+        factory.legal_representative = "测试法人"
+
+    templates = Path(__file__).resolve().parents[2] / "app/templates"
+    service = ContractService(
+        sessions,
+        workbook_renderer=ContractWorkbookRenderer(
+            template_paths={"v2": templates / "processing_contract_v2.xlsx"}
+        ),
+        file_store=FakePrivateFileStore(bucket="contract-draft-test"),
+        clock=lambda: datetime(2026, 9, 23, 9, 0, tzinfo=UTC),
+    )
+
+    states = service.list_for_order(actor_id="admin-order-import", order_id=order_id)
+    assert len(states) == 1
+    assert states[0].factory_id == "factory-import"
+    assert states[0].eligible is True
+
+    result = service.create_export(
+        actor_id="admin-order-import",
+        order_id=order_id,
+        factory_id="factory-import",
+        signing_date=date(2026, 9, 23),
+        idempotency_key="contract-draft-first",
+        request_id="contract-draft-request",
+    )
+    _filename, content, _content_type = service.download(
+        actor_id="admin-order-import", export_id=result.export_id
+    )
+    sheet = load_workbook(BytesIO(content), data_only=False)["合同"]
+    assert sheet["B8"].value == "测试童帽"
+    assert sheet["E8"].value == 100
+    assert sheet["H8"].value is None
+
+
+def test_legacy_manual_draft_with_inactive_assignment_can_export_contract(
+    test_database_engine: Engine,
+) -> None:
+    _seed_published_order(test_database_engine)
+    with Session(test_database_engine) as session, session.begin():
+        order = session.get(Order, ORDER_ID)
+        assignment = session.scalar(select(OrderAssignment).where(
+            OrderAssignment.factory_id == FACTORY_ID
+        ))
+        assert order is not None and assignment is not None
+        order.lifecycle = "DRAFT"
+        order.contract_ship_date = None
+        assignment.is_active = False
+        assignment.contract_ship_date = None
+
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    templates = Path(__file__).resolve().parents[2] / "app/templates"
+    service = ContractService(
+        sessions,
+        workbook_renderer=ContractWorkbookRenderer(
+            template_paths={"v2": templates / "processing_contract_v2.xlsx"}
+        ),
+        file_store=FakePrivateFileStore(bucket="contract-legacy-draft-test"),
+    )
+    states = service.list_for_order(actor_id=ADMIN_ID, order_id=ORDER_ID)
+    assert len(states) == 1
+    assert states[0].eligible is True
+    result = service.create_export(
+        actor_id=ADMIN_ID, order_id=ORDER_ID, factory_id=FACTORY_ID,
+        signing_date=date(2026, 9, 23), idempotency_key="contract-legacy-draft-first",
+        request_id="contract-legacy-draft-request",
+    )
+    _filename, content, _content_type = service.download(
+        actor_id=ADMIN_ID, export_id=result.export_id
+    )
+    sheet = load_workbook(BytesIO(content), data_only=False)["合同"]
+    assert sheet["E8"].value == 100
+
+
+def test_contract_includes_current_assigned_and_unassigned_lines_for_one_factory(
+    test_database_engine: Engine,
+) -> None:
+    _seed_factory_b(test_database_engine)
+    sessions, source, order_id = setup_dispatch_order(
+        test_database_engine,
+        rows=[
+            _row("contract-assigned", contract_ship_date=date(2026, 10, 1)),
+            _row("contract-unassigned", order_quantity=30, contract_ship_date=None),
+            _row("contract-other", factory_name="测试工厂B", order_quantity=40),
+        ],
+    )
+    with Session(test_database_engine) as session, session.begin():
+        factory = session.get(Factory, "factory-import")
+        assert factory is not None
+        factory.legal_name = "测试工厂有限公司"
+        factory.address = "浙江省杭州市测试路1号"
+        factory.legal_representative = "测试法人"
+
+    dispatch = OrderDispatchService(sessions, source=source)
+    order = dispatch.get(order_id=order_id)
+    preview = dispatch.dispatch_preview(
+        actor_id="admin-order-import", order_id=order_id, version=order.version,
+        detail_ids=[order.details[0].detail_id], request_id="contract-partial-preview",
+    )
+    dispatch.dispatch_confirm(
+        actor_id="admin-order-import", order_id=order_id, version=order.version,
+        preview_id=preview["preview_id"], idempotency_key="contract-partial-dispatch",
+        request_id="contract-partial-confirm",
+    )
+    with Session(test_database_engine) as session, session.begin():
+        assignment = session.scalar(select(OrderAssignment).where(
+            OrderAssignment.factory_id == "factory-import"
+        ))
+        assert assignment is not None
+        assignment.assigned_quantity = 110
+
+    templates = Path(__file__).resolve().parents[2] / "app/templates"
+    service = ContractService(
+        sessions,
+        workbook_renderer=ContractWorkbookRenderer(
+            template_paths={"v2": templates / "processing_contract_v2.xlsx"}
+        ),
+        file_store=FakePrivateFileStore(bucket="contract-partial-test"),
+    )
+    result = service.create_export(
+        actor_id="admin-order-import", order_id=order_id, factory_id="factory-import",
+        signing_date=date(2026, 9, 23), idempotency_key="contract-partial-first",
+        request_id="contract-partial-request",
+    )
+    _filename, content, _content_type = service.download(
+        actor_id="admin-order-import", export_id=result.export_id
+    )
+    sheet = load_workbook(BytesIO(content), data_only=False)["合同"]
+    assert [sheet[f"E{row}"].value for row in (8, 9, 10)] == [110, 30, None]
+
+
+def test_unmatched_product_blocks_first_contract_export(test_database_engine: Engine) -> None:
+    sessions, _source, order_id = setup_dispatch_order(
+        test_database_engine,
+        rows=[_row(source_sku_id="missing-sku", contract_ship_date=None)],
+    )
+    with Session(test_database_engine) as session, session.begin():
+        factory = session.get(Factory, "factory-import")
+        assert factory is not None
+        factory.legal_name = "测试工厂有限公司"
+        factory.address = "浙江省杭州市测试路1号"
+        factory.legal_representative = "测试法人"
+
+    templates = Path(__file__).resolve().parents[2] / "app/templates"
+    service = ContractService(
+        sessions,
+        workbook_renderer=ContractWorkbookRenderer(
+            template_paths={"v2": templates / "processing_contract_v2.xlsx"}
+        ),
+        file_store=FakePrivateFileStore(bucket="contract-invalid-product-test"),
+    )
+    states = service.list_for_order(actor_id="admin-order-import", order_id=order_id)
+    assert len(states) == 1
+    assert states[0].eligible is False
+    assert states[0].ineligible_reason == "contract_details_incomplete"
+    with pytest.raises(ContractValidationError, match="product"):
+        service.create_export(
+            actor_id="admin-order-import", order_id=order_id,
+            factory_id="factory-import", signing_date=date(2026, 9, 23),
+            idempotency_key="contract-invalid-product",
+            request_id="contract-invalid-product-request",
+        )
+
+
+def test_unknown_quantity_blocks_first_contract_export(test_database_engine: Engine) -> None:
+    sessions, _source, order_id = setup_dispatch_order(
+        test_database_engine,
+        rows=[_row(order_quantity=None, contract_ship_date=None)],
+    )
+    with Session(test_database_engine) as session, session.begin():
+        factory = session.get(Factory, "factory-import")
+        assert factory is not None
+        factory.legal_name = "测试工厂有限公司"
+        factory.address = "浙江省杭州市测试路1号"
+        factory.legal_representative = "测试法人"
+
+    templates = Path(__file__).resolve().parents[2] / "app/templates"
+    service = ContractService(
+        sessions,
+        workbook_renderer=ContractWorkbookRenderer(
+            template_paths={"v2": templates / "processing_contract_v2.xlsx"}
+        ),
+        file_store=FakePrivateFileStore(bucket="contract-invalid-quantity-test"),
+    )
+    states = service.list_for_order(actor_id="admin-order-import", order_id=order_id)
+    assert len(states) == 1
+    assert states[0].eligible is False
+    assert states[0].ineligible_reason == "contract_details_incomplete"
+    with pytest.raises(ContractValidationError, match="quantity"):
+        service.create_export(
+            actor_id="admin-order-import", order_id=order_id,
+            factory_id="factory-import", signing_date=date(2026, 9, 23),
+            idempotency_key="contract-invalid-quantity",
+            request_id="contract-invalid-quantity-request",
+        )
+
+
+def test_first_contract_snapshot_can_be_reexported_after_factory_match_changes(
+    test_database_engine: Engine,
+) -> None:
+    sessions, _source, order_id = setup_dispatch_order(
+        test_database_engine, rows=[_row(contract_ship_date=None)]
+    )
+    with Session(test_database_engine) as session, session.begin():
+        factory = session.get(Factory, "factory-import")
+        assert factory is not None
+        factory.legal_name = "测试工厂有限公司"
+        factory.address = "浙江省杭州市测试路1号"
+        factory.legal_representative = "测试法人"
+
+    templates = Path(__file__).resolve().parents[2] / "app/templates"
+    service = ContractService(
+        sessions,
+        workbook_renderer=ContractWorkbookRenderer(
+            template_paths={"v2": templates / "processing_contract_v2.xlsx"}
+        ),
+        file_store=FakePrivateFileStore(bucket="contract-frozen-draft-test"),
+    )
+    first = service.create_export(
+        actor_id="admin-order-import", order_id=order_id, factory_id="factory-import",
+        signing_date=date(2026, 9, 23), idempotency_key="contract-frozen-first",
+        request_id="contract-frozen-first-request",
+    )
+    with Session(test_database_engine) as session, session.begin():
+        detail = session.scalar(select(OrderDetail).where(OrderDetail.order_id == order_id))
+        assert detail is not None
+        detail.matched_factory_id = None
+        detail.order_quantity = 200
+
+    states = service.list_for_order(actor_id="admin-order-import", order_id=order_id)
+    assert len(states) == 1
+    assert states[0].contract_no == first.contract_no
+    assert states[0].eligible is True
+    repeated = service.create_export(
+        actor_id="admin-order-import", order_id=order_id, factory_id="factory-import",
+        signing_date=None, idempotency_key="contract-frozen-repeat",
+        request_id="contract-frozen-repeat-request",
+    )
+    assert repeated.contract_no == first.contract_no
+    _filename, content, _content_type = service.download(
+        actor_id="admin-order-import", export_id=repeated.export_id
+    )
+    sheet = load_workbook(BytesIO(content), data_only=False)["合同"]
+    assert sheet["E8"].value == 100
 
 
 def test_initial_shipped_quantity_does_not_block_contract(

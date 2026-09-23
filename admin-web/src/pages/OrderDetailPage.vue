@@ -162,10 +162,10 @@
           <header><h2 id="contract-export-title">导出加工合同</h2><button type="button" aria-label="关闭导出加工合同弹窗" @click="closeContractExport">×</button></header>
           <div v-if="!selectedContractFactory && contractFactories.length > 1" class="contract-export-body">
             <p class="contract-export-intro">订单 {{ order.orderNo }} 包含多个工厂，请选择需要导出合同的工厂。</p>
-            <div class="contract-factory-table-wrap"><table class="contract-factory-table"><thead><tr><th>工厂</th><th>合同资料</th><th>合同编号</th><th>签订日期</th><th>操作</th></tr></thead><tbody><tr v-for="factory in contractFactories" :key="factory.factoryId"><td><strong>{{ factory.factoryName }}</strong></td><td><span class="contract-ready-badge" :class="factory.contractReady ? 'is-ready' : 'is-missing'">{{ contractReadyLabel(factory) }}</span></td><td>{{ factory.contractNo || '首次导出后生成' }}</td><td>{{ factory.signingDate || localDate() }}</td><td><button class="detail-text-button" type="button" :disabled="!factory.eligible" @click="selectContractFactory(factory)">导出</button></td></tr></tbody></table></div>
+            <div class="contract-factory-table-wrap"><table class="contract-factory-table"><thead><tr><th>工厂</th><th>合同资料</th><th>合同编号</th><th>签订日期</th><th>操作</th></tr></thead><tbody><tr v-for="factory in contractFactories" :key="factory.factoryId"><td><strong>{{ factory.factoryName }}</strong></td><td><span class="contract-ready-badge" :class="factory.contractReady ? 'is-ready' : 'is-missing'">{{ contractReadyLabel(factory) }}</span></td><td>{{ factory.contractNo || '首次导出后生成' }}</td><td>{{ factory.signingDate || localDate() }}</td><td><button class="detail-text-button" type="button" :disabled="!factory.eligible" @click="selectContractFactory(factory)">{{ factory.ineligibleReason === 'contract_details_incomplete' ? '明细待补齐' : '导出' }}</button></td></tr></tbody></table></div>
           </div>
           <template v-else-if="selectedContractFactory">
-            <div class="contract-export-body"><dl class="contract-export-summary"><div><dt>订单编号</dt><dd>{{ order.orderNo }}</dd></div><div><dt>工厂</dt><dd>{{ selectedContractFactory.factoryName }}</dd></div><div><dt>合同资料</dt><dd><span class="contract-ready-badge" :class="selectedContractFactory.contractReady ? 'is-ready' : 'is-missing'">{{ contractReadyLabel(selectedContractFactory) }}</span></dd></div><div><dt>合同编号</dt><dd>{{ selectedContractFactory.contractNo || '首次导出后生成' }}</dd></div></dl><label class="contract-date-field"><span>签订日期</span><input v-model="contractSigningDate" type="date" :readonly="Boolean(selectedContractFactory.contractNo)"></label><p v-if="selectedContractFactory.contractNo" class="contract-repeat-hint">将按首次合同快照重新生成，合同编号和签订日期不变。</p><p v-if="!selectedContractFactory.contractReady" class="contract-export-warning">该工厂的合同资料不完整，暂不能导出。请先在工厂资料中补全工厂代码、单位全称、单位地址和法定代表人。</p><p v-if="contractError" class="page-error contract-export-error">{{ contractError }}</p></div>
+            <div class="contract-export-body"><dl class="contract-export-summary"><div><dt>订单编号</dt><dd>{{ order.orderNo }}</dd></div><div><dt>工厂</dt><dd>{{ selectedContractFactory.factoryName }}</dd></div><div><dt>合同资料</dt><dd><span class="contract-ready-badge" :class="selectedContractFactory.contractReady ? 'is-ready' : 'is-missing'">{{ contractReadyLabel(selectedContractFactory) }}</span></dd></div><div><dt>合同编号</dt><dd>{{ selectedContractFactory.contractNo || '首次导出后生成' }}</dd></div></dl><label class="contract-date-field"><span>签订日期</span><input v-model="contractSigningDate" type="date" :readonly="Boolean(selectedContractFactory.contractNo)"></label><p v-if="selectedContractFactory.contractNo" class="contract-repeat-hint">将按首次合同快照重新生成，合同编号和签订日期不变。</p><p v-if="!selectedContractFactory.contractReady" class="contract-export-warning">该工厂的合同资料不完整，暂不能导出。请先在工厂资料中补全工厂代码、单位全称、单位地址和法定代表人。</p><p v-if="selectedContractFactory.ineligibleReason === 'contract_details_incomplete'" class="contract-export-warning">该工厂的订单明细缺少产品匹配和下单数量，请补齐后再导出。</p><p v-if="contractError" class="page-error contract-export-error">{{ contractError }}</p></div>
             <footer><button class="order-secondary-button" type="button" @click="closeContractExport">取消</button><button class="order-primary-button" type="button" :disabled="exportingContract || !selectedContractFactory.eligible" @click="confirmContractExport">{{ exportingContract ? '生成中…' : '确认导出' }}</button></footer>
           </template>
         </section>
@@ -503,8 +503,8 @@ const contractFactories = ref<ContractFactoryStatus[]>([]); const loadingContrac
 const number = (value: number | null) => value == null ? "—" : value.toLocaleString("zh-CN");
 const dateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
 const pageTitle = computed(() => order.value ? `订单详情 · ${order.value.orderNo}` : "订单详情");
-const contractButtonEnabled = computed(() => order.value?.lifecycle !== "DRAFT" && contractFactories.value.length > 0 && !loadingContracts.value);
-const contractButtonTitle = computed(() => order.value?.lifecycle === "DRAFT" || contractFactories.value.length === 0 ? "订单尚未派工，不能导出加工合同" : "导出加工合同");
+const contractButtonEnabled = computed(() => contractFactories.value.length > 0 && !loadingContracts.value);
+const contractButtonTitle = computed(() => contractFactories.value.length === 0 ? "订单暂无匹配工厂，不能导出加工合同" : "导出加工合同");
 const categories = computed(() => { const values = sortedCategories((order.value?.detailMode ? order.value.details : order.value?.lines)?.map((line) => line.category) ?? []); return values.length ? values : ["未分类"]; });
 const detailRows = computed(() => {
   const rows: DetailRow[] = order.value?.detailMode
@@ -531,7 +531,7 @@ async function loadAudit() {
   catch { /* Order writes have already succeeded; log reload does not change their result. */ }
 }
 async function loadContracts() {
-  if (!order.value || order.value.lifecycle === "DRAFT") { contractFactories.value = []; return; }
+  if (!order.value) { contractFactories.value = []; return; }
   const target = orderId; loadingContracts.value = true;
   try { const result = await contractApi.list(target); if (target === orderId) contractFactories.value = result.items; }
   catch (error) { if (target === orderId) contractError.value = error instanceof ApiError ? error.message : "合同状态加载失败"; }

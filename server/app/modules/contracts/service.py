@@ -21,6 +21,7 @@ from app.db.models import (
     FactoryContact,
     Order,
     OrderAssignment,
+    OrderDetail,
     OrderLine,
     ProcessingContract,
     Product,
@@ -102,17 +103,32 @@ class ContractService:
             order = session.get(Order, order_id)
             if order is None or order.deleted_at is not None:
                 raise ContractNotFound("order not found")
-            factory_ids = list(
-                session.scalars(
+            factory_ids: set[str]
+            if order.detail_mode:
+                matched_ids = session.scalars(
+                    select(OrderDetail.matched_factory_id)
+                    .where(
+                        OrderDetail.order_id == order_id,
+                        OrderDetail.matched_factory_id.is_not(None),
+                    )
+                    .distinct()
+                )
+                factory_ids = {factory_id for factory_id in matched_ids if factory_id is not None}
+            else:
+                assignment_query = (
                     select(OrderAssignment.factory_id)
                     .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-                    .where(OrderLine.order_id == order_id, OrderAssignment.is_active.is_(True))
+                    .where(OrderLine.order_id == order_id)
                     .distinct()
-                    .order_by(OrderAssignment.factory_id)
                 )
-            )
+                if order.lifecycle != "DRAFT":
+                    assignment_query = assignment_query.where(OrderAssignment.is_active.is_(True))
+                factory_ids = set(session.scalars(assignment_query))
+            factory_ids.update(session.scalars(
+                select(ProcessingContract.factory_id).where(ProcessingContract.order_id == order_id)
+            ))
             result: list[ContractFactoryStatus] = []
-            for factory_id in factory_ids:
+            for factory_id in sorted(factory_ids):
                 factory = session.get(Factory, factory_id)
                 if factory is None:
                     continue
@@ -126,8 +142,13 @@ class ContractService:
                 # Existing contracts use their immutable factory snapshot.
                 if contract is not None:
                     missing = []
-                reason = self._ineligible_reason(
-                    order=order, missing=missing
+                detail_issue = (
+                    self._detail_issue(session, order_id=order_id, factory_id=factory_id)
+                    if order.detail_mode and contract is None else None
+                )
+                reason = (
+                    "factory_contract_incomplete" if missing else
+                    "contract_details_incomplete" if detail_issue else None
                 )
                 result.append(
                     ContractFactoryStatus(
@@ -170,13 +191,21 @@ class ContractService:
             )
             if order is None or order.deleted_at is not None:
                 raise ContractNotFound("order not found")
-            if order.lifecycle not in {"PUBLISHED", "COMPLETED"}:
-                raise ContractConflict("order has no active dispatch")
             factory = session.scalar(
                 select(Factory).where(Factory.factory_id == factory_id).with_for_update()
             )
-            if factory is None or not self._factory_is_assigned(
-                session, order_id=order_id, factory_id=factory_id
+            if factory is None:
+                raise ContractNotFound("factory assignment not found")
+            contract = session.scalar(
+                select(ProcessingContract)
+                .where(
+                    ProcessingContract.order_id == order_id,
+                    ProcessingContract.factory_id == factory_id,
+                )
+                .with_for_update()
+            )
+            if contract is None and not self._factory_has_details(
+                session, order=order, factory_id=factory_id
             ):
                 raise ContractNotFound("factory assignment not found")
             existing_export = session.scalar(
@@ -204,15 +233,13 @@ class ContractService:
                     existing_export.error_code = None
                     existing_export.error_message = None
             else:
-                contract = session.scalar(
-                    select(ProcessingContract)
-                    .where(
-                        ProcessingContract.order_id == order_id,
-                        ProcessingContract.factory_id == factory_id,
-                    )
-                    .with_for_update()
-                )
                 if contract is None:
+                    if order.detail_mode:
+                        detail_issue = self._detail_issue(
+                            session, order_id=order_id, factory_id=factory_id
+                        )
+                        if detail_issue:
+                            raise ContractValidationError(f"contract {detail_issue} is incomplete")
                     missing = self._missing_contract_fields(factory)
                     if missing:
                         raise ContractValidationError(
@@ -400,18 +427,52 @@ class ContractService:
             )
 
     @staticmethod
-    def _factory_is_assigned(session: Session, *, order_id: str, factory_id: str) -> bool:
-        assignment_id = session.scalar(
+    def _factory_has_details(session: Session, *, order: Order, factory_id: str) -> bool:
+        if order.detail_mode:
+            return session.scalar(
+                select(OrderDetail.detail_id).where(
+                    OrderDetail.order_id == order.order_id,
+                    OrderDetail.matched_factory_id == factory_id,
+                ).limit(1).with_for_update()
+            ) is not None
+        assignment_query = (
             select(OrderAssignment.order_assignment_id)
             .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
             .where(
-                OrderLine.order_id == order_id,
+                OrderLine.order_id == order.order_id,
                 OrderAssignment.factory_id == factory_id,
-                OrderAssignment.is_active.is_(True),
             )
             .limit(1).with_for_update()
         )
+        if order.lifecycle != "DRAFT":
+            assignment_query = assignment_query.where(OrderAssignment.is_active.is_(True))
+        assignment_id = session.scalar(assignment_query)
         return assignment_id is not None
+
+    @staticmethod
+    def _detail_issue(session: Session, *, order_id: str, factory_id: str) -> str | None:
+        rows = session.execute(
+            select(OrderDetail, OrderAssignment, ProductVariant, Product)
+            .outerjoin(
+                OrderAssignment, OrderAssignment.order_assignment_id == OrderDetail.assignment_id
+            )
+            .outerjoin(ProductVariant, ProductVariant.variant_id == OrderDetail.matched_variant_id)
+            .outerjoin(Product, Product.product_id == ProductVariant.product_id)
+            .where(
+                OrderDetail.order_id == order_id,
+                OrderDetail.matched_factory_id == factory_id,
+            )
+        )
+        for detail, assignment, variant, product in rows:
+            if variant is None or product is None:
+                return "product"
+            quantity = (
+                assignment.assigned_quantity if assignment and assignment.is_active
+                else detail.order_quantity
+            )
+            if type(quantity) is not int or quantity <= 0:
+                return "quantity"
+        return None
 
     @staticmethod
     def _allocate_sequence(
@@ -457,25 +518,71 @@ class ContractService:
         signing_date: date,
         include_phone: bool,
     ) -> dict[str, Any]:
-        rows = session.execute(
-            select(OrderLine, OrderAssignment, ProductVariant, Product)
-            .join(
-                OrderAssignment,
-                OrderAssignment.order_line_id == OrderLine.order_line_id,
+        if order.detail_mode:
+            detail_rows = session.execute(
+                select(OrderDetail, OrderAssignment, OrderLine, ProductVariant, Product)
+                .outerjoin(
+                    OrderAssignment,
+                    OrderAssignment.order_assignment_id == OrderDetail.assignment_id,
+                )
+                .outerjoin(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+                .join(ProductVariant, ProductVariant.variant_id == OrderDetail.matched_variant_id)
+                .join(Product, Product.product_id == ProductVariant.product_id)
+                .where(
+                    OrderDetail.order_id == order.order_id,
+                    OrderDetail.matched_factory_id == factory.factory_id,
+                )
+                .order_by(OrderDetail.sort_order, OrderDetail.detail_id)
+            ).all()
+            lines = []
+            for detail, assignment, line, variant, product in detail_rows:
+                active = assignment is not None and assignment.is_active and line is not None
+                lines.append({
+                    "productId": product.product_id,
+                    "itemNo": product.source_i_id,
+                    "productName": (
+                        line.product_name_snapshot if active
+                        else detail.product_name or product.name
+                    ),
+                    "propertiesValue": (
+                        line.properties_value_snapshot if active
+                        else detail.properties_value or variant.properties_value
+                    ),
+                    "quantity": (
+                        assignment.assigned_quantity if active else detail.order_quantity
+                    ),
+                    "imageObjectKey": (
+                        line.image_object_key_snapshot if active
+                        else product.image_object_key
+                    ),
+                })
+        else:
+            assignment_query = (
+                select(OrderLine, OrderAssignment, ProductVariant, Product)
+                .join(OrderAssignment, OrderAssignment.order_line_id == OrderLine.order_line_id)
+                .join(ProductVariant, ProductVariant.variant_id == OrderLine.product_variant_id)
+                .join(Product, Product.product_id == ProductVariant.product_id)
+                .where(
+                    OrderLine.order_id == order.order_id,
+                    OrderAssignment.factory_id == factory.factory_id,
+                )
+                .order_by(OrderLine.order_line_id, OrderAssignment.order_assignment_id)
             )
-            .join(
-                ProductVariant,
-                ProductVariant.variant_id == OrderLine.product_variant_id,
-            )
-            .join(Product, Product.product_id == ProductVariant.product_id)
-            .where(
-                OrderLine.order_id == order.order_id,
-                OrderAssignment.factory_id == factory.factory_id,
-                OrderAssignment.is_active.is_(True),
-            )
-            .order_by(OrderLine.order_line_id, OrderAssignment.order_assignment_id)
-        ).all()
-        if not rows:
+            if order.lifecycle != "DRAFT":
+                assignment_query = assignment_query.where(OrderAssignment.is_active.is_(True))
+            rows = session.execute(assignment_query).all()
+            lines = [
+                {
+                    "productId": product.product_id,
+                    "itemNo": product.source_i_id,
+                    "productName": line.product_name_snapshot,
+                    "propertiesValue": line.properties_value_snapshot,
+                    "quantity": assignment.assigned_quantity,
+                    "imageObjectKey": line.image_object_key_snapshot,
+                }
+                for line, assignment, _variant, product in rows
+            ]
+        if not lines:
             raise ContractNotFound("factory assignment not found")
         factory_snapshot = {
             "factoryId": factory.factory_id,
@@ -500,17 +607,7 @@ class ContractService:
             "orderDate": order.order_date.isoformat() if order.order_date else None,
             "contractShipDate": None,
             "factory": factory_snapshot,
-            "lines": [
-                {
-                    "productId": product.product_id,
-                    "itemNo": product.source_i_id,
-                    "productName": line.product_name_snapshot,
-                    "propertiesValue": line.properties_value_snapshot,
-                    "quantity": assignment.assigned_quantity,
-                    "imageObjectKey": line.image_object_key_snapshot,
-                }
-                for line, assignment, _variant, product in rows
-            ],
+            "lines": lines,
         }
 
     @staticmethod
@@ -542,14 +639,6 @@ class ContractService:
             ("legalRepresentative", factory.legal_representative),
         )
         return [name for name, value in fields if not value or not value.strip()]
-
-    @staticmethod
-    def _ineligible_reason(*, order: Order, missing: list[str]) -> str | None:
-        if order.lifecycle not in {"PUBLISHED", "COMPLETED"}:
-            return "order_not_published"
-        if missing:
-            return "factory_contract_incomplete"
-        return None
 
     @staticmethod
     def _require_admin(session: Session, actor_id: str) -> User:

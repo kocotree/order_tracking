@@ -425,7 +425,7 @@ def test_factory_withdrawal_isolated_from_shipped_factory_and_contract(
     assert result.lifecycle == "PUBLISHED"
     assert [d.dispatch_state for d in result.details] == ["UNASSIGNED", "ASSIGNED", "UNASSIGNED"]
     assert [c.factory_id for c in contracts.list_for_order(actor_id=ACTOR, order_id=oid)] == [
-        "factory-b"
+        "factory-b", "factory-import"
     ]
     repeated = contracts.create_export(
         actor_id=ACTOR,

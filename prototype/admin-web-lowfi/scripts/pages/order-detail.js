@@ -109,8 +109,8 @@ function renderProductRows(rows) {
           <td><span class="status-badge ${product.dispatched ? "is-info" : "is-draft"}">${product.dispatched ? "已派工" : "未派工"}</span></td>
           <td>${product.dispatched ? escapeHTML(product.dueDate || "—") : `<input class="pending-detail-input" type="date" value="${escapeHTML(product.dueDate || "")}" data-detail-date="${index}">`}</td>
           <td class="detail-number">${escapeHTML(formatNumber(product.quantity))}</td>
-          <td class="detail-number">${product.dispatched ? escapeHTML(formatNumber(product.shippedQuantity)) : `<input class="pending-detail-input pending-number-input" type="number" min="0" step="1" value="${escapeHTML(product.shippedQuantity)}" data-detail-shipped="${index}">`}</td>
-          <td class="detail-number">${product.dispatched ? escapeHTML(formatNumber(product.pendingQuantity)) : `<input class="pending-detail-input pending-number-input" type="number" min="0" max="${escapeHTML(product.quantity)}" step="1" value="${escapeHTML(product.pendingQuantity)}" data-detail-pending="${index}" aria-label="第${index + 1}条未发数量">`}</td>
+          <td class="detail-number"><input class="pending-detail-input pending-number-input" type="number" min="0" step="1" value="${escapeHTML(product.shippedQuantity)}" data-detail-shipped="${index}" aria-label="第${index + 1}条已发数量"></td>
+          <td class="detail-number"><input class="pending-detail-input pending-number-input" type="number" min="0" max="${escapeHTML(product.quantity)}" step="1" value="${escapeHTML(product.pendingQuantity)}" data-detail-pending="${index}" aria-label="第${index + 1}条未发数量"></td>
           <td>
             <span class="detail-progress" data-detail-progress="${index}"><span><i style="width: ${product.quantity ? Math.min(Math.round(product.shippedQuantity / product.quantity * 100), 100) : 0}%"></i></span><em>${product.quantity ? Math.round(product.shippedQuantity / product.quantity * 100) : 0}%</em></span>
           </td>
@@ -360,7 +360,7 @@ export function renderOrderDetailPage(orderNo) {
       <section class="section-card detail-section-card">
         <header class="detail-section-header">
           <h2>订单明细</h2>
-          ${productFactoryRows.some((row) => !row.dispatched) ? `<div class="pending-import-save-actions"><span hidden data-detail-unsaved>有未保存修改</span><button class="detail-primary-button" type="button" data-order-detail-save disabled>保存</button></div>` : ""}
+          ${productFactoryRows.length ? `<div class="pending-import-save-actions"><span hidden data-detail-unsaved>有未保存修改</span><button class="detail-primary-button" type="button" data-order-detail-save disabled>保存</button></div>` : ""}
         </header>
         <div class="detail-table-scroll">
           <table class="detail-data-table product-detail-table data-grid-table" data-sort-table="order-products">
@@ -576,7 +576,7 @@ export function bindOrderDetailPage(orderNo) {
     }
     page.querySelector("[data-detail-unsaved]")?.setAttribute("hidden", "");
     page.querySelector("[data-order-detail-save]")?.setAttribute("disabled", "");
-    showToast("保存成功", "未派工订单明细已更新。");
+    showToast("保存成功", "订单明细已更新。");
   });
   const withdrawLayer = page?.querySelector("[data-withdraw-layer]");
   page?.querySelector("[data-withdraw-open]")?.addEventListener("click", () => { withdrawLayer.hidden = false; });

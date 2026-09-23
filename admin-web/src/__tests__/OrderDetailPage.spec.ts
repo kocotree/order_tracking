@@ -349,6 +349,29 @@ it("does not expose source refresh or date inputs for assigned details", async (
   wrapper.unmount();
 });
 
+it("saves assigned quantities with the same two-way inputs after completion", async () => {
+  const completed = { ...sourceOrder, lifecycle: "COMPLETED" as const, displayStatus: "已完成",
+    details: [{ ...sourceOrder.details[0], dispatchState: "ASSIGNED", shippedQuantity: 100, pendingQuantity: 0, progressPercent: 100 }],
+    shippedQuantity: 100, pendingQuantity: 0 };
+  vi.spyOn(orderApi, "get").mockResolvedValue(completed);
+  const save = vi.spyOn(orderApi, "saveDetailLines").mockResolvedValue({ ...completed, version: 2, lifecycle: "PUBLISHED", displayStatus: "未完成",
+    shippedQuantity: 80, pendingQuantity: 20,
+    details: [{ ...completed.details[0], version: 2, shippedQuantity: 80, pendingQuantity: 20, progressPercent: 80 }] });
+  const wrapper = mountSource(); await flushPromises();
+  const shipped = wrapper.get('input[aria-label="第1条已发数量"]');
+  const pending = wrapper.get('input[aria-label="第1条未发数量"]');
+  await pending.setValue("20");
+  expect((shipped.element as HTMLInputElement).value).toBe("80");
+  const saveButton = wrapper.findAll("button").find(button => button.text() === "保存")!;
+  await saveButton.trigger("click"); await flushPromises();
+  expect(save).toHaveBeenCalledWith("order-1", { version: 1, lines: [{
+    detailId: "source-89", detailVersion: 1, shippedQuantity: 80,
+  }] });
+  expect(wrapper.text()).toContain("未完成");
+  expect((pending.element as HTMLInputElement).value).toBe("20");
+  wrapper.unmount();
+});
+
 it("confirms changed sources independently before dispatching the selected details", async () => {
   useRoute().query = { status: "未完成", factoryId: ["factory-1", "factory-2"], tracker: "松子", page: "2" };
   vi.spyOn(orderApi, "get").mockResolvedValue(sourceOrder);

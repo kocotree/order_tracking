@@ -14,9 +14,12 @@ from app.db.models import (
     Factory,
     IdempotencyRecord,
     Order,
+    OrderAssignment,
     OrderChangePreview,
+    OrderCompletionRecord,
     OrderDetail,
     OrderImportSourceRecord,
+    QuantityLedger,
     User,
 )
 from app.modules.order_import import OrderImportService, SourceOrderRow
@@ -162,18 +165,24 @@ class OrderSourceUpdateService(OrderService):
         ):
             raise OrderValidationError("未提供可保存的明细字段")
         with self._session_factory() as session, session.begin():
-            order = self._check(session, actor_id, order_id, version, lock=True)
+            self._require_admin(session, actor_id)
+            order = self._locked_order(session, order_id)
+            if not order.detail_mode or order.lifecycle not in {"DRAFT", "PUBLISHED", "COMPLETED"}:
+                raise OrderConflict("当前订单不支持明细保存")
+            if order.version != version:
+                raise OrderConflict("订单版本已变化，请重新加载后重试")
             rows = self._details(session, order_id, lock=True)
             rows_by_id = {row.detail_id: row for row in rows}
             audits: list[dict[str, object]] = []
             state_changed = False
             for detail_id, detail_version, changes in updates:
                 detail = rows_by_id.get(detail_id)
-                if (
-                    detail is None
-                    or detail.version != detail_version
-                    or detail.dispatch_state != "UNASSIGNED"
-                ):
+                if detail is None or detail.version != detail_version:
+                    raise OrderConflict("明细版本或派工状态已变化，请重新加载")
+                if detail.dispatch_state == "ASSIGNED":
+                    if set(changes) != {"shipped_quantity"} or detail.assignment_id is None:
+                        raise OrderConflict("已派工明细只能修改数量")
+                elif detail.dispatch_state != "UNASSIGNED" or order.lifecycle == "COMPLETED":
                     raise OrderConflict("明细版本或派工状态已变化，请重新加载")
                 audit: dict[str, object] = {
                     "detailId": detail_id,
@@ -219,17 +228,40 @@ class OrderSourceUpdateService(OrderService):
                     shipped = changes["shipped_quantity"]
                     if isinstance(shipped, bool) or not isinstance(shipped, int) or shipped < 0:
                         raise OrderValidationError("已发数量须为非负整数")
-                    detail_changed |= (
-                        detail.source_shipped_quantity != shipped
-                        or not detail.shipped_override_enabled
-                    )
-                    if detail.source_shipped_quantity != shipped:
-                        audit["shippedQuantity"] = {
-                            "before": detail.source_shipped_quantity,
-                            "after": shipped,
-                        }
-                    detail.source_shipped_quantity = shipped
-                    detail.shipped_override_enabled = True
+                    if detail.dispatch_state == "ASSIGNED":
+                        assignment = session.get(
+                            OrderAssignment, detail.assignment_id, with_for_update=True
+                        )
+                        if (
+                            assignment is None
+                            or not assignment.is_active
+                            or assignment.detail_id != detail_id
+                        ):
+                            raise OrderConflict("派工已变化，请重新加载")
+                        before = self._assignment_shipped(session, assignment)
+                        if before != shipped:
+                            session.add(QuantityLedger(
+                                order_assignment_id=assignment.order_assignment_id,
+                                source_type="ADMIN_ADJUSTMENT",
+                                source_id=str(uuid4()),
+                                quantity_delta=shipped - before,
+                                actor_id=actor_id,
+                                created_at=self._now(),
+                            ))
+                            audit["shippedQuantity"] = {"before": before, "after": shipped}
+                            detail_changed = True
+                    else:
+                        detail_changed |= (
+                            detail.source_shipped_quantity != shipped
+                            or not detail.shipped_override_enabled
+                        )
+                        if detail.source_shipped_quantity != shipped:
+                            audit["shippedQuantity"] = {
+                                "before": detail.source_shipped_quantity,
+                                "after": shipped,
+                            }
+                        detail.source_shipped_quantity = shipped
+                        detail.shipped_override_enabled = True
                 if not detail_changed:
                     continue
                 state_changed = True
@@ -250,7 +282,7 @@ class OrderSourceUpdateService(OrderService):
                         .limit(1)
                     ) is None:
                         issues.append("FACTORY_HAS_NO_ENABLED_USER")
-                if "shipped_quantity" in changes:
+                if "shipped_quantity" in changes and detail.dispatch_state == "UNASSIGNED":
                     issues = [
                         code
                         for code in issues
@@ -264,6 +296,24 @@ class OrderSourceUpdateService(OrderService):
             if not state_changed:
                 return self._source_snapshot(session, order, rows)
             self._touch(order, actor_id)
+            session.flush()
+            if order.lifecycle == "COMPLETED":
+                updated = self._source_snapshot(session, order, rows)
+                if any(item.pending_quantity != 0 for item in updated.details):
+                    order.lifecycle = "PUBLISHED"
+                    order.completed_at = None
+                    order.completed_by = None
+                    session.add(OrderCompletionRecord(
+                        order_id=order_id,
+                        action="REOPEN",
+                        reason=None,
+                        actor_id=actor_id,
+                        source_terminal="web",
+                        before_lifecycle="COMPLETED",
+                        after_lifecycle="PUBLISHED",
+                        quantity_snapshot=self._quantity_summary(session, order_id),
+                        created_at=self._now(),
+                    ))
             if audits:
                 self._add_audit(
                     session,
@@ -274,7 +324,13 @@ class OrderSourceUpdateService(OrderService):
                     changes=(
                         audits[0]
                         if len(audits) == 1
-                        else {"details": audits, "content": f"修改订单明细 {len(audits)} 条"}
+                        else {
+                            "details": audits,
+                            "content": "；".join(
+                                self._audit_content("order.detail_updated", item)
+                                for item in audits
+                            ),
+                        }
                     ),
                 )
             session.flush()

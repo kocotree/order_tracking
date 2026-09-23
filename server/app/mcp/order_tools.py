@@ -251,7 +251,7 @@ def register_order_tools(
     def update_order_details(
         order_id: str, version: int, lines: list[DetailFieldsBatchItem],
     ) -> dict[str, Any]:
-        """按订单及明细版本保存未派工字段；只应用明确给出的字段。"""
+        """按订单及明细版本保存明细字段；已派工明细只可修改已发数量。"""
         return order_result(
             "update_order_details", lambda uid, rid: source_updates.save_fields_batch(
             actor_id=uid, order_id=order_id, version=version,

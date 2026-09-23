@@ -32,11 +32,11 @@
         <section class="section-card detail-section-card">
           <header class="detail-section-header">
             <div class="dispatch-heading"><h2>订单明细</h2><span v-if="order.detailMode" class="dispatch-count">已派工 {{ dispatchedCount }}/{{ detailRows.length }} 条 · {{ dispatchProgressLabel }}</span></div>
-            <div v-if="hasUnassigned" class="dispatch-actions">
+            <div v-if="order.detailMode" class="dispatch-actions">
               <span v-if="hasUnsavedDetails" class="detail-unsaved-label">有未保存修改</span>
               <button class="detail-primary-button" type="button" :disabled="interactionBusy || !hasUnsavedDetails" @click="saveDetailLines">{{ savingDetails ? '保存中…' : '保存' }}</button>
-              <button class="detail-outline-button" type="button" :disabled="interactionBusy || hasUnsavedDetails || sourcePreview !== null" @click="previewSource">更新未派工明细</button>
-              <button class="detail-primary-button" type="button" :disabled="!selectedDetails.size || interactionBusy || hasUnsavedDetails || sourcePreview !== null" @click="previewDispatch">派工（已选 {{ selectedDetails.size }} 条）</button>
+              <button v-if="hasUnassigned" class="detail-outline-button" type="button" :disabled="interactionBusy || hasUnsavedDetails || sourcePreview !== null" @click="previewSource">更新未派工明细</button>
+              <button v-if="hasUnassigned" class="detail-primary-button" type="button" :disabled="!selectedDetails.size || interactionBusy || hasUnsavedDetails || sourcePreview !== null" @click="previewDispatch">派工（已选 {{ selectedDetails.size }} 条）</button>
             </div>
           </header>
           <p v-if="sourceError" class="page-error" role="alert">{{ sourceError }}</p>
@@ -74,8 +74,8 @@
                 <td><span class="status-badge" :class="row.dispatched ? 'is-info' : 'is-draft'">{{ row.dispatched ? '已派工' : '未派工' }}</span></td>
                 <td><input v-if="isEditable(row.key)" v-model="detailDraft(row.key).contractShipDate" class="source-contract-date" type="date" :aria-label="`第${index + 1}条合同出货时间`" :disabled="interactionBusy || sourcePreview !== null || dispatchSourcePreview !== null"><template v-else>{{ row.contractShipDate || "—" }}</template></td>
                 <td class="detail-number">{{ number(row.orderQuantity) }}</td>
-                <td class="detail-number"><input v-if="isEditable(row.key)" :value="detailDraft(row.key).shippedQuantity" type="number" min="0" step="1" :aria-label="`第${index + 1}条已发数量`" :disabled="interactionBusy" @input="changeDetailShipped(row, $event)"><template v-else>{{ number(row.shippedQuantity) }}</template></td>
-                <td class="detail-number"><input v-if="isEditable(row.key)" :value="detailDraft(row.key).pendingQuantity" type="number" min="0" :max="row.orderQuantity ?? undefined" step="1" :aria-label="`第${index + 1}条未发数量`" :disabled="interactionBusy || row.orderQuantity == null" @input="changeDetailPending(row, $event)"><template v-else>{{ number(row.pendingQuantity) }}</template></td>
+                <td class="detail-number"><input v-if="isQuantityEditable(row.key)" :value="detailDraft(row.key).shippedQuantity" type="number" min="0" step="1" :aria-label="`第${index + 1}条已发数量`" :disabled="interactionBusy" @input="changeDetailShipped(row, $event)"><template v-else>{{ number(row.shippedQuantity) }}</template></td>
+                <td class="detail-number"><input v-if="isQuantityEditable(row.key)" :value="detailDraft(row.key).pendingQuantity" type="number" min="0" :max="row.orderQuantity ?? undefined" step="1" :aria-label="`第${index + 1}条未发数量`" :disabled="interactionBusy || row.orderQuantity == null" @input="changeDetailPending(row, $event)"><template v-else>{{ number(row.pendingQuantity) }}</template></td>
                 <td><span class="detail-progress"><span><i :style="{ width: `${Math.min(displayProgress(row) ?? 0, 100)}%` }"></i></span><em>{{ displayProgress(row) == null ? "—" : `${displayProgress(row)}%` }}</em></span></td>
               </tr></tbody>
             </table>
@@ -259,6 +259,7 @@ let dispatchEpoch = 0;
 const interactionBusy = computed(() => sourceBusy.value || dispatchBusy.value || withdrawalBusy.value || acting.value || savingDetails.value);
 
 const isEditable = (id: string) => order.value?.detailMode ? order.value.details.find((row) => row.detailId === id && row.dispatchState === "UNASSIGNED") : undefined;
+const isQuantityEditable = (id: string) => order.value?.detailMode ? order.value.details.find((row) => row.detailId === id) : undefined;
 const hasUnassigned = computed(() => order.value?.detailMode && order.value.details.some((row) => row.dispatchState === "UNASSIGNED"));
 const dispatchedCount = computed(() => order.value?.detailMode ? order.value.details.filter((row) => row.dispatchState === "ASSIGNED").length : 0);
 const dispatchProgressLabel = computed(() => {
@@ -290,7 +291,6 @@ function toggleRow(key: string, event: Event) {
 const detailDraft = (id: string) => detailDrafts.value[id]!;
 function resetDetailDrafts() {
   detailDrafts.value = Object.fromEntries((order.value?.details ?? [])
-    .filter((detail) => detail.dispatchState === "UNASSIGNED")
     .map((detail) => [detail.detailId, {
       factoryName: detail.factoryName ?? "",
       contractShipDate: detail.contractShipDate ?? "",
@@ -300,9 +300,11 @@ function resetDetailDrafts() {
 }
 const hasUnsavedDetails = computed(() => (order.value?.details ?? []).some((detail) => {
   const draft = detailDrafts.value[detail.detailId];
-  return detail.dispatchState === "UNASSIGNED" && draft && (
-    draft.factoryName !== (detail.factoryName ?? "")
-    || draft.contractShipDate !== (detail.contractShipDate ?? "")
+  return draft && (
+    (detail.dispatchState === "UNASSIGNED" && (
+      draft.factoryName !== (detail.factoryName ?? "")
+      || draft.contractShipDate !== (detail.contractShipDate ?? "")
+    ))
     || draft.shippedQuantity !== (detail.shippedQuantity == null ? "" : String(detail.shippedQuantity))
     || draft.pendingQuantity !== (detail.pendingQuantity == null ? "" : String(detail.pendingQuantity))
   );
@@ -342,11 +344,10 @@ async function saveDetailLines() {
   let lines;
   try {
     lines = order.value.details.flatMap((detail) => {
-      if (detail.dispatchState !== "UNASSIGNED") return [];
       const draft = detailDrafts.value[detail.detailId];
       if (!draft) return [];
-      const factoryChanged = draft.factoryName !== (detail.factoryName ?? "");
-      const dateChanged = draft.contractShipDate !== (detail.contractShipDate ?? "");
+      const factoryChanged = detail.dispatchState === "UNASSIGNED" && draft.factoryName !== (detail.factoryName ?? "");
+      const dateChanged = detail.dispatchState === "UNASSIGNED" && draft.contractShipDate !== (detail.contractShipDate ?? "");
       const shippedChanged = draft.shippedQuantity !== (detail.shippedQuantity == null ? "" : String(detail.shippedQuantity));
       const pendingChanged = draft.pendingQuantity !== (detail.pendingQuantity == null ? "" : String(detail.pendingQuantity));
       if (!factoryChanged && !dateChanged && !shippedChanged && !pendingChanged) return [];

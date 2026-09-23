@@ -1752,6 +1752,192 @@ class OrderDetail(Base):
     updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
 
 
+class IncomingDiffBatch(Base):
+    """One Feishu photo batch; confirmation is whole-batch and atomic."""
+
+    __tablename__ = "incoming_diff_batches"
+    __table_args__ = (
+        UniqueConstraint("batch_no", name="uq_incoming_diff_batches_no"),
+        CheckConstraint(
+            "status IN ('COLLECTING', 'RECOGNIZING', 'READY', 'CONFIRMED', 'FAILED')",
+            name="ck_incoming_diff_batches_status",
+        ),
+        Index("ix_incoming_diff_batches_status", "status", "created_at"),
+    )
+
+    batch_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    batch_no: Mapped[str] = mapped_column(String(32), nullable=False)
+    submitter_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    feishu_chat_id: Mapped[str | None] = mapped_column(String(64))
+    feishu_open_id: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    recognition_error_code: Mapped[str | None] = mapped_column(String(64))
+    recognition_error_summary: Mapped[str | None] = mapped_column(String(500))
+    # 与 incoming_diff_workbooks.batch_id 互为环形外键，建表顺序由迁移控制
+    current_workbook_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey(
+            "incoming_diff_workbooks.workbook_id",
+            ondelete="RESTRICT",
+            name="fk_incoming_diff_batches_current_workbook",
+            use_alter=True,
+        ),
+    )
+    confirmed_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    confirmed_record_count: Mapped[int | None] = mapped_column(Integer)
+    confirmed_factory_count: Mapped[int | None] = mapped_column(Integer)
+    frozen_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class IncomingDiffImage(Base):
+    __tablename__ = "incoming_diff_images"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "feishu_image_key", name="uq_incoming_diff_images_source"),
+        CheckConstraint(
+            "ocr_status IN ('PENDING', 'SUCCEEDED', 'FAILED')",
+            name="ck_incoming_diff_images_ocr_status",
+        ),
+        Index("ix_incoming_diff_images_batch", "batch_id", "sort_order"),
+        Index("ix_incoming_diff_images_sha", "content_sha256"),
+    )
+
+    image_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("incoming_diff_batches.batch_id", ondelete="RESTRICT"), nullable=False
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    feishu_message_id: Mapped[str | None] = mapped_column(String(64))
+    feishu_image_key: Mapped[str] = mapped_column(String(191), nullable=False)
+    file_id: Mapped[int] = mapped_column(
+        ForeignKey("stored_files.file_id", ondelete="RESTRICT"), nullable=False
+    )
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    ocr_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    recognition_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    recognition_model: Mapped[str | None] = mapped_column(String(100))
+    recognition_finished_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    failure_reason: Mapped[str | None] = mapped_column(String(500))
+    duplicate_of_batch_id: Mapped[str | None] = mapped_column(
+        ForeignKey("incoming_diff_batches.batch_id", ondelete="RESTRICT")
+    )
+    duplicate_ack_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class IncomingDiffWorkbook(Base):
+    """One Excel version of a batch; only the current version can be confirmed."""
+
+    __tablename__ = "incoming_diff_workbooks"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "version", name="uq_incoming_diff_workbooks_version"),
+        CheckConstraint(
+            "direction IN ('GENERATED', 'UPLOADED')",
+            name="ck_incoming_diff_workbooks_direction",
+        ),
+    )
+
+    workbook_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("incoming_diff_batches.batch_id", ondelete="RESTRICT"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    file_id: Mapped[int] = mapped_column(
+        ForeignKey("stored_files.file_id", ondelete="RESTRICT"), nullable=False
+    )
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    signature: Mapped[str | None] = mapped_column(String(128))
+    line_snapshot: Mapped[list[Any]] = mapped_column(JSON, nullable=False)
+    validation_issues: Mapped[list[Any] | None] = mapped_column(JSON)
+    submitted_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    submitted_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class IncomingDiffRecord(Base):
+    """Confirmed incoming difference; pairs one-to-one with an INCOMING_DIFF ledger row."""
+
+    __tablename__ = "incoming_diff_records"
+    __table_args__ = (
+        CheckConstraint("quantity <> 0", name="ck_incoming_diff_records_quantity_nonzero"),
+        Index("ix_incoming_diff_records_order", "order_id", "registered_at", "record_id"),
+        Index("ix_incoming_diff_records_assignment", "order_assignment_id"),
+        Index("ix_incoming_diff_records_batch", "batch_id"),
+    )
+
+    record_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("incoming_diff_batches.batch_id", ondelete="RESTRICT"), nullable=False
+    )
+    workbook_id: Mapped[str] = mapped_column(
+        ForeignKey("incoming_diff_workbooks.workbook_id", ondelete="RESTRICT"), nullable=False
+    )
+    image_id: Mapped[str] = mapped_column(
+        ForeignKey("incoming_diff_images.image_id", ondelete="RESTRICT"), nullable=False
+    )
+    order_id: Mapped[str] = mapped_column(
+        ForeignKey("orders.order_id", ondelete="RESTRICT"), nullable=False
+    )
+    detail_id: Mapped[str] = mapped_column(
+        ForeignKey("order_details.detail_id", ondelete="RESTRICT"), nullable=False
+    )
+    order_assignment_id: Mapped[int] = mapped_column(
+        ForeignKey("order_assignments.order_assignment_id", ondelete="RESTRICT"), nullable=False
+    )
+    variant_id: Mapped[str] = mapped_column(
+        ForeignKey("product_variants.variant_id", ondelete="RESTRICT"), nullable=False
+    )
+    purchase_order_id: Mapped[str] = mapped_column(String(191), nullable=False)
+    purchase_order_item_id: Mapped[str] = mapped_column(String(191), nullable=False)
+    shipment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("shipments.shipment_id", ondelete="RESTRICT")
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    initial_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    product_code_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    product_name_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
+    spec_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
+    registered_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    registered_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
+class IncomingDiffAdjustment(Base):
+    """Append-only audit of post-registration quantity corrections."""
+
+    __tablename__ = "incoming_diff_adjustments"
+    __table_args__ = (
+        CheckConstraint("delta <> 0", name="ck_incoming_diff_adjustments_delta_nonzero"),
+        Index("ix_incoming_diff_adjustments_record", "record_id", "created_at"),
+    )
+
+    adjustment_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    record_id: Mapped[str] = mapped_column(
+        ForeignKey("incoming_diff_records.record_id", ondelete="RESTRICT"), nullable=False
+    )
+    before_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    after_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
 class OrderChangePreview(Base):
     __tablename__ = "order_change_previews"
 

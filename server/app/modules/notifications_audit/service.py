@@ -195,6 +195,8 @@ class NotificationsAuditService:
                 self._consume_repair_created(session, message)
             elif message.event_type == "repair.return_submitted":
                 self._consume_repair_returned(session, message)
+            elif message.event_type == "incoming_diff.registered":
+                self._consume_incoming_diff_registered(session, message)
             message.status = "completed"
             message.completed_at = current
             message.locked_by = None
@@ -1267,6 +1269,39 @@ class NotificationsAuditService:
                     "character_string2": shipment.shipment_no or shipment.shipment_id,
                     "phrase3": "已收货",
                     "time4": _wechat_time(receipt.confirmed_at),
+                },
+            )
+
+    def _consume_incoming_diff_registered(
+        self, session: Session, message: OutboxMessage
+    ) -> None:
+        order = session.get(Order, str(message.payload["orderId"]))
+        if order is None:
+            return
+        record_count = int(message.payload["recordCount"])
+        for user in self._enabled_factory_users(
+            session, str(message.payload["factoryId"])
+        ):
+            self._notify_user(
+                session,
+                message=message,
+                user_id=user.user_id,
+                category="INCOMING_DIFF",
+                target_type="factory_task",
+                target_id=order.order_id,
+                title="订单来货出入已登记",
+                summary=f"订单 {order.order_no} 新增 {record_count} 条来货出入，请查看详情",
+                target_path=(
+                    "/pages/factory-task-detail/factory-task-detail"
+                    f"?orderId={order.order_id}"
+                ),
+                channel="wechat",
+                template_key="factory_status",
+                template_data={
+                    "thing1": "跟单管理系统",
+                    "character_string2": order.order_no,
+                    "phrase3": "来货出入",
+                    "time4": _wechat_time(message.locked_at or utc_now()),
                 },
             )
 

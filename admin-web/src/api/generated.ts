@@ -1831,6 +1831,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/{order_id}/incoming-differences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Incoming Differences */
+        get: operations["list_incoming_differences_api_v1_orders__order_id__incoming_differences_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shipment-files/{file_id}/content": {
         parameters: {
             query?: never;
@@ -2667,6 +2684,39 @@ export interface components {
             startedAt: string;
             /** Status */
             status: string;
+        };
+        /** IncomingDifferenceListResponse */
+        IncomingDifferenceListResponse: {
+            /** Items */
+            items: components["schemas"]["IncomingDifferenceResponse"][];
+            /** Requestid */
+            requestId: string;
+            /** Total */
+            total: number;
+        };
+        /** IncomingDifferenceResponse */
+        IncomingDifferenceResponse: {
+            /** Productcode */
+            productCode?: string | null;
+            /** Productname */
+            productName: string;
+            /** Purchaseorderid */
+            purchaseOrderId?: string | null;
+            /** Quantity */
+            quantity: number;
+            /** Recordid */
+            recordId?: string | null;
+            /**
+             * Registeredat
+             * Format: date-time
+             */
+            registeredAt: string;
+            /** Sequence */
+            sequence: number;
+            /** Spec */
+            spec: string;
+            /** Version */
+            version?: number | null;
         };
         /** MiniLoginResponse */
         MiniLoginResponse: {
@@ -7880,6 +7930,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_incoming_differences_api_v1_orders__order_id__incoming_differences_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncomingDifferenceListResponse"];
                 };
             };
             /** @description Validation Error */

@@ -44,6 +44,7 @@ from app.api.agent_oauth import create_agent_oauth_router
 from app.api.contracts import create_contract_router
 from app.api.factory_access import create_factory_router
 from app.api.identity import create_identity_router
+from app.api.incoming_differences import create_incoming_difference_router
 from app.api.notifications_audit import create_notifications_audit_router
 from app.api.order_import import create_order_import_router
 from app.api.orders import create_order_router
@@ -85,6 +86,7 @@ from app.modules.identity_access import (
 )
 from app.modules.identity_access.agent_oauth import AgentOAuthService, OAuthInvalid
 from app.modules.identity_access.service import IdentityAccessService
+from app.modules.incoming_differences import IncomingDifferenceService
 from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.order_import import OrderImportService
 from app.modules.orders import (
@@ -128,6 +130,7 @@ def create_app(
     contract_service: ContractService | None = None,
     shipment_service: ShipmentService | None = None,
     notifications_audit_service: NotificationsAuditService | None = None,
+    incoming_difference_service: IncomingDifferenceService | None = None,
     private_file_store: PrivateFileStore | None = None,
     extra_routers: Sequence[APIRouter] = (),
 ) -> FastAPI:
@@ -371,6 +374,12 @@ def create_app(
     app.include_router(create_shipment_router(shipment_service, identity_service))
     app.include_router(
         create_notifications_audit_router(notifications_audit_service, identity_service)
+    )
+    app.include_router(
+        create_incoming_difference_router(
+            incoming_difference_service or IncomingDifferenceService(session_factory),
+            identity_service,
+        )
     )
     repair_previews = RepairPreviewService(session_factory)
     repair_confirmations = RepairConfirmationService(session_factory)

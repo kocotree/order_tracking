@@ -2422,6 +2422,110 @@
         "title": "ImportRunResponse",
         "type": "object"
       },
+      "IncomingDifferenceListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IncomingDifferenceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "requestId": {
+            "title": "Requestid",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "requestId"
+        ],
+        "title": "IncomingDifferenceListResponse",
+        "type": "object"
+      },
+      "IncomingDifferenceResponse": {
+        "properties": {
+          "productCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productcode"
+          },
+          "productName": {
+            "title": "Productname",
+            "type": "string"
+          },
+          "purchaseOrderId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchaseorderid"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "recordId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recordid"
+          },
+          "registeredAt": {
+            "format": "date-time",
+            "title": "Registeredat",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "spec": {
+            "title": "Spec",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "sequence",
+          "registeredAt",
+          "productName",
+          "spec",
+          "quantity"
+        ],
+        "title": "IncomingDifferenceResponse",
+        "type": "object"
+      },
       "MiniLoginResponse": {
         "properties": {
           "bindingToken": {
@@ -14711,6 +14815,80 @@
           }
         },
         "summary": "Get Order",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/orders/{order_id}/incoming-differences": {
+      "get": {
+        "operationId": "list_incoming_differences_api_v1_orders__order_id__incoming_differences_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomingDifferenceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Incoming Differences",
         "tags": [
           "orders"
         ]

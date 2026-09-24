@@ -70,18 +70,23 @@ class FeishuCallbackVerifier:
                 raise ValueError("callback signature invalid")
         try:
             wrapper = json.loads(body)
-            if not isinstance(wrapper, dict) or not isinstance(wrapper.get("encrypt"), str):
+            if not isinstance(wrapper, dict):
                 raise ValueError("callback decrypt invalid")
-            encrypted = base64.b64decode(wrapper["encrypt"], validate=True)
-            if len(encrypted) < 32 or (len(encrypted) - 16) % 16:
-                raise ValueError("callback decrypt invalid")
-            decryptor = Cipher(
-                algorithms.AES(hashlib.sha256(self._key.encode()).digest()),
-                modes.CBC(encrypted[:16]),
-            ).decryptor()
-            padded = decryptor.update(encrypted[16:]) + decryptor.finalize()
-            unpadder = padding.PKCS7(128).unpadder()
-            payload = json.loads(unpadder.update(padded) + unpadder.finalize())
+            if "encrypt" not in wrapper and signature:
+                payload = wrapper
+            else:
+                if not isinstance(wrapper.get("encrypt"), str):
+                    raise ValueError("callback decrypt invalid")
+                encrypted = base64.b64decode(wrapper["encrypt"], validate=True)
+                if len(encrypted) < 32 or (len(encrypted) - 16) % 16:
+                    raise ValueError("callback decrypt invalid")
+                decryptor = Cipher(
+                    algorithms.AES(hashlib.sha256(self._key.encode()).digest()),
+                    modes.CBC(encrypted[:16]),
+                ).decryptor()
+                padded = decryptor.update(encrypted[16:]) + decryptor.finalize()
+                unpadder = padding.PKCS7(128).unpadder()
+                payload = json.loads(unpadder.update(padded) + unpadder.finalize())
             if not isinstance(payload, dict):
                 raise ValueError("callback decrypt invalid")
         except (ValueError, TypeError, KeyError) as error:

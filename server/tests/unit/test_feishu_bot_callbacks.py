@@ -105,6 +105,42 @@ def test_callback_routes_are_disabled_by_default() -> None:
         assert response.json() == {"code": "feishu_bot_disabled"}
 
 
+def test_signed_plaintext_card_callback_is_dispatched() -> None:
+    class Stub:
+        def card_action(self, payload: dict[str, object]) -> dict[str, object]:
+            assert payload["header"]["event_type"] == "card.action.trigger"
+            return {"toast": {"type": "info", "content": "正在处理"}}
+
+    app = FastAPI()
+    app.include_router(create_feishu_bot_router(
+        service=Stub(),
+        verifier=FeishuCallbackVerifier(KEY, "local-test-token", now=lambda: NOW),
+    ))
+    client = TestClient(app)
+    headers, body = _callback({
+        "schema": "2.0", "header": {
+            "token": "local-test-token", "event_type": "card.action.trigger",
+        }, "event": {},
+    })
+    response = client.post("/api/v1/integrations/feishu/card-actions",
+                           headers=headers, content=body)
+    assert response.status_code == 200
+    assert response.json() == {"toast": {"type": "info", "content": "正在处理"}}
+    assert client.post("/api/v1/integrations/feishu/card-actions",
+                       content=body).status_code == 401
+    assert client.post("/api/v1/integrations/feishu/card-actions",
+                       headers={**headers, "x-lark-signature": "0" * 64},
+                       content=body).status_code == 401
+    wrong_token_headers, wrong_token_body = _callback({
+        "schema": "2.0", "header": {
+            "token": "wrong-token", "event_type": "card.action.trigger",
+        }, "event": {},
+    })
+    assert client.post("/api/v1/integrations/feishu/card-actions",
+                       headers=wrong_token_headers,
+                       content=wrong_token_body).status_code == 401
+
+
 def test_callback_route_rejects_bad_signature_before_service() -> None:
     class Stub:
         def event(self, payload: dict[str, object]) -> dict[str, object]:

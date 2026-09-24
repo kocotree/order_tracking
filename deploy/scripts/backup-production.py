@@ -3,11 +3,19 @@ import gzip
 import hashlib
 import os
 from pathlib import Path
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
 from urllib.parse import unquote, urlsplit
+
+# Retention only matches this script's own timestamped names, never manual artefacts.
+MYSQL_BACKUPS = re.compile(r"production-\d{8}T\d{12}Z\.sql\.gz")
+OSS_BACKUPS = re.compile(r"production-\d{8}T\d{12}Z")
+MYSQL_RETAINED = 30
+OSS_RETAINED = 3
 
 
 def main():
@@ -72,7 +80,19 @@ def main():
     oss_target.with_suffix(".sha256").write_text("".join(
         hash_file(p) + "  " + str(p.relative_to(oss_target)) + "\n" for p in files
     ))
+    # Old backups are removed only after this run is complete and checksummed.
+    prune(roots[0], MYSQL_BACKUPS, MYSQL_RETAINED)
+    prune(roots[1], OSS_BACKUPS, OSS_RETAINED)
     print(f"Backup complete: MySQL {target.name}; OSS {len(files)} files in {oss_target.name}")
+
+
+def prune(root, pattern, keep):
+    for path in sorted(p for p in root.iterdir() if pattern.fullmatch(p.name))[:-keep]:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        path.with_name(path.name + ".sha256").unlink(missing_ok=True)
 
 
 def hash_file(path):

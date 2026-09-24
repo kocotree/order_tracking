@@ -104,6 +104,11 @@ Python 3.8+, mysqldump, flock, and ossutil 2.x. Release artifacts are retained a
 
 The deployment checks both image revision labels, backs up MySQL and OSS, runs
 migrations, waits for container health, and records the version only on success.
+After each successful backup the script keeps the newest 30 MySQL dumps and 3 OSS
+snapshots and deletes the rest; it only matches its own `production-<stamp>` names,
+so manual artefacts in the same directories are left alone. A daily 00:00 cron on
+the server runs the same script under the deployment lock, so scheduled and
+deployment backups share one retention pool.
 Backup completion checks are not a substitute for periodic restore rehearsals.
 On failure, inspect the actual container and schema state before retrying; DDL
 and a partial container replacement cannot automatically be rolled back safely.

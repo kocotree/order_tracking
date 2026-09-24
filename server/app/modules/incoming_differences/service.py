@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.models import (
     AuditLog,
     IdempotencyRecord,
+    IncomingDiffAdjustment,
     IncomingDiffBatch,
     IncomingDiffImage,
     IncomingDiffRecord,
@@ -32,6 +33,7 @@ BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
 CONFIRM_SCOPE = "incoming_diff_confirm"
 LEDGER_SOURCE_TYPE = "INCOMING_DIFF"
 REGISTERED_EVENT_TYPE = "incoming_diff.registered"
+ADJUSTED_EVENT_TYPE = "incoming_diff.adjusted"
 # ponytail: 设计 §7.1 只说「业务日期与约定交期在合理区间」，没给数值；先取 ±60 天，
 # 超窗只会让候选变 0 个而进「待确认」，不会错配，需要调整时改这一个常量。
 CANDIDATE_DATE_WINDOW_DAYS = 60
@@ -476,6 +478,131 @@ class IncomingDifferenceService:
                 replayed=False,
             )
 
+    def adjust_quantity(
+        self,
+        *,
+        actor_id: str,
+        order_id: str,
+        record_id: str,
+        quantity: int,
+        version: int,
+        request_id: str,
+    ) -> IncomingDifferenceView:
+        current = self._now()[0]
+        with self._session_factory() as session, session.begin():
+            actor = session.get(User, actor_id)
+            if actor is None or not actor.is_enabled or actor.role != "admin":
+                raise IncomingDifferencePermissionDenied("只有已启用的管理员可以调整来货出入")
+            record = session.scalars(
+                select(IncomingDiffRecord)
+                .where(
+                    IncomingDiffRecord.record_id == record_id,
+                    IncomingDiffRecord.order_id == order_id,
+                )
+                .with_for_update()
+            ).one_or_none()
+            if record is None:
+                raise IncomingDifferenceNotFound("来货出入记录不存在")
+            if record.version != version:
+                raise IncomingDifferenceConflict("记录已被修改，请刷新后重试")
+            if quantity == 0:
+                raise IncomingDifferenceValidationError("来货出入数量不能为 0", [])
+
+            delta = quantity - record.quantity
+            if delta == 0:
+                return _record_view(session, record)
+
+            assignment = session.scalars(
+                select(OrderAssignment)
+                .where(OrderAssignment.order_assignment_id == record.order_assignment_id)
+                .with_for_update()
+            ).one_or_none()
+            if assignment is None or not assignment.is_active:
+                raise IncomingDifferenceValidationError("记录关联的派工不存在或已失效", [])
+            ledger_total = int(
+                session.scalar(
+                    select(func.coalesce(func.sum(QuantityLedger.quantity_delta), 0)).where(
+                        QuantityLedger.order_assignment_id == record.order_assignment_id
+                    )
+                )
+                or 0
+            )
+            before_shipped = assignment.initial_shipped_quantity + ledger_total
+            after_shipped = before_shipped + delta
+            if after_shipped < 0:
+                raise IncomingDifferenceValidationError(
+                    f"调整后统一已发数量为 {after_shipped}，不能小于 0", []
+                )
+
+            before_quantity = record.quantity
+            adjustment_id = self._id_factory()
+            session.add(
+                IncomingDiffAdjustment(
+                    adjustment_id=adjustment_id,
+                    record_id=record_id,
+                    before_quantity=before_quantity,
+                    after_quantity=quantity,
+                    delta=delta,
+                    actor_id=actor_id,
+                    request_id=request_id,
+                    created_at=current,
+                )
+            )
+            session.add(
+                QuantityLedger(
+                    order_assignment_id=record.order_assignment_id,
+                    source_type="INCOMING_DIFF_ADJUST",
+                    source_id=adjustment_id,
+                    quantity_delta=delta,
+                    actor_id=actor_id,
+                    created_at=current,
+                )
+            )
+            record.quantity = quantity
+            record.version += 1
+            record.updated_at = current
+            session.add(
+                AuditLog(
+                    request_id=request_id,
+                    action="incoming_diff_adjusted",
+                    target_type="incoming_diff_record",
+                    target_id=record_id,
+                    changes={
+                        "beforeQuantity": before_quantity,
+                        "afterQuantity": quantity,
+                        "delta": delta,
+                        "beforeUnifiedShippedQuantity": before_shipped,
+                        "afterUnifiedShippedQuantity": after_shipped,
+                    },
+                    actor_id=actor_id,
+                    source_terminal="admin-web",
+                )
+            )
+            order = session.get(Order, order_id)
+            if order is None:
+                raise IncomingDifferenceNotFound("订单不存在")
+            session.add(
+                OutboxMessage(
+                    event_type=ADJUSTED_EVENT_TYPE,
+                    aggregate_type="incoming_diff_record",
+                    aggregate_id=record_id,
+                    dedupe_key=f"incoming-diff:{record_id}:adjusted:{adjustment_id}",
+                    payload={
+                        "recordId": record_id,
+                        "adjustmentId": adjustment_id,
+                        "factoryId": assignment.factory_id,
+                        "orderId": order_id,
+                        "orderNo": order.order_no,
+                        "beforeQuantity": before_quantity,
+                        "afterQuantity": quantity,
+                        "adjustedAt": current.isoformat(),
+                    },
+                    status="pending",
+                    available_at=current,
+                )
+            )
+            return _record_view(session, record)
+
     def list_for_order(self, *, actor_id: str, order_id: str) -> list[IncomingDifferenceView]:
         with self._session_factory() as session:
             actor = session.get(User, actor_id)
@@ -543,6 +670,25 @@ def _line_reason(raw: dict[str, Any], image_ids: set[str]) -> str | None:
     if str(raw.get("imageId") or "") not in image_ids:
         return "数据行不属于本批次图片"
     return None
+
+
+def _record_view(session: Session, record: IncomingDiffRecord) -> IncomingDifferenceView:
+    record_ids = session.scalars(
+        select(IncomingDiffRecord.record_id)
+        .where(IncomingDiffRecord.order_id == record.order_id)
+        .order_by(IncomingDiffRecord.registered_at, IncomingDiffRecord.record_id)
+    ).all()
+    return IncomingDifferenceView(
+        sequence=record_ids.index(record.record_id) + 1,
+        registered_at=record.registered_at,
+        product_name=record.product_name_snapshot,
+        spec=record.spec_snapshot,
+        quantity=record.quantity,
+        record_id=record.record_id,
+        purchase_order_id=record.purchase_order_id,
+        product_code=record.product_code_snapshot,
+        version=record.version,
+    )
 
 
 def _issue(raw: dict[str, Any], reason: str) -> dict[str, Any]:

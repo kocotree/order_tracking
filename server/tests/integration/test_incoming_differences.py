@@ -30,6 +30,7 @@ from app.db.models import (
     User,
 )
 from app.modules.incoming_differences import (
+    IncomingDifferenceConflict,
     IncomingDifferencePermissionDenied,
     IncomingDifferenceService,
     IncomingDifferenceValidationError,
@@ -420,6 +421,22 @@ def _unified_shipped(session: Session, assignment_id: int) -> int:
     return assignment.initial_shipped_quantity + ledger_total
 
 
+def _confirmed_record(engine: Engine, *, quantity: int = 5) -> tuple[int, str]:
+    with Session(engine) as session, session.begin():
+        _seed_masters(session)
+        first, _second = _seed_order(session)
+        _seed_batch(session, lines=[_line(first, quantity)])
+    _service(engine).confirm(batch_id=BATCH_ID, workbook_version=1, actor_id=ADMIN)
+    with Session(engine) as session:
+        record_id = session.scalar(
+            select(IncomingDiffRecord.record_id).where(
+                IncomingDiffRecord.order_assignment_id == first
+            )
+        )
+        assert record_id is not None
+    return first, record_id
+
+
 def test_confirm_writes_records_ledger_audit_and_one_outbox_per_factory_and_order(
     test_database_engine: Engine,
 ) -> None:
@@ -687,6 +704,277 @@ def test_incoming_difference_does_not_net_against_a_receipt_difference(
             )
             == 2
         )
+
+
+def test_adjustment_writes_delta_ledger_audit_and_outbox(
+    test_database_engine: Engine,
+) -> None:
+    assignment_id, record_id = _confirmed_record(test_database_engine)
+
+    result = _service(test_database_engine).adjust_quantity(
+        actor_id=ADMIN,
+        order_id=ORDER_ID,
+        record_id=record_id,
+        quantity=3,
+        version=1,
+        request_id="request-adjust-1",
+    )
+
+    assert result.quantity == 3
+    assert result.version == 2
+    with Session(test_database_engine) as session:
+        assert _unified_shipped(session, assignment_id) == 13
+        adjustment = session.scalar(
+            select(IncomingDiffAdjustment).where(IncomingDiffAdjustment.record_id == record_id)
+        )
+        assert adjustment is not None
+        assert (
+            adjustment.before_quantity,
+            adjustment.after_quantity,
+            adjustment.delta,
+            adjustment.request_id,
+        ) == (5, 3, -2, "request-adjust-1")
+        ledger = session.scalar(
+            select(QuantityLedger).where(QuantityLedger.source_type == "INCOMING_DIFF_ADJUST")
+        )
+        assert ledger is not None
+        assert ledger.source_id == adjustment.adjustment_id
+        assert ledger.quantity_delta == -2
+        audit = session.scalar(select(AuditLog).where(AuditLog.action == "incoming_diff_adjusted"))
+        assert audit is not None
+        assert audit.request_id == "request-adjust-1"
+        assert audit.changes["beforeQuantity"] == 5
+        assert audit.changes["afterQuantity"] == 3
+        outbox = session.scalar(
+            select(OutboxMessage).where(OutboxMessage.event_type == "incoming_diff.adjusted")
+        )
+        assert outbox is not None
+        assert outbox.payload["factoryId"] == FACTORY_A
+        assert outbox.payload["orderId"] == ORDER_ID
+
+
+def test_noop_adjustment_returns_current_snapshot_without_writes(
+    test_database_engine: Engine,
+) -> None:
+    _assignment_id, record_id = _confirmed_record(test_database_engine)
+
+    result = _service(test_database_engine).adjust_quantity(
+        actor_id=ADMIN,
+        order_id=ORDER_ID,
+        record_id=record_id,
+        quantity=5,
+        version=1,
+        request_id="request-adjust-noop",
+    )
+
+    assert result.quantity == 5
+    assert result.version == 1
+    with Session(test_database_engine) as session:
+        assert session.scalar(select(func.count()).select_from(IncomingDiffAdjustment)) == 0
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(QuantityLedger)
+                .where(QuantityLedger.source_type == "INCOMING_DIFF_ADJUST")
+            )
+            == 0
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(OutboxMessage)
+                .where(OutboxMessage.event_type == "incoming_diff.adjusted")
+            )
+            == 0
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditLog)
+                .where(AuditLog.action == "incoming_diff_adjusted")
+            )
+            == 0
+        )
+
+
+def test_adjustment_rejects_stale_version_zero_and_negative_unified_quantity(
+    test_database_engine: Engine,
+) -> None:
+    assignment_id, record_id = _confirmed_record(test_database_engine, quantity=-5)
+    service = _service(test_database_engine)
+
+    with pytest.raises(IncomingDifferenceConflict):
+        service.adjust_quantity(
+            actor_id=ADMIN,
+            order_id=ORDER_ID,
+            record_id=record_id,
+            quantity=-6,
+            version=2,
+            request_id="request-adjust-stale",
+        )
+    with pytest.raises(IncomingDifferenceValidationError):
+        service.adjust_quantity(
+            actor_id=ADMIN,
+            order_id=ORDER_ID,
+            record_id=record_id,
+            quantity=0,
+            version=1,
+            request_id="request-adjust-zero",
+        )
+    with pytest.raises(IncomingDifferenceValidationError):
+        service.adjust_quantity(
+            actor_id=ADMIN,
+            order_id=ORDER_ID,
+            record_id=record_id,
+            quantity=-11,
+            version=1,
+            request_id="request-adjust-lower-bound",
+        )
+
+    with Session(test_database_engine) as session:
+        record = session.get(IncomingDiffRecord, record_id)
+        assert record is not None
+        assert (record.quantity, record.version) == (-5, 1)
+        assert _unified_shipped(session, assignment_id) == 5
+        assert session.scalar(select(func.count()).select_from(IncomingDiffAdjustment)) == 0
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(QuantityLedger)
+                .where(QuantityLedger.source_type == "INCOMING_DIFF_ADJUST")
+            )
+            == 0
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditLog)
+                .where(AuditLog.action == "incoming_diff_adjusted")
+            )
+            == 0
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(OutboxMessage)
+                .where(OutboxMessage.event_type == "incoming_diff.adjusted")
+            )
+            == 0
+        )
+
+
+def test_multiple_adjustments_accumulate_only_their_deltas(
+    test_database_engine: Engine,
+) -> None:
+    assignment_id, record_id = _confirmed_record(test_database_engine)
+    service = _service(test_database_engine)
+
+    service.adjust_quantity(
+        actor_id=ADMIN,
+        order_id=ORDER_ID,
+        record_id=record_id,
+        quantity=3,
+        version=1,
+        request_id="request-adjust-first",
+    )
+    result = service.adjust_quantity(
+        actor_id=ADMIN,
+        order_id=ORDER_ID,
+        record_id=record_id,
+        quantity=8,
+        version=2,
+        request_id="request-adjust-second",
+    )
+
+    assert (result.quantity, result.version) == (8, 3)
+    with Session(test_database_engine) as session:
+        assert _unified_shipped(session, assignment_id) == 18
+        assert (
+            session.scalar(
+                select(func.sum(IncomingDiffAdjustment.delta)).where(
+                    IncomingDiffAdjustment.record_id == record_id
+                )
+            )
+            == 3
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(IncomingDiffAdjustment)
+                .where(IncomingDiffAdjustment.record_id == record_id)
+            )
+            == 2
+        )
+
+
+def test_adjustment_only_accepts_enabled_admin(
+    test_database_engine: Engine,
+) -> None:
+    _assignment_id, record_id = _confirmed_record(test_database_engine)
+
+    for actor_id in (FACTORY_USER, DISABLED_ADMIN):
+        with pytest.raises(IncomingDifferencePermissionDenied):
+            _service(test_database_engine).adjust_quantity(
+                actor_id=actor_id,
+                order_id=ORDER_ID,
+                record_id=record_id,
+                quantity=4,
+                version=1,
+                request_id=f"request-adjust-{actor_id}",
+            )
+
+
+def test_adjusted_event_notifies_every_enabled_factory_user(
+    test_database_engine: Engine,
+) -> None:
+    _assignment_id, record_id = _confirmed_record(test_database_engine)
+    with Session(test_database_engine) as session, session.begin():
+        session.add(
+            User(
+                user_id=SECOND_FACTORY_USER,
+                role="factory",
+                is_enabled=True,
+                feishu_display_name="同厂用户",
+                factory_id=FACTORY_A,
+                factory_position="employee",
+            )
+        )
+        session.add(
+            User(
+                user_id=DISABLED_FACTORY_USER,
+                role="factory",
+                is_enabled=False,
+                feishu_display_name="停用工厂用户",
+                factory_id=FACTORY_A,
+                factory_position="employee",
+            )
+        )
+    _service(test_database_engine).adjust_quantity(
+        actor_id=ADMIN,
+        order_id=ORDER_ID,
+        record_id=record_id,
+        quantity=4,
+        version=1,
+        request_id="request-adjust-notify",
+    )
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    notifications = NotificationsAuditService(sessions)
+
+    assert notifications.consume_next_business_event(worker_id="idf-worker") is True
+    assert notifications.consume_next_business_event(worker_id="idf-worker") is True
+
+    with Session(test_database_engine) as session:
+        rows = list(
+            session.scalars(
+                select(Notification)
+                .where(Notification.event_type == "incoming_diff.adjusted")
+                .order_by(Notification.recipient_id)
+            )
+        )
+        assert [row.recipient_id for row in rows] == [FACTORY_USER, SECOND_FACTORY_USER]
+        assert {row.category for row in rows} == {"INCOMING_DIFF"}
+        assert rows[0].title == "来货出入已调整"
+        assert rows[0].target_path.startswith("/pages/factory-task-detail/factory-task-detail")
 
 
 @pytest.mark.parametrize(

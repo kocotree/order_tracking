@@ -1,15 +1,11 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Cookie, Header, HTTPException, Request
-from pydantic import BaseModel, ConfigDict
+from fastapi import APIRouter, Cookie, Header, Request
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.identity_access import IdentityAccessService, SessionInvalid
 from app.modules.identity_access.service import UserSnapshot
-from app.modules.incoming_differences import (
-    IncomingDifferenceNotFound,
-    IncomingDifferenceService,
-    IncomingDifferenceView,
-)
+from app.modules.incoming_differences import IncomingDifferenceService, IncomingDifferenceView
 
 
 def to_camel(value: str) -> str:
@@ -36,6 +32,17 @@ class IncomingDifferenceResponse(ApiModel):
 class IncomingDifferenceListResponse(ApiModel):
     items: list[IncomingDifferenceResponse]
     total: int
+    request_id: str
+
+
+class IncomingDifferenceUpdateRequest(ApiModel):
+    quantity: int
+    version: int = Field(ge=1)
+
+
+class IncomingDifferenceUpdateResponse(IncomingDifferenceResponse):
+    record_id: str
+    version: int
     request_id: str
 
 
@@ -70,14 +77,38 @@ def create_incoming_difference_router(
         authorization: str | None = Header(default=None),
     ) -> IncomingDifferenceListResponse:
         actor = query_user(ot_web_session, authorization)
-        try:
-            views = service.list_for_order(actor_id=actor.user_id, order_id=order_id)
-        except IncomingDifferenceNotFound as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+        views = service.list_for_order(actor_id=actor.user_id, order_id=order_id)
         return IncomingDifferenceListResponse(
             items=[_item(view) for view in views],
             total=len(views),
             request_id=request.state.request_id,
+        )
+
+    @router.patch(
+        "/admin/orders/{order_id}/incoming-differences/{record_id}",
+        response_model=IncomingDifferenceUpdateResponse,
+        tags=["orders"],
+    )
+    def update_incoming_difference_quantity(
+        order_id: str,
+        record_id: str,
+        payload: IncomingDifferenceUpdateRequest,
+        request: Request,
+        ot_web_session: str | None = Cookie(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> IncomingDifferenceUpdateResponse:
+        actor = query_user(ot_web_session, authorization)
+        view = service.adjust_quantity(
+            actor_id=actor.user_id,
+            order_id=order_id,
+            record_id=record_id,
+            quantity=payload.quantity,
+            version=payload.version,
+            request_id=request.state.request_id,
+        )
+        item = _item(view)
+        return IncomingDifferenceUpdateResponse(
+            **item.model_dump(), request_id=request.state.request_id
         )
 
     return router

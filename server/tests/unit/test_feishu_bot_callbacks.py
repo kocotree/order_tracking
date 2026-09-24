@@ -51,6 +51,21 @@ def test_signed_encrypted_challenge_and_rejections() -> None:
     ).decode()
     headers, body = _callback({"encrypt": encrypted})
     assert verifier.verify(headers, body)["challenge"] == "abc"
+    class NoDispatch:
+        def event(self, payload: dict[str, object]) -> dict[str, object]:
+            raise AssertionError("challenge must not dispatch as an event")
+
+        def card_action(self, payload: dict[str, object]) -> dict[str, object]:
+            raise AssertionError("challenge must not dispatch as a card action")
+
+    app = FastAPI()
+    app.include_router(create_feishu_bot_router(service=NoDispatch(), verifier=verifier))
+    client = TestClient(app)
+    for path in ("events", "card-actions"):
+        response = client.post(f"/api/v1/integrations/feishu/{path}",
+                               headers=headers, content=body)
+        assert response.status_code == 200
+        assert response.json() == {"challenge": "abc"}
     with pytest.raises(ValueError, match="token"):
         FeishuCallbackVerifier(KEY, "wrong-token", now=lambda: NOW).verify(headers, body)
 

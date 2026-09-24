@@ -110,8 +110,6 @@ class FeishuBotService:
         self._store = InfrastructureStore(sessions)
 
     def event(self, payload: dict[str, object]) -> dict[str, object]:
-        if payload.get("type") == "url_verification":
-            return {"challenge": payload.get("challenge")}
         header = payload.get("header")
         event = payload.get("event")
         if not isinstance(header, dict) or not isinstance(event, dict):

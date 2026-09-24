@@ -17,6 +17,8 @@ def create_feishu_bot_router(
             payload = verifier.verify(dict(request.headers), body)
         except ValueError:
             return JSONResponse(status_code=401, content={"code": "invalid_feishu_callback"})
+        if payload.get("type") == "url_verification":
+            return JSONResponse(content={"challenge": payload.get("challenge")})
         try:
             result = service.card_action(payload) if card else service.event(payload)
         except Exception:

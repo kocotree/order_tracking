@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     identity_token_secret: str = ""
     phone_encryption_secret: str = ""
     phone_digest_secret: str = ""
+    incoming_diff_workbook_signing_secret: str = Field(
+        default="LOCAL-CI-FAKE-INCOMING-DIFF-SIGNING-SECRET-DO-NOT-USE",
+        repr=False,
+    )
     feishu_identity_scope: str = "unconfigured-feishu"
     feishu_identity_app_id: str = ""
     feishu_identity_app_secret: str = ""

@@ -1902,7 +1902,7 @@ class IncomingDiffRecord(Base):
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     initial_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    source_business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    source_business_date: Mapped[date | None] = mapped_column(Date)
     product_code_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
     product_name_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
     spec_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)

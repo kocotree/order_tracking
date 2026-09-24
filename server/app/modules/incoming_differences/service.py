@@ -2,12 +2,12 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import (
@@ -34,9 +34,6 @@ CONFIRM_SCOPE = "incoming_diff_confirm"
 LEDGER_SOURCE_TYPE = "INCOMING_DIFF"
 REGISTERED_EVENT_TYPE = "incoming_diff.registered"
 ADJUSTED_EVENT_TYPE = "incoming_diff.adjusted"
-# ponytail: 设计 §7.1 只说「业务日期与约定交期在合理区间」，没给数值；先取 ±60 天，
-# 超窗只会让候选变 0 个而进「待确认」，不会错配，需要调整时改这一个常量。
-CANDIDATE_DATE_WINDOW_DAYS = 60
 
 
 class IncomingDifferenceError(Exception):
@@ -100,7 +97,6 @@ class _ParsedLine:
     quantity: int
     purchase_order_id: str
     purchase_order_item_id: str
-    source_business_date: date
     image_id: str
 
 
@@ -178,58 +174,82 @@ class IncomingDifferenceService:
         factory_id: str | None = None,
         product_code: str | None = None,
         product_name: str | None = None,
+        spec: str | None = None,
         variant_id: str | None = None,
         purchase_order_id: str | None = None,
         purchase_order_item_id: str | None = None,
-        source_business_date: date | None = None,
     ) -> int | None:
-        """Return the assignment id only when exactly one candidate matches.
-
-        恰好 1 个才算唯一，不用相似度、不猜测。
-        """
-        statement = (
-            select(OrderAssignment.order_assignment_id)
-            .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-            .join(Order, Order.order_id == OrderLine.order_id)
-            .join(OrderDetail, OrderDetail.detail_id == OrderAssignment.detail_id)
-            .join(ProductVariant, ProductVariant.variant_id == OrderLine.product_variant_id)
+        """精确定位 SKU，再按有效未发数量和合同出货时间选择派工。"""
+        if not factory_id or not (product_code or product_name) or not (spec or variant_id):
+            return None
+        sku = (
+            select(ProductVariant.variant_id)
             .join(Product, Product.product_id == ProductVariant.product_id)
-            .where(
-                OrderAssignment.is_active.is_(True),
-                Order.deleted_at.is_(None),
-                Order.lifecycle.in_(("PUBLISHED", "COMPLETED")),
-            )
         )
-        if factory_id:
-            statement = statement.where(OrderAssignment.factory_id == factory_id)
         if product_code:
-            statement = statement.where(Product.source_i_id == product_code)
+            sku = sku.where(Product.source_i_id == product_code)
         if product_name:
-            statement = statement.where(Product.name == product_name)
+            sku = sku.where(Product.name == product_name)
+        if spec:
+            sku = sku.where(ProductVariant.properties_value == spec)
         if variant_id:
-            statement = statement.where(OrderLine.product_variant_id == variant_id)
-        if purchase_order_id:
-            statement = statement.where(OrderDetail.purchase_order_id == purchase_order_id)
-        if purchase_order_item_id:
-            statement = statement.where(
-                OrderDetail.purchase_order_item_id == purchase_order_item_id
-            )
-        if source_business_date is not None:
-            window = timedelta(days=CANDIDATE_DATE_WINDOW_DAYS)
-            statement = statement.where(
-                or_(
-                    OrderAssignment.contract_ship_date.is_(None),
-                    OrderAssignment.contract_ship_date.between(
-                        source_business_date - window, source_business_date + window
-                    ),
+            sku = sku.where(ProductVariant.variant_id == variant_id)
+        with self._session_factory() as session:
+            variants = session.scalars(sku.limit(2)).all()
+            if len(variants) != 1:
+                return None
+            statement = (
+                select(OrderAssignment)
+                .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
+                .join(Order, Order.order_id == OrderLine.order_id)
+                .join(OrderDetail, OrderDetail.detail_id == OrderAssignment.detail_id)
+                .where(
+                    OrderAssignment.is_active.is_(True),
+                    OrderAssignment.factory_id == factory_id,
+                    OrderLine.product_variant_id == variants[0],
+                    OrderDetail.purchase_order_id.is_not(None),
+                    OrderDetail.purchase_order_id != "",
+                    OrderDetail.purchase_order_item_id.is_not(None),
+                    OrderDetail.purchase_order_item_id != "",
+                    Order.deleted_at.is_(None),
+                    Order.lifecycle.in_(("PUBLISHED", "COMPLETED")),
                 )
             )
-        with self._session_factory() as session:
-            candidates = session.scalars(statement.distinct().limit(2)).all()
-        return candidates[0] if len(candidates) == 1 else None
+            if purchase_order_id:
+                statement = statement.where(OrderDetail.purchase_order_id == purchase_order_id)
+            if purchase_order_item_id:
+                statement = statement.where(
+                    OrderDetail.purchase_order_item_id == purchase_order_item_id
+                )
+            candidates = session.scalars(statement.order_by(
+                OrderAssignment.contract_ship_date.is_(None),
+                OrderAssignment.contract_ship_date,
+                OrderAssignment.order_assignment_id,
+            )).all()
+            if not candidates:
+                return None
+            ledger_rows = session.execute(
+                select(QuantityLedger.order_assignment_id, func.sum(QuantityLedger.quantity_delta))
+                .where(QuantityLedger.order_assignment_id.in_(
+                    assignment.order_assignment_id for assignment in candidates
+                ))
+                .group_by(QuantityLedger.order_assignment_id)
+            ).all()
+            totals = {row[0]: int(row[1]) for row in ledger_rows}
+            remaining = [
+                assignment for assignment in candidates
+                if assignment.assigned_quantity - assignment.initial_shipped_quantity
+                - totals.get(assignment.order_assignment_id, 0) > 0
+            ]
+            if not remaining:
+                return None
+            if (len(remaining) > 1
+                    and remaining[0].contract_ship_date == remaining[1].contract_ship_date):
+                return None
+            return remaining[0].order_assignment_id
 
     def confirm(self, *, batch_id: str, workbook_version: int, actor_id: str) -> ConfirmResult:
-        current, business_date = self._now()
+        current, _business_date = self._now()
         idempotency_key = f"{batch_id}:{workbook_version}"
         with self._session_factory() as session, session.begin():
             replay = session.scalar(
@@ -288,9 +308,6 @@ class IncomingDifferenceService:
                             quantity=int(raw["quantity"]),
                             purchase_order_id=str(raw["purchaseOrderId"]),
                             purchase_order_item_id=str(raw["purchaseOrderItemId"]),
-                            source_business_date=date.fromisoformat(
-                                str(raw["sourceBusinessDate"])
-                            ),
                             image_id=str(raw["imageId"]),
                         ),
                     )
@@ -367,7 +384,7 @@ class IncomingDifferenceService:
                         purchase_order_item_id=line.purchase_order_item_id,
                         quantity=line.quantity,
                         initial_quantity=line.quantity,
-                        source_business_date=line.source_business_date,
+                        source_business_date=None,
                         product_code_snapshot=context.product_code,
                         product_name_snapshot=context.product_name,
                         spec_snapshot=context.spec,
@@ -401,7 +418,6 @@ class IncomingDifferenceService:
                         "workbookId": workbook.workbook_id,
                         "workbookVersion": workbook.version,
                         "recordCount": len(records),
-                        "businessDate": business_date.isoformat(),
                         "assignments": {
                             str(assignment_id): {
                                 "before": before[assignment_id],
@@ -661,12 +677,6 @@ def _line_reason(raw: dict[str, Any], image_ids: set[str]) -> str | None:
         return "缺少采购主单号"
     if not raw.get("purchaseOrderItemId"):
         return "缺少采购子单号"
-    if not raw.get("sourceBusinessDate"):
-        return "缺少业务日期"
-    try:
-        date.fromisoformat(str(raw["sourceBusinessDate"]))
-    except ValueError:
-        return "业务日期不合法"
     if str(raw.get("imageId") or "") not in image_ids:
         return "数据行不属于本批次图片"
     return None

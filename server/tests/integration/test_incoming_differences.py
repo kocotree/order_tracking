@@ -1,5 +1,7 @@
 """Slice 1 acceptance for incoming differences: AC-08/09/11/12/13/17 plus batch_no and matching."""
 
+import hashlib
+import json
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from typing import Any
@@ -8,6 +10,8 @@ import pytest
 from sqlalchemy import Engine, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.adapters.private_files import FakePrivateFileStore
+from app.adapters.vision import FakeIncomingDiffRecognizer
 from app.db.models import (
     AuditLog,
     Factory,
@@ -35,7 +39,10 @@ from app.modules.incoming_differences import (
     IncomingDifferenceService,
     IncomingDifferenceValidationError,
 )
+from app.modules.incoming_differences.recognition import IncomingDiffRecognitionService
+from app.modules.infrastructure import InfrastructureStore
 from app.modules.notifications_audit import NotificationsAuditService
+from app.worker.runtime import Worker
 
 ADMIN = "idf-admin"
 OTHER_ADMIN = "idf-admin-2"
@@ -117,6 +124,18 @@ def _clean(engine: Engine) -> None:
         )
         session.execute(delete(OrderLine).where(OrderLine.order_id == ORDER_ID))
         session.execute(delete(Order).where(Order.order_id == ORDER_ID))
+        session.execute(OrderAssignment.__table__.update().where(
+            OrderAssignment.detail_id == "idf-detail-later"
+        ).values(detail_id=None))
+        session.execute(delete(OrderDetail).where(OrderDetail.order_id == "idf-order-2"))
+        session.execute(delete(OrderAssignment).where(
+            OrderAssignment.order_line_id.in_(select(OrderLine.order_line_id).where(
+                OrderLine.order_id == "idf-order-2"
+            ))
+        ))
+        session.execute(delete(OrderLine).where(OrderLine.order_id == "idf-order-2"))
+        session.execute(delete(Order).where(Order.order_id == "idf-order-2"))
+        session.execute(delete(StoredFile).where(StoredFile.file_id.in_((9709, 9710))))
         session.execute(delete(StoredFile).where(StoredFile.file_id.in_(FILE_IDS)))
         session.execute(
             delete(ProductVariant).where(
@@ -387,7 +406,6 @@ def _line(
     purchase_order_item_id: str | None = "POI-1",
     row_number: int = 2,
     sheet_name: str = "来货测试工厂1",
-    source_business_date: str | None = "2026-09-17",
     image_id: str = IMAGE_ID,
 ) -> dict[str, Any]:
     return {
@@ -398,7 +416,6 @@ def _line(
         "purchaseOrderId": purchase_order_id,
         "purchaseOrderItemId": purchase_order_item_id,
         "quantity": quantity,
-        "sourceBusinessDate": source_business_date,
     }
 
 
@@ -479,7 +496,11 @@ def test_confirm_writes_records_ledger_audit_and_one_outbox_per_factory_and_orde
         assert all(record.detail_id.startswith("idf-detail-") for record in records)
         assert all(record.product_name_snapshot == "来货测试产品" for record in records)
         assert all(record.product_code_snapshot == "IDF-ITEM" for record in records)
-        assert all(record.source_business_date == date(2026, 9, 17) for record in records)
+        assert all(record.source_business_date is None for record in records)
+        audit = session.scalar(select(AuditLog).where(
+            AuditLog.action == "incoming_diff_registered"
+        ))
+        assert audit is not None and "businessDate" not in audit.changes
         ledger = list(
             session.scalars(
                 select(QuantityLedger)
@@ -1076,7 +1097,7 @@ def test_registered_event_notifies_every_enabled_factory_user(
         assert rows[0].target_path.startswith("/pages/factory-task-detail/factory-task-detail")
 
 
-def test_candidate_matching_needs_exactly_one_assignment(
+def test_candidate_matching_requires_exact_sku_and_saved_purchase_link(
     test_database_engine: Engine,
 ) -> None:
     with Session(test_database_engine) as session, session.begin():
@@ -1089,35 +1110,282 @@ def test_candidate_matching_needs_exactly_one_assignment(
             factory_id=FACTORY_A,
             product_code="IDF-ITEM",
             product_name="来货测试产品",
-            variant_id="idf-variant-1",
-            source_business_date=date(2026, 9, 17),
+            spec="红色 / 110",
         )
         == first
     )
-    # 只按产品匹配时两个规格都是候选，多于一个即不唯一
+
+    # 缺少工厂或规格不能定位 SKU
     assert (
         service.match_assignment(
             product_code="IDF-ITEM",
             product_name="来货测试产品",
-            source_business_date=date(2026, 9, 17),
+            spec="红色 / 110",
         )
         is None
     )
-    # 补上采购主单号后重新唯一
     assert (
         service.match_assignment(
+            factory_id=FACTORY_A,
             product_code="IDF-ITEM",
             product_name="来货测试产品",
+            spec="红色 / 110",
             purchase_order_id="PO-1",
-            source_business_date=date(2026, 9, 17),
         )
         == first
     )
     assert (
         service.match_assignment(
+            factory_id=FACTORY_A,
             product_code="NOT-EXIST",
             product_name="来货测试产品",
-            source_business_date=date(2026, 9, 17),
+            spec="红色 / 110",
         )
         is None
     )
+
+
+def test_confirm_accepts_new_row_without_image_date(test_database_engine: Engine) -> None:
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        first, _ = _seed_order(session)
+        line = _line(first, -2)
+        line["sourceBusinessDate"] = "legacy-invalid-date"
+        _seed_batch(session, lines=[line])
+    _service(test_database_engine).confirm(batch_id=BATCH_ID, workbook_version=1, actor_id=ADMIN)
+    with Session(test_database_engine) as session:
+        record = session.scalar(select(IncomingDiffRecord).where(
+            IncomingDiffRecord.batch_id == BATCH_ID
+        ))
+        assert record is not None and record.source_business_date is None
+
+
+def test_candidate_matching_skips_zero_unshipped_and_orders_by_contract_date(
+    test_database_engine: Engine,
+) -> None:
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        first, _ = _seed_order(session)
+        earliest = session.get(OrderAssignment, first)
+        assert earliest is not None
+        earliest.contract_ship_date = date(2026, 9, 10)
+        session.add(Order(
+            order_id="idf-order-2", order_no="IDF-ORDER-2", source="manual",
+            order_date=date(2026, 9, 2), tracker="松子", trackers=["松子"],
+            detail_mode=True, lifecycle="PUBLISHED", created_by=ADMIN,
+            updated_by=ADMIN, created_at=SOURCE_TIME, updated_at=SOURCE_TIME,
+        ))
+        session.flush()
+        line = OrderLine(
+            order_id="idf-order-2", product_variant_id="idf-variant-1",
+            order_quantity=20, sku_id_snapshot="IDF-SKU-1",
+            product_name_snapshot="来货测试产品",
+            properties_value_snapshot="红色 / 110", created_at=SOURCE_TIME,
+            updated_at=SOURCE_TIME,
+        )
+        session.add(line)
+        session.flush()
+        later = OrderAssignment(
+            order_line_id=line.order_line_id, factory_id=FACTORY_A, is_active=True,
+            contract_ship_date=date(2026, 9, 20), assigned_quantity=20,
+            initial_shipped_quantity=0, factory_name_snapshot="来货测试工厂1",
+            created_at=SOURCE_TIME, updated_at=SOURCE_TIME,
+        )
+        session.add(later)
+        session.flush()
+        detail = OrderDetail(
+            detail_id="idf-detail-later", order_id="idf-order-2", origin="manual",
+            sort_order=1, accepted_raw_fields={}, purchase_order_id="PO-LATER",
+            purchase_order_item_id="POI-LATER", source_sku_id="IDF-SKU-1",
+            product_name="来货测试产品", properties_value="红色 / 110",
+            matched_variant_id="idf-variant-1", matched_factory_id=FACTORY_A,
+            order_quantity=20, source_trackers=["松子"],
+            contract_ship_date=date(2026, 9, 20), parse_issues=[],
+            assignment_id=later.order_assignment_id, dispatch_state="ASSIGNED",
+            created_at=SOURCE_TIME, updated_at=SOURCE_TIME,
+        )
+        session.add(detail)
+        session.flush()
+        later.detail_id = detail.detail_id
+        later_id = later.order_assignment_id
+    service = _service(test_database_engine)
+    query = {"factory_id": FACTORY_A, "product_code": "IDF-ITEM", "spec": "红色 / 110"}
+    assert service.match_assignment(**query) == first
+    with Session(test_database_engine) as session, session.begin():
+        session.add(QuantityLedger(
+            order_assignment_id=first, source_type="ADMIN_ADJUST", source_id="idf-ledger-1",
+            quantity_delta=90, actor_id=ADMIN, created_at=SOURCE_TIME,
+        ))
+    assert service.match_assignment(**query) == later_id
+    with Session(test_database_engine) as session, session.begin():
+        later = session.get(OrderAssignment, later_id)
+        assert later is not None
+        later.initial_shipped_quantity = later.assigned_quantity
+    assert service.match_assignment(**query) is None
+
+
+def test_recognition_worker_retries_and_only_saves_candidates(
+    test_database_engine: Engine,
+) -> None:
+    content = b"private-fake-image"
+    digest = hashlib.sha256(content).hexdigest()
+    files = FakePrivateFileStore(bucket="incoming-test")
+    files.put(object_key="images/vision.jpg", content=content, content_type="image/jpeg")
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        first, _ = _seed_order(session)
+        session.add(StoredFile(
+            file_id=9709, bucket=files.bucket, object_key="images/vision.jpg",
+            original_filename="vision.jpg", mime_type="image/jpeg",
+            size_bytes=len(content), content_sha256=digest, uploaded_by=ADMIN,
+        ))
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    payload = json.dumps({
+        "factoryName": "来货测试工厂1", "productCode": "IDF-ITEM",
+        "productName": "来货测试产品", "boxes": [{"color": "红色", "size": "110"}],
+        "diffNoteText": "少2，多3", "lines": [
+            {"color": "红色", "size": "110", "direction": "少", "quantity": 2},
+            {"color": "红色", "size": "110", "direction": "多", "quantity": 3},
+        ], "confidence": 0.8, "unresolvedFields": [],
+    }, ensure_ascii=False)
+    fake = FakeIncomingDiffRecognizer([ValueError("temporary"), payload])
+    recognition = IncomingDiffRecognitionService(sessions, files=files, recognizer=fake,
+                                                 clock=lambda: NOW)
+    batch = _service(test_database_engine).create_batch(submitter_id=ADMIN)
+    image = recognition.add_image(batch_id=batch.batch_id, actor_id=ADMIN,
+                                  file_id=9709, feishu_image_key="vision-key")
+    job_id = recognition.freeze_and_enqueue(batch_id=batch.batch_id, actor_id=ADMIN)
+    store = InfrastructureStore(sessions)
+    worker = Worker(store=store, worker_id="vision-test",
+                    handlers={"incoming_diff.recognize": recognition.recognize},
+                    terminal_failure_handlers={
+                        "incoming_diff.recognize": recognition.fail_terminal},
+                    retry_limits={"incoming_diff.recognize": 3}, retry_delay_seconds=0)
+    now = NOW.replace(tzinfo=None)
+    assert worker.run_once(now=now)
+    assert store.get_job(job_id=job_id).status == "pending"
+    assert worker.run_once(now=now)
+    assert store.get_job(job_id=job_id).status == "completed"
+    with Session(test_database_engine) as session:
+        saved = session.get(IncomingDiffImage, image.image_id)
+        assert saved is not None and saved.ocr_status == "SUCCEEDED"
+        assert saved.recognition_model == "qwen3.5-flash"
+        assert [line["signedQuantity"] for line in saved.recognition_payload["lines"]] == [-2, 3]
+        assert all(line["orderAssignmentId"] == first
+                   for line in saved.recognition_payload["lines"])
+        assert session.scalar(select(func.count()).select_from(IncomingDiffRecord)) == 0
+        assert session.scalar(select(func.count()).select_from(QuantityLedger)) == 0
+
+
+def test_duplicate_image_needs_explicit_acknowledgement(test_database_engine: Engine) -> None:
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        session.add(IncomingDiffBatch(
+            batch_id="idf-confirmed", batch_no="IN20260917-01", submitter_id=ADMIN,
+            status="CONFIRMED", confirmed_at=SOURCE_TIME, created_at=SOURCE_TIME,
+            updated_at=SOURCE_TIME,
+        ))
+        session.flush()
+        session.add(IncomingDiffImage(
+            image_id="idf-old-image", batch_id="idf-confirmed", sort_order=1,
+            feishu_image_key="old-key", file_id=FILE_IDS[0],
+            content_sha256="a" * 64, ocr_status="SUCCEEDED", created_at=SOURCE_TIME,
+        ))
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    recognition = IncomingDiffRecognitionService(
+        sessions, files=FakePrivateFileStore(bucket="incoming-test"),
+        recognizer=FakeIncomingDiffRecognizer([]), clock=lambda: NOW,
+    )
+    batch = _service(test_database_engine).create_batch(submitter_id=ADMIN)
+    image = recognition.add_image(batch_id=batch.batch_id, actor_id=ADMIN,
+                                  file_id=FILE_IDS[0], feishu_image_key="new-key")
+    assert image.duplicate_of_batch_id == "idf-confirmed"
+    with pytest.raises(ValueError, match="重复图片"):
+        recognition.freeze_and_enqueue(batch_id=batch.batch_id, actor_id=ADMIN)
+    recognition.acknowledge_duplicate(batch_id=batch.batch_id, image_id=image.image_id,
+                                      actor_id=ADMIN)
+    recognition.freeze_and_enqueue(batch_id=batch.batch_id, actor_id=ADMIN)
+
+
+def test_same_batch_recognizes_different_products_per_image(test_database_engine: Engine) -> None:
+    files = FakePrivateFileStore(bucket="incoming-test")
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        _seed_order(session)
+        for file_id, content in ((9709, b"product-one"), (9710, b"product-two")):
+            key = f"images/{file_id}.jpg"
+            files.put(object_key=key, content=content, content_type="image/jpeg")
+            session.add(StoredFile(
+                file_id=file_id, bucket=files.bucket, object_key=key,
+                original_filename=f"{file_id}.jpg", mime_type="image/jpeg",
+                size_bytes=len(content), content_sha256=hashlib.sha256(content).hexdigest(),
+                uploaded_by=ADMIN,
+            ))
+    responses = [json.dumps({
+        "factoryName": "来货测试工厂1", "productCode": code,
+        "productName": name, "boxes": [{"color": "红色", "size": "110"}],
+        "diffNoteText": "少1", "lines": [{"color": "红色", "size": "110",
+                                  "direction": "少", "quantity": 1}],
+        "confidence": 0.9, "unresolvedFields": [],
+    }, ensure_ascii=False) for code, name in (
+        ("IDF-ITEM", "来货测试产品"), ("OTHER-ITEM", "另一产品")
+    )]
+    fake = FakeIncomingDiffRecognizer(responses)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    recognition = IncomingDiffRecognitionService(sessions, files=files, recognizer=fake,
+                                                 clock=lambda: NOW)
+    batch = _service(test_database_engine).create_batch(submitter_id=ADMIN)
+    for file_id in (9709, 9710):
+        recognition.add_image(batch_id=batch.batch_id, actor_id=ADMIN,
+                              file_id=file_id, feishu_image_key=f"key-{file_id}")
+    recognition.freeze_and_enqueue(batch_id=batch.batch_id, actor_id=ADMIN)
+    worker = Worker(store=InfrastructureStore(sessions), worker_id="vision-test",
+                    handlers={"incoming_diff.recognize": recognition.recognize})
+    assert worker.run_once(now=NOW.replace(tzinfo=None))
+    assert fake.calls == 2
+    with Session(test_database_engine) as session:
+        images = session.scalars(select(IncomingDiffImage).where(
+            IncomingDiffImage.batch_id == batch.batch_id
+        ).order_by(IncomingDiffImage.sort_order)).all()
+        assert [image.recognition_payload["productCode"] for image in images] == [
+            "IDF-ITEM", "OTHER-ITEM"
+        ]
+        assert images[0].recognition_payload["lines"][0]["orderAssignmentId"] is not None
+        assert images[1].recognition_payload["lines"][0]["orderAssignmentId"] is None
+
+
+def test_recognition_reaches_terminal_failure(test_database_engine: Engine) -> None:
+    content = b"private-fake-image"
+    digest = hashlib.sha256(content).hexdigest()
+    files = FakePrivateFileStore(bucket="incoming-test")
+    files.put(object_key="images/vision.jpg", content=content, content_type="image/jpeg")
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        session.add(StoredFile(
+            file_id=9709, bucket=files.bucket, object_key="images/vision.jpg",
+            original_filename="vision.jpg", mime_type="image/jpeg",
+            size_bytes=len(content), content_sha256=digest, uploaded_by=ADMIN,
+        ))
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    fake = FakeIncomingDiffRecognizer(["{", "{", "{"])
+    recognition = IncomingDiffRecognitionService(sessions, files=files, recognizer=fake,
+                                                 clock=lambda: NOW)
+    batch = _service(test_database_engine).create_batch(submitter_id=ADMIN)
+    image = recognition.add_image(batch_id=batch.batch_id, actor_id=ADMIN,
+                                  file_id=9709, feishu_image_key="vision-key")
+    recognition.freeze_and_enqueue(batch_id=batch.batch_id, actor_id=ADMIN)
+    worker = Worker(store=InfrastructureStore(sessions), worker_id="vision-test",
+                    handlers={"incoming_diff.recognize": recognition.recognize},
+                    terminal_failure_handlers={
+                        "incoming_diff.recognize": recognition.fail_terminal},
+                    retry_limits={"incoming_diff.recognize": 3}, retry_delay_seconds=0)
+    now = NOW.replace(tzinfo=None)
+    for _ in range(3):
+        assert worker.run_once(now=now)
+    with Session(test_database_engine) as session:
+        failed = session.get(IncomingDiffImage, image.image_id)
+        failed_batch = session.get(IncomingDiffBatch, batch.batch_id)
+        assert failed is not None and failed.ocr_status == "FAILED"
+        assert failed.failure_reason == "invalid_json"
+        assert failed_batch is not None and failed_batch.status == "FAILED"
+        assert failed_batch.recognition_error_summary == "第 1 张图片识别失败"

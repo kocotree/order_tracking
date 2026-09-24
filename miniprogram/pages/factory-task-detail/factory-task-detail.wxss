@@ -19,6 +19,19 @@
   box-shadow: 0 12rpx 32rpx rgba(34, 50, 70, .07);
 }
 
+.incoming-diff-section { overflow: hidden; background: #fff; border: 1rpx solid #e2e7ed; border-radius: 32rpx; box-shadow: 0 12rpx 32rpx rgba(34, 50, 70, .07); }
+.incoming-diff-heading { display: flex; min-height: 104rpx; align-items: center; justify-content: space-between; padding: 0 34rpx; color: #17202b; font-size: 34rpx; font-weight: 850; }
+.incoming-diff-chevron { color: #8c98a6; font-size: 40rpx; font-weight: 400; line-height: 1; }
+.incoming-diff-chevron.is-expanded { transform: rotate(90deg); }
+.incoming-diff-list { border-top: 1rpx solid #e2e7ed; }
+.incoming-diff-group { padding: 20rpx 34rpx 24rpx; border-top: 1rpx solid #edf0f3; background: #fafbfd; }
+.incoming-diff-group:first-child { border-top: 0; }
+.incoming-diff-group-name { display: block; margin-bottom: 10rpx; color: #17202b; font-size: 24rpx; font-weight: 650; }
+.incoming-diff-row { display: flex; min-height: 60rpx; align-items: center; justify-content: space-between; gap: 20rpx; font-size: 22rpx; }
+.incoming-diff-row > text:first-child { color: #4f5b69; }
+.incoming-diff-row > text:last-child { font-weight: 650; white-space: nowrap; }
+.incoming-diff-row .is-shortage { color: #ef4f53; }
+
 .factory-summary-card { padding: 28rpx; }
 
 .factory-summary-head {

@@ -22,6 +22,8 @@ export type DashboardOrders = components["schemas"]["DashboardResponse"];
 export type DraftCreate = components["schemas"]["app__api__orders__DraftCreate"];
 export type DraftUpdate = components["schemas"]["DraftUpdate"];
 export type AuditLogList = components["schemas"]["AuditLogListResponse"];
+export type IncomingDifferenceList = components["schemas"]["IncomingDifferenceListResponse"];
+export type IncomingDifference = components["schemas"]["IncomingDifferenceResponse"];
 export type CandidateAuditList = components["schemas"]["AuditListResponse"];
 export type ImportRun = components["schemas"]["ImportRunResponse"];
 export type ImportCandidate = components["schemas"]["CandidateResponse"];
@@ -368,6 +370,12 @@ export const orderApi = {
   },
   auditLogs: (orderId: string) =>
     request<AuditLogList>(`/v1/admin/orders/${encodeURIComponent(orderId)}/audit-logs`),
+  incomingDifferences: (orderId: string) =>
+    request<IncomingDifferenceList>(`/v1/orders/${encodeURIComponent(orderId)}/incoming-differences`),
+  updateIncomingDifference: (orderId: string, recordId: string, quantity: number, version: number) =>
+    request<components["schemas"]["IncomingDifferenceUpdateResponse"]>(`/v1/admin/orders/${encodeURIComponent(orderId)}/incoming-differences/${encodeURIComponent(recordId)}`, {
+      method: "PATCH", body: JSON.stringify({ quantity, version }),
+    }),
   createDraft: (payload: DraftCreate) =>
     request<Order>("/v1/admin/orders", { method: "POST", body: JSON.stringify(payload) }),
   saveDraft: (orderId: string, payload: DraftUpdate) =>

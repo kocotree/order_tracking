@@ -3,6 +3,7 @@ import { authorizedRequest } from "./identity";
 
 export type Order = components["schemas"]["OrderResponse"];
 export type OrderList = components["schemas"]["OrderListResponse"];
+export type IncomingDifference = Pick<components["schemas"]["IncomingDifferenceResponse"], "sequence" | "productName" | "spec" | "quantity">;
 
 export const orderApi = {
   list: (params: {
@@ -37,6 +38,11 @@ export const orderApi = {
   get: (orderId: string) =>
     authorizedRequest<Order>({
       url: `/orders/${encodeURIComponent(orderId)}`,
+      method: "GET",
+    }),
+  incomingDifferences: (orderId: string) =>
+    authorizedRequest<components["schemas"]["IncomingDifferenceListResponse"]>({
+      url: `/orders/${encodeURIComponent(orderId)}/incoming-differences`,
       method: "GET",
     }),
 };

@@ -650,6 +650,20 @@ h1, h2, p { margin-top: 0; }
 .order-audit-toggle:disabled .order-audit-toggle-action { color: var(--subtle); }
 .order-audit-toggle-action svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .16s ease; }
 .order-audit-card.is-expanded .order-audit-toggle-action svg { transform: rotate(180deg); }
+.incoming-diff-card { container-type: inline-size; }
+.incoming-diff-body { border-top: 1px solid var(--line); }
+.incoming-save-feedback { position: fixed; z-index: 100; bottom: 30px; left: 50%; margin: 0; padding: 10px 15px; color: #fff; background: rgb(20 27 36 / 92%); border-radius: 9px; font-size: 12px; transform: translateX(-50%); }
+.order-detail-page .incoming-diff-table { min-width: 990px; table-layout: fixed; }
+/* 序号固定 52px，其余列按原型基准分摊宽度；预留 1px 表格边框。 */
+.order-detail-page .incoming-diff-table col.incoming-sequence-col { width: 52px; }
+.order-detail-page .incoming-diff-table col.incoming-time-col { width: calc((max(990px, 100cqw) - 53px) * 180 / 936); }
+.order-detail-page .incoming-diff-table col.incoming-purchase-col { width: calc((max(990px, 100cqw) - 53px) * 175 / 936); }
+.order-detail-page .incoming-diff-table col.incoming-code-col { width: calc((max(990px, 100cqw) - 53px) * 110 / 936); }
+.order-detail-page .incoming-diff-table col.incoming-name-col { width: calc((max(990px, 100cqw) - 53px) * 240 / 936); }
+.order-detail-page .incoming-diff-table col.incoming-spec-col { width: calc((max(990px, 100cqw) - 53px) * 135 / 936); }
+.order-detail-page .incoming-diff-table col.incoming-quantity-col { width: calc((max(990px, 100cqw) - 53px) * 96 / 936); }
+.order-detail-page .incoming-diff-table th, .order-detail-page .incoming-diff-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.order-detail-page .incoming-diff-table .incoming-diff-input { width: 100%; }
 .order-audit-list { border-top: 1px solid var(--line); }
 .detail-empty-log { margin: 0; padding: 28px 20px; color: var(--subtle); text-align: center; }
 .order-detail-page .detail-data-table td.detail-empty-row { height: 64px; color: var(--subtle); font-weight: 600; text-align: center; }

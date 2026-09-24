@@ -24,7 +24,7 @@ from app.adapters.order_source import (
     DisabledFeishuOrderSource,
     FeishuOrderSourceConfig,
 )
-from app.adapters.private_files import AliyunOssPrivateFileStore
+from app.adapters.private_files import AliyunOssPrivateFileStore, DisabledPrivateFileStore
 from app.adapters.product import (
     AppCredentialJstProductSource,
     DisabledJstProductSource,
@@ -32,7 +32,12 @@ from app.adapters.product import (
     JstProductSourceConfig,
     PrivateProductImageStore,
 )
+from app.adapters.vision import DisabledIncomingDiffRecognizer, QwenIncomingDiffRecognizer
 from app.db.session import create_database_engine
+from app.modules.incoming_differences.recognition import (
+    IncomingDiffRecognitionService,
+    IncomingDiffRecognitionWorkerHandlers,
+)
 from app.modules.infrastructure import InfrastructureStore, utc_now
 from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.notifications_audit.worker import NotificationWorkerHandlers
@@ -100,6 +105,29 @@ def main() -> None:
         )
         else DisabledProductImageStore()
     )
+    incoming_files = (
+        AliyunOssPrivateFileStore(
+            endpoint=settings.oss_endpoint,
+            region=settings.oss_region,
+            access_key_id=settings.oss_access_key_id,
+            access_key_secret=settings.oss_access_key_secret,
+            bucket=settings.oss_bucket,
+        )
+        if all((settings.oss_region, settings.oss_endpoint,
+                settings.oss_access_key_id, settings.oss_access_key_secret))
+        else DisabledPrivateFileStore(bucket=settings.oss_bucket)
+    )
+    incoming_recognizer = (
+        QwenIncomingDiffRecognizer(
+            api_key=settings.incoming_diff_vision_api_key,
+            base_url=settings.incoming_diff_vision_base_url,
+        )
+        if settings.incoming_diff_vision_api_key else DisabledIncomingDiffRecognizer()
+    )
+    incoming_handlers = IncomingDiffRecognitionWorkerHandlers(
+        IncomingDiffRecognitionService(sessions, files=incoming_files,
+                                       recognizer=incoming_recognizer)
+    )
     product_handlers = ProductWorkerHandlers(
         sync_service=ProductSyncService(sessions, source=product_source),
         image_service=ProductImageService(sessions, image_store=product_image_store),
@@ -136,6 +164,7 @@ def main() -> None:
         service=OrderImportService(sessions), source=order_source
     )
     notification_service = NotificationsAuditService(sessions)
+    store.recover_stale_jobs(before=utc_now() - timedelta(minutes=5))
     wechat_notifier: WechatNotifier = (
         AppCredentialWechatNotifier(
             WechatSubscriptionConfig(
@@ -200,14 +229,19 @@ def main() -> None:
             **product_handlers.handlers(),
             **order_handlers.handlers(),
             **notification_handlers.handlers(),
+            **incoming_handlers.handlers(),
         },
-        terminal_failure_handlers=order_handlers.terminal_failure_handlers(),
+        terminal_failure_handlers={
+            **order_handlers.terminal_failure_handlers(),
+            **incoming_handlers.terminal_failure_handlers(),
+        },
         retry_limits={
             "product-sync-initial": 3,
             "product-sync-incremental": 3,
             "product-image-cache": 3,
             "order_import": 3,
             "order_import_revalidate": 3,
+            "incoming_diff.recognize": 3,
         },
         maintenance=ensure_daily_notification_scan,
         work_sources=[

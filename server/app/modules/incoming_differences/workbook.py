@@ -109,7 +109,8 @@ class IncomingWorkbookCodec:
             picture.anchor = f"H{row}"
             sheet.add_image(picture)
             snapshot.append({
-                **raw, "imageId": image_id, "lineToken": token,
+                **{key: value for key, value in raw.items() if key != "sourceBusinessDate"},
+                "imageId": image_id, "lineToken": token,
                 "sheetName": factory, "rowNumber": row,
             })
         signature = self._signature(batch_id, version, [str(x["lineToken"]) for x in snapshot])
@@ -212,7 +213,9 @@ class IncomingWorkbookCodec:
                     continue
                 source = expected[token]
                 parsed.append({
-                    **source, "sheetName": sheet.title, "rowNumber": row,
+                    **{key: value for key, value in source.items()
+                       if key != "sourceBusinessDate"},
+                    "sheetName": sheet.title, "rowNumber": row,
                     "factoryName": None if sheet.title == "待确认" else sheet.title,
                     "productName": values[0], "spec": values[1], "quantity": quantity,
                     "unitPrice": str(values[3]) if values[3] is not None else None,

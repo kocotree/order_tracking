@@ -17,6 +17,8 @@ class Settings(BaseSettings):
         default="LOCAL-CI-FAKE-INCOMING-DIFF-SIGNING-SECRET-DO-NOT-USE",
         repr=False,
     )
+    incoming_diff_vision_api_key: str = Field(default="", repr=False)
+    incoming_diff_vision_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     feishu_identity_scope: str = "unconfigured-feishu"
     feishu_identity_app_id: str = ""
     feishu_identity_app_secret: str = ""

@@ -68,9 +68,11 @@ def test_generate_upload_versions_and_private_files(test_database_engine: Engine
             "imageId": "workbook-image", "factoryName": "甲工厂",
             "productName": "帽子", "spec": "红 / 110", "quantity": 2,
             "orderAssignmentId": 123, "purchaseOrderItemId": "POI-1",
+            "sourceBusinessDate": "2026-09-16",
         }],
     )
     assert generated.version == 1
+    assert "sourceBusinessDate" not in generated.line_snapshot[0]
     with Session(test_database_engine) as session:
         stored = session.get(StoredFile, generated.file_id)
         assert stored is not None
@@ -86,6 +88,7 @@ def test_generate_upload_versions_and_private_files(test_database_engine: Engine
     assert uploaded.version == 2
     assert uploaded.direction == "UPLOADED"
     assert uploaded.line_snapshot[0]["imageId"] == "workbook-image"
+    assert "sourceBusinessDate" not in uploaded.line_snapshot[0]
     assert uploaded.line_snapshot[0]["orderAssignmentId"] is None
     with Session(test_database_engine) as session:
         batch = session.get(IncomingDiffBatch, "workbook-batch")

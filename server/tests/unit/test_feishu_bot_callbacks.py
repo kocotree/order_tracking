@@ -37,19 +37,23 @@ def _callback(
     return headers, raw
 
 
-def test_signed_encrypted_challenge_and_rejections() -> None:
-    verifier = FeishuCallbackVerifier(KEY, "local-test-token", now=lambda: NOW)
-    plaintext = json.dumps({"type": "url_verification", "challenge": "abc",
-                            "token": "local-test-token"}).encode()
+def _encrypted(payload: dict[str, object]) -> dict[str, str]:
+    plaintext = json.dumps(payload).encode()
     padding = 16 - len(plaintext) % 16
     encryptor = Cipher(
         algorithms.AES(hashlib.sha256(KEY.encode()).digest()), modes.CBC(b"0" * 16)
     ).encryptor()
-    encrypted = base64.b64encode(
+    return {"encrypt": base64.b64encode(
         b"0" * 16 + encryptor.update(plaintext + bytes([padding]) * padding)
         + encryptor.finalize()
-    ).decode()
-    headers, body = _callback({"encrypt": encrypted})
+    ).decode()}
+
+
+def test_encrypted_challenge_and_rejections() -> None:
+    verifier = FeishuCallbackVerifier(KEY, "local-test-token", now=lambda: NOW)
+    headers, body = _callback(_encrypted({
+        "type": "url_verification", "challenge": "abc", "token": "local-test-token",
+    }))
     assert verifier.verify(headers, body)["challenge"] == "abc"
     class NoDispatch:
         def event(self, payload: dict[str, object]) -> dict[str, object]:
@@ -66,17 +70,29 @@ def test_signed_encrypted_challenge_and_rejections() -> None:
                                headers=headers, content=body)
         assert response.status_code == 200
         assert response.json() == {"challenge": "abc"}
+        unsigned_response = client.post(
+            f"/api/v1/integrations/feishu/{path}", content=body,
+        )
+        assert unsigned_response.status_code == 200
+        assert unsigned_response.json() == {"challenge": "abc"}
     with pytest.raises(ValueError, match="token"):
         FeishuCallbackVerifier(KEY, "wrong-token", now=lambda: NOW).verify(headers, body)
 
     with pytest.raises(ValueError, match="signature"):
         verifier.verify({**headers, "x-lark-signature": "0" * 64}, body)
     with pytest.raises(ValueError, match="timestamp"):
-        old_headers, old_body = _callback({"encrypt": encrypted}, timestamp="1")
+        old_headers, old_body = _callback(json.loads(body), timestamp="1")
         verifier.verify(old_headers, old_body)
     bad_headers, bad_body = _callback({"encrypt": "invalid"})
     with pytest.raises(ValueError, match="decrypt"):
         verifier.verify(bad_headers, bad_body)
+    unsigned_event = json.dumps(_encrypted({
+        "type": "event_callback", "token": "local-test-token",
+    })).encode()
+    assert client.post("/api/v1/integrations/feishu/events",
+                       content=unsigned_event).status_code == 401
+    assert client.post("/api/v1/integrations/feishu/card-actions",
+                       content=unsigned_event).status_code == 401
 
 
 def test_callback_routes_are_disabled_by_default() -> None:

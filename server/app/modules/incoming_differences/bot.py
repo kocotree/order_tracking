@@ -62,11 +62,12 @@ class FeishuCallbackVerifier:
         timestamp = headers.get("x-lark-request-timestamp", "")
         nonce = headers.get("x-lark-request-nonce", "")
         signature = headers.get("x-lark-signature", "")
-        if not timestamp.isdecimal() or abs(self._now().timestamp() - int(timestamp)) > 300:
-            raise ValueError("callback timestamp invalid")
-        expected = hashlib.sha256((timestamp + nonce + self._key).encode() + body).hexdigest()
-        if not nonce or not hmac.compare_digest(expected, signature):
-            raise ValueError("callback signature invalid")
+        if signature:
+            if not timestamp.isdecimal() or abs(self._now().timestamp() - int(timestamp)) > 300:
+                raise ValueError("callback timestamp invalid")
+            expected = hashlib.sha256((timestamp + nonce + self._key).encode() + body).hexdigest()
+            if not nonce or not hmac.compare_digest(expected, signature):
+                raise ValueError("callback signature invalid")
         try:
             wrapper = json.loads(body)
             if not isinstance(wrapper, dict) or not isinstance(wrapper.get("encrypt"), str):
@@ -91,6 +92,8 @@ class FeishuCallbackVerifier:
         token = payload.get("token") or (header or {}).get("token")
         if not isinstance(token, str) or not hmac.compare_digest(token, self._token):
             raise ValueError("callback verification token invalid")
+        if not signature and payload.get("type") != "url_verification":
+            raise ValueError("callback signature invalid")
         return payload
 
 

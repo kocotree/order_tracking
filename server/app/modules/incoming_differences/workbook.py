@@ -207,9 +207,13 @@ class IncomingWorkbookCodec:
                     ))
                     continue
                 if not all(isinstance(value, str) and value.strip() for value in values[:2]):
+                    fields = "、".join(
+                        name for name, value in zip(("名称", "规格"), values[:2], strict=True)
+                        if not isinstance(value, str) or not value.strip()
+                    )
                     issues.append(self._issue(
                         "required_field", sheet.title, row, "名称和规格不能为空"
-                    ))
+                    ) | {"field": fields})
                     continue
                 source = expected[token]
                 parsed.append({

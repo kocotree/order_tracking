@@ -20,6 +20,7 @@ from app.adapters.notifications import (
 )
 from app.db.models import (
     Factory,
+    IncomingDiffBatch,
     Notification,
     NotificationAuthorization,
     Order,
@@ -231,14 +232,19 @@ class NotificationsAuditService:
             )
             if message is None:
                 return False
-            recipient = session.get(User, message.recipient_id)
-            if recipient is None or not recipient.is_enabled:
+            recipient = session.get(User, message.recipient_id) if message.recipient_id else None
+            bot_open_id = (
+                message.payload.get("recipientOpenId")
+                if message.event_type == "incoming_diff.bot_reply" else None
+            )
+            if (recipient is None or not recipient.is_enabled) and not bot_open_id:
                 message.status = "completed"
                 message.completed_at = current
                 message.last_error_code = "recipient_disabled"
                 message.last_error_summary = "接收账号不存在或已停用，已跳过外部通知"
                 return True
             if message.event_type == "shipment.receipt_confirmed":
+                assert recipient is not None
                 shipment = session.get(Shipment, message.aggregate_id)
                 if (
                     shipment is None
@@ -253,7 +259,9 @@ class NotificationsAuditService:
             if message.event_type in {
                 "order.due_reminder",
                 "order_detail_dispatched",
-            } and not self._recheck_order_delivery(session, message, recipient):
+            } and (recipient is None or not self._recheck_order_delivery(
+                session, message, recipient
+            )):
                 message.status = "completed"
                 message.completed_at = current
                 message.last_error_code = "task_or_permission_changed"
@@ -310,6 +318,8 @@ class NotificationsAuditService:
                             None if ops_alert_notifier is not None else "ops_alert_not_configured"
                         )
                         exhausted = True
+                    if message.event_type == "incoming_diff.registered":
+                        self._queue_incoming_diff_delivery_failure(session, message, current)
             if exhausted and ops_alert_notifier is not None:
                 alert = OpsAlert(
                     delivery_id=request.delivery_id,
@@ -1725,7 +1735,8 @@ class NotificationsAuditService:
 
     @staticmethod
     def _delivery_request(message: OutboxMessage) -> DeliveryRequest:
-        if message.recipient_id is None or message.channel is None:
+        if message.channel is None or (message.recipient_id is None and
+                                       not message.payload.get("recipientOpenId")):
             raise ValueError("delivery recipient and channel are required")
         template_data = message.payload.get("templateData", {})
         if not isinstance(template_data, dict):
@@ -1737,7 +1748,7 @@ class NotificationsAuditService:
             raise ValueError("delivery card rows must be a list of objects")
         return DeliveryRequest(
             delivery_id=message.id,
-            recipient_id=message.recipient_id,
+            recipient_id=message.recipient_id or "",
             channel=message.channel,
             template_key=str(message.payload["templateKey"]),
             title=str(message.payload["title"]),
@@ -1750,7 +1761,49 @@ class NotificationsAuditService:
                 {str(key): str(value) for key, value in row.items()}
                 for row in card_rows
             ),
+            recipient_open_id=(str(message.payload["recipientOpenId"])
+                               if message.payload.get("recipientOpenId") else None),
+            buttons=tuple(message.payload.get("buttons") or ()),
+            file_id=(int(message.payload["fileId"]) if message.payload.get("fileId") else None),
         )
+
+    @staticmethod
+    def _queue_incoming_diff_delivery_failure(
+        session: Session, message: OutboxMessage, now: datetime
+    ) -> None:
+        batch = session.get(IncomingDiffBatch, message.aggregate_id)
+        if batch is None or not batch.feishu_open_id:
+            return
+        failed = session.scalar(
+            select(func.count(func.distinct(User.factory_id)))
+            .select_from(OutboxMessage)
+            .join(User, User.user_id == OutboxMessage.recipient_id)
+            .where(
+                OutboxMessage.event_type == "incoming_diff.registered",
+                OutboxMessage.aggregate_id == batch.batch_id,
+                OutboxMessage.last_error_code.is_not(None),
+                OutboxMessage.status.in_(("pending", "manual_review")),
+            )
+        ) or 0
+        if not failed:
+            return
+        key = f"incoming-diff-bot:notify-failed:{batch.batch_id}:{failed}"
+        if session.scalar(select(OutboxMessage.id).where(OutboxMessage.dedupe_key == key)):
+            return
+        summary = (
+            f"批次 {batch.batch_no} 已正式登记，{failed} 个工厂通知发送失败，"
+            "系统将按现有机制重试；数量不会重复调整。"
+        )
+        session.add(OutboxMessage(
+            event_type="incoming_diff.bot_reply", aggregate_type="incoming_diff_batch",
+            aggregate_id=batch.batch_id, dedupe_key=key,
+            payload={"templateKey": "incoming_diff_bot", "title": "来货出入",
+                     "summary": summary, "targetType": "incoming_diff_batch",
+                     "targetId": batch.batch_id, "targetPath": "", "templateData": {},
+                     "recipientOpenId": batch.feishu_open_id, "buttons": [], "fileId": None},
+            message_kind="delivery", channel="feishu", recipient_id=batch.submitter_id,
+            available_at=now,
+        ))
 
     @classmethod
     def _redact_changes(cls, value: dict[str, Any]) -> dict[str, Any]:

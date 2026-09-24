@@ -1815,8 +1815,8 @@ class IncomingDiffImage(Base):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
     feishu_message_id: Mapped[str | None] = mapped_column(String(64))
     feishu_image_key: Mapped[str] = mapped_column(String(191), nullable=False)
-    file_id: Mapped[int] = mapped_column(
-        ForeignKey("stored_files.file_id", ondelete="RESTRICT"), nullable=False
+    file_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stored_files.file_id", ondelete="RESTRICT")
     )
     content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     ocr_status: Mapped[str] = mapped_column(String(16), nullable=False)

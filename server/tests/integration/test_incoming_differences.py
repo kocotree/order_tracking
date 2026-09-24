@@ -3,17 +3,26 @@
 import hashlib
 import json
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from io import BytesIO
 from typing import Any
 
 import pytest
+from openpyxl import load_workbook
+from PIL import Image
 from sqlalchemy import Engine, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.adapters.notifications import (
+    DeliveryRequest,
+    FakeWechatNotifier,
+    NotificationDeliveryError,
+)
 from app.adapters.private_files import FakePrivateFileStore
 from app.adapters.vision import FakeIncomingDiffRecognizer
 from app.db.models import (
     AuditLog,
+    ExternalIdentity,
     Factory,
     IdempotencyRecord,
     IncomingDiffAdjustment,
@@ -22,6 +31,7 @@ from app.db.models import (
     IncomingDiffRecord,
     IncomingDiffWorkbook,
     Notification,
+    NotificationAuthorization,
     Order,
     OrderAssignment,
     OrderDetail,
@@ -39,9 +49,12 @@ from app.modules.incoming_differences import (
     IncomingDifferenceService,
     IncomingDifferenceValidationError,
 )
+from app.modules.incoming_differences.bot import CONFIRM_JOB, FeishuBotService
 from app.modules.incoming_differences.recognition import IncomingDiffRecognitionService
-from app.modules.infrastructure import InfrastructureStore
+from app.modules.incoming_differences.workbook import IncomingWorkbookCodec
+from app.modules.infrastructure import InfrastructureStore, utc_now
 from app.modules.notifications_audit import NotificationsAuditService
+from app.settings.config import Settings
 from app.worker.runtime import Worker
 
 ADMIN = "idf-admin"
@@ -86,11 +99,17 @@ def _clean(engine: Engine) -> None:
         session.execute(
             delete(Notification).where(Notification.recipient_id.in_(USER_IDS))
         )
+        session.execute(delete(NotificationAuthorization).where(
+            NotificationAuthorization.user_id.in_(USER_IDS)
+        ))
         session.execute(
             delete(OutboxMessage).where(
                 OutboxMessage.dedupe_key.like("%incoming-diff:%")
             )
         )
+        session.execute(delete(OutboxMessage).where(
+            OutboxMessage.event_type == "incoming_diff.bot_reply"
+        ))
         session.execute(
             delete(AuditLog).where(AuditLog.action.like("incoming_diff_%"))
         )
@@ -99,6 +118,9 @@ def _clean(engine: Engine) -> None:
                 IdempotencyRecord.scope == "incoming_diff_confirm"
             )
         )
+        session.execute(delete(IdempotencyRecord).where(
+            IdempotencyRecord.scope == "feishu_event"
+        ))
         session.execute(
             IncomingDiffBatch.__table__.update().values(current_workbook_id=None)
         )
@@ -137,6 +159,12 @@ def _clean(engine: Engine) -> None:
         session.execute(delete(Order).where(Order.order_id == "idf-order-2"))
         session.execute(delete(StoredFile).where(StoredFile.file_id.in_((9709, 9710))))
         session.execute(delete(StoredFile).where(StoredFile.file_id.in_(FILE_IDS)))
+        session.execute(delete(StoredFile).where(
+            StoredFile.object_key.like("incoming-differences/%")
+        ))
+        session.execute(delete(ExternalIdentity).where(
+            ExternalIdentity.user_id.in_(USER_IDS)
+        ))
         session.execute(
             delete(ProductVariant).where(
                 ProductVariant.variant_id.in_(["idf-variant-1", "idf-variant-2"])
@@ -1389,3 +1417,292 @@ def test_recognition_reaches_terminal_failure(test_database_engine: Engine) -> N
         assert failed.failure_reason == "invalid_json"
         assert failed_batch is not None and failed_batch.status == "FAILED"
         assert failed_batch.recognition_error_summary == "第 1 张图片识别失败"
+
+
+class _BotMedia:
+    def __init__(self, image: bytes) -> None:
+        self.image = image
+        self.workbook = b""
+        self.downloads: list[str] = []
+
+    def download_resource(self, message_id: str, file_key: str, resource_type: str) -> bytes:
+        self.downloads.append(resource_type)
+        return self.image if resource_type == "image" else self.workbook
+
+
+def _bot_event(event_id: str, *, kind: str = "image", open_id: str = "open-1",
+               filename: str = "") -> dict[str, object]:
+    content = {"image_key": "image-key"} if kind == "image" else {
+        "file_key": "workbook-key", "file_name": filename,
+    }
+    return {
+        "schema": "2.0", "header": {"event_id": event_id,
+                                    "event_type": "im.message.receive_v1",
+                                    "tenant_key": "tenant-test"},
+        "event": {"sender": {"sender_id": {"open_id": open_id}},
+                  "message": {"message_id": f"msg-{event_id}", "chat_id": "chat-1",
+                              "chat_type": "p2p", "message_type": kind,
+                              "content": json.dumps(content)}},
+    }
+
+
+def _bot_action(event_id: str, batch_id: str, action: str,
+                *, version: int | None = None, open_id: str = "open-1") -> dict[str, object]:
+    value: dict[str, object] = {"batchId": batch_id, "action": action}
+    if version is not None:
+        value["version"] = version
+    return {"schema": "2.0", "header": {"event_id": event_id,
+                                        "event_type": "card.action.trigger",
+                                        "tenant_key": "tenant-test"},
+            "event": {"operator": {"open_id": open_id}, "action": {"value": value}}}
+
+
+def test_feishu_bot_photo_workbook_upload_confirm_and_replay(
+    test_database_engine: Engine,
+) -> None:
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        assignment_id, _ = _seed_order(session)
+        session.add_all([
+            ExternalIdentity(platform="feishu", scope="test-scope",
+                             platform_subject=f"tenant-test:{open_id}", user_id=user_id)
+            for open_id, user_id in (("open-1", ADMIN), ("open-2", OTHER_ADMIN))
+        ])
+    picture = BytesIO()
+    Image.new("RGB", (4, 4), (255, 255, 255)).save(picture, format="PNG")
+    media = _BotMedia(picture.getvalue())
+    files = FakePrivateFileStore(bucket="incoming-test")
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    response = json.dumps({
+        "factoryName": "来货测试工厂1", "productCode": "IDF-ITEM",
+        "productName": "来货测试产品", "boxes": [{"color": "红色", "size": "110"}],
+        "diffNoteText": "多2", "lines": [
+            {"color": "红色", "size": "110", "direction": "多", "quantity": 2}
+        ], "confidence": 0.9, "unresolvedFields": [],
+    }, ensure_ascii=False)
+    recognizer = FakeIncomingDiffRecognizer([response])
+    recognition = IncomingDiffRecognitionService(
+        sessions, files=files, recognizer=recognizer, clock=lambda: NOW
+    )
+    bot = FeishuBotService(
+        sessions, files=files, media=media, identity_scope="test-scope",
+        codec=IncomingWorkbookCodec(Settings(database_url="mysql+pymysql://local/test")),
+        recognition=recognition,
+    )
+    assert bot.event(_bot_event("unrelated", kind="text")) == {}
+    bot.event(_bot_event("denied", open_id="unknown"))
+    with Session(test_database_engine) as session:
+        assert session.scalar(select(func.count()).select_from(IncomingDiffBatch)) == 0
+    bot.event(_bot_event("image-1"))
+    bot.event(_bot_event("image-1"))
+    bot.release_failed_event(_bot_event("image-1"))
+    bot.event(_bot_event("image-1"))
+    with Session(test_database_engine) as session:
+        batch = session.scalar(select(IncomingDiffBatch))
+        assert batch is not None
+        batch_id, batch_no = batch.batch_id, batch.batch_no
+        assert session.scalar(select(func.count()).select_from(IncomingDiffImage)) == 1
+    bot.card_action(_bot_action("other-confirm", batch_id, "generate", open_id="open-2"))
+    flat_action = _bot_action("flat-other", batch_id, "generate", open_id="open-2")
+    flat_action = {"schema": "2.0", **flat_action["header"], **flat_action["event"]}
+    flat_action.pop("tenant_key")
+    flat_action["operator"]["tenant_key"] = "tenant-test"
+    assert bot.card_action(flat_action)["toast"]["content"] == "只能操作本人批次"
+    with Session(test_database_engine) as session:
+        assert session.get(IncomingDiffBatch, batch_id).status == "COLLECTING"
+    bot.card_action(_bot_action("generate", batch_id, "generate"))
+    worker = Worker(
+        store=InfrastructureStore(sessions), worker_id="bot-test",
+        handlers={"incoming_diff.recognize": bot.recognition_job,
+                  CONFIRM_JOB: bot.confirm_job},
+    )
+    assert worker.run_once()
+    with Session(test_database_engine) as session:
+        batch = session.get(IncomingDiffBatch, batch_id)
+        assert batch is not None and batch.status == "READY"
+        workbook = session.get(IncomingDiffWorkbook, batch.current_workbook_id)
+        assert workbook is not None and workbook.version == 1
+        stored = session.get(StoredFile, workbook.file_id)
+        assert stored is not None
+        edited = load_workbook(BytesIO(files.get(object_key=stored.object_key)))
+        edited["来货测试工厂1"]["C2"] = 3
+        output = BytesIO()
+        edited.save(output)
+        media.workbook = output.getvalue()
+        assert workbook.line_snapshot[0]["orderAssignmentId"] == assignment_id
+    bot.event(_bot_event("upload", kind="file", filename=f"{batch_no}_核对表_v1.xlsx"))
+    assert media.downloads == ["image", "file"]
+    with Session(test_database_engine) as session:
+        batch = session.get(IncomingDiffBatch, batch_id)
+        uploaded = session.get(IncomingDiffWorkbook, batch.current_workbook_id)
+        assert uploaded is not None and uploaded.version == 2
+    bot.card_action(_bot_action("confirm", batch_id, "confirm", version=2))
+    assert worker.run_once()
+    bot.card_action(_bot_action("confirm-again", batch_id, "confirm", version=2))
+    with Session(test_database_engine) as session:
+        assert session.get(IncomingDiffBatch, batch_id).status == "CONFIRMED"
+        assert session.scalar(select(func.count()).select_from(IncomingDiffRecord)) == 1
+        delta = session.scalar(select(func.sum(QuantityLedger.quantity_delta)).where(
+            QuantityLedger.order_assignment_id == assignment_id
+        ))
+        assert delta == 3
+        assert session.scalar(select(func.count()).select_from(OutboxMessage).where(
+            OutboxMessage.event_type == "incoming_diff.bot_reply"
+        )) >= 5
+
+    class FailingOnceNotifier:
+        def __init__(self) -> None:
+            self.sent: list[DeliveryRequest] = []
+            self.failed = False
+
+        def send(self, request: DeliveryRequest) -> None:
+            if "已正式登记" in request.summary and not self.failed:
+                self.failed = True
+                raise NotificationDeliveryError("temporary", retryable=True)
+            self.sent.append(request)
+
+    notifier = FailingOnceNotifier()
+    notifications = NotificationsAuditService(sessions)
+    while notifications.deliver_next(
+        worker_id="bot-delivery", wechat_notifier=FakeWechatNotifier(),
+        feishu_notifier=notifier, enabled_channels={"feishu"},
+    ):
+        pass
+    assert notifier.failed
+    assert any(request.file_id == workbook.file_id for request in notifier.sent)
+    with Session(test_database_engine) as session:
+        assert session.scalar(select(func.sum(QuantityLedger.quantity_delta)).where(
+            QuantityLedger.order_assignment_id == assignment_id
+        )) == 3
+    assert notifications.deliver_next(
+        worker_id="bot-delivery", wechat_notifier=FakeWechatNotifier(),
+        feishu_notifier=notifier, enabled_channels={"feishu"},
+        now=utc_now() + timedelta(seconds=31),
+    )
+    assert any("已正式登记" in request.summary for request in notifier.sent)
+
+
+def test_feishu_bot_failed_download_marks_image_and_starts_new_batch(
+    test_database_engine: Engine,
+) -> None:
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        session.add(ExternalIdentity(
+            platform="feishu", scope="test-scope",
+            platform_subject="tenant-test:open-1", user_id=ADMIN,
+        ))
+    media = _BotMedia(b"")
+    files = FakePrivateFileStore(bucket="incoming-test")
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    recognition = IncomingDiffRecognitionService(
+        sessions, files=files, recognizer=FakeIncomingDiffRecognizer([]), clock=lambda: NOW
+    )
+    bot = FeishuBotService(
+        sessions, files=files, media=media, identity_scope="test-scope",
+        codec=IncomingWorkbookCodec(Settings(database_url="mysql+pymysql://local/test")),
+        recognition=recognition,
+    )
+    bot.event(_bot_event("failed-image"))
+    with Session(test_database_engine) as session:
+        first = session.scalar(select(IncomingDiffBatch))
+        image = session.scalar(select(IncomingDiffImage))
+        assert first is not None and first.status == "FAILED"
+        assert image is not None and image.ocr_status == "FAILED" and image.file_id is None
+        assert files.object_count == 0
+    picture = BytesIO()
+    Image.new("RGB", (4, 4), (255, 255, 255)).save(picture, format="PNG")
+    media.image = picture.getvalue()
+    bot.event(_bot_event("new-image"))
+    with Session(test_database_engine) as session:
+        assert session.scalar(select(func.count()).select_from(IncomingDiffBatch)) == 2
+        assert session.scalar(select(func.count()).select_from(IncomingDiffImage)) == 2
+
+
+def test_feishu_bot_reports_ambiguous_purchase_suborders(
+    test_database_engine: Engine,
+) -> None:
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        _first, second = _seed_order(session)
+        session.add(Order(
+            order_id="idf-order-2", order_no="IDF-ORDER-2", source="manual",
+            order_date=date(2026, 9, 2), tracker="松子", trackers=["松子"],
+            detail_mode=True, lifecycle="PUBLISHED", created_by=ADMIN,
+            updated_by=ADMIN, created_at=SOURCE_TIME, updated_at=SOURCE_TIME,
+        ))
+        session.flush()
+        assignment = session.get(OrderAssignment, second)
+        assert assignment is not None
+        assignment.factory_id = FACTORY_A
+        order_line = session.get(OrderLine, assignment.order_line_id)
+        assert order_line is not None
+        order_line.order_id = "idf-order-2"
+        order_line.product_variant_id = "idf-variant-1"
+        detail = session.get(OrderDetail, assignment.detail_id)
+        assert detail is not None
+        detail.order_id = "idf-order-2"
+        detail.purchase_order_id = "PO-1"
+        detail.matched_variant_id = "idf-variant-1"
+        detail.matched_factory_id = FACTORY_A
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    files = FakePrivateFileStore(bucket="incoming-test")
+    bot = FeishuBotService(
+        sessions, files=files, media=_BotMedia(b""), identity_scope="test-scope",
+        codec=IncomingWorkbookCodec(Settings(database_url="mysql+pymysql://local/test")),
+        recognition=IncomingDiffRecognitionService(
+            sessions, files=files, recognizer=FakeIncomingDiffRecognizer([])),
+    )
+    message = bot._registration_errors(
+        [{"sheetName": "来货测试工厂1", "rowNumber": 2,
+          "reason": "未匹配到唯一派工"}],
+        [{"sheetName": "来货测试工厂1", "rowNumber": 2,
+          "productCode": "IDF-ITEM", "productName": "来货测试产品",
+          "spec": "红色 / 110", "purchaseOrderId": "PO-1"}],
+    )
+    assert message == (
+        "来货测试工厂1 第 2 行的采购单号 PO-1 存在 2 个符合条件的子单，"
+        "无法确定归属。请补充或修正后重新发送。"
+    )
+    with Session(test_database_engine) as session, session.begin():
+        assignment = session.get(OrderAssignment, second)
+        assert assignment is not None
+        assignment.detail_id = None
+
+
+def test_factory_notification_failure_queues_bot_notice_without_reconfirming(
+    test_database_engine: Engine,
+) -> None:
+    assignment_id, _ = _confirmed_record(test_database_engine, quantity=2)
+    with Session(test_database_engine) as session, session.begin():
+        session.add(NotificationAuthorization(
+            user_id=FACTORY_USER, template_key="factory_status", result="accepted",
+            authorized_at=SOURCE_TIME,
+        ))
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    service = NotificationsAuditService(sessions)
+    assert service.consume_next_business_event(worker_id="factory-notice")
+
+    class FailingWechat:
+        def send(self, request: DeliveryRequest) -> None:
+            raise NotificationDeliveryError("temporary", retryable=True)
+
+    assert service.deliver_next(
+        worker_id="factory-notice", wechat_notifier=FailingWechat(),
+        enabled_channels={"wechat"},
+    )
+    with Session(test_database_engine) as session:
+        bot_notice = session.scalar(select(OutboxMessage).where(
+            OutboxMessage.dedupe_key.like("incoming-diff-bot:notify-failed:%")
+        ))
+        assert bot_notice is not None
+        assert "数量不会重复调整" in bot_notice.payload["summary"]
+        assert session.scalar(select(func.sum(QuantityLedger.quantity_delta)).where(
+            QuantityLedger.order_assignment_id == assignment_id,
+            QuantityLedger.source_type == "INCOMING_DIFF",
+        )) == 2
+    assert service.deliver_next(
+        worker_id="factory-notice", wechat_notifier=FakeWechatNotifier(),
+        enabled_channels={"wechat"}, now=utc_now() + timedelta(seconds=31),
+    )
+    with Session(test_database_engine) as session:
+        assert session.scalar(select(func.count()).select_from(IncomingDiffRecord)) == 1

@@ -11,6 +11,12 @@ from app.modules.incoming_differences.service import (
     IncomingDifferenceValidationError,
     IncomingDifferenceView,
 )
+from app.modules.incoming_differences.workbook import (
+    IncomingWorkbookCodec,
+    IncomingWorkbookLimits,
+    IncomingWorkbookValidationError,
+)
+from app.modules.incoming_differences.workbook_workflow import IncomingWorkbookWorkflow
 
 __all__ = [
     "BatchView",
@@ -22,4 +28,8 @@ __all__ = [
     "IncomingDifferenceService",
     "IncomingDifferenceValidationError",
     "IncomingDifferenceView",
+    "IncomingWorkbookCodec",
+    "IncomingWorkbookLimits",
+    "IncomingWorkbookValidationError",
+    "IncomingWorkbookWorkflow",
 ]

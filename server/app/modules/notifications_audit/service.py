@@ -197,6 +197,8 @@ class NotificationsAuditService:
                 self._consume_repair_returned(session, message)
             elif message.event_type == "incoming_diff.registered":
                 self._consume_incoming_diff_registered(session, message)
+            elif message.event_type == "incoming_diff.adjusted":
+                self._consume_incoming_diff_adjusted(session, message)
             message.status = "completed"
             message.completed_at = current
             message.locked_by = None
@@ -1301,6 +1303,38 @@ class NotificationsAuditService:
                     "thing1": "跟单管理系统",
                     "character_string2": order.order_no,
                     "phrase3": "来货出入",
+                    "time4": _wechat_time(message.locked_at or utc_now()),
+                },
+            )
+
+    def _consume_incoming_diff_adjusted(
+        self, session: Session, message: OutboxMessage
+    ) -> None:
+        order = session.get(Order, str(message.payload["orderId"]))
+        if order is None:
+            return
+        for user in self._enabled_factory_users(
+            session, str(message.payload["factoryId"])
+        ):
+            self._notify_user(
+                session,
+                message=message,
+                user_id=user.user_id,
+                category="INCOMING_DIFF",
+                target_type="factory_task",
+                target_id=order.order_id,
+                title="来货出入已调整",
+                summary=f"订单 {order.order_no} 的来货出入数量已调整，请查看详情",
+                target_path=(
+                    "/pages/factory-task-detail/factory-task-detail"
+                    f"?orderId={order.order_id}"
+                ),
+                channel="wechat",
+                template_key="factory_status",
+                template_data={
+                    "thing1": "跟单管理系统",
+                    "character_string2": order.order_no,
+                    "phrase3": "来货调整",
                     "time4": _wechat_time(message.locked_at or utc_now()),
                 },
             )

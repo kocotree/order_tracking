@@ -10,7 +10,9 @@ from sqlalchemy import Engine, delete
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import (
+    AuditLog,
     Factory,
+    IncomingDiffAdjustment,
     IncomingDiffBatch,
     IncomingDiffImage,
     IncomingDiffRecord,
@@ -19,8 +21,10 @@ from app.db.models import (
     OrderAssignment,
     OrderDetail,
     OrderLine,
+    OutboxMessage,
     Product,
     ProductVariant,
+    QuantityLedger,
     StoredFile,
     User,
     UserSession,
@@ -46,6 +50,12 @@ SEED_TIME = datetime(2026, 9, 1, 8, 0)
 
 def _clean(engine: Engine) -> None:
     with Session(engine) as session, session.begin():
+        session.execute(delete(IncomingDiffAdjustment))
+        session.execute(delete(QuantityLedger).where(QuantityLedger.actor_id.in_(USER_IDS)))
+        session.execute(delete(AuditLog).where(AuditLog.action == "incoming_diff_adjusted"))
+        session.execute(
+            delete(OutboxMessage).where(OutboxMessage.event_type == "incoming_diff.adjusted")
+        )
         session.execute(
             delete(IncomingDiffRecord).where(IncomingDiffRecord.order_id == ORDER_ID)
         )
@@ -310,6 +320,16 @@ def _seed(engine: Engine) -> None:
                     updated_at=registered_at,
                 )
             )
+            session.add(
+                QuantityLedger(
+                    order_assignment_id=assignment.order_assignment_id,
+                    source_type="INCOMING_DIFF",
+                    source_id=record_id,
+                    quantity_delta=quantity,
+                    actor_id=ADMIN,
+                    created_at=registered_at,
+                )
+            )
 
 
 @pytest.fixture(autouse=True)
@@ -411,3 +431,47 @@ def test_anonymous_request_is_rejected(
         assert (
             client.get(f"/api/v1/orders/{ORDER_ID}/incoming-differences").status_code == 401
         )
+
+
+def test_admin_can_adjust_quantity_and_stale_version_is_rejected(
+    test_database_engine: Engine, test_database_url: str
+) -> None:
+    app, identity = _client_app(test_database_engine, test_database_url)
+    session = identity.issue_session(user_id=ADMIN, terminal="web")
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("ot_web_session", session.access_token)
+        updated = client.patch(
+            f"/api/v1/admin/orders/{ORDER_ID}/incoming-differences/idf-api-record-1",
+            json={"quantity": 4, "version": 1},
+        )
+        stale = client.patch(
+            f"/api/v1/admin/orders/{ORDER_ID}/incoming-differences/idf-api-record-1",
+            json={"quantity": 5, "version": 1},
+        )
+        below_zero = client.patch(
+            f"/api/v1/admin/orders/{ORDER_ID}/incoming-differences/idf-api-record-1",
+            json={"quantity": -10, "version": 2},
+        )
+
+    assert updated.status_code == 200
+    assert updated.json()["quantity"] == 4
+    assert updated.json()["version"] == 2
+    assert stale.status_code == 409
+    assert stale.json()["message"] == "记录已被修改，请刷新后重试"
+    assert below_zero.status_code == 422
+    assert "不能小于 0" in below_zero.json()["message"]
+
+
+def test_factory_cannot_adjust_quantity(
+    test_database_engine: Engine, test_database_url: str
+) -> None:
+    app, identity = _client_app(test_database_engine, test_database_url)
+    session = identity.issue_session(user_id=FACTORY_USER_A, terminal="mini")
+    with TestClient(app, base_url="https://testserver") as client:
+        client.headers["Authorization"] = f"Bearer {session.access_token}"
+        response = client.patch(
+            f"/api/v1/admin/orders/{ORDER_ID}/incoming-differences/idf-api-record-1",
+            json={"quantity": 4, "version": 1},
+        )
+
+    assert response.status_code == 403

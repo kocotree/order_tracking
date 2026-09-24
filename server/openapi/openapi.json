@@ -2526,6 +2526,96 @@
         "title": "IncomingDifferenceResponse",
         "type": "object"
       },
+      "IncomingDifferenceUpdateRequest": {
+        "properties": {
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quantity",
+          "version"
+        ],
+        "title": "IncomingDifferenceUpdateRequest",
+        "type": "object"
+      },
+      "IncomingDifferenceUpdateResponse": {
+        "properties": {
+          "productCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productcode"
+          },
+          "productName": {
+            "title": "Productname",
+            "type": "string"
+          },
+          "purchaseOrderId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchaseorderid"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "recordId": {
+            "title": "Recordid",
+            "type": "string"
+          },
+          "registeredAt": {
+            "format": "date-time",
+            "title": "Registeredat",
+            "type": "string"
+          },
+          "requestId": {
+            "title": "Requestid",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "spec": {
+            "title": "Spec",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sequence",
+          "registeredAt",
+          "productName",
+          "spec",
+          "quantity",
+          "recordId",
+          "version",
+          "requestId"
+        ],
+        "title": "IncomingDifferenceUpdateResponse",
+        "type": "object"
+      },
       "MiniLoginResponse": {
         "properties": {
           "bindingToken": {
@@ -9161,6 +9251,99 @@
         "summary": "Withdraw Factory",
         "tags": [
           "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/incoming-differences/{record_id}": {
+      "patch": {
+        "operationId": "update_incoming_difference_quantity_api_v1_admin_orders__order_id__incoming_differences__record_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncomingDifferenceUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomingDifferenceUpdateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Incoming Difference Quantity",
+        "tags": [
+          "orders"
         ]
       }
     },

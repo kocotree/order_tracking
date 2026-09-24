@@ -86,7 +86,14 @@ from app.modules.identity_access import (
 )
 from app.modules.identity_access.agent_oauth import AgentOAuthService, OAuthInvalid
 from app.modules.identity_access.service import IdentityAccessService
-from app.modules.incoming_differences import IncomingDifferenceService
+from app.modules.incoming_differences import (
+    IncomingDifferenceConflict,
+    IncomingDifferenceError,
+    IncomingDifferenceNotFound,
+    IncomingDifferencePermissionDenied,
+    IncomingDifferenceService,
+    IncomingDifferenceValidationError,
+)
 from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.order_import import OrderImportService
 from app.modules.orders import (
@@ -574,6 +581,25 @@ def create_app(
             status_code, code, message = 422, "validation_failed", str(error)
         else:
             status_code, code, message = 400, "shipment_error", "发货单操作失败"
+        return JSONResponse(
+            status_code=status_code,
+            content={"code": code, "message": message, "requestId": request.state.request_id},
+        )
+
+    @app.exception_handler(IncomingDifferenceError)
+    async def handle_incoming_difference_error(
+        request: Request, error: IncomingDifferenceError
+    ) -> JSONResponse:
+        if isinstance(error, IncomingDifferencePermissionDenied):
+            status_code, code, message = 403, "permission_denied", "没有权限执行该操作"
+        elif isinstance(error, IncomingDifferenceNotFound):
+            status_code, code, message = 404, "not_found", str(error)
+        elif isinstance(error, IncomingDifferenceConflict):
+            status_code, code, message = 409, "conflict", str(error)
+        elif isinstance(error, IncomingDifferenceValidationError):
+            status_code, code, message = 422, "validation_failed", str(error)
+        else:
+            status_code, code, message = 400, "incoming_difference_error", "来货出入操作失败"
         return JSONResponse(
             status_code=status_code,
             content={"code": code, "message": message, "requestId": request.state.request_id},

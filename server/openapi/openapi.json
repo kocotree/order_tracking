@@ -14103,6 +14103,44 @@
         ]
       }
     },
+    "/api/v1/integrations/feishu/card-actions": {
+      "post": {
+        "operationId": "card_actions_api_v1_integrations_feishu_card_actions_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Card Actions",
+        "tags": [
+          "feishu-bot"
+        ]
+      }
+    },
+    "/api/v1/integrations/feishu/events": {
+      "post": {
+        "operationId": "events_api_v1_integrations_feishu_events_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Events",
+        "tags": [
+          "feishu-bot"
+        ]
+      }
+    },
     "/api/v1/me": {
       "get": {
         "operationId": "current_user_api_v1_me_get",

@@ -4,12 +4,14 @@ from hashlib import sha256
 from threading import Lock
 from time import monotonic
 from typing import Literal, Protocol
+from urllib.parse import quote
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models import ExternalIdentity
+from app.adapters.private_files import PrivateFileStore
+from app.db.models import ExternalIdentity, StoredFile
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,9 @@ class DeliveryRequest:
     target_path: str
     template_data: dict[str, str]
     card_rows: tuple[dict[str, str], ...] = ()
+    recipient_open_id: str | None = None
+    buttons: tuple[dict[str, object], ...] = ()
+    file_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -92,7 +97,7 @@ class FeishuNotificationConfig:
         return f"feishu-app/{app_digest}"
 
 
-class _AppCredentialFeishuSender:
+class AppCredentialFeishuSender:
     def __init__(
         self,
         config: FeishuNotificationConfig,
@@ -107,19 +112,61 @@ class _AppCredentialFeishuSender:
         self._access_token_expires_at = 0.0
         self._access_token_lock = Lock()
 
-    def send_text(self, *, recipient_id: str, text: str) -> None:
+    def send_text(self, *, recipient_id: str, text: str,
+                  recipient_open_id: str | None = None) -> None:
         self._send_message(
             recipient_id=recipient_id,
             msg_type="text",
             content={"text": text},
+            recipient_open_id=recipient_open_id,
         )
 
-    def send_card(self, *, recipient_id: str, card: dict[str, object]) -> None:
+    def send_card(self, *, recipient_id: str, card: dict[str, object],
+                  recipient_open_id: str | None = None) -> None:
         self._send_message(
             recipient_id=recipient_id,
             msg_type="interactive",
             content=card,
+            recipient_open_id=recipient_open_id,
         )
+
+    def download_resource(self, message_id: str, file_key: str, resource_type: str) -> bytes:
+        if resource_type not in {"image", "file"}:
+            raise ValueError("invalid Feishu resource type")
+        with httpx.Client(base_url=self._config.base_url, timeout=2,
+                          transport=self._transport) as client:
+            token = self._tenant_access_token(client)
+            with client.stream(
+                "GET", "/open-apis/im/v1/messages/"
+                f"{quote(message_id, safe='')}/resources/{quote(file_key, safe='')}",
+                params={"type": resource_type}, headers={"Authorization": f"Bearer {token}"},
+            ) as response:
+                response.raise_for_status()
+                content = bytearray()
+                for chunk in response.iter_bytes():
+                    content.extend(chunk)
+                    if len(content) > 20 * 1024 * 1024:
+                        raise ValueError("Feishu resource too large")
+                return bytes(content)
+
+    def send_file(self, *, recipient_id: str, content: bytes, filename: str,
+                  recipient_open_id: str | None = None) -> None:
+        with httpx.Client(base_url=self._config.base_url, timeout=30,
+                          transport=self._transport) as client:
+            token = self._tenant_access_token(client)
+            response = client.post(
+                "/open-apis/im/v1/files", headers={"Authorization": f"Bearer {token}"},
+                data={"file_type": "xls", "file_name": filename},
+                files={"file": (filename, content,
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            file_key = payload.get("data", {}).get("file_key") if payload.get("code") == 0 else None
+            if not isinstance(file_key, str):
+                raise NotificationDeliveryError("feishu_file_upload_failed", retryable=True)
+        self._send_message(recipient_id=recipient_id, recipient_open_id=recipient_open_id,
+                           msg_type="file", content={"file_key": file_key})
 
     def _send_message(
         self,
@@ -127,8 +174,9 @@ class _AppCredentialFeishuSender:
         recipient_id: str,
         msg_type: str,
         content: dict[str, object],
+        recipient_open_id: str | None = None,
     ) -> None:
-        open_id = self._recipient_openid(recipient_id)
+        open_id = recipient_open_id or self._recipient_openid(recipient_id)
         if open_id is None:
             raise NotificationDeliveryError(
                 "feishu_recipient_unbound",
@@ -228,13 +276,19 @@ class AppCredentialFeishuBusinessNotifier:
         session_factory: sessionmaker[Session],
         *,
         transport: httpx.BaseTransport | None = None,
+        file_store: PrivateFileStore | None = None,
     ) -> None:
         self._config = config
-        self._sender = _AppCredentialFeishuSender(
+        self._sessions = session_factory
+        self._files = file_store
+        self._sender = AppCredentialFeishuSender(
             config, session_factory, transport=transport
         )
 
     def send(self, request: DeliveryRequest) -> None:
+        if request.template_key == "incoming_diff_bot":
+            self._send_incoming_diff(request)
+            return
         if request.template_key in {
             "admin_shipment", "admin_repair", "admin_void_request", "admin_withdrawn"
         }:
@@ -318,6 +372,40 @@ class AppCredentialFeishuBusinessNotifier:
                 },
             },
         )
+
+    def _send_incoming_diff(self, request: DeliveryRequest) -> None:
+        if request.file_id is not None:
+            if self._files is None:
+                raise NotificationDeliveryError("feishu_file_store_unavailable", retryable=True)
+            with self._sessions() as session:
+                stored = session.get(StoredFile, request.file_id)
+                if stored is None:
+                    raise NotificationDeliveryError("feishu_file_missing", retryable=False)
+                content = self._files.get(object_key=stored.object_key)
+                filename = stored.original_filename
+            self._sender.send_file(recipient_id=request.recipient_id,
+                                   recipient_open_id=request.recipient_open_id,
+                                   content=content, filename=filename)
+        elements: list[dict[str, object]] = [
+            {"tag": "markdown", "content": request.summary}
+        ]
+        for button in request.buttons:
+            value = button["value"]
+            if not isinstance(value, dict):
+                raise ValueError("Feishu card callback value must be an object")
+            elements.append({
+                "tag": "column_set", "columns": [{"tag": "column", "width": "weighted",
+                    "elements": [{
+                        "tag": "button", "text": {"tag": "plain_text", "content": button["text"]},
+                        "type": "primary", "behaviors": [{"type": "callback", "value": {
+                            "action": button["action"], **value}}],
+                    }]}],
+            })
+        self._sender.send_card(recipient_id=request.recipient_id,
+                               recipient_open_id=request.recipient_open_id,
+                               card={"schema": "2.0", "header": {
+                                   "title": {"tag": "plain_text", "content": request.title}},
+                                   "body": {"elements": elements}})
 
     def _send_admin_card(self, request: DeliveryRequest) -> None:
         elements: list[dict[str, object]] = []
@@ -425,7 +513,7 @@ class AppCredentialOpsAlertNotifier:
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._config = config
-        self._sender = _AppCredentialFeishuSender(
+        self._sender = AppCredentialFeishuSender(
             config, session_factory, transport=transport
         )
 

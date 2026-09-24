@@ -21,6 +21,7 @@ from app.adapters.identity import (
     FeishuIdentity,
     FeishuIdentityConfig,
 )
+from app.adapters.notifications import AppCredentialFeishuSender, FeishuNotificationConfig
 from app.adapters.order_source import (
     AppCredentialFeishuOrderSource,
     DisabledFeishuOrderSource,
@@ -34,6 +35,7 @@ from app.adapters.private_files import (
     PrivateFileStore,
 )
 from app.adapters.product import AppCredentialJstProductSource, JstProductSourceConfig
+from app.adapters.vision import DisabledIncomingDiffRecognizer
 from app.adapters.wechat import (
     AppCredentialWechatIdentity,
     DisabledWechatIdentity,
@@ -43,6 +45,7 @@ from app.adapters.wechat import (
 from app.api.agent_oauth import create_agent_oauth_router
 from app.api.contracts import create_contract_router
 from app.api.factory_access import create_factory_router
+from app.api.feishu_bot import create_feishu_bot_router
 from app.api.identity import create_identity_router
 from app.api.incoming_differences import create_incoming_difference_router
 from app.api.notifications_audit import create_notifications_audit_router
@@ -94,6 +97,9 @@ from app.modules.incoming_differences import (
     IncomingDifferenceService,
     IncomingDifferenceValidationError,
 )
+from app.modules.incoming_differences.bot import FeishuBotService, FeishuCallbackVerifier
+from app.modules.incoming_differences.recognition import IncomingDiffRecognitionService
+from app.modules.incoming_differences.workbook import IncomingWorkbookCodec
 from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.order_import import OrderImportService
 from app.modules.orders import (
@@ -138,6 +144,7 @@ def create_app(
     shipment_service: ShipmentService | None = None,
     notifications_audit_service: NotificationsAuditService | None = None,
     incoming_difference_service: IncomingDifferenceService | None = None,
+    feishu_bot_service: FeishuBotService | None = None,
     private_file_store: PrivateFileStore | None = None,
     extra_routers: Sequence[APIRouter] = (),
 ) -> FastAPI:
@@ -388,6 +395,34 @@ def create_app(
             identity_service,
         )
     )
+    feishu_verifier = None
+    if (settings.feishu_bot_enabled and settings.feishu_bot_verification_token
+            and settings.feishu_bot_encrypt_key):
+        feishu_verifier = FeishuCallbackVerifier(
+            settings.feishu_bot_encrypt_key, settings.feishu_bot_verification_token
+        )
+        if feishu_bot_service is None:
+            app_id = settings.feishu_identity_app_id or settings.feishu_order_app_id
+            app_secret = settings.feishu_identity_app_secret or settings.feishu_order_app_secret
+            if app_id and app_secret:
+                config = FeishuNotificationConfig(
+                    app_id=app_id, app_secret=app_secret,
+                    admin_web_base_url=settings.admin_web_base_url,
+                    ops_alert_recipient_user_id=settings.ops_alert_recipient_user_id,
+                )
+                feishu_bot_service = FeishuBotService(
+                    session_factory, files=private_file_store,
+                    media=AppCredentialFeishuSender(config, session_factory),
+                    identity_scope=config.resolved_identity_scope,
+                    codec=IncomingWorkbookCodec(settings),
+                    recognition=IncomingDiffRecognitionService(
+                        session_factory, files=private_file_store,
+                        recognizer=DisabledIncomingDiffRecognizer()),
+                )
+    app.include_router(create_feishu_bot_router(
+        service=feishu_bot_service if feishu_verifier else None,
+        verifier=feishu_verifier,
+    ))
     repair_previews = RepairPreviewService(session_factory)
     repair_confirmations = RepairConfirmationService(session_factory)
     repair_returns = RepairReturnService(session_factory)

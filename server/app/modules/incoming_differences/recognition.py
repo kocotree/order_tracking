@@ -98,6 +98,8 @@ class IncomingDiffRecognitionService:
             )).all()
             if not images:
                 raise ValueError("批次没有图片")
+            if any(image.ocr_status == "FAILED" for image in images):
+                raise ValueError("批次含有读取失败的图片")
             if any(image.duplicate_of_batch_id and not image.duplicate_ack_at for image in images):
                 raise ValueError("重复图片需管理员明确继续核对")
             batch.status = "RECOGNIZING"

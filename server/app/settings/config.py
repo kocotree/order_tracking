@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     wechat_identity_app_secret: str = ""
     wechat_notifications_enabled: bool = False
     feishu_notifications_enabled: bool = False
+    feishu_bot_enabled: bool = False
+    feishu_bot_verification_token: str = Field(default="", repr=False)
+    feishu_bot_encrypt_key: str = Field(default="", repr=False)
     ops_alerts_enabled: bool = False
     wechat_notification_admin_shipment_template_id: str = ""
     wechat_notification_admin_repair_template_id: str = ""
@@ -84,6 +87,11 @@ class Settings(BaseSettings):
         ):
             raise ValueError("identity security secrets are required outside local development")
         deployment_env = self.app_env in {"shared_test", "production"}
+        if deployment_env and self.feishu_bot_enabled and not all((
+            self._is_real_value(self.feishu_bot_verification_token),
+            self._is_real_value(self.feishu_bot_encrypt_key),
+        )):
+            raise ValueError("enabled Feishu bot requires callback secrets")
         if deployment_env and not self.web_cookie_secure:
             raise ValueError(
                 "secure web cookies are required in shared_test and production"

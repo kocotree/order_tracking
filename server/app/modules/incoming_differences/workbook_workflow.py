@@ -8,12 +8,16 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.private_files import PrivateFileStore
 from app.db.models import (
+    Factory,
     IncomingDiffBatch,
     IncomingDiffImage,
     IncomingDiffWorkbook,
+    OrderAssignment,
+    OrderDetail,
     StoredFile,
     User,
 )
+from app.modules.incoming_differences.service import IncomingDifferenceService
 from app.modules.incoming_differences.workbook import (
     XLSX_MIME,
     IncomingWorkbookCodec,
@@ -34,18 +38,25 @@ class IncomingWorkbookWorkflow:
         self._sessions = sessions
         self._files = file_store
         self._codec = codec
+        self._matching = IncomingDifferenceService(sessions)
         self._clock = clock
         self._id_factory = id_factory
 
     def generate(
-        self, *, batch_id: str, actor_id: str, lines: list[dict[str, object]]
+        self, *, batch_id: str, actor_id: str, lines: list[dict[str, object]],
+        regenerate: bool = False,
     ) -> IncomingDiffWorkbook:
         object_key: str | None = None
         try:
             with self._sessions() as session, session.begin():
                 batch = self._batch(session, batch_id, actor_id)
-                if batch.current_workbook_id is not None:
+                if batch.current_workbook_id is not None and not regenerate:
                     raise ValueError("批次已有核对表")
+                if batch.current_workbook_id is None and regenerate:
+                    raise ValueError("批次没有可重新生成的核对表")
+                previous = (session.get(IncomingDiffWorkbook, batch.current_workbook_id)
+                            if batch.current_workbook_id else None)
+                version = previous.version + 1 if previous else 1
                 image_files = self._image_files(session, batch_id)
                 if {str(line["imageId"]) for line in lines} - set(image_files):
                     raise ValueError("明细来源图片不在本批次")
@@ -57,10 +68,10 @@ class IncomingWorkbookWorkflow:
                     images[image_id] = content
                 now = self._clock()
                 content, signature, snapshot = self._codec.generate(
-                    batch_id=batch_id, version=1, lines=lines, images=images, generated_at=now
+                    batch_id=batch_id, version=version, lines=lines, images=images, generated_at=now
                 )
                 record, object_key = self._save(
-                    session, batch=batch, actor_id=actor_id, version=1,
+                    session, batch=batch, actor_id=actor_id, version=version,
                     direction="GENERATED", content=content, signature=signature,
                     snapshot=snapshot, now=now,
                 )
@@ -89,11 +100,39 @@ class IncomingWorkbookWorkflow:
                 sources = {old["lineToken"]: old for old in previous.line_snapshot}
                 for line in parsed:
                     source = sources[line["lineToken"]]
-                    if any(line.get(field) != source.get(field) for field in (
+                    changed = any(line.get(field) != source.get(field) for field in (
                         "sheetName", "productName", "spec", "quantity", "purchaseOrderId"
-                    )):
-                        line["orderAssignmentId"] = None
-                        line["purchaseOrderItemId"] = None
+                    ))
+                    if changed or line.get("orderAssignmentId") is None:
+                        factory_id = session.scalar(select(Factory.factory_id).where(
+                            Factory.factory_name == line["factoryName"],
+                            Factory.is_enabled.is_(True),
+                        )) if line["factoryName"] else None
+                        same_product = line["productName"] == source.get("productName")
+                        if not same_product:
+                            line["productCode"] = None
+                        same_origin = all(line.get(field) == source.get(field) for field in (
+                            "sheetName", "productName", "spec", "purchaseOrderId"
+                        ))
+                        assignment_id = self._matching.match_assignment(
+                            factory_id=factory_id,
+                            product_code=(str(source["productCode"])
+                                          if same_product and source.get("productCode") else None),
+                            product_name=str(line["productName"]), spec=str(line["spec"]),
+                            purchase_order_id=(str(line["purchaseOrderId"])
+                                               if line.get("purchaseOrderId") else None),
+                            purchase_order_item_id=(str(source["purchaseOrderItemId"])
+                                                    if same_origin and
+                                                    source.get("purchaseOrderItemId") else None),
+                        )
+                        assignment = (session.get(OrderAssignment, assignment_id)
+                                      if assignment_id else None)
+                        detail = (session.get(OrderDetail, assignment.detail_id)
+                                  if assignment and assignment.detail_id else None)
+                        line["orderAssignmentId"] = assignment_id
+                        line["purchaseOrderItemId"] = (
+                            detail.purchase_order_item_id if detail else None
+                        )
                 next_version = version + 1
                 now = self._clock()
                 saved_content, signature = self._codec.advance(

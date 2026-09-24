@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.notifications import (
     AppCredentialFeishuBusinessNotifier,
+    AppCredentialFeishuSender,
     AppCredentialOpsAlertNotifier,
     AppCredentialWechatNotifier,
     DisabledFeishuBusinessNotifier,
@@ -34,10 +35,12 @@ from app.adapters.product import (
 )
 from app.adapters.vision import DisabledIncomingDiffRecognizer, QwenIncomingDiffRecognizer
 from app.db.session import create_database_engine
+from app.modules.incoming_differences.bot import CONFIRM_JOB, REGENERATE_JOB, FeishuBotService
 from app.modules.incoming_differences.recognition import (
     IncomingDiffRecognitionService,
     IncomingDiffRecognitionWorkerHandlers,
 )
+from app.modules.incoming_differences.workbook import IncomingWorkbookCodec
 from app.modules.infrastructure import InfrastructureStore, utc_now
 from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.notifications_audit.worker import NotificationWorkerHandlers
@@ -124,10 +127,10 @@ def main() -> None:
         )
         if settings.incoming_diff_vision_api_key else DisabledIncomingDiffRecognizer()
     )
-    incoming_handlers = IncomingDiffRecognitionWorkerHandlers(
-        IncomingDiffRecognitionService(sessions, files=incoming_files,
-                                       recognizer=incoming_recognizer)
+    incoming_recognition = IncomingDiffRecognitionService(
+        sessions, files=incoming_files, recognizer=incoming_recognizer
     )
+    incoming_handlers = IncomingDiffRecognitionWorkerHandlers(incoming_recognition)
     product_handlers = ProductWorkerHandlers(
         sync_service=ProductSyncService(sessions, source=product_source),
         image_service=ProductImageService(sessions, image_store=product_image_store),
@@ -189,9 +192,20 @@ def main() -> None:
         ops_alert_recipient_user_id=settings.ops_alert_recipient_user_id,
     )
     feishu_notifier: FeishuBusinessNotifier = (
-        AppCredentialFeishuBusinessNotifier(feishu_notification_config, sessions)
-        if settings.feishu_notifications_enabled
+        AppCredentialFeishuBusinessNotifier(
+            feishu_notification_config, sessions, file_store=incoming_files
+        )
+        if settings.feishu_notifications_enabled or settings.feishu_bot_enabled
         else DisabledFeishuBusinessNotifier()
+    )
+    bot = (
+        FeishuBotService(
+            sessions, files=incoming_files,
+            media=AppCredentialFeishuSender(feishu_notification_config, sessions),
+            identity_scope=feishu_notification_config.resolved_identity_scope,
+            codec=IncomingWorkbookCodec(settings), recognition=incoming_recognition,
+        )
+        if settings.feishu_bot_enabled else None
     )
     ops_alert_notifier: OpsAlertNotifier | None = (
         AppCredentialOpsAlertNotifier(feishu_notification_config, sessions)
@@ -201,7 +215,7 @@ def main() -> None:
     enabled_delivery_channels: set[str] = set()
     if settings.wechat_notifications_enabled:
         enabled_delivery_channels.add("wechat")
-    if settings.feishu_notifications_enabled:
+    if settings.feishu_notifications_enabled or settings.feishu_bot_enabled:
         enabled_delivery_channels.add("feishu")
     notification_handlers = NotificationWorkerHandlers(
         service=notification_service,
@@ -229,11 +243,15 @@ def main() -> None:
             **product_handlers.handlers(),
             **order_handlers.handlers(),
             **notification_handlers.handlers(),
-            **incoming_handlers.handlers(),
+            **({"incoming_diff.recognize": bot.recognition_job,
+                CONFIRM_JOB: bot.confirm_job,
+                REGENERATE_JOB: bot.regenerate_job}
+               if bot else incoming_handlers.handlers()),
         },
         terminal_failure_handlers={
             **order_handlers.terminal_failure_handlers(),
-            **incoming_handlers.terminal_failure_handlers(),
+            **({"incoming_diff.recognize": bot.recognition_failed}
+               if bot else incoming_handlers.terminal_failure_handlers()),
         },
         retry_limits={
             "product-sync-initial": 3,
@@ -242,6 +260,8 @@ def main() -> None:
             "order_import": 3,
             "order_import_revalidate": 3,
             "incoming_diff.recognize": 3,
+            CONFIRM_JOB: 3,
+            REGENERATE_JOB: 3,
         },
         maintenance=ensure_daily_notification_scan,
         work_sources=[

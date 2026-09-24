@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
@@ -62,6 +62,13 @@ class InfrastructureStore:
                     raise
                 return False
         return True
+
+    def release_idempotency(self, *, scope: str, key: str) -> None:
+        with self._session_factory() as session, session.begin():
+            session.execute(delete(IdempotencyRecord).where(
+                IdempotencyRecord.scope == scope,
+                IdempotencyRecord.idempotency_key == key,
+            ))
 
     def enqueue_job(
         self,

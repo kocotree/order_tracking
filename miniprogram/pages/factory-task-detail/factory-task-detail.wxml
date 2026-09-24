@@ -48,5 +48,14 @@
         </view>
       </view>
     </view>
+    <view wx:if="{{incomingGroups.length}}" class="incoming-diff-section">
+      <view class="incoming-diff-heading" role="button" aria-expanded="{{incomingExpanded}}" bindtap="toggleIncoming"><text>来货出入</text><text class="incoming-diff-chevron {{incomingExpanded ? 'is-expanded' : ''}}">›</text></view>
+      <view wx:if="{{incomingExpanded}}" class="incoming-diff-list">
+        <view wx:for="{{incomingGroups}}" wx:key="productName" class="incoming-diff-group">
+          <text class="incoming-diff-group-name">{{item.productName}}</text>
+          <view wx:for="{{item.rows}}" wx:for-item="row" wx:key="sequence" class="incoming-diff-row"><text>{{row.spec}}</text><text class="{{row.shortage ? 'is-shortage' : ''}}">{{row.quantityText}}</text></view>
+        </view>
+      </view>
+    </view>
   </view>
 </view>

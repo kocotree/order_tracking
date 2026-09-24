@@ -40,6 +40,52 @@ beforeEach(() => {
     total: 1,
     requestId: "audit-request",
   });
+  vi.spyOn(orderApi, "incomingDifferences").mockResolvedValue({ items: [], total: 0, requestId: "incoming-request" });
+});
+
+describe("incoming differences on order detail", () => {
+  const incoming = { sequence: 1, registeredAt: "2026-09-21T01:02:00Z", purchaseOrderId: "PO-1", productCode: "P-1", productName: "轻量防风马甲", spec: "雾蓝 / 110", quantity: -2, recordId: "diff-1", version: 3 };
+  const mountPage = () => mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
+
+  it("loads once, shows the seven confirmed columns and saves with version", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    const list = vi.spyOn(orderApi, "incomingDifferences").mockResolvedValue({ items: [incoming], total: 1, requestId: "incoming-request" });
+    const update = vi.spyOn(orderApi, "updateIncomingDifference").mockResolvedValue({ ...incoming, quantity: -3, version: 4, requestId: "update-request" });
+    const wrapper = mountPage(); await flushPromises();
+    const card = wrapper.get(".incoming-diff-card");
+    expect(card.text()).toContain("来货出入（1）");
+    expect(card.find(".incoming-diff-table").exists()).toBe(false);
+    await card.get(".order-audit-toggle").trigger("click");
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(card.findAll("thead th").map((cell) => cell.text())).toEqual(["序号", "登记时间", "采购单号", "产品编码", "产品名称", "颜色/规格", "数量"]);
+    expect(card.text()).toContain("2026-09-21 09:02");
+    const input = card.get(".incoming-diff-input");
+    await input.setValue("-3"); await input.trigger("change"); await flushPromises();
+    expect(update).toHaveBeenCalledWith("order-1", "diff-1", -3, 3);
+    expect(card.get(".incoming-diff-input").element).toHaveProperty("value", "-3");
+    expect(card.text()).toContain("保存成功");
+    await card.get(".order-audit-toggle").trigger("click"); await card.get(".order-audit-toggle").trigger("click");
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([[409, "刷新页面"], [422, "数量超出范围"]])("restores the value on %i", async (status, message) => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    vi.spyOn(orderApi, "incomingDifferences").mockResolvedValue({ items: [incoming], total: 1, requestId: "incoming-request" });
+    vi.spyOn(orderApi, "updateIncomingDifference").mockRejectedValue(new ApiError(status, "invalid", "数量超出范围"));
+    const wrapper = mountPage(); await flushPromises();
+    const card = wrapper.get(".incoming-diff-card"); await card.get(".order-audit-toggle").trigger("click");
+    await card.get(".incoming-diff-input").setValue("-4"); await card.get(".incoming-diff-input").trigger("change"); await flushPromises();
+    expect((card.get(".incoming-diff-input").element as HTMLInputElement).value).toBe("-2");
+    expect(card.text()).toContain(message);
+  });
+
+  it("disables expansion with zero records", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    const wrapper = mountPage(); await flushPromises();
+    const toggle = wrapper.get(".incoming-diff-card .order-audit-toggle");
+    expect(toggle.attributes("disabled")).toBeDefined();
+    expect(wrapper.text()).toContain("来货出入（0）");
+  });
 });
 
 describe("order detail prototype alignment", () => {
@@ -77,7 +123,7 @@ describe("order detail prototype alignment", () => {
     const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
     await flushPromises();
 
-    const toggle = wrapper.find(".order-audit-toggle");
+    const toggle = wrapper.find(".order-audit-card:not(.incoming-diff-card) .order-audit-toggle");
     expect(toggle.attributes("aria-expanded")).toBe("false");
     expect(wrapper.find(".order-audit-list").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("从飞书导入订单：订单数量 400，初始已发数量 100，未发数量 300。");

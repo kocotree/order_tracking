@@ -83,6 +83,25 @@
           </div>
         </section>
 
+        <section class="section-card detail-section-card order-audit-card incoming-diff-card" :class="{ 'is-expanded': incomingExpanded }">
+          <button class="order-audit-toggle" type="button" :aria-expanded="incomingExpanded" aria-controls="incoming-diff-table" :disabled="!incomingDifferences.length" @click="incomingExpanded = !incomingExpanded">
+            <span class="order-audit-toggle-title">来货出入<em>（{{ incomingDifferences.length }}）</em></span>
+            <span class="order-audit-toggle-action">{{ incomingDifferences.length ? (incomingExpanded ? '收起' : '展开') : '暂无记录' }}<svg v-if="incomingDifferences.length" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg></span>
+          </button>
+          <p v-if="incomingError" class="page-error" role="alert">{{ incomingError }}</p>
+          <p v-if="incomingSuccess" class="incoming-save-feedback" role="status">{{ incomingSuccess }}</p>
+          <div v-if="incomingExpanded" id="incoming-diff-table" class="detail-table-scroll incoming-diff-body">
+            <table class="data-grid-table detail-data-table incoming-diff-table">
+              <colgroup><col class="incoming-sequence-col"><col class="incoming-time-col"><col class="incoming-purchase-col"><col class="incoming-code-col"><col class="incoming-name-col"><col class="incoming-spec-col"><col class="incoming-quantity-col"></colgroup>
+              <thead><tr><th class="detail-sequence-column" scope="col">序号</th><th scope="col">登记时间</th><th scope="col">采购单号</th><th scope="col">产品编码</th><th scope="col">产品名称</th><th scope="col">颜色/规格</th><th scope="col">数量</th></tr></thead>
+              <tbody><tr v-for="item in incomingDifferences" :key="item.recordId || item.sequence">
+                <td class="detail-sequence-cell">{{ item.sequence }}</td><td>{{ registeredTime(item.registeredAt) }}</td><td class="detail-code">{{ item.purchaseOrderId || '—' }}</td><td class="detail-code">{{ item.productCode || '—' }}</td><td><strong class="detail-product-name">{{ item.productName }}</strong></td><td>{{ item.spec }}</td>
+                <td class="detail-number"><input class="pending-detail-input pending-number-input incoming-diff-input" type="text" inputmode="numeric" :value="incomingDrafts[item.recordId || ''] ?? signedQuantity(item.quantity)" :disabled="incomingSaving !== null" :aria-label="`第${item.sequence}条来货出入数量`" @input="changeIncomingDraft(item.recordId, $event)" @change="saveIncoming(item)" @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"></td>
+              </tr></tbody>
+            </table>
+          </div>
+        </section>
+
         <section class="section-card detail-section-card">
           <header class="detail-section-header"><h2>关联发货单</h2></header>
           <div class="detail-table-scroll"><table class="data-grid-table detail-data-table related-shipment-table"><thead><tr><th>发货单号</th><th>发货日期</th><th>发货数量</th><th>操作</th></tr></thead><tbody>
@@ -178,7 +197,7 @@
 import { sortedCategories } from "@/productCategories";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, contractApi, identityApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview } from "@/api/client";
+import { ApiError, contractApi, identityApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview, type IncomingDifference } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 
 const relatedShipments = ref<Shipment[]>([]);
@@ -493,13 +512,51 @@ watch(() => route.params.orderId, () => {
   sourcePreview.value = null; sourceDialog.value?.close(); sourceError.value = "";
   dispatchPreview.value = null; dispatchDialog.value?.close(); dispatchError.value = "";
   dispatchSourcePreview.value = null; selectedDetails.value.clear();
-  detailDrafts.value = {}; order.value = null; relatedShipments.value = []; auditLogs.value = [];
+  detailDrafts.value = {}; order.value = null; relatedShipments.value = []; auditLogs.value = []; incomingDifferences.value = []; incomingExpanded.value = false; incomingDrafts.value = {}; incomingError.value = ""; incomingSuccess.value = ""; incomingSaving.value = null;
   withdrawalDialog.value?.close(); withdrawalBusy.value = false;
   contractFactories.value = []; pendingAction.value = null; contractDialogOpen.value = false;
   void load();
 });
 const auditLogs = ref<AuditLogList["items"]>([]);
 const auditExpanded = ref(false);
+const incomingDifferences = ref<IncomingDifference[]>([]);
+const incomingExpanded = ref(false);
+const incomingDrafts = ref<Record<string, string>>({});
+const incomingSaving = ref<string | null>(null);
+const incomingError = ref("");
+const incomingSuccess = ref("");
+const signedQuantity = (value: number) => value > 0 ? `+${value}` : String(value);
+const registeredTime = (value: string) => new Date(value).toLocaleString("sv-SE", { timeZone: "Asia/Shanghai", hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+function changeIncomingDraft(recordId: string | null | undefined, event: Event) { if (recordId) incomingDrafts.value[recordId] = (event.target as HTMLInputElement).value; }
+async function loadIncoming() {
+  const target = orderId;
+  try { const result = await orderApi.incomingDifferences(target); if (target === orderId) { incomingDifferences.value = result.items; incomingError.value = ""; } }
+  catch (error) { if (target === orderId) incomingError.value = error instanceof ApiError ? error.message : "来货出入读取失败"; }
+}
+async function saveIncoming(item: IncomingDifference) {
+  const recordId = item.recordId, version = item.version;
+  if (!recordId || !version || incomingSaving.value) return;
+  const raw = (incomingDrafts.value[recordId] ?? signedQuantity(item.quantity)).trim();
+  const quantity = /^[+-]?\d+$/.test(raw) ? Number(raw) : NaN;
+  if (!Number.isSafeInteger(quantity) || quantity === 0) { incomingDrafts.value[recordId] = signedQuantity(item.quantity); incomingError.value = "数量必须是不为 0 的整数，多货为正数、少货为负数。"; return; }
+  if (quantity === item.quantity) { incomingDrafts.value[recordId] = signedQuantity(item.quantity); return; }
+  incomingSaving.value = recordId; incomingError.value = ""; incomingSuccess.value = "";
+  const target = orderId;
+  try {
+    const updated = await orderApi.updateIncomingDifference(target, recordId, quantity, version);
+    if (target !== orderId) return;
+    incomingDifferences.value = incomingDifferences.value.map((record) => record.recordId === recordId ? updated : record);
+    incomingDrafts.value[recordId] = signedQuantity(updated.quantity);
+    incomingSuccess.value = "保存成功";
+    window.setTimeout(() => { if (target === orderId) incomingSuccess.value = ""; }, 3000);
+    void loadAudit();
+  } catch (error) {
+    if (target !== orderId) return;
+    incomingDrafts.value[recordId] = signedQuantity(item.quantity);
+    incomingError.value = error instanceof ApiError && error.status === 409 ? "记录已更新，请刷新页面后重试。" : error instanceof ApiError && error.status === 422 ? error.message : "数量保存失败，请重试。";
+    incomingSuccess.value = "";
+  } finally { if (target === orderId) incomingSaving.value = null; }
+}
 const contractFactories = ref<ContractFactoryStatus[]>([]); const loadingContracts = ref(false); const contractDialogOpen = ref(false); const selectedContractFactory = ref<ContractFactoryStatus | null>(null); const contractSigningDate = ref(""); const contractError = ref(""); const exportingContract = ref(false);
 const number = (value: number | null) => value == null ? "—" : value.toLocaleString("zh-CN");
 const dateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
@@ -545,7 +602,7 @@ async function load() {
     if (target !== orderId) return;
     order.value = result;
     resetDetailDrafts();
-    await Promise.all([loadShipments(), loadAudit(), loadContracts()]);
+    await Promise.all([loadShipments(), loadAudit(), loadContracts(), loadIncoming()]);
   } catch (error) {
     if (target === orderId) errorMessage.value = error instanceof ApiError && error.status === 404 && route.query?.notificationReturnTo ? "内容已不可查看" : error instanceof ApiError ? error.message : "订单详情加载失败";
   } finally { if (target === orderId) loading.value = false; }

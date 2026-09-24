@@ -59,7 +59,7 @@
 
           <view wx:if="{{expandedFactory === factory.factoryId}}" class="admin-factory-products">
             <view class="admin-product-table-head"><text>序号</text><text>产品名称</text><text>颜色/规格</text><text>已发/下单</text></view>
-            <view wx:for="{{factory.products}}" wx:key="orderLineId" wx:for-item="product" class="admin-product-row">
+            <view wx:for="{{factory.products}}" wx:key="key" wx:for-item="product" class="admin-product-row">
               <text class="admin-product-index">{{product.index}}</text>
               <view class="admin-product-name"><text>{{product.productName}}</text><text wx:if="{{factory.showDetailContractDates}}" class="detail-contract-date">合同出货时间 {{product.contractShipDateText}}</text></view>
               <text class="admin-product-spec">{{product.propertiesValue}}</text>

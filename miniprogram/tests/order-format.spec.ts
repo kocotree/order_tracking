@@ -35,4 +35,19 @@ describe("order presentation", () => {
     expect(formatContractShipDate("2026-08-24")).toBe("2026-08-24");
     expect(formatContractShipDate("2026-08-30")).toBe("2026-08-30");
   });
+
+  it("summarises products and factories from details in detail mode", () => {
+    const order = {
+      detailMode: true,
+      details: [
+        { productName: "晴雨两用风衣", factoryName: "昱斌" },
+        { productName: "晴雨两用风衣", factoryName: null },
+        { productName: null, factoryName: "宇倩" },
+      ],
+      lines: [],
+      factoryProgress: [],
+    } as unknown as Order;
+    expect(orderProductSummary(order)).toBe("晴雨两用风衣");
+    expect(orderFactorySummary(order)).toBe("昱斌、宇倩");
+  });
 });

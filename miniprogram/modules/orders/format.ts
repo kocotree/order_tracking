@@ -1,11 +1,13 @@
 import type { Order } from "../../api/orders";
 
 export function orderProductSummary(order: Order): string {
-  return [...new Set(order.lines.map((item) => item.productName))].join("、") || "—";
+  const names = order.detailMode ? order.details.map((item) => item.productName) : order.lines.map((item) => item.productName);
+  return [...new Set(names.filter(Boolean))].join("、") || "—";
 }
 
 export function orderFactorySummary(order: Order): string {
-  return [...new Set(order.factoryProgress.map((item) => item.factoryName))].join("、") || "—";
+  const names = order.detailMode ? order.details.map((item) => item.factoryName) : order.factoryProgress.map((item) => item.factoryName);
+  return [...new Set(names.filter(Boolean))].join("、") || "—";
 }
 
 export function formatContractShipDate(value: string | string[] | null): string {

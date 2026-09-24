@@ -8,14 +8,17 @@ import { notificationIdFrom } from "../../modules/notifications";
 type FactoryProduct = {
   index: number;
   contractShipDateText: string;
-  orderLineId: number;
+  key: string;
   productName: string;
   propertiesValue: string;
   assignedText: string;
   shippedText: string;
 };
 
-type FactoryProgress = Order["factoryProgress"][number] & {
+type FactoryProgress = {
+  factoryId: string;
+  factoryName: string;
+  progressPercent: number;
   contractShipDateText: string;
   showDetailContractDates: boolean;
   orderText: string;
@@ -23,6 +26,44 @@ type FactoryProgress = Order["factoryProgress"][number] & {
   pendingText: string;
   products: FactoryProduct[];
 };
+
+// 与后端 total() 一致：任一数量缺失则整组小计视为未知
+function total(values: (number | null)[]): number | null {
+  return values.some((value) => value == null) ? null : values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+}
+
+// 明细模式按明细上的工厂名分组，不区分派工状态；工厂名为空归入“—”
+function detailProgress(details: Order["details"]): FactoryProgress[] {
+  const groups = new Map<string, Order["details"]>();
+  details.forEach((detail) => {
+    const name = detail.factoryName || "—";
+    groups.set(name, [...(groups.get(name) ?? []), detail]);
+  });
+  return Array.from(groups, ([factoryName, items]) => {
+    const dates = items.map((item) => item.contractShipDate).filter((date): date is string => Boolean(date));
+    const orderQuantity = total(items.map((item) => item.orderQuantity));
+    const shippedQuantity = total(items.map((item) => item.shippedQuantity));
+    return {
+      factoryId: factoryName,
+      factoryName,
+      progressPercent: orderQuantity && shippedQuantity != null ? Math.round((shippedQuantity * 100) / orderQuantity) : 0,
+      contractShipDateText: formatContractShipDate(dates),
+      showDetailContractDates: new Set(dates).size > 1,
+      orderText: formatQuantity(orderQuantity),
+      shippedText: formatQuantity(shippedQuantity),
+      pendingText: formatQuantity(total(items.map((item) => item.pendingQuantity))),
+      products: items.map((item, index) => ({
+        index: index + 1,
+        key: item.detailId,
+        contractShipDateText: formatContractShipDate(item.contractShipDate),
+        productName: item.productName || "—",
+        propertiesValue: item.propertiesValue || "—",
+        assignedText: formatQuantity(item.orderQuantity),
+        shippedText: formatQuantity(item.shippedQuantity),
+      })),
+    };
+  });
+}
 
 Page({
   data: {
@@ -40,13 +81,13 @@ Page({
   },
   onLoad(options: Record<string, string | undefined>) { if (isDevPreview(options)) { this.show(previewOrder()); return; } if (!options.orderId) { this.setData({ loading: false, error: "订单参数缺失" }); return; } this.setData({ notificationId:notificationIdFrom(options) }); void this.load(options.orderId); },
   show(order: Order) {
-    const factoryProgress = order.factoryProgress.map((factory) => {
+    const factoryProgress = order.detailMode ? detailProgress(order.details) : order.factoryProgress.map((factory) => {
       const products = order.lines.flatMap((line) => line.assignments
         .filter((assignment) => assignment.factoryId === factory.factoryId)
         .map((assignment) => ({
           index: 0,
           contractShipDateText: formatContractShipDate(assignment.contractShipDate),
-          orderLineId: line.orderLineId,
+          key: String(line.orderLineId),
           productName: line.productName,
           propertiesValue: line.propertiesValue,
           assignedText: formatQuantity(assignment.assignedQuantity),

@@ -5,6 +5,7 @@ import { authorizedRequest } from "./identity";
 import { accessToken } from "../modules/identity/session";
 
 export type FactoryShipmentSummary = components["schemas"]["FactoryShipmentSummary"];
+export type AdminShipmentSummary = components["schemas"]["ShipmentSummaryResponse"];
 
 export interface ShipmentLine { assignmentId:number; orderId:string; orderNo:string; skuId:string; productName:string; propertiesValue:string; quantity:number; lineId?:number|null; returnedQuantity?:number; returnableQuantity?:number }
 export interface ShipmentBox { boxNo:number; groupKey:string|null; items:ShipmentLine[] }
@@ -65,6 +66,9 @@ export const shipmentApi = {
   factoryGet: (shipmentId:string) => authorizedRequest<Shipment>({url:`/factory/shipments/${encodeURIComponent(shipmentId)}`,method:"GET"}),
   withdrawalDraft: (id:string) => authorizedRequest<Shipment>({url:`/factory/shipments/${encodeURIComponent(id)}/withdraw-draft`,method:"GET"}),
   withdraw: (id:string,reason:string,version:number,key:string) => authorizedRequest<Shipment>({url:`/factory/shipments/${encodeURIComponent(id)}/withdraw`,method:"POST",data:{reason,version},header:{"Idempotency-Key":key}}).then(result => { invalidateFactoryLists("orders", "shipments"); return result; }),
-  adminList: () => authorizedRequest<{items:Shipment[];total:number}>({url:"/admin/shipments",method:"GET"}),
+  adminPage: (params: {keyword:string;factory:string;dateFrom:string;dateTo:string;page:number}) => {
+    const query = Object.entries({...params, matchProducts:true, pageSize:20}).filter(([,value])=>value!=="").map(([key,value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+    return authorizedRequest<components["schemas"]["ShipmentSummaryListResponse"]>({url:`/admin/shipments/summary?${query}`,method:"GET"});
+  },
   adminGet: (shipmentId:string) => authorizedRequest<Shipment>({url:`/admin/shipments/${encodeURIComponent(shipmentId)}`,method:"GET"}),
 };

@@ -4484,6 +4484,11 @@
       },
       "RepairSummaryListResponse": {
         "properties": {
+          "factoryCount": {
+            "default": 0,
+            "title": "Factorycount",
+            "type": "integer"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/RepairSummaryResponse"
@@ -5301,6 +5306,10 @@
             "title": "Status",
             "type": "string"
           },
+          "totalBoxes": {
+            "title": "Totalboxes",
+            "type": "integer"
+          },
           "totalQuantity": {
             "title": "Totalquantity",
             "type": "integer"
@@ -5316,7 +5325,8 @@
           "businessDate",
           "orderNos",
           "productNames",
-          "totalQuantity"
+          "totalQuantity",
+          "totalBoxes"
         ],
         "title": "ShipmentSummaryResponse",
         "type": "object"
@@ -10058,6 +10068,22 @@
         "operationId": "period_options_api_v1_admin_repair_periods_options_get",
         "parameters": [
           {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
             "in": "cookie",
             "name": "ot_web_session",
             "required": false,
@@ -10098,7 +10124,7 @@
         },
         "summary": "Period Options",
         "tags": [
-          "repair-admin-web"
+          "repair-admin"
         ]
       }
     },
@@ -11137,6 +11163,16 @@
               ],
               "title": "Receiptstatus",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "matchProducts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Matchproducts",
+              "type": "boolean"
             }
           },
           {

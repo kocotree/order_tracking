@@ -130,6 +130,7 @@ def test_summary_matches_existing_details_and_receipt_quantity(
             dict.fromkeys(i.product_name for i in detail.lines)
         )
         assert row["total_quantity"] == detail.total_quantity
+        assert row["total_boxes"] == detail.total_boxes
         assert row["status"] == detail.status
     assert next(r for r in rows if r["shipment_id"] == "list-0000")["total_quantity"] == 0
     assert reader.admin_shipment_factories() == ["S07接口工厂1"]
@@ -139,6 +140,7 @@ def test_summary_matches_existing_details_and_receipt_quantity(
     assert reader.page_admin_shipments(keyword="%")[1] == 0
     assert reader.page_admin_shipments(keyword="_")[1] == 0
     assert reader.page_admin_shipments(keyword="接口测试产品")[1] == 0
+    assert reader.page_admin_shipments(keyword="接口测试产品", match_products=True)[1] > 0
     assert reader.page_admin_shipments(date_from=date(2026, 9, 3), date_to=date(2026, 9, 3))[1] == 4
     assert reader.page_admin_shipments(factory="S07接口工厂2")[1] == 0
 

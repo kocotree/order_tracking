@@ -1,19 +1,45 @@
-import { shipmentApi, type Shipment } from "../../api/shipments";
-import { repairApi, type Repair } from "../../api/repairs";
+import { PagedList } from "../../modules/lists/paged-list";
+import { shipmentApi, type AdminShipmentSummary, type Shipment } from "../../api/shipments";
+import { repairApi, type RepairSummary } from "../../api/repairs";
+import { factoryApi } from "../../api/factory";
 import { isDevPreview, PREVIEW_ADMIN_REPAIRS, PREVIEW_FACTORY_SHIPMENTS } from "../../modules/dev-preview";
 import { adminNavigationItems } from "../../modules/navigation";
 
-type ShipmentCard = Shipment & { productSummary: string; orderSummary: string };
+type ShipmentCard = AdminShipmentSummary & { productSummary: string; orderSummary: string };
 type FilterOption = { label: string; value: string };
-type RepairCard = Repair & { productSummary: string; progress: number; pending: number };
+type RepairCard = RepairSummary & { progress: number; pending: number };
 
-function toCard(shipment: Shipment): ShipmentCard {
+function summarize(productNames: string, orderNos: string): { productSummary: string; orderSummary: string } {
+  const names = productNames.split("、").filter(Boolean);
+  return {
+    productSummary: names.length > 1 ? `${names[0]}等${names.length}个产品` : (names[0] || "—"),
+    orderSummary: orderNos || "—",
+  };
+}
+
+function toCard(item: AdminShipmentSummary): ShipmentCard {
+  return { ...item, ...summarize(item.productNames, item.orderNos) };
+}
+
+// 预览数据是完整发货单快照，需先折算成列表接口的摘要字段
+function previewCard(shipment: Shipment): ShipmentCard {
   const productNames = Array.from(new Set(shipment.lines.map((line) => line.productName)));
   const orderNos = Array.from(new Set(shipment.lines.map((line) => line.orderNo)));
   return {
     ...shipment,
-    productSummary: productNames.length > 1 ? `${productNames[0]}等${productNames.length}个产品` : (productNames[0] || "—"),
-    orderSummary: orderNos.join("、") || "—",
+    receiptStatus: "UNRECEIVED",
+    businessDate: shipment.businessDate,
+    productNames: productNames.join("、"),
+    orderNos: orderNos.join("、"),
+    ...summarize(productNames.join("、"), orderNos.join("、")),
+  };
+}
+
+function toRepairCard(item: RepairSummary): RepairCard {
+  return {
+    ...item,
+    progress: item.warehouseReturnQuantity ? Math.round(item.returnedQuantity / item.warehouseReturnQuantity * 100) : 0,
+    pending: Math.max(0, item.warehouseReturnQuantity - item.returnedQuantity),
   };
 }
 
@@ -22,92 +48,98 @@ function optionIndex(options: FilterOption[], value: string): number {
   return index < 0 ? 0 : index;
 }
 
-function repairProductSummary(repair: Repair): string {
-  const productNames = Array.from(new Set(repair.lines.map((line) => line.productName)));
-  if (!productNames.length) return "—";
-  return productNames.length === 1 ? productNames[0] : `${productNames[0]}等`;
-}
-
 Page({
+  pager: null as PagedList<ShipmentCard> | null,
+  repairPager: null as PagedList<RepairCard> | null,
   data: {
-    activeTab: "shipments", repairItems: [] as RepairCard[], allRepairItems: [] as RepairCard[], repairStatus: "all", repairFactoryCount: 0,
-    allItems: [] as ShipmentCard[], items: [] as ShipmentCard[], keyword: "", loading: true, previewMode: false,
-    factoryId: "", shipDateFrom: "", shipDateTo: "", activeFilterCount: 0, filterOpen: false,
-    repairFactoryId: "", repairPeriod: "", periodOptions:["全部周期"], draftPeriodIndex:0, repairFilterCount: 0,
+    activeTab: "shipments", previewMode: false, keyword: "", filterOpen: false,
+    items: [] as ShipmentCard[], total: 0, loading: true, loadingMore: false, hasMore: false, error: "",
+    repairItems: [] as RepairCard[], repairTotal: 0, repairLoading: true, repairLoadingMore: false, repairHasMore: false, repairError: "",
+    repairStatus: "all", repairFactoryCount: 0, repairFactory: "", repairPeriod: "",
+    factory: "", shipDateFrom: "", shipDateTo: "", activeFilterCount: 0, repairFilterCount: 0,
+    periodOptions: ["全部周期"], draftPeriodIndex: 0,
     factoryOptions: [{ label: "全部工厂", value: "" }] as FilterOption[],
     repairStatusOptions: ["全部状态", "未完成", "已完成"],
     draftFactoryIndex: 0, draftShipDateFrom: "", draftShipDateTo: "", draftRepairStatus: "all",
     navigationItems: adminNavigationItems(),
   },
   onLoad(options: Record<string, string | undefined>) {
-    const previewMode = isDevPreview(options);
-    this.setData({ previewMode });
-    if (previewMode) { this.setItems(PREVIEW_FACTORY_SHIPMENTS); this.setRepairs(PREVIEW_ADMIN_REPAIRS); }
-    else { void this.loadRepairs(); }
+    this.setData({ previewMode: isDevPreview(options) });
+    if (!this.data.previewMode) { void this.loadFactoryOptions(); void this.loadPeriodOptions(); }
   },
-  onShow() { if (!this.data.previewMode) {void this.load();void this.loadRepairs();} },
+  onShow() { void this.load(); },
+  onUnload() { this.pager?.dispose(); this.repairPager?.dispose(); },
+  onReachBottom() { void (this.data.activeTab === "repairs" ? this.repairPager : this.pager)?.next(); },
+  retry() { this.onReachBottom(); },
+  onPullDownRefresh() { void this.load().finally(() => wx.stopPullDownRefresh()); },
+  load() { return this.data.activeTab === "repairs" ? this.loadRepairs() : this.loadShipments(); },
+  loadShipments() {
+    if (!this.pager) this.pager = new PagedList(item => item.shipmentId, state => this.setData(state));
+    const params = { keyword: this.data.keyword.trim(), factory: this.data.factory, dateFrom: this.data.shipDateFrom, dateTo: this.data.shipDateTo };
+    return this.pager.reset(async (page) => {
+      if (!this.data.previewMode) {
+        const result = await shipmentApi.adminPage({ ...params, page });
+        return { items: result.items.map(toCard), total: result.total };
+      }
+      const keyword = params.keyword.toLowerCase();
+      const items = PREVIEW_FACTORY_SHIPMENTS.map(previewCard).filter((item) =>
+        (!keyword || `${item.productSummary} ${item.orderSummary}`.toLowerCase().includes(keyword))
+        && (!params.factory || item.factoryName === params.factory)
+        && (!params.dateFrom || (item.businessDate || "") >= params.dateFrom)
+        && (!params.dateTo || (item.businessDate || "") <= params.dateTo));
+      return { items, total: items.length };
+    });
+  },
+  loadRepairs() {
+    if (!this.repairPager) {
+      this.repairPager = new PagedList(item => item.repairId, state => this.setData({
+        repairItems: state.items, repairTotal: state.total, repairLoading: state.loading,
+        repairLoadingMore: state.loadingMore, repairHasMore: state.hasMore, repairError: state.error,
+      }));
+    }
+    const params = { keyword: this.data.keyword.trim(), status: this.data.repairStatus === "all" ? "" : this.data.repairStatus, factories: this.data.repairFactory, period: this.data.repairPeriod };
+    return this.repairPager.reset(async (page) => {
+      if (!this.data.previewMode) {
+        const result = await repairApi.adminPage({ ...params, status: params.status || "all", page });
+        this.setData({ repairFactoryCount: result.factoryCount });
+        return { items: result.items.map(toRepairCard), total: result.total };
+      }
+      const keyword = params.keyword.toLowerCase();
+      const items = PREVIEW_ADMIN_REPAIRS.map(toRepairCard).filter((item: RepairCard) =>
+        (!keyword || item.factoryName.toLowerCase().includes(keyword))
+        && (!params.status || item.status === params.status)
+        && (!params.factories || item.factoryName === params.factories)
+        && (!params.period || item.repairNo === params.period));
+      this.setData({ repairFactoryCount: new Set(items.map((item: RepairCard) => item.factoryId)).size });
+      return { items, total: items.length };
+    });
+  },
+  async loadFactoryOptions() {
+    const result = await factoryApi.listFactories();
+    this.setData({ factoryOptions: [{ label: "全部工厂", value: "" }, ...result.items.map((item) => ({ label: item.factoryName, value: item.factoryName }))] });
+  },
+  async loadPeriodOptions() {
+    this.setData({ periodOptions: ["全部周期", ...(await repairApi.adminPeriodOptions()).items] });
+  },
   selectTab(event: WechatMiniprogram.TouchEvent) {
     this.setData({ activeTab: String(event.currentTarget.dataset.tab), keyword: "", filterOpen: false }, () => {
-      this.refreshFactoryOptions();
-      this.applyVisibleItems();
+      wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+      void this.load();
     });
-  },
-  async loadRepairs() {
-    try {
-      this.setRepairs((await repairApi.adminList()).items);
-    } catch { wx.showToast({ title: "返修进度加载失败", icon: "none" }); }
-  },
-  setRepairs(repairs: Repair[]) {
-    const allRepairItems = repairs.map((item) => ({ ...item, productSummary: repairProductSummary(item), progress: item.warehouseReturnQuantity ? Math.round(item.returnedQuantity / item.warehouseReturnQuantity * 100) : 0, pending: Math.max(0, item.warehouseReturnQuantity - item.returnedQuantity) }));
-    this.setData({ allRepairItems, periodOptions:["全部周期",...new Set(allRepairItems.map(item=>item.repairNo))] }, () => { if (this.data.activeTab === "repairs") this.refreshFactoryOptions(); this.applyVisibleItems(); });
-  },
-  setItems(shipments: Shipment[]) {
-    const allItems = shipments.map(toCard);
-    this.setData({
-      allItems,
-      loading: false,
-    }, () => { if (this.data.activeTab === "shipments") this.refreshFactoryOptions(); this.applyVisibleItems(); });
-  },
-  refreshFactoryOptions() {
-    const source = this.data.activeTab === "repairs" ? this.data.allRepairItems : this.data.allItems;
-    const factories = Array.from(new Map(source.map((item) => [item.factoryId, item.factoryName])).entries());
-    this.setData({ factoryOptions: [{ label: "全部工厂", value: "" }, ...factories.map(([value, label]) => ({ label, value }))] });
-  },
-  async load() {
-    try { this.setItems((await shipmentApi.adminList()).items); }
-    catch { wx.showToast({ title: "发货单加载失败", icon: "none" }); this.setData({ loading: false }); }
   },
   keywordChanged(event: WechatMiniprogram.Input) {
-    this.setData({ keyword: event.detail.value }, () => this.applyVisibleItems());
-  },
-  applyVisibleItems() {
-    const keyword = this.data.keyword.trim().toLowerCase();
-    if (this.data.activeTab === "repairs") {
-      const repairItems = this.data.allRepairItems.filter((item) =>
-        (!keyword || item.factoryName.toLowerCase().includes(keyword))
-        && (this.data.repairStatus === "all" || item.status === this.data.repairStatus)
-        && (!this.data.repairFactoryId || item.factoryId === this.data.repairFactoryId)
-        && (!this.data.repairPeriod || item.repairNo === this.data.repairPeriod));
-      this.setData({ repairItems, repairFactoryCount: new Set(repairItems.map((item) => item.factoryId)).size });
-      return;
-    }
-    this.setData({
-      items: this.data.allItems.filter((item) =>
-        (!keyword || item.productSummary.toLowerCase().includes(keyword) || item.orderSummary.toLowerCase().includes(keyword))
-        && (!this.data.factoryId || item.factoryId === this.data.factoryId)
-        && (!this.data.shipDateFrom || Boolean(item.businessDate && item.businessDate >= this.data.shipDateFrom))
-        && (!this.data.shipDateTo || Boolean(item.businessDate && item.businessDate <= this.data.shipDateTo))),
-    });
+    this.setData({ keyword: event.detail.value });
+    void this.load();
   },
   toggleFilter() {
     if (this.data.filterOpen) { this.closeFilter(); return; }
     this.setData({
       filterOpen: true,
-      draftFactoryIndex: optionIndex(this.data.factoryOptions, this.data.activeTab === "repairs" ? this.data.repairFactoryId : this.data.factoryId),
+      draftFactoryIndex: optionIndex(this.data.factoryOptions, this.data.activeTab === "repairs" ? this.data.repairFactory : this.data.factory),
       draftShipDateFrom: this.data.shipDateFrom,
       draftShipDateTo: this.data.shipDateTo,
       draftRepairStatus: this.data.repairStatus,
-      draftPeriodIndex: Math.max(0,this.data.periodOptions.indexOf(this.data.repairPeriod)),
+      draftPeriodIndex: Math.max(0, this.data.periodOptions.indexOf(this.data.repairPeriod)),
     });
   },
   closeFilter() { this.setData({ filterOpen: false }); },
@@ -116,21 +148,27 @@ Page({
   shipDateFromChanged(event: WechatMiniprogram.PickerChange) { this.setData({ draftShipDateFrom: String(event.detail.value) }); },
   shipDateToChanged(event: WechatMiniprogram.PickerChange) { this.setData({ draftShipDateTo: String(event.detail.value) }); },
   repairStatusChanged(event: WechatMiniprogram.PickerChange) { this.setData({ draftRepairStatus: ["all", "INCOMPLETE", "COMPLETED"][Number(event.detail.value)] || "all" }); },
-  periodChanged(event: WechatMiniprogram.PickerChange) {this.setData({draftPeriodIndex:Number(event.detail.value)});},
-  resetFilter() { this.setData({ draftFactoryIndex: 0, draftShipDateFrom: "", draftShipDateTo: "", draftRepairStatus: "all", draftPeriodIndex:0 }); },
+  periodChanged(event: WechatMiniprogram.PickerChange) { this.setData({ draftPeriodIndex: Number(event.detail.value) }); },
+  resetFilter() { this.setData({ draftFactoryIndex: 0, draftShipDateFrom: "", draftShipDateTo: "", draftRepairStatus: "all", draftPeriodIndex: 0 }); },
   applyFilter() {
     if (this.data.activeTab !== "repairs" && this.data.draftShipDateFrom && this.data.draftShipDateTo && this.data.draftShipDateFrom > this.data.draftShipDateTo) {
       wx.showToast({ title: "开始日期不能晚于结束日期", icon: "none" });
       return;
     }
-    const selectedFactoryId = this.data.factoryOptions[this.data.draftFactoryIndex]?.value ?? "";
+    const selectedFactory = this.data.factoryOptions[this.data.draftFactoryIndex]?.value ?? "";
     if (this.data.activeTab === "repairs") {
-      const repairFilterCount = [this.data.draftRepairStatus !== "all", Boolean(selectedFactoryId), this.data.draftPeriodIndex > 0].filter(Boolean).length;
-      this.setData({ repairStatus: this.data.draftRepairStatus, repairFactoryId: selectedFactoryId, repairPeriod: this.data.draftPeriodIndex ? this.data.periodOptions[this.data.draftPeriodIndex] : "", repairFilterCount, filterOpen: false }, () => this.applyVisibleItems());
+      const repairFilterCount = [this.data.draftRepairStatus !== "all", Boolean(selectedFactory), this.data.draftPeriodIndex > 0].filter(Boolean).length;
+      this.setData({ repairStatus: this.data.draftRepairStatus, repairFactory: selectedFactory, repairPeriod: this.data.draftPeriodIndex ? this.data.periodOptions[this.data.draftPeriodIndex] : "", repairFilterCount, filterOpen: false }, () => {
+        wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+        void this.loadRepairs();
+      });
       return;
     }
-    const activeFilterCount = [Boolean(selectedFactoryId), Boolean(this.data.draftShipDateFrom), Boolean(this.data.draftShipDateTo)].filter(Boolean).length;
-    this.setData({ factoryId: selectedFactoryId, shipDateFrom: this.data.draftShipDateFrom, shipDateTo: this.data.draftShipDateTo, activeFilterCount, filterOpen: false }, () => this.applyVisibleItems());
+    const activeFilterCount = [Boolean(selectedFactory), Boolean(this.data.draftShipDateFrom), Boolean(this.data.draftShipDateTo)].filter(Boolean).length;
+    this.setData({ factory: selectedFactory, shipDateFrom: this.data.draftShipDateFrom, shipDateTo: this.data.draftShipDateTo, activeFilterCount, filterOpen: false }, () => {
+      wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+      void this.loadShipments();
+    });
   },
   open(event: WechatMiniprogram.TouchEvent) {
     wx.navigateTo({ url: `/pages/admin-shipment-detail/admin-shipment-detail?shipmentId=${encodeURIComponent(event.currentTarget.dataset.id)}${this.data.previewMode ? "&preview=1" : ""}` });

@@ -3424,6 +3424,11 @@ export interface components {
         };
         /** RepairSummaryListResponse */
         RepairSummaryListResponse: {
+            /**
+             * Factorycount
+             * @default 0
+             */
+            factoryCount: number;
             /** Items */
             items: components["schemas"]["RepairSummaryResponse"][];
             /** Page */
@@ -3748,6 +3753,8 @@ export interface components {
             shipmentNo: string | null;
             /** Status */
             status: string;
+            /** Totalboxes */
+            totalBoxes: number;
             /** Totalquantity */
             totalQuantity: number;
         };
@@ -5739,7 +5746,9 @@ export interface operations {
     period_options_api_v1_admin_repair_periods_options_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: {
                 ot_web_session?: string | null;
@@ -6167,6 +6176,7 @@ export interface operations {
                 dateFrom?: string | null;
                 dateTo?: string | null;
                 receiptStatus?: "" | "RECEIVED" | "UNRECEIVED" | "RETURNED";
+                matchProducts?: boolean;
                 sortBy?: "" | "shipmentNo" | "orderNos" | "factory" | "productNames" | "totalQuantity" | "businessDate";
                 sortOrder?: "asc" | "desc";
                 page?: number;

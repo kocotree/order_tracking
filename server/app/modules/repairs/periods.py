@@ -130,7 +130,7 @@ class RepairPeriodService:
             .execution_options(populate_existing=True)
         ).one()
 
-    def page(
+    def _matching(
         self,
         *,
         factory_id: str | None = None,
@@ -138,11 +138,7 @@ class RepairPeriodService:
         status: str = "all",
         factories: list[str] | None = None,
         period: str = "",
-        sort_by: str = "",
-        sort_order: str = "asc",
-        page: int = 1,
-        page_size: int = 10,
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[Any, Any, Any]:
         totals = (
             select(
                 RepairOrder.period_id.label("id"),
@@ -195,6 +191,35 @@ class RepairPeriodService:
             query = query.where(Factory.factory_name.collate("utf8mb4_0900_bin").in_(factories))
         if period:
             query = query.where(RepairPeriod.label == period)
+        return query, state, totals
+
+    def factory_count(self, **filters: Any) -> int:
+        matched = self._matching(**filters)[0].subquery()
+        with self._session_factory() as session:
+            return int(
+                session.scalar(select(func.count(func.distinct(matched.c.factory_id)))) or 0
+            )
+
+    def page(
+        self,
+        *,
+        factory_id: str | None = None,
+        keyword: str = "",
+        status: str = "all",
+        factories: list[str] | None = None,
+        period: str = "",
+        sort_by: str = "",
+        sort_order: str = "asc",
+        page: int = 1,
+        page_size: int = 10,
+    ) -> tuple[list[dict[str, Any]], int]:
+        query, state, totals = self._matching(
+            factory_id=factory_id,
+            keyword=keyword,
+            status=status,
+            factories=factories,
+            period=period,
+        )
         fields = dict(
             repairNo=RepairPeriod.start_date,
             factoryName=Factory.factory_name,

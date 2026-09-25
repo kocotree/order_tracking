@@ -7,17 +7,21 @@
   </view>
   <view wx:if="{{activeTab === 'repairs'}}" class="repair-mini-list">
     <view class="repair-result"><text>共 {{repairFactoryCount}} 家工厂</text><text>按周期倒序</text></view>
-    <view wx:if="{{!repairItems.length}}" class="mini-empty"><text>没有符合条件的返修记录</text><text>可以调整工厂名称或筛选条件后再试</text></view>
+    <view wx:if="{{repairLoading}}" class="mini-empty">正在加载返修进度…</view>
+    <view wx:elif="{{repairError && !repairTotal}}" class="mini-empty mini-error" bindtap="retry">{{repairError}}</view>
+    <view wx:elif="{{!repairItems.length}}" class="mini-empty"><text>没有符合条件的返修记录</text><text>可以调整工厂名称或筛选条件后再试</text></view>
     <view wx:for="{{repairItems}}" wx:key="repairId" class="repair-mini-card" data-id="{{item.repairId}}" bindtap="openRepair">
       <view class="repair-mini-card-head"><view><b>{{item.factoryName}}</b></view><view class="repair-mini-card-pending"><b>{{item.pending}}件</b></view></view>
       <view class="repair-mini-card-progress"><view><text>返回进度</text><b>{{item.returnedQuantity}} / {{item.warehouseReturnQuantity}}</b><em>{{item.progress}}%</em></view><view><view style="width:{{item.progress}}%"/></view></view>
       <view class="repair-mini-card-stats"><view><text>返修数量</text><b>{{item.repairedQuantity}}</b></view><view><text>报废数量</text><b>{{item.scrappedQuantity}}</b></view></view>
       <view class="repair-mini-card-date"><image src="/assets/icons/calendar-blue.svg" mode="aspectFit"/><text>周期</text><b>{{item.repairNo}}</b></view>
     </view>
+    <view wx:if="{{!repairLoading && repairTotal}}" class="admin-page-status" bindtap="retry">{{repairLoadingMore ? '正在加载…' : repairError || (repairHasMore ? '下滑加载更多' : '已加载全部')}}</view>
   </view>
   <view wx:else class="ship-record-content">
-    <view wx:if="{{!loading}}" class="admin-ship-result"><text>共 {{items.length}} 张发货单</text><text>按发货日期倒序</text></view>
+    <view wx:if="{{!loading}}" class="admin-ship-result"><text>共 {{total}} 张发货单</text><text>按发货日期倒序</text></view>
     <view wx:if="{{loading}}" class="mini-empty">正在加载发货单…</view>
+    <view wx:elif="{{error && !total}}" class="mini-empty mini-error" bindtap="retry">{{error}}</view>
     <view wx:elif="{{!items.length}}" class="mini-empty"><text>没有符合条件的发货记录</text><text>可以调整搜索词后再试</text></view>
     <view wx:for="{{items}}" wx:key="shipmentId" role="button" class="admin-ship-card" data-id="{{item.shipmentId}}" bindtap="open">
       <view class="admin-ship-head"><text>{{item.productSummary}}　{{item.orderSummary}}</text><text>›</text></view>
@@ -25,6 +29,7 @@
       <view class="admin-ship-stats"><view><text>发货数量</text><b>{{item.totalQuantity}}</b></view><view><text>总箱数</text><b>{{item.totalBoxes}}</b></view></view>
       <view class="admin-ship-number"><text>发货单号</text><b>{{item.shipmentNo}}</b><text wx:if="{{item.status === 'WITHDRAWN'}}">已撤回</text></view>
     </view>
+    <view wx:if="{{!loading && total}}" class="admin-page-status" bindtap="retry">{{loadingMore ? '正在加载…' : error || (hasMore ? '下滑加载更多' : '已加载全部')}}</view>
   </view>
   <view wx:if="{{filterOpen}}" class="admin-ship-sheet-layer" bindtap="closeFilter">
     <view class="admin-ship-filter-sheet" catchtap="stopPropagation">

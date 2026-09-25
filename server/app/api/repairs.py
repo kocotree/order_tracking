@@ -180,6 +180,7 @@ class RepairSummaryListResponse(ApiModel):
     total: int
     page: int
     page_size: int
+    factory_count: int = 0
 
 
 class RepairFactoryOptionsResponse(ApiModel):
@@ -495,7 +496,8 @@ def create_repair_router(
     ) -> RepairSummaryListResponse:
         user, _ = actor(web_token, authorization)
         admin(user)
-        rows, total = RepairPeriodService(session_factory).page(
+        service = RepairPeriodService(session_factory)
+        rows, total = service.page(
             keyword=keyword,
             status=status,
             period=period,
@@ -510,6 +512,9 @@ def create_repair_router(
             total=total,
             page=page,
             page_size=page_size,
+            factory_count=service.factory_count(
+                keyword=keyword, status=status, period=period, factories=factories
+            ),
         )
 
     @router.get(
@@ -542,14 +547,15 @@ def create_repair_router(
     @router.get(
         "/admin/repair-periods/options",
         response_model=RepairFactoryOptionsResponse,
-        tags=["repair-admin-web"],
+        tags=["repair-admin"],
     )
     def period_options(
         web_token: str | None = Cookie(default=None, alias="ot_web_session"),
+        authorization: str | None = Header(default=None),
     ) -> RepairFactoryOptionsResponse:
         from app.db.models import RepairPeriod
 
-        user, _ = actor(web_token, None, require_web=True)
+        user, _ = actor(web_token, authorization)
         admin(user)
         with session_factory() as session:
             values = session.scalars(

@@ -244,6 +244,7 @@ class ShipmentSummaryResponse(ApiModel):
     order_nos: str
     product_names: str
     total_quantity: int
+    total_boxes: int
 
 
 class ShipmentSummaryListResponse(ApiModel):
@@ -648,6 +649,7 @@ def create_shipment_router(
         receipt_status: Annotated[
             Literal["", "RECEIVED", "UNRECEIVED", "RETURNED"], Query(alias="receiptStatus")
         ] = "",
+        match_products: Annotated[bool, Query(alias="matchProducts")] = False,
         sort_by: Annotated[
             Literal[
                 "",
@@ -676,6 +678,7 @@ def create_shipment_router(
             date_from=date_from,
             date_to=date_to,
             receipt_status=receipt_status,
+            match_products=match_products,
             sort_by=sort_by,
             sort_order=sort_order,
             page=page,

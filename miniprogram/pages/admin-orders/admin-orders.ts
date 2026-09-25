@@ -1,3 +1,4 @@
+import { PagedList } from "../../modules/lists/paged-list";
 import { orderApi, type Order } from "../../api/orders";
 import { factoryApi } from "../../api/factory";
 import { isDevPreview, PREVIEW_FACTORIES, previewOrder } from "../../modules/dev-preview";
@@ -65,6 +66,7 @@ function activeFilterCount(values: {
 }
 
 Page({
+  ordersPager: null as PagedList<ViewOrder> | null,
   data: {
     items: [] as ViewOrder[],
     keyword: "",
@@ -86,6 +88,9 @@ Page({
     draftShipDateFrom: "",
     draftShipDateTo: "",
     filterOpen: false,
+    total: 0,
+    loadingMore: false,
+    hasMore: false,
     loading: true,
     error: "",
     previewMode: false,
@@ -97,21 +102,22 @@ Page({
     this.setData({ previewMode });
     if (previewMode) {
       this.setData({
-        loading: false,
-        items: [this.toView(previewOrder())],
         factoryOptions: [
           { label: "全部工厂", value: "" },
           ...PREVIEW_FACTORIES.map((factory) => ({ label: factory.factoryName, value: factory.factoryId })),
         ],
       });
-      return;
+    } else {
+      void this.loadFilterOptions();
     }
-    void this.loadFilterOptions();
     void this.loadOrders();
   },
   onPullDownRefresh() { void this.loadOrders().finally(() => wx.stopPullDownRefresh()); },
+  onReachBottom() { void this.ordersPager?.next(); },
+  onUnload() { this.ordersPager?.dispose(); },
+  retry() { this.onReachBottom(); },
   keywordChanged(event: WechatMiniprogram.Input) { this.setData({ keyword: event.detail.value }); },
-  search() { void this.loadOrders(); },
+  search() { wx.pageScrollTo({ scrollTop: 0, duration: 0 }); void this.loadOrders(); },
   toggleFilter() {
     if (this.data.filterOpen) { this.closeFilter(); return; }
     this.setData({
@@ -155,7 +161,7 @@ Page({
       shipDateTo: this.data.draftShipDateTo,
       sortBy: this.data.sortOptions[this.data.draftSortIndex]?.value ?? "priority",
     };
-    this.setData({ ...values, activeFilterCount: activeFilterCount(values), filterOpen: false }, () => { void this.loadOrders(); });
+    this.setData({ ...values, activeFilterCount: activeFilterCount(values), filterOpen: false }, () => { wx.pageScrollTo({ scrollTop: 0, duration: 0 }); void this.loadOrders(); });
   },
   async loadFilterOptions() {
     try {
@@ -171,31 +177,31 @@ Page({
     }
   },
   async loadOrders() {
-    this.setData({ loading: true, error: "" });
-    try {
-      if (this.data.previewMode) {
+    if (!this.ordersPager) this.ordersPager = new PagedList((item) => item.orderId, (state) => this.setData(state));
+    const previewMode = this.data.previewMode;
+    const params = {
+      keyword: this.data.keyword,
+      status: this.data.status,
+      factoryId: this.data.factoryId || undefined,
+      trackers: this.data.tracker ? [this.data.tracker] : undefined,
+      shipDateFrom: this.data.shipDateFrom || undefined,
+      shipDateTo: this.data.shipDateTo || undefined,
+      sortBy: this.data.sortBy,
+    };
+    await this.ordersPager.reset(async (page) => {
+      if (previewMode) {
         const order = previewOrder();
-        const keyword = this.data.keyword.trim().toLowerCase();
+        const keyword = params.keyword.trim().toLowerCase();
         const matches = (!keyword || order.orderNo.toLowerCase().includes(keyword) || order.lines.some((line) => line.productName.toLowerCase().includes(keyword)))
-          && (this.data.status === "all" || order.displayStatus === this.data.status)
-          && (!this.data.factoryId || order.factoryProgress.some((factory) => factory.factoryId === this.data.factoryId))
-          && (!this.data.tracker || order.tracker === this.data.tracker)
-          && (!(this.data.shipDateFrom || this.data.shipDateTo) || order.contractShipDates.some((value) => (!this.data.shipDateFrom || value >= this.data.shipDateFrom) && (!this.data.shipDateTo || value <= this.data.shipDateTo)));
-        this.setData({ items: matches ? [this.toView(order)] : [] });
-        return;
+          && (params.status === "all" || order.displayStatus === params.status)
+          && (!params.factoryId || order.factoryProgress.some((factory) => factory.factoryId === params.factoryId))
+          && (!params.trackers || order.tracker === params.trackers[0])
+          && (!(params.shipDateFrom || params.shipDateTo) || order.contractShipDates.some((value) => (!params.shipDateFrom || value >= params.shipDateFrom) && (!params.shipDateTo || value <= params.shipDateTo)));
+        return { items: matches ? [this.toView(order)] : [], total: matches ? 1 : 0 };
       }
-      const result = await orderApi.list({
-        keyword: this.data.keyword,
-        status: this.data.status,
-        factoryId: this.data.factoryId || undefined,
-        trackers: this.data.tracker ? [this.data.tracker] : undefined,
-        shipDateFrom: this.data.shipDateFrom || undefined,
-        shipDateTo: this.data.shipDateTo || undefined,
-        sortBy: this.data.sortBy,
-      });
-      this.setData({ items: result.items.map((item) => this.toView(item)) });
-    } catch { this.setData({ error: "订单加载失败，请下拉重试" }); }
-    finally { this.setData({ loading: false }); }
+      const result = await orderApi.list({ ...params, page, pageSize: 20 });
+      return { items: result.items.map((item) => this.toView(item)), total: result.total };
+    });
   },
   toView(item: Order): ViewOrder {
     return {

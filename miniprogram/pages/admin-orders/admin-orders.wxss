@@ -405,3 +405,7 @@
 }
 
 .mini-due-value { flex: 1; min-width: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+
+.admin-result-summary { display: block; color: #758191; font-size: 24rpx; }
+
+.admin-page-status { padding: 24rpx; color: #7a8592; font-size: 24rpx; text-align: center; }

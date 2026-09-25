@@ -5,9 +5,10 @@
     <view role="button" aria-label="筛选" class="admin-order-filter" bindtap="toggleFilter"><image src="/assets/icons/filter-blue.svg" mode="aspectFit"/><text>筛选</text><text wx:if="{{activeFilterCount}}" class="admin-order-filter-count">{{activeFilterCount}}</text></view>
   </view>
   <view class="mini-order-content">
-    <view wx:if="{{loading}}" class="mini-empty">正在加载订单…</view><view wx:elif="{{error}}" class="mini-empty mini-error">{{error}}</view>
+    <view wx:if="{{loading}}" class="mini-empty">正在加载订单…</view><view wx:elif="{{error && !total}}" class="mini-empty mini-error" bindtap="retry">{{error}}</view>
     <view wx:elif="{{!items.length}}" class="mini-empty"><text>暂无正式订单</text><text>{{previewMode ? '预览模式不读取业务数据' : '草稿不会显示在管理员小程序'}}</text></view>
     <view wx:else class="mini-order-list">
+      <text class="admin-result-summary">共 {{total}} 个订单</text>
       <view wx:for="{{items}}" wx:key="orderId" class="mini-order-card" data-id="{{item.orderId}}" bindtap="openDetail">
         <view class="mini-card-head">
           <view class="mini-card-heading-copy">
@@ -49,6 +50,7 @@
       </view>
     </view>
   </view>
+  <view wx:if="{{!loading && total}}" class="admin-page-status" bindtap="retry">{{loadingMore ? '正在加载…' : error || (hasMore ? '下滑加载更多' : '已加载全部')}}</view>
   <view wx:if="{{filterOpen}}" class="mini-sheet-layer" bindtap="closeFilter">
     <view class="mini-filter-sheet" catchtap="stopPropagation">
       <view class="mini-sheet-handle" />

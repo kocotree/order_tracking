@@ -83,7 +83,7 @@ function download(fileId: number): Promise<string> {
 export interface RepairDraftEntry { variantId: string; selected: boolean; repaired: string; scrapped: string }
 export interface RepairDraft { version: number; entries: RepairDraftEntry[]; submissionKey: string }
 
-async function listPeriods(role: "admin"|"factory"): Promise<RepairList> {
+async function listPeriods(role: "factory"): Promise<RepairList> {
   const items:Repair[]=[];
   let total=0, page=1;
   do {
@@ -99,7 +99,11 @@ async function listPeriods(role: "admin"|"factory"): Promise<RepairList> {
 export const repairApi = {
   getReturnDraft: (id: string) => authorizedRequest<RepairDraft>({ url: `/factory/repairs/${encodeURIComponent(id)}/return-draft`, method: "GET" }),
   saveReturnDraft: (id: string, version: number, entries: RepairDraftEntry[]) => authorizedRequest<RepairDraft>({ url: `/factory/repairs/${encodeURIComponent(id)}/return-draft`, method: "PUT", data: { version, entries } }),
-  adminList: () => listPeriods("admin"),
+  adminPage: (params: {keyword:string;status:string;factories:string;period:string;page:number}) => {
+    const query=Object.entries({...params,pageSize:20}).filter(([,value])=>value!=="").map(([key,value])=>`${key}=${encodeURIComponent(value)}`).join("&");
+    return authorizedRequest<components["schemas"]["RepairSummaryListResponse"]>({url:`/admin/repair-periods?${query}`,method:"GET"});
+  },
+  adminPeriodOptions: () => authorizedRequest<components["schemas"]["RepairFactoryOptionsResponse"]>({url:"/admin/repair-periods/options",method:"GET"}),
   adminGet: (repairId: string) => authorizedRequest<Repair>({ url: `/admin/repairs/${encodeURIComponent(repairId)}`, method: "GET" }),
   factoryPage: (params: {keyword:string;status:string;page:number}) => {
     const query=Object.entries({...params,pageSize:20}).map(([key,value])=>`${key}=${encodeURIComponent(value)}`).join("&");

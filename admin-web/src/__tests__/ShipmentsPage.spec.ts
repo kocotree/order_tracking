@@ -3,7 +3,7 @@ import { createRouter, createMemoryHistory } from "vue-router";
 import { afterEach, expect, it, vi } from "vitest";
 import ShipmentsPage from "@/pages/ShipmentsPage.vue";
 import { shipmentApi, type ShipmentSummary } from "@/api/client";
-const row = (name: string, receiptStatus: "RECEIVED" | "UNRECEIVED" | "RETURNED" = "UNRECEIVED"): ShipmentSummary => ({ shipmentId: name, shipmentNo: name, businessDate: "2026-09-05", status: "SHIPPED", receiptStatus, factoryId: "a", factoryName: "工厂甲", orderNos: "ORDER1", productNames: "产品", totalQuantity: 1 });
+const row = (name: string, receiptStatus: "RECEIVED" | "UNRECEIVED" | "RETURNED" = "UNRECEIVED"): ShipmentSummary => ({ shipmentId: name, shipmentNo: name, businessDate: "2026-09-05", status: "SHIPPED", receiptStatus, factoryId: "a", factoryName: "工厂甲", orderNos: "ORDER1", productNames: "产品", totalQuantity: 1, totalBoxes: 1 });
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
 async function setup(url = "/shipments") {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/shipments", component: ShipmentsPage }, { path: "/shipments/:shipmentId", component: { template: "<div />" } }] });

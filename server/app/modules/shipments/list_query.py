@@ -59,12 +59,14 @@ WITH visible AS (
  SELECT s.shipment_id, s.shipment_no, s.status, s.receipt_status, s.factory_id, s.factory_name,
  s.business_date, s.submitted_at, COALESCE(NULLIF(p.order_nos, ''), '—') AS order_nos,
  COALESCE(NULLIF(p.product_names, ''), '—') AS product_names,
- COALESCE(p.total_quantity, 0) AS total_quantity
+ COALESCE(p.total_quantity, 0) AS total_quantity,
+ (SELECT COUNT(*) FROM shipment_boxes b WHERE b.shipment_id = s.shipment_id) AS total_boxes
  FROM visible s LEFT JOIN summaries p ON p.shipment_id = s.shipment_id
 ), filtered AS (
  SELECT * FROM rows_to_filter
  WHERE (:keyword = '' OR LOCATE(:keyword, LOWER(CONCAT(COALESCE(shipment_no, ''),
-        ' ', order_nos)) COLLATE utf8mb4_0900_bin) > 0)
+        ' ', order_nos, CASE WHEN :match_products = 1 THEN CONCAT(' ', product_names)
+        ELSE '' END)) COLLATE utf8mb4_0900_bin) > 0)
 )
 """
 # Query-local settings avoid GROUP_CONCAT's default 1024-byte truncation without
@@ -89,6 +91,7 @@ def page_shipments(
     date_from: date | None = None,
     date_to: date | None = None,
     receipt_status: str = "",
+    match_products: bool = False,
     sort_by: str = "",
     sort_order: str = "asc",
     page: int = 1,
@@ -104,6 +107,7 @@ def page_shipments(
         date_from=date_from,
         date_to=date_to,
         receipt_status=receipt_status,
+        match_products=match_products,
     )
     total = int(
         session.scalar(
@@ -130,6 +134,7 @@ def page_shipments(
             order_nos=String,
             product_names=String,
             total_quantity=Integer,
+            total_boxes=Integer,
         )
         .cte("shipment_rows")
     )

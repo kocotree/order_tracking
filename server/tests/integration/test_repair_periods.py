@@ -279,6 +279,8 @@ def test_period_does_not_borrow_from_another_half_year(test_database_engine):
         preview_id=p.preview_id, confirmed_by="return-admin", idempotency_key="next-period"
     )
     assert service.page()[1] == 2
+    assert service.factory_count() == 1
+    assert service.factory_count(period="2027.2-2027.7") == 1
     page, total = service.page(page=2, page_size=1, sort_by="warehouseReturnQuantity")
     assert total == 2 and page[0]["warehouse_return_quantity"] == 50
     assert service.page(period="2027.2-2027.7")[0][0]["warehouse_return_quantity"] == 4

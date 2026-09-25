@@ -141,6 +141,61 @@ def test_signed_plaintext_card_callback_is_dispatched() -> None:
                        content=wrong_token_body).status_code == 401
 
 
+def test_real_timestamp_and_duplicate_legacy_callback() -> None:
+    timestamp = "2026-09-25 11:04:12.971178746 +0800 CST m=+247318.326578241"
+    now = datetime.fromtimestamp(1790305453, UTC)
+    calls: list[dict[str, object]] = []
+
+    class Stub:
+        def card_action(self, payload: dict[str, object]) -> dict[str, object]:
+            calls.append(payload)
+            return {"toast": {"type": "info", "content": "正在处理"}}
+
+    app = FastAPI()
+    app.include_router(create_feishu_bot_router(
+        service=Stub(), verifier=FeishuCallbackVerifier(
+            KEY, "local-test-token", now=lambda: now,
+        ),
+    ))
+    client = TestClient(app)
+    modern_headers, modern_body = _callback(_encrypted({
+        "schema": "2.0", "header": {
+            "token": "local-test-token", "event_type": "card.action.trigger",
+        }, "event": {},
+    }), timestamp=timestamp)
+    legacy_body = json.dumps({
+        "type": "card.action.trigger_v1", "token": "local-test-token",
+        "open_id": "ou-test", "action": {"value": {"action": "generate"}},
+    }).encode()
+    legacy_headers = {
+        "x-lark-request-timestamp": timestamp,
+        "x-lark-request-nonce": "nonce-1",
+        "x-lark-signature": hashlib.sha1(
+            (timestamp + "nonce-1" + "local-test-token").encode() + legacy_body
+        ).hexdigest(),
+    }
+
+    modern = client.post("/api/v1/integrations/feishu/card-actions",
+                         headers=modern_headers, content=modern_body)
+    legacy = client.post("/api/v1/integrations/feishu/card-actions",
+                         headers=legacy_headers, content=legacy_body)
+    assert modern.status_code == legacy.status_code == 200
+    assert len(calls) == 1
+    assert calls[0]["header"]["event_type"] == "card.action.trigger"
+    stale_headers, stale_body = _callback(json.loads(modern_body), timestamp=(
+        "2026-09-24 11:04:12.971178746 +0800 CST m=+247318.326578241"
+    ))
+    assert client.post("/api/v1/integrations/feishu/card-actions",
+                       headers=stale_headers, content=stale_body).status_code == 401
+    malformed_headers, malformed_body = _callback(json.loads(modern_body), timestamp="invalid")
+    assert client.post("/api/v1/integrations/feishu/card-actions",
+                       headers=malformed_headers, content=malformed_body).status_code == 401
+    assert client.post("/api/v1/integrations/feishu/card-actions", headers={
+        **legacy_headers, "x-lark-signature": "0" * 40,
+    }, content=legacy_body).status_code == 401
+    assert len(calls) == 1
+
+
 def test_callback_route_rejects_bad_signature_before_service() -> None:
     class Stub:
         def event(self, payload: dict[str, object]) -> dict[str, object]:

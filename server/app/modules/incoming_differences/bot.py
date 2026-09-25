@@ -63,9 +63,25 @@ class FeishuCallbackVerifier:
         nonce = headers.get("x-lark-request-nonce", "")
         signature = headers.get("x-lark-signature", "")
         if signature:
-            if not timestamp.isdecimal() or abs(self._now().timestamp() - int(timestamp)) > 300:
+            try:
+                if timestamp.isascii() and timestamp.isdecimal():
+                    sent_at: float = int(timestamp)
+                else:
+                    parts = timestamp.split()
+                    if len(parts) != 5 or not parts[3].isalpha() or not parts[4].startswith("m="):
+                        raise ValueError("callback timestamp invalid")
+                    parsed = datetime.fromisoformat(f"{parts[0]}T{parts[1]}{parts[2]}")
+                    if parsed.tzinfo is None:
+                        raise ValueError("callback timestamp invalid")
+                    sent_at = parsed.timestamp()
+            except (ValueError, OverflowError) as error:
+                raise ValueError("callback timestamp invalid") from error
+            if abs(self._now().timestamp() - sent_at) > 300:
                 raise ValueError("callback timestamp invalid")
-            expected = hashlib.sha256((timestamp + nonce + self._key).encode() + body).hexdigest()
+            legacy_card = len(signature) == 40
+            digest = hashlib.sha1 if legacy_card else hashlib.sha256
+            secret = self._token if legacy_card else self._key
+            expected = digest((timestamp + nonce + secret).encode() + body).hexdigest()
             if not nonce or not hmac.compare_digest(expected, signature):
                 raise ValueError("callback signature invalid")
         try:
@@ -97,6 +113,11 @@ class FeishuCallbackVerifier:
         token = payload.get("token") or (header or {}).get("token")
         if not isinstance(token, str) or not hmac.compare_digest(token, self._token):
             raise ValueError("callback verification token invalid")
+        if signature and len(signature) == 40 and (
+            header is not None or not isinstance(payload.get("action"), dict)
+            or not isinstance(payload.get("open_id"), str)
+        ):
+            raise ValueError("callback signature invalid")
         if not signature and payload.get("type") != "url_verification":
             raise ValueError("callback signature invalid")
         return payload

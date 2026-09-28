@@ -869,14 +869,12 @@ def test_worker_reads_fake_pages_and_http_requires_admin_web_session(
         order_import_service=service,
     )
     with TestClient(app, base_url="https://testserver") as client:
-        assert client.get("/api/v1/admin/import-candidates").status_code == 401
+        assert client.get("/api/v1/admin/import-candidates").status_code == 410
         client.cookies.set("ot_web_session", factory_session.access_token)
-        assert client.get("/api/v1/admin/import-candidates").status_code == 403
+        assert client.get("/api/v1/admin/import-candidates").status_code == 410
         client.cookies.set("ot_web_session", admin_session.access_token)
         listed = client.get("/api/v1/admin/import-candidates")
-        assert listed.status_code == 200
-        assert listed.json()["items"][0]["orderNo"] == "E104"
-        assert listed.json()["items"][0]["lines"][0]["itemNumber"] == "ITEM-S05"
+        assert listed.status_code == 410
         latest = client.get("/api/v1/admin/import-runs/latest")
         assert latest.status_code == 200
         assert latest.json()["status"] == "SUCCEEDED"
@@ -884,7 +882,7 @@ def test_worker_reads_fake_pages_and_http_requires_admin_web_session(
             "/api/v1/admin/import-runs",
             headers={"X-CSRF-Token": admin_session.csrf_token or ""},
         )
-        assert missing_key.status_code == 422
+        assert missing_key.status_code == 410
         created = client.post(
             "/api/v1/admin/import-runs",
             headers={
@@ -892,8 +890,7 @@ def test_worker_reads_fake_pages_and_http_requires_admin_web_session(
                 "Idempotency-Key": "http-import-run-1",
             },
         )
-        assert created.status_code == 202
-        assert created.json()["requestId"]
+        assert created.status_code == 410
 
     _clean_import_data(test_database_engine)
 
@@ -1053,7 +1050,8 @@ def test_successful_watermark_is_reused_and_failed_run_does_not_advance_it(
     assert service.successful_watermark(failing_source.source_scope) == first_modified
     latest_after_failure = service.latest_run(actor_id="admin-order-import")
     assert latest_after_failure is not None
-    assert latest_after_failure.run_id == first_run.run_id
+    assert latest_after_failure.run_id == failed_run.run_id
+    assert latest_after_failure.status == "FAILED"
     with Session(test_database_engine) as session:
         unchanged = session.query(OrderImportCandidate).filter_by(order_no="E107").one()
         assert unchanged.total_quantity == 100
@@ -1382,7 +1380,7 @@ def test_same_sku_factory_keeps_independent_source_dates(
     assert len({item.detail_id for item in order.details}) == 2
 
 
-def test_candidate_date_api_authorization_version_and_import_lock(
+def test_retired_candidate_date_and_confirmation_api_cannot_mutate(
     test_database_engine: Engine, test_database_url: str
 ) -> None:
     _seed_import_dependencies(test_database_engine)
@@ -1424,37 +1422,30 @@ def test_candidate_date_api_authorization_version_and_import_lock(
         database_url=test_database_url, identity_service=identity, order_import_service=service
     )
     with TestClient(app, base_url="https://testserver") as client:
-        assert client.patch(url, json=payload).status_code == 401
+        assert client.patch(url, json=payload).status_code == 410
         client.cookies.set("ot_web_session", factory.access_token)
         assert (
             client.patch(
                 url, json=payload, headers={"X-CSRF-Token": factory.csrf_token}
             ).status_code
-            == 403
+            == 410
         )
         client.cookies.set("ot_web_session", admin.access_token)
-        assert client.patch(url, json=payload).status_code == 403
+        assert client.patch(url, json=payload).status_code == 410
         saved = client.patch(url, json=payload, headers={"X-CSRF-Token": admin.csrf_token})
-        assert saved.status_code == 200
-        assert saved.json()["contractShipDates"] == ["2027-01-02"]
-        assert (
-            client.patch(url, json=payload, headers={"X-CSRF-Token": admin.csrf_token}).status_code
-            == 409
-        )
+        assert saved.status_code == 410
         confirm_url = f"/api/v1/admin/import-candidates/{candidate.candidate_id}/confirm"
         headers = {
             "X-CSRF-Token": admin.csrf_token,
             "Idempotency-Key": "api-date-import",
             "X-Candidate-Version": str(candidate.version),
         }
-        assert client.post(confirm_url, headers=headers).status_code == 409
-        headers["X-Candidate-Version"] = str(saved.json()["version"])
-        assert client.post(confirm_url, headers=headers).status_code == 200
-        payload["version"] = saved.json()["version"]
-        assert (
-            client.patch(url, json=payload, headers={"X-CSRF-Token": admin.csrf_token}).status_code
-            == 409
+        assert client.post(confirm_url, headers=headers).status_code == 410
+        unchanged = service.get_candidate(
+            actor_id="admin-order-import", candidate_id=candidate.candidate_id
         )
+        assert unchanged.version == candidate.version
+        assert unchanged.imported_order_id is None
 
 
 def test_contract_date_conversion_crosses_year_month_and_weekend(
@@ -2095,11 +2086,9 @@ def test_source_draft_api_preserves_nulls_and_rejects_old_writes(
     headers = {"X-CSRF-Token": admin.csrf_token, "Idempotency-Key": "relaxed-import"}
     with TestClient(app, base_url="https://testserver") as client:
         client.cookies.set("ot_web_session", admin.access_token)
-        response = client.post(
-            f"/api/v1/admin/import-candidates/{candidate.candidate_id}/confirm", headers=headers
+        order_id = service.create_draft_automatically(
+            candidate_id=candidate.candidate_id, request_id="auto-relaxed-import"
         )
-        assert response.status_code == 200
-        order_id = response.json()["orderId"]
         detail = client.get(f"/api/v1/orders/{order_id}").json()
         assert detail["totalQuantity"] is None and detail["tracker"] is None
         assert detail["details"][0]["rawFields"] == {"出货总数": "未知"}

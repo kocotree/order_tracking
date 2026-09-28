@@ -24,15 +24,8 @@ export type DraftUpdate = components["schemas"]["DraftUpdate"];
 export type AuditLogList = components["schemas"]["AuditLogListResponse"];
 export type IncomingDifferenceList = components["schemas"]["IncomingDifferenceListResponse"];
 export type IncomingDifference = components["schemas"]["IncomingDifferenceResponse"];
-export type CandidateAuditList = components["schemas"]["AuditListResponse"];
-export type ImportRun = components["schemas"]["ImportRunResponse"];
-export type ImportCandidate = components["schemas"]["CandidateResponse"];
-export type ImportCandidateList = components["schemas"]["CandidateListResponse"];
-export type CandidateLineWrite = components["schemas"]["CandidateLineWrite"];
-export type CandidateLinesWrite = components["schemas"]["CandidateLinesWrite"];
 export type DetailFieldsWrite = components["schemas"]["DetailFieldsWrite"];
 export type DetailFieldsBatchWrite = components["schemas"]["DetailFieldsBatchWrite"];
-export type BatchConfirmResult = components["schemas"]["BatchConfirmResponse"];
 export type User = components["schemas"]["UserResponse"];
 export type ContractFactoryStatus = components["schemas"]["ContractFactoryStatusResponse"];
 export type ContractFactoryStatusList = components["schemas"]["ContractFactoryStatusListResponse"];
@@ -467,73 +460,6 @@ export const shipmentApi = {
     `/v1/admin/shipments/${encodeURIComponent(shipmentId)}/returns`,
     { method: "POST", headers: idempotencyHeaders(), body: JSON.stringify({ reason, lines }) },
   ),
-};
-
-export const orderImportApi = {
-  createRun: () => request<ImportRun>("/v1/admin/import-runs", { method: "POST", headers: idempotencyHeaders() }),
-  latestRun: () => request<ImportRun | null>("/v1/admin/import-runs/latest"),
-  getRun: (runId: string) =>
-    request<ImportRun>(`/v1/admin/import-runs/${encodeURIComponent(runId)}`),
-  list: (params: {
-    status?: "PENDING" | "IMPORTED";
-    keyword?: string;
-    category?: string;
-    factoryNames?: string[];
-    trackers?: string[];
-    validationState?: string;
-    sortBy?: string;
-    sortOrder?: "asc" | "desc";
-    page?: number;
-    pageSize?: number;
-  } = {}) => {
-    const query = new URLSearchParams({
-      status: params.status ?? "PENDING",
-      keyword: params.keyword ?? "",
-      page: String(params.page ?? 1),
-      pageSize: String(params.pageSize ?? 20),
-      sortBy: params.sortBy ?? "updatedAt",
-      sortOrder: params.sortOrder ?? "desc",
-    });
-    if (params.category) query.set("category", params.category);
-    if (params.validationState) query.set("validationState", params.validationState);
-    for (const name of params.factoryNames ?? []) query.append("factoryNames", name);
-    for (const tracker of params.trackers ?? []) query.append("trackers", tracker);
-    return request<ImportCandidateList>(`/v1/admin/import-candidates?${query}`);
-  },
-  get: (candidateId: string) =>
-    request<ImportCandidate>(
-      `/v1/admin/import-candidates/${encodeURIComponent(candidateId)}`,
-    ),
-  exclude: (candidateId: string) =>
-    request<void>(`/v1/admin/import-candidates/${encodeURIComponent(candidateId)}`, {
-      method: "DELETE",
-      headers: idempotencyHeaders(),
-    }),
-  saveDate: (candidateId: string, lineId: number, version: number, contractShipDate: string | null) =>
-    request<ImportCandidate>(`/v1/admin/import-candidates/${encodeURIComponent(candidateId)}/lines/${lineId}/date`, {
-      method: "PATCH", body: JSON.stringify({ version, contractShipDate }),
-    }),
-  saveLine: (candidateId: string, lineId: number, payload: CandidateLineWrite) =>
-    request<ImportCandidate>(`/v1/admin/import-candidates/${encodeURIComponent(candidateId)}/lines/${lineId}`, {
-      method: "PATCH", body: JSON.stringify(payload),
-    }),
-  saveLines: (candidateId: string, payload: CandidateLinesWrite) =>
-    request<ImportCandidate>(`/v1/admin/import-candidates/${encodeURIComponent(candidateId)}/lines`, {
-      method: "PATCH", body: JSON.stringify(payload),
-    }),
-  auditLogs: (candidateId: string) =>
-    request<CandidateAuditList>(`/v1/admin/audit-logs?targetType=order_import_candidate&targetId=${encodeURIComponent(candidateId)}&pageSize=100`),
-  confirm: (candidateId: string, version?: number) =>
-    request<{ orderId: string; requestId: string }>(
-      `/v1/admin/import-candidates/${encodeURIComponent(candidateId)}/confirm`,
-      { method: "POST", headers: { ...idempotencyHeaders(), ...(version == null ? {} : { "X-Candidate-Version": String(version) }) } },
-    ),
-  confirmBatch: (candidateIds: string[]) =>
-    request<BatchConfirmResult>("/v1/admin/import-candidates/confirm", {
-      method: "POST",
-      headers: idempotencyHeaders(),
-      body: JSON.stringify({ candidateIds }),
-    }),
 };
 
 export const repairApi = {

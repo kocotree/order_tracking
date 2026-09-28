@@ -1,7 +1,7 @@
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Cookie, Header, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import ConfigDict, Field, StrictInt
 
 from app.api.orders import ApiModel
@@ -27,6 +27,7 @@ class ImportRunResponse(ApiModel):
     skipped_records: int
     failed_records: int
     error_code: str | None
+    sync_result: dict[str, Any]
     request_id: str = ""
 
 
@@ -135,7 +136,14 @@ def _batch_item(item: BatchConfirmItem) -> BatchConfirmItemResponse:
 def create_order_import_router(
     service: OrderImportService, identity: IdentityAccessService
 ) -> APIRouter:
-    router = APIRouter(prefix="/api/v1/admin", tags=["order-import"])
+    def retired_candidate_operation(request: Request) -> None:
+        if request.method != "GET" or "/import-candidates" in request.url.path:
+            raise HTTPException(status_code=410, detail="订单已改为后台自动同步，请使用订单列表")
+
+    router = APIRouter(
+        prefix="/api/v1/admin", tags=["order-import"],
+        dependencies=[Depends(retired_candidate_operation)],
+    )
 
     def admin(
         token: str | None,

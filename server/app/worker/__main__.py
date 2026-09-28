@@ -45,6 +45,7 @@ from app.modules.infrastructure import InfrastructureStore, utc_now
 from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.notifications_audit.worker import NotificationWorkerHandlers
 from app.modules.order_import import OrderImportService
+from app.modules.order_import.auto_sync import JOB_TYPE, OrderAutoSync
 from app.modules.order_import.worker import OrderImportWorkerHandlers
 from app.modules.product_sync import ProductImageService, ProductSyncService, ProductWorkerHandlers
 from app.settings.config import Settings
@@ -166,6 +167,7 @@ def main() -> None:
     order_handlers = OrderImportWorkerHandlers(
         service=OrderImportService(sessions), source=order_source
     )
+    auto_sync = OrderAutoSync(sessions, source=order_source)
     notification_service = NotificationsAuditService(sessions)
     store.recover_stale_jobs(before=utc_now() - timedelta(minutes=5))
     wechat_notifier: WechatNotifier = (
@@ -226,6 +228,8 @@ def main() -> None:
 
     def ensure_daily_notification_scan() -> None:
         nonlocal last_enqueued_date
+        if not isinstance(order_source, DisabledFeishuOrderSource):
+            auto_sync.ensure_due()
         shanghai_now = datetime.now(ZoneInfo("Asia/Shanghai"))
         if shanghai_now.hour < settings.notification_due_scan_hour:
             return
@@ -242,6 +246,7 @@ def main() -> None:
         handlers={
             **product_handlers.handlers(),
             **order_handlers.handlers(),
+            JOB_TYPE: auto_sync.handle,
             **notification_handlers.handlers(),
             **({"incoming_diff.recognize": bot.recognition_job,
                 CONFIRM_JOB: bot.confirm_job,
@@ -250,6 +255,7 @@ def main() -> None:
         },
         terminal_failure_handlers={
             **order_handlers.terminal_failure_handlers(),
+            JOB_TYPE: auto_sync.fail,
             **({"incoming_diff.recognize": bot.recognition_failed}
                if bot else incoming_handlers.terminal_failure_handlers()),
         },
@@ -258,6 +264,7 @@ def main() -> None:
             "product-sync-incremental": 3,
             "product-image-cache": 3,
             "order_import": 3,
+            JOB_TYPE: 3,
             "order_import_revalidate": 3,
             "incoming_diff.recognize": 3,
             CONFIRM_JOB: 3,

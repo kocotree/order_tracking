@@ -138,6 +138,7 @@ class InfrastructureStore:
                     .where(
                         BackgroundJob.status == "running",
                         BackgroundJob.locked_at < before,
+                        BackgroundJob.job_type != "order_auto_sync",
                     )
                     .values(
                         status="pending",

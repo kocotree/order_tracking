@@ -2404,6 +2404,11 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "syncResult": {
+            "additionalProperties": true,
+            "title": "Syncresult",
+            "type": "object"
           }
         },
         "required": [
@@ -2417,7 +2422,8 @@
           "candidatesUpdated",
           "skippedRecords",
           "failedRecords",
-          "errorCode"
+          "errorCode",
+          "syncResult"
         ],
         "title": "ImportRunResponse",
         "type": "object"

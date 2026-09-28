@@ -125,15 +125,6 @@ export const dashboardData = {
   updatedAt: "2026-08-12 15:40",
   stats: [
     {
-      id: "pending-imports",
-      label: "待导入订单",
-      value: 6,
-      unit: "单",
-      detail: "其中 2 单资料待补",
-      tone: "info",
-      destination: "待导入订单",
-    },
-    {
       id: "recent-shipments",
       label: "今日发货记录",
       value: 4,

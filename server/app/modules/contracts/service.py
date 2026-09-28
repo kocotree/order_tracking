@@ -553,7 +553,7 @@ class ContractService:
                     ),
                     "imageObjectKey": (
                         line.image_object_key_snapshot if active
-                        else product.image_object_key
+                        else variant.cached_image_key
                     ),
                 })
         else:

@@ -41,7 +41,7 @@ def _item_response(item: ProductListItem) -> ProductListItemResponse:
     image_url = None
     if item.image_version is not None:
         image_url = (
-            f"/api/v1/admin/products/{item.product_id}/image"
+            f"/api/v1/admin/products/variants/{item.variant_id}/image"
             f"?v={item.image_version}"
         )
     return ProductListItemResponse(
@@ -103,7 +103,7 @@ def create_product_router(
         )
 
     @router.get(
-        "/admin/products/{product_id}/image",
+        "/admin/products/variants/{variant_id}/image",
         tags=["product-admin"],
         response_class=Response,
         responses={
@@ -115,7 +115,7 @@ def create_product_router(
         },
     )
     def get_product_image(
-        product_id: str,
+        variant_id: str,
         v: Annotated[str, Query(min_length=1, max_length=64)],
         ot_web_session: str | None = Cookie(default=None),
     ) -> Response:
@@ -125,7 +125,7 @@ def create_product_router(
         if actor.role != "admin":
             raise PermissionDenied("administrator role required")
         object_key = service.get_cached_image_object_key(
-            product_id=product_id,
+            variant_id=variant_id,
             image_version=v,
         )
         if object_key is None:

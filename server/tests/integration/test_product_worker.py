@@ -64,7 +64,7 @@ def test_image_job_failure_retries_and_successfully_replaces_the_private_cache(
 
     assert worker.run_once(now=now) is True
     with session_factory() as session:
-        product = session.scalar(select(Product).where(Product.source_i_id == "HAT-IMAGE"))
+        product = session.scalar(select(ProductVariant))
         job = session.scalar(
             select(BackgroundJob).where(BackgroundJob.job_type == "product-image-cache")
         )
@@ -73,13 +73,14 @@ def test_image_job_failure_retries_and_successfully_replaces_the_private_cache(
 
     assert worker.run_once(now=now) is True
     with session_factory() as session:
-        product = session.scalar(select(Product).where(Product.source_i_id == "HAT-IMAGE"))
+        product = session.scalar(select(ProductVariant))
         job = session.scalar(
             select(BackgroundJob).where(BackgroundJob.job_type == "product-image-cache")
         )
     assert product is not None
     assert product.image_cache_status == "cached"
-    assert product.image_object_key == "products/HAT-IMAGE/fake-image-ref"
+    first_key = product.image_object_key
+    assert first_key is not None and first_key.startswith("products/sku/")
     assert job is not None and job.status == "completed" and job.attempts == 2
 
     changed_source = FakeJstProductSource(
@@ -113,9 +114,9 @@ def test_image_job_failure_retries_and_successfully_replaces_the_private_cache(
     assert incremental_now is not None
     assert worker.run_once(now=incremental_now) is True
     with session_factory() as session:
-        product = session.scalar(select(Product).where(Product.source_i_id == "HAT-IMAGE"))
+        product = session.scalar(select(ProductVariant))
     assert product is not None
-    assert product.image_object_key == "products/HAT-IMAGE/fake-image-ref-v2"
+    assert product.image_object_key is not None and product.image_object_key != first_key
 
 
 def test_worker_claims_and_completes_an_initial_product_sync_job(

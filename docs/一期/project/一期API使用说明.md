@@ -57,6 +57,8 @@
 
 ## 查询与错误处理
 
+Issue #188：产品列表每行返回对应 SKU 的 `variantId` 与 `imageUrl`，图片地址为 `/api/v1/admin/products/variants/{variant_id}/image?v={imageVersion}`。只允许已登录管理员读取当前可用 SKU 的有效缓存图片；旧版本返回 404，继续使用私有缓存与 `Vary: Cookie`。旧产品级路径不再提供取图。Codex `list_products` 返回 `variantId` / `imageVersion`，`get_product_image` 参数改为 `variant_id` / `image_version`，沿用既有管理员权限。
+
 列表筛选、排序和分页参数以对应接口为准，不假定所有列表相同。工厂可见范围由服务器确定，不能通过传其他工厂 ID 扩大权限。日期筛选命中任一可见明细；日期升序取最早、降序取最晚，空值最后。
 
 | HTTP 状态 | 客户端处理 |

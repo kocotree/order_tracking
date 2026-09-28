@@ -1,7 +1,9 @@
 import base64
 from datetime import datetime
+from io import BytesIO
 
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import Engine, delete, text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -57,10 +59,13 @@ def test_admin_product_list_enforces_role_and_returns_only_available_searchable_
         ),
     ).run_initial(request_id="request-api", worker_id="worker-test")
     with sessions() as session, session.begin():
-        cached_product = session.query(Product).filter_by(source_i_id="ITEM-00").one()
+        cached_product = session.query(ProductVariant).filter_by(source_sku_id="SKU-00").one()
         cached_product.image_cache_status = "cached"
         cached_product.image_object_key = "products/ITEM-00/cached-image.jpg"
-        failed_product = session.query(Product).filter_by(source_i_id="ITEM-02").one()
+        sibling = session.query(ProductVariant).filter_by(source_sku_id="SKU-01").one()
+        sibling.image_cache_status = "cached"
+        sibling.image_object_key = "products/ITEM-00/other-size-image.png"
+        failed_product = session.query(ProductVariant).filter_by(source_sku_id="SKU-02").one()
         failed_product.image_cache_status = "failed"
         failed_product.image_object_key = "products/ITEM-02/old-image.jpg"
     identity = IdentityAccessService(
@@ -101,6 +106,13 @@ def test_admin_product_list_enforces_role_and_returns_only_available_searchable_
         content=image_bytes,
         content_type="image/png",
     )
+    other_image = BytesIO()
+    Image.new("RGB", (2, 2), "red").save(other_image, format="PNG")
+    private_files.put(
+        object_key="products/ITEM-00/other-size-image.png",
+        content=other_image.getvalue(),
+        content_type="image/png",
+    )
     app = create_app(
         database_url=test_database_url,
         identity_service=identity,
@@ -108,7 +120,7 @@ def test_admin_product_list_enforces_role_and_returns_only_available_searchable_
         private_file_store=private_files,
     )
     image_url = (
-        f"/api/v1/admin/products/{cached_product.product_id}/image"
+        f"/api/v1/admin/products/variants/{cached_product.variant_id}/image"
         "?v=c2aabbcad6c04279"
     )
 
@@ -130,8 +142,10 @@ def test_admin_product_list_enforces_role_and_returns_only_available_searchable_
         assert page.json()["page"] == 2
         assert page.json()["items"][0]["category"] == "童帽春夏"
         assert [item["skuId"] for item in page.json()["items"]] == ["SKU-01", "SKU-00"]
-        assert page.json()["items"][0]["imageUrl"] == page.json()["items"][1]["imageUrl"]
-        assert page.json()["items"][0]["imageUrl"] == image_url
+        sibling_image_url = page.json()["items"][0]["imageUrl"]
+        assert sibling_image_url != image_url
+        assert page.json()["items"][1]["imageUrl"] == image_url
+        assert admin_client.get(sibling_image_url).content == other_image.getvalue()
         failed_image = admin_client.get(
             "/api/v1/admin/products",
             params={"keyword": "SKU-02"},
@@ -145,10 +159,10 @@ def test_admin_product_list_enforces_role_and_returns_only_available_searchable_
         assert image.headers["cache-control"] == "private, max-age=31536000, immutable"
         assert image.headers["vary"] == "Cookie"
         assert admin_client.get(
-            f"/api/v1/admin/products/{cached_product.product_id}/image?v=stale-version"
+            f"/api/v1/admin/products/variants/{cached_product.variant_id}/image?v=stale-version"
         ).status_code == 404
         with sessions() as session, session.begin():
-            replaced_product = session.get(Product, cached_product.product_id)
+            replaced_product = session.get(ProductVariant, cached_product.variant_id)
             assert replaced_product is not None
             replaced_product.image_object_key = "products/ITEM-00/replaced-image.jpg"
         private_files.put(
@@ -162,12 +176,17 @@ def test_admin_product_list_enforces_role_and_returns_only_available_searchable_
         )
         replaced_image_url = replaced_page.json()["items"][0]["imageUrl"]
         assert replaced_image_url == (
-            f"/api/v1/admin/products/{cached_product.product_id}/image"
+            f"/api/v1/admin/products/variants/{cached_product.variant_id}/image"
             "?v=d165fa9cf567289d"
         )
         assert replaced_image_url != image_url
         assert admin_client.get(image_url).status_code == 404
         assert admin_client.get(replaced_image_url).status_code == 200
+        with sessions() as session, session.begin():
+            session.get(ProductVariant, cached_product.variant_id).is_available = False
+        assert admin_client.get(replaced_image_url).status_code == 404
+        with sessions() as session, session.begin():
+            session.get(ProductVariant, cached_product.variant_id).is_available = True
         private_files.delete(object_key="products/ITEM-00/replaced-image.jpg")
         assert admin_client.get(replaced_image_url).status_code == 404
         searched = admin_client.get(

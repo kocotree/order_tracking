@@ -118,13 +118,11 @@ class ProductCatalogService:
                     properties_value=variant.properties_value,
                     category=variant.source_category,
                     image_available=(
-                        product.image_cache_status == "cached"
-                        and product.image_object_key is not None
+                        variant.cached_image_key is not None
                     ),
                     image_version=(
-                        hashlib.sha256(product.image_object_key.encode()).hexdigest()[:16]
-                        if product.image_cache_status == "cached"
-                        and product.image_object_key is not None
+                        hashlib.sha256(variant.cached_image_key.encode()).hexdigest()[:16]
+                        if variant.cached_image_key is not None
                         else None
                     ),
                 )
@@ -138,22 +136,24 @@ class ProductCatalogService:
     def get_cached_image_object_key(
         self,
         *,
-        product_id: str,
+        variant_id: str,
         image_version: str,
     ) -> str | None:
         with self._session_factory() as session:
-            product = session.get(Product, product_id)
+            variant = session.get(ProductVariant, variant_id)
+            product = session.get(Product, variant.product_id) if variant else None
             if (
-                product is None
+                variant is None
+                or not variant.is_available
+                or product is None
                 or not product.is_available
-                or product.image_cache_status != "cached"
-                or product.image_object_key is None
+                or variant.cached_image_key is None
             ):
                 return None
-            current_version = hashlib.sha256(product.image_object_key.encode()).hexdigest()[:16]
+            current_version = hashlib.sha256(variant.cached_image_key.encode()).hexdigest()[:16]
             if image_version != current_version:
                 return None
-            return product.image_object_key
+            return variant.cached_image_key
 
 
 class ProductSyncService:
@@ -166,7 +166,7 @@ class ProductSyncService:
         self._session_factory = session_factory
         self._source = source
 
-    def _targeted_records(
+    def fetch_targeted_records(
         self, *, name: str | None, i_id: str | None,
     ) -> tuple[SourceProductVariant, ...]:
         if bool(name) == bool(i_id) or not (i_id or name or "").strip():
@@ -211,9 +211,11 @@ class ProductSyncService:
             state = None if variant is None else (
                 variant.product_id, variant.properties_value, variant.source_category,
                 variant.source_enabled, variant.is_available, variant.source_modified_at,
+                variant.image_source_ref, variant.image_revision, variant.image_cache_status,
+                variant.image_source_modified_at,
             )
             product_state = None if product is None else (
-                product.product_id, product.name, product.image_source_ref,
+                product.product_id, product.name,
                 product.source_modified_at, product.is_available,
             )
             states.append((state, product_state))
@@ -241,7 +243,9 @@ class ProductSyncService:
                     ) != (record.properties_value, record.category, record.enabled):
                         reason = "same_timestamp_conflict"
                         blocked = True
-                    elif variant.is_available and product is not None and product.is_available:
+                    elif (variant.is_available and product is not None and product.is_available
+                          and variant.image_source_ref == record.pic
+                          and variant.image_cache_status in {"cached", "missing"}):
                         action = "existing"
             if reason and action != "ignored":
                 action = "rejected"
@@ -258,7 +262,7 @@ class ProductSyncService:
     def preview_targeted(
         self, *, name: str | None = None, i_id: str | None = None,
     ) -> dict[str, Any]:
-        records = self._targeted_records(name=name, i_id=i_id)
+        records = self.fetch_targeted_records(name=name, i_id=i_id)
         with self._session_factory() as session:
             return self._targeted_preview(session, records)
 
@@ -270,7 +274,7 @@ class ProductSyncService:
             run_type="targeted", start_cursor=None, request_id=request_id, worker_id=worker_id,
         )
         try:
-            records = self._targeted_records(name=name, i_id=i_id)
+            records = self.fetch_targeted_records(name=name, i_id=i_id)
             with self._session_factory() as session, session.begin():
                 preview = self._targeted_preview(session, records)
                 if preview["digest"] != expected_digest:
@@ -611,7 +615,9 @@ class ProductSyncService:
                         self._required_properties_value(record) if available else None
                     )
                     variant = session.scalar(
-                        select(ProductVariant).where(ProductVariant.source_sku_id == record.sku_id)
+                        select(ProductVariant).where(
+                            ProductVariant.source_sku_id == record.sku_id,
+                        ).with_for_update()
                     )
                     if variant is None and not available:
                         ignored += 1
@@ -629,22 +635,8 @@ class ProductSyncService:
                         ignored += 1
                         continue
                     was_available = variant.is_available
-                    image_changed = existing_product.image_source_ref != record.pic
                     existing_product.name = record.name
-                    existing_product.image_source_ref = record.pic
-                    if record.pic is None:
-                        existing_product.image_cache_status = "missing"
-                        existing_product.image_object_key = None
-                        existing_product.image_cache_error = None
-                    elif image_changed:
-                        existing_product.image_cache_status = "pending"
-                        existing_product.image_cache_error = None
-                        self._enqueue_image_job(
-                            session,
-                            product=existing_product,
-                            record=record,
-                            now=now,
-                        )
+                    self._sync_image(session, variant=variant, record=record, now=now)
                     existing_product.source_modified_at = max(
                         existing_product.source_modified_at, record.source_modified_at
                     )
@@ -869,7 +861,9 @@ class ProductSyncService:
         properties_value = ProductSyncService._required_properties_value(record)
         product = session.scalar(select(Product).where(Product.source_i_id == record.i_id))
         variant = session.scalar(
-            select(ProductVariant).where(ProductVariant.source_sku_id == record.sku_id)
+            select(ProductVariant).where(
+                ProductVariant.source_sku_id == record.sku_id,
+            ).with_for_update()
         )
         if variant is not None:
             if product is None or variant.product_id != product.product_id:
@@ -886,8 +880,6 @@ class ProductSyncService:
                 source_i_id=record.i_id,
                 name=record.name,
                 is_available=True,
-                image_source_ref=record.pic,
-                image_cache_status="pending" if record.pic else "missing",
                 source_modified_at=record.source_modified_at,
                 first_synced_at=now,
                 last_synced_at=now,
@@ -895,34 +887,24 @@ class ProductSyncService:
             session.add(product)
             session.flush()
         elif record.source_modified_at >= product.source_modified_at:
-            image_changed = product.image_source_ref != record.pic
             product.name = record.name
             product.is_available = True
-            product.image_source_ref = record.pic
-            if record.pic is None:
-                product.image_cache_status = "missing"
-                product.image_object_key = None
-                product.image_cache_error = None
-            elif image_changed:
-                product.image_cache_status = "pending"
-                product.image_cache_error = None
             product.source_modified_at = max(product.source_modified_at, record.source_modified_at)
             product.last_synced_at = now
         if variant is None:
-            session.add(
-                ProductVariant(
-                    variant_id=str(uuid4()),
-                    product_id=product.product_id,
-                    source_sku_id=record.sku_id,
-                    properties_value=properties_value,
-                    source_category=record.category,
-                    source_enabled=record.enabled,
-                    is_available=True,
-                    source_modified_at=record.source_modified_at,
-                    first_synced_at=now,
-                    last_synced_at=now,
-                )
+            variant = ProductVariant(
+                variant_id=str(uuid4()),
+                product_id=product.product_id,
+                source_sku_id=record.sku_id,
+                properties_value=properties_value,
+                source_category=record.category,
+                source_enabled=record.enabled,
+                is_available=True,
+                source_modified_at=record.source_modified_at,
+                first_synced_at=now,
+                last_synced_at=now,
             )
+            session.add(variant)
         else:
             if variant.product_id != product.product_id:
                 raise ValueError("product_source_identity_conflict")
@@ -932,48 +914,44 @@ class ProductSyncService:
             variant.is_available = True
             variant.source_modified_at = max(variant.source_modified_at, record.source_modified_at)
             variant.last_synced_at = now
-        if record.pic:
-            ProductSyncService._enqueue_image_job(
-                session,
-                product=product,
-                record=record,
-                now=now,
-            )
+        ProductSyncService._sync_image(session, variant=variant, record=record, now=now)
         return product
 
     @staticmethod
-    def _enqueue_image_job(
+    def _sync_image(
         session: Session,
         *,
-        product: Product,
+        variant: ProductVariant,
         record: SourceProductVariant,
         now: datetime,
-    ) -> bool:
-        if not record.pic:
-            return False
-        image_version = hashlib.sha256(record.pic.encode()).hexdigest()[:24]
-        dedupe_key = f"product-image:{product.product_id}:{image_version}"
-        existing_job = session.scalar(
-            select(BackgroundJob.id).where(
-                BackgroundJob.job_type == "product-image-cache",
-                BackgroundJob.dedupe_key == dedupe_key,
-            )
-        )
-        if existing_job is not None:
-            return False
+    ) -> None:
+        if (variant.image_source_modified_at is not None
+                and record.source_modified_at < variant.image_source_modified_at):
+            return
+        variant.image_source_modified_at = record.source_modified_at
+        if variant.image_source_ref == record.pic and variant.image_cache_status in {
+            "cached", "pending", "missing",
+        }:
+            return
+        variant.image_source_ref = record.pic
+        variant.image_object_key = None
+        variant.image_cache_error = None
+        variant.image_revision = str(uuid4())
+        variant.image_cache_status = "pending" if record.pic else "missing"
+        if record.pic is None:
+            return
         session.add(
             BackgroundJob(
                 job_type="product-image-cache",
-                dedupe_key=dedupe_key,
+                dedupe_key=f"sku-image:{variant.variant_id}:{variant.image_revision}",
                 payload={
-                    "product_id": product.product_id,
+                    "variant_id": variant.variant_id,
+                    "image_revision": variant.image_revision,
                     "source_ref": record.pic,
-                    "source_i_id": record.i_id,
                 },
                 available_at=now,
             )
         )
-        return True
 
 
 class ProductImageService:
@@ -987,32 +965,44 @@ class ProductImageService:
         self._image_store = image_store
 
     def process(self, payload: dict[str, object]) -> None:
-        product_id = payload.get("product_id")
+        if "variant_id" not in payload and "product_id" in payload:
+            # 旧产品级任务无法还原 SKU 归属，不再下载或回写。
+            return
+        variant_id = payload.get("variant_id")
         source_ref = payload.get("source_ref")
-        source_i_id = payload.get("source_i_id")
+        revision = payload.get("image_revision")
         if not all(
-            isinstance(value, str) and value for value in (product_id, source_ref, source_i_id)
+            isinstance(value, str) and value for value in (variant_id, source_ref, revision)
         ):
             raise ValueError("product_image_payload_invalid")
-        assert isinstance(product_id, str)
+        assert isinstance(variant_id, str)
         assert isinstance(source_ref, str)
-        assert isinstance(source_i_id, str)
+        with self._session_factory() as session:
+            variant = session.get(ProductVariant, variant_id)
+            if (variant is None or variant.image_revision != revision
+                    or variant.image_source_ref != source_ref
+                    or variant.image_cache_status == "cached"):
+                return
         try:
             cached = self._image_store.cache(
                 source_ref=source_ref,
-                object_key=f"products/{source_i_id}/{source_ref}",
+                object_key=f"products/sku/{hashlib.sha256(source_ref.encode()).hexdigest()}",
             )
         except Exception:
             with self._session_factory() as session, session.begin():
-                product = session.get(Product, product_id)
-                if product is not None and product.image_source_ref == source_ref:
-                    product.image_cache_status = "failed"
-                    product.image_cache_error = "product_image_cache_failed"
+                variant = session.get(ProductVariant, variant_id, with_for_update=True)
+                if (variant is not None and variant.image_revision == revision
+                        and variant.image_source_ref == source_ref
+                        and variant.image_cache_status != "cached"):
+                    variant.image_cache_status = "failed"
+                    variant.image_cache_error = "product_image_cache_failed"
             raise
         with self._session_factory() as session, session.begin():
-            product = session.get(Product, product_id)
-            if product is None or product.image_source_ref != source_ref:
+            variant = session.get(ProductVariant, variant_id, with_for_update=True)
+            if (variant is None or variant.image_revision != revision
+                    or variant.image_source_ref != source_ref
+                    or variant.image_cache_status == "cached"):
                 return
-            product.image_object_key = cached.object_key
-            product.image_cache_status = "cached"
-            product.image_cache_error = None
+            variant.image_object_key = cached.object_key
+            variant.image_cache_status = "cached"
+            variant.image_cache_error = None

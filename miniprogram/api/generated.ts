@@ -739,7 +739,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/products/{product_id}/image": {
+    "/api/v1/admin/products/variants/{variant_id}/image": {
         parameters: {
             query?: never;
             header?: never;
@@ -747,7 +747,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Product Image */
-        get: operations["get_product_image_api_v1_admin_products__product_id__image_get"];
+        get: operations["get_product_image_api_v1_admin_products_variants__variant_id__image_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5670,14 +5670,14 @@ export interface operations {
             };
         };
     };
-    get_product_image_api_v1_admin_products__product_id__image_get: {
+    get_product_image_api_v1_admin_products_variants__variant_id__image_get: {
         parameters: {
             query: {
                 v: string;
             };
             header?: never;
             path: {
-                product_id: string;
+                variant_id: string;
             };
             cookie?: {
                 ot_web_session?: string | null;

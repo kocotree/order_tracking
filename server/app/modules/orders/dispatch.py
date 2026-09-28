@@ -274,7 +274,7 @@ class OrderDispatchService(OrderSourceUpdateService):
                         product_name_snapshot=product.name,
                         properties_value_snapshot=variant.properties_value,
                         category_snapshot=variant.source_category,
-                        image_object_key_snapshot=product.image_object_key,
+                        image_object_key_snapshot=variant.cached_image_key,
                         created_at=now,
                         updated_at=now,
                     )

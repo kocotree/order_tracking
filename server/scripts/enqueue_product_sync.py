@@ -8,21 +8,26 @@ from uuid import uuid4
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 
+from app.adapters.private_files import AliyunOssPrivateFileStore
 from app.adapters.product import (
     AppCredentialJstProductSource,
     JstProductSourceConfig,
+    PrivateProductImageStore,
     ProductSourceError,
 )
 from app.db.session import create_database_engine, create_session_factory
 from app.modules.infrastructure import InfrastructureStore, utc_now
 from app.modules.order_import import OrderImportService
 from app.modules.product_sync import ProductSyncService
+from app.modules.product_sync.backfill import ProductImageBackfill
 from app.settings.config import Settings
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("kind", choices=("initial", "incremental", "targeted", "categories"))
+    parser.add_argument(
+        "kind", choices=("initial", "incremental", "targeted", "categories", "images"),
+    )
     parser.add_argument("--dedupe-key")
     target = parser.add_mutually_exclusive_group()
     target.add_argument("--name", help="exact product name; use style ID if ambiguous")
@@ -41,14 +46,14 @@ def main() -> int:
         if not (args.name or args.i_id) or args.dedupe_key or args.resume_request_id:
             parser.error("targeted sync requires --name or --i-id; no dedupe/resume")
     elif args.name or args.i_id or args.dedupe_key or args.resume_request_id:
-        parser.error("categories accepts only --commit and --actor-id")
+        parser.error("categories/images accepts only --commit and --actor-id")
     request_id = args.resume_request_id or uuid4().hex
     if len(request_id) > 64:
         parser.error("--resume-request-id must be at most 64 characters")
     settings = Settings()
     engine = create_database_engine(settings.database_url)
     sessions = create_session_factory(engine)
-    if args.kind in {"targeted", "categories"}:
+    if args.kind in {"targeted", "categories", "images"}:
         url = make_url(settings.database_url)
         environment = {"appEnv": settings.app_env, "host": url.host, "database": url.database}
         try:
@@ -72,15 +77,35 @@ def main() -> int:
                     retry_attempts=settings.jst_product_retry_attempts,
                     retry_base_delay_seconds=settings.jst_product_retry_base_delay_seconds,
                 ))
-                service = ProductSyncService(sessions, source=source)
-                result = (
-                    asdict(service.run_targeted(
-                        name=args.name, i_id=args.i_id, expected_digest=args.commit,
-                        request_id=request_id, worker_id="internal_cli", actor_id=args.actor_id,
-                    )) if args.commit else service.preview_targeted(name=args.name, i_id=args.i_id)
-                )
+                if args.kind == "images":
+                    if not all((settings.oss_endpoint, settings.oss_region,
+                                settings.oss_access_key_id, settings.oss_access_key_secret,
+                                settings.oss_bucket)):
+                        raise ProductSourceError("product_image_store_not_configured")
+                    files = AliyunOssPrivateFileStore(
+                        endpoint=settings.oss_endpoint, region=settings.oss_region,
+                        access_key_id=settings.oss_access_key_id,
+                        access_key_secret=settings.oss_access_key_secret,
+                        bucket=settings.oss_bucket,
+                    )
+                    result = ProductImageBackfill(
+                        sessions, source=source, file_store=files,
+                        image_store=PrivateProductImageStore(files),
+                    ).run(
+                        request_id=request_id, expected_digest=args.commit, actor_id=args.actor_id,
+                    )
+                else:
+                    service = ProductSyncService(sessions, source=source)
+                    result = (
+                        asdict(service.run_targeted(
+                            name=args.name, i_id=args.i_id, expected_digest=args.commit,
+                            request_id=request_id, worker_id="internal_cli", actor_id=args.actor_id,
+                        )) if args.commit else service.preview_targeted(
+                            name=args.name, i_id=args.i_id,
+                        )
+                    )
             print(json.dumps({"environment": environment, **result}, ensure_ascii=False))
-            return 0
+            return 1 if result.get("failed") or result.get("unmatched") else 0
         except (ProductSourceError, ValueError) as error:
             code = str(error)
             if not code.startswith(("product_", "category_")):

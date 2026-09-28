@@ -7,6 +7,10 @@ class PrivateFileStoreUnavailable(ExternalAdapterUnavailable):
     pass
 
 
+class PrivateFileNotFound(PrivateFileStoreUnavailable):
+    pass
+
+
 class PrivateFileStore(Protocol):
     @property
     def bucket(self) -> str: ...
@@ -58,7 +62,7 @@ class FakePrivateFileStore:
         try:
             return self._objects[object_key][0]
         except KeyError as error:
-            raise PrivateFileStoreUnavailable("private file does not exist") from error
+            raise PrivateFileNotFound("private file does not exist") from error
 
     def delete(self, *, object_key: str) -> None:
         self._objects.pop(object_key, None)
@@ -121,6 +125,8 @@ class AliyunOssPrivateFileStore:
         try:
             return self._client.get_object(object_key).read()
         except Exception as error:
+            if getattr(error, "status", None) == 404:
+                raise PrivateFileNotFound("private file does not exist") from error
             raise PrivateFileStoreUnavailable("private file does not exist") from error
 
     def delete(self, *, object_key: str) -> None:

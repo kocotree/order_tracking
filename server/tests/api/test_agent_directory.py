@@ -195,7 +195,6 @@ def test_agent_directory_uses_web_rules_and_owner_scope(
                              target_path="/shipments/issue156-shipment", dedupe_key="issue156-own"),
                 Product(product_id="issue156-product", source_i_id="ISSUE156",
                         name="测试产品", is_available=True,
-                        image_object_key="products/issue156.png", image_cache_status="cached",
                         source_modified_at=datetime(2026, 9, 21),
                         first_synced_at=datetime(2026, 9, 21),
                         last_synced_at=datetime(2026, 9, 21)),
@@ -204,6 +203,7 @@ def test_agent_directory_uses_web_rules_and_owner_scope(
             session.add(ProductVariant(
                 variant_id="issue156-variant", product_id="issue156-product",
                 source_sku_id="ISSUE156-SKU", properties_value="蓝色",
+                image_object_key="products/issue156.png", image_cache_status="cached",
                 is_available=True, source_modified_at=datetime(2026, 9, 21),
                 first_synced_at=datetime(2026, 9, 21),
                 last_synced_at=datetime(2026, 9, 21),
@@ -219,11 +219,11 @@ def test_agent_directory_uses_web_rules_and_owner_scope(
         assert products["items"][0]["productId"] == "issue156-product"
         assert _tool(client, super_headers, "list_products", page=2, page_size=1)[
             "structuredContent"]["items"] == []
-        image = _tool(client, super_headers, "get_product_image", product_id="issue156-product",
+        image = _tool(client, super_headers, "get_product_image", variant_id="issue156-variant",
                       image_version=products["items"][0]["imageVersion"])
         assert base64.b64decode(image["content"][0]["data"]) == IMAGE
         assert image["content"][0]["mimeType"] == "image/png"
-        assert _tool(client, super_headers, "get_product_image", product_id="issue156-product",
+        assert _tool(client, super_headers, "get_product_image", variant_id="issue156-variant",
                      image_version="stale")["isError"] is True
 
     ordinary_app = create_app(database_url=test_database_url, identity_service=identity,

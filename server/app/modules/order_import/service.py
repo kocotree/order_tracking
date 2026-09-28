@@ -1258,7 +1258,6 @@ class OrderImportService:
                 properties_value=line.properties_value,
                 factory_name=line.factory_name,
             )
-            product = session.get(Product, variant.product_id) if variant else None
             line_issues.extend(dependency_issues)
             candidate_issues.extend(line_issues)
             line_updates.append(
@@ -1267,7 +1266,7 @@ class OrderImportService:
                     line_issues,
                     variant.variant_id if variant else None,
                     factory.factory_id if factory else None,
-                    product.image_object_key if product else None,
+                    variant.cached_image_key if variant else None,
                 )
             )
         candidate_issues = list(dict.fromkeys(candidate_issues))
@@ -1556,7 +1555,6 @@ class OrderImportService:
         for row, source in group:
             row = effective_rows[source.source_record_pk]
             variant, factory, line_issues = self.match_source_row(session, row)
-            product = session.get(Product, variant.product_id) if variant else None
             issues.extend(line_issues)
             candidate_line = OrderImportCandidateLine(
                 candidate_id=candidate.candidate_id,
@@ -1574,7 +1572,7 @@ class OrderImportService:
                 matched_variant_id=variant.variant_id if variant else None,
                 matched_factory_id=factory.factory_id if factory else None,
                 image_object_key_snapshot=(
-                    product.image_object_key if variant and product else None
+                    variant.cached_image_key if variant else None
                 ),
                 validation_issues=line_issues,
             )

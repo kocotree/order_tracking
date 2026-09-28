@@ -124,12 +124,12 @@ def register_directory_tools(
         return read("list_products", query)
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-    def get_product_image(product_id: str, image_version: str) -> CallToolResult:
-        """按列表返回的 productId 和 imageVersion 受权读取私有产品图片。"""
+    def get_product_image(variant_id: str, image_version: str) -> CallToolResult:
+        """按列表返回的 variantId 和 imageVersion 受权读取私有 SKU 图片。"""
         def query(user_id: str, _request_id: str) -> dict[str, Any]:
             admin(user_id)
             object_key = products.get_cached_image_object_key(
-                product_id=product_id, image_version=image_version,
+                variant_id=variant_id, image_version=image_version,
             )
             if object_key is None:
                 raise ResourceNotFound("product image was not found")

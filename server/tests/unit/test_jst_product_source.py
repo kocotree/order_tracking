@@ -955,14 +955,19 @@ def test_targeted_product_query_uses_exact_name_or_style_without_catalog_scan(
 
 
 def test_product_image_store_caches_public_https_image_in_private_storage() -> None:
+    from base64 import b64decode
+
     private_files = FakePrivateFileStore(bucket="shared-test-private")
+    content = b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
 
     def respond(request: httpx.Request) -> httpx.Response:
         assert str(request.url) == "https://img.example.test/product.jpg"
         return httpx.Response(
             200,
             headers={"content-type": "image/jpeg"},
-            content=b"safe-image-bytes",
+            content=content,
         )
 
     store = PrivateProductImageStore(
@@ -976,5 +981,8 @@ def test_product_image_store_caches_public_https_image_in_private_storage() -> N
         object_key="products/sku-1/source.jpg",
     )
 
-    assert cached.object_key == "products/sku-1/source.jpg"
-    assert private_files.get(object_key=cached.object_key) == b"safe-image-bytes"
+    assert cached.object_key.startswith("products/images/")
+    assert private_files.get(object_key=cached.object_key) == content
+    repeated = store.cache(source_ref="https://img.example.test/product.jpg", object_key="ignored")
+    assert repeated.object_key == cached.object_key
+    assert private_files.object_count == 1

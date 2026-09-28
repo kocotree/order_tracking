@@ -5,7 +5,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from hashlib import md5
+from hashlib import md5, sha256
+from io import BytesIO
 from ipaddress import ip_address
 from pathlib import Path
 from time import monotonic, sleep, time
@@ -14,6 +15,7 @@ from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
 
 import httpx
+from PIL import Image
 
 from app.adapters.private_files import PrivateFileStore
 
@@ -785,6 +787,9 @@ class PrivateProductImageStore:
                     content = response.content
                     if len(content) > self._max_bytes:
                         raise ProductImageCacheError("product_image_too_large")
+                    with Image.open(BytesIO(content)) as image:
+                        image.verify()
+                    object_key = f"products/images/{sha256(content).hexdigest()}"
                     self._file_store.put(
                         object_key=object_key,
                         content=content,

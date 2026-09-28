@@ -9841,16 +9841,16 @@
         ]
       }
     },
-    "/api/v1/admin/products/{product_id}/image": {
+    "/api/v1/admin/products/variants/{variant_id}/image": {
       "get": {
-        "operationId": "get_product_image_api_v1_admin_products__product_id__image_get",
+        "operationId": "get_product_image_api_v1_admin_products_variants__variant_id__image_get",
         "parameters": [
           {
             "in": "path",
-            "name": "product_id",
+            "name": "variant_id",
             "required": true,
             "schema": {
-              "title": "Product Id",
+              "title": "Variant Id",
               "type": "string"
             }
           },

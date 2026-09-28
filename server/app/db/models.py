@@ -399,6 +399,14 @@ class ProductVariant(Base):
     source_category: Mapped[str | None] = mapped_column(String(100))
     source_enabled: Mapped[int | None] = mapped_column(Integer)
     is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
+    image_source_ref: Mapped[str | None] = mapped_column(String(1000))
+    image_object_key: Mapped[str | None] = mapped_column(String(500))
+    image_cache_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="missing"
+    )
+    image_cache_error: Mapped[str | None] = mapped_column(String(100))
+    image_revision: Mapped[str | None] = mapped_column(String(36))
+    image_source_modified_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
     source_modified_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
     first_synced_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
     last_synced_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
@@ -411,6 +419,10 @@ class ProductVariant(Base):
         server_default=text("CURRENT_TIMESTAMP(6)"),
         server_onupdate=text("CURRENT_TIMESTAMP(6)"),
     )
+
+    @property
+    def cached_image_key(self) -> str | None:
+        return self.image_object_key if self.image_cache_status == "cached" else None
 
 
 class ProductSyncRun(Base):

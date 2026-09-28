@@ -89,9 +89,11 @@ class OrderSourceUpdateService(OrderService):
         self._source = source
 
     def _check(
-        self, session: Session, actor_id: str, order_id: str, version: int, *, lock: bool = False
+        self, session: Session, actor_id: str | None, order_id: str, version: int,
+        *, lock: bool = False,
     ) -> Order:
-        self._require_admin(session, actor_id)
+        if actor_id is not None:
+            self._require_admin(session, actor_id)
         order = (
             self._locked_order(session, order_id)
             if lock
@@ -339,7 +341,7 @@ class OrderSourceUpdateService(OrderService):
     def _read(
         self,
         order_id: str,
-        actor_id: str,
+        actor_id: str | None,
         version: int,
         detail_ids: list[str] | None,
         *,
@@ -647,26 +649,7 @@ class OrderSourceUpdateService(OrderService):
                     or detail.dispatch_state != "UNASSIGNED"
                 ):
                     raise OrderConflict("明细版本或派工状态已变化，请重新检查")
-                for key, value in preview.payload["updates"][detail_id].items():
-                    if key in {"contract_ship_date", "source_contract_ship_date"}:
-                        value = _date(value)
-                    elif key == "accepted_source_modified_at":
-                        value = datetime.fromisoformat(value) if value else None
-                    setattr(detail, key, value)
-                detail.version += 1
-                detail.updated_at = self._now()
-            if order.tracker_locked_at is None:
-                trackers = list(dict.fromkeys(
-                    tracker
-                    for row in sorted(rows, key=lambda item: (item.sort_order, item.detail_id))
-                    for tracker in (
-                        row.source_trackers or ([row.source_tracker] if row.source_tracker else [])
-                    )
-                    if tracker in TRACKERS
-                ))
-                order.trackers = trackers
-                order.tracker = trackers[0] if trackers else None
-            self._touch(order, actor_id)
+            self._apply_source_values(order, rows, preview.payload["updates"], actor_id)
             preview.consumed_at = self._now()
             self._add_audit(
                 session,
@@ -704,7 +687,79 @@ class OrderSourceUpdateService(OrderService):
             or (key == "source_shipped_quantity" and detail.shipped_override_enabled)
         )
 
-    def _touch(self, order: Order, actor_id: str) -> None:
+    def _touch(self, order: Order, actor_id: str | None) -> None:
         order.version += 1
         order.updated_by = actor_id
         order.updated_at = self._now()
+
+    def refresh_automatically(self, *, order_id: str, request_id: str) -> int:
+        with self._session_factory() as session:
+            order = self._require_order(session, order_id)
+            if order.source != "feishu":
+                raise OrderConflict("自动来源更新仅处理飞书订单")
+            version = order.version
+        versions, fetched = self._read(order_id, None, version, None)
+        with self._session_factory() as session, session.begin():
+            order = self._check(session, None, order_id, version, lock=True)
+            rows = self._details(session, order_id, lock=True)
+            updates = {}
+            for detail in rows:
+                if detail.detail_id not in fetched:
+                    continue
+                if (
+                    detail.version != versions[detail.detail_id]
+                    or detail.dispatch_state != "UNASSIGNED"
+                ):
+                    raise OrderConflict("明细已变化，本轮停止自动更新及派工")
+                updates[detail.detail_id] = self._values(session, fetched[detail.detail_id], detail)
+            if set(updates) != set(versions):
+                raise OrderConflict("来源明细集合已变化")
+            changed = False
+            for detail in rows:
+                for key, value in updates.get(detail.detail_id, {}).items():
+                    current = getattr(detail, key)
+                    if isinstance(current, date):
+                        current = current.isoformat()
+                    if key == "accepted_raw_fields":
+                        changed |= _hash(current) != _hash(value)
+                    else:
+                        changed |= current != value
+            if changed:
+                self._apply_source_values(order, rows, updates, None)
+            self._add_audit(
+                session, request_id=request_id,
+                action="order.source_refreshed" if changed else "order.source_checked",
+                order_id=order_id, actor_id=None,
+                changes={"sources": updates, "content": (
+                    "自动更新未派工明细来源资料" if changed else "自动核对来源资料无变化"
+                )},
+            )
+            return order.version
+
+    def _apply_source_values(
+        self, order: Order, rows: list[OrderDetail], updates: dict[str, Any],
+        actor_id: str | None,
+    ) -> None:
+        for detail in rows:
+            if detail.detail_id not in updates:
+                continue
+            for key, value in updates[detail.detail_id].items():
+                if key in {"contract_ship_date", "source_contract_ship_date"}:
+                    value = _date(value)
+                elif key == "accepted_source_modified_at":
+                    value = datetime.fromisoformat(value) if value else None
+                setattr(detail, key, value)
+            detail.version += 1
+            detail.updated_at = self._now()
+        if order.tracker_locked_at is None:
+            trackers = list(dict.fromkeys(
+                tracker
+                for row in sorted(rows, key=lambda item: (item.sort_order, item.detail_id))
+                for tracker in (
+                    row.source_trackers or ([row.source_tracker] if row.source_tracker else [])
+                )
+                if tracker in TRACKERS
+            ))
+            order.trackers = trackers
+            order.tracker = trackers[0] if trackers else None
+        self._touch(order, actor_id)

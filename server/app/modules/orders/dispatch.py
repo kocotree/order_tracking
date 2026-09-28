@@ -134,9 +134,24 @@ class OrderDispatchService(OrderSourceUpdateService):
             ):
                 raise OrderConflict("派工预览已失效，请重新检查")
             detail_ids: list[str] = list(pending.payload["detail_ids"])
+            versions = dict(pending.payload["versions"])
 
+        return self._dispatch_saved(
+            actor_id=actor_id, order_id=order_id, version=version,
+            detail_ids=detail_ids, versions=versions, request_id=request_id,
+            scope=scope, idempotency_key=idempotency_key, request_hash=request_hash,
+            preview_id=preview_id,
+        )
+
+    def _dispatch_saved(
+        self, *, actor_id: str | None, order_id: str, version: int,
+        detail_ids: list[str], versions: dict[str, int], request_id: str,
+        scope: str, idempotency_key: str, request_hash: str,
+        preview_id: str | None = None,
+    ) -> OrderSnapshot:
         with self._session_factory() as session, session.begin():
-            self._require_admin(session, actor_id)
+            if actor_id is not None:
+                self._require_admin(session, actor_id)
             order = self._locked_order(session, order_id)
             repeated = session.scalar(
                 select(IdempotencyRecord)
@@ -154,8 +169,8 @@ class OrderDispatchService(OrderSourceUpdateService):
                 raise OrderConflict("订单状态或版本已变化，请重新加载")
             if order.lifecycle not in {"DRAFT", "PUBLISHED"}:
                 raise OrderConflict("当前订单不支持明细派工")
-            preview = session.get(OrderChangePreview, preview_id)
-            if (
+            preview = session.get(OrderChangePreview, preview_id) if preview_id else None
+            if preview_id and (
                 preview is None
                 or preview.order_id != order_id
                 or preview.actor_id != actor_id
@@ -174,8 +189,24 @@ class OrderDispatchService(OrderSourceUpdateService):
             for row in ordered:
                 if row.dispatch_state != "UNASSIGNED":
                     raise OrderConflict("所选明细包含已派工行，请重新选择")
-                if row.version != preview.payload["versions"][row.detail_id]:
+                if row.version != versions[row.detail_id]:
                     raise OrderConflict("明细版本已变化，请重新检查")
+                if actor_id is None and row.auto_dispatch_paused:
+                    raise OrderConflict("人工撤回明细暂停自动派工")
+            if actor_id is None:
+                factory_ids = {row.matched_factory_id for row in ordered}
+                if len(factory_ids) != 1 or None in factory_ids:
+                    raise OrderConflict("自动派工工厂匹配无效")
+                factory_id = ordered[0].matched_factory_id
+                factory = session.get(Factory, factory_id)
+                complete_ids = {
+                    row.detail_id for row in rows
+                    if row.dispatch_state == "UNASSIGNED"
+                    and (row.matched_factory_id == factory_id
+                         or (factory and row.factory_name == factory.factory_name))
+                }
+                if complete_ids != set(detail_ids):
+                    raise OrderConflict("同厂待派工明细已变化")
 
             # Re-validate under locks; products, factories and accounts are
             # read with row locks in a fixed sorted order so a concurrent
@@ -205,7 +236,7 @@ class OrderDispatchService(OrderSourceUpdateService):
                     tracker
                     for row in all_rows
                     for tracker in self._row_trackers(row)
-                    if tracker
+                    if tracker and (actor_id is not None or tracker in TRACKERS)
                 ))
                 if not trackers or any(tracker not in TRACKERS for tracker in trackers):
                     raise OrderConflict("来源跟单信息缺失或无效，不能首次派工")
@@ -271,6 +302,7 @@ class OrderDispatchService(OrderSourceUpdateService):
                 row.assignment_id = assignment.order_assignment_id
                 row.dispatch_batch_id = batch_id
                 row.dispatch_state = "ASSIGNED"
+                row.auto_dispatch_paused = False
                 row.version += 1
                 row.updated_at = now
 
@@ -298,7 +330,8 @@ class OrderDispatchService(OrderSourceUpdateService):
             order.version += 1
             order.updated_at = now
             order.updated_by = actor_id
-            preview.consumed_at = now
+            if preview is not None:
+                preview.consumed_at = now
 
             self._add_audit(
                 session,
@@ -323,7 +356,7 @@ class OrderDispatchService(OrderSourceUpdateService):
                         for fid in sorted(factory_assignment_ids)
                         for aid in factory_assignment_ids[fid]
                     ],
-                    "sourcePreviewId": preview.payload["source_preview_id"],
+                    "sourcePreviewId": preview.payload["source_preview_id"] if preview else None,
                     "lifecycleBefore": before_lifecycle,
                     "lifecycleAfter": order.lifecycle,
                 },
@@ -362,6 +395,45 @@ class OrderDispatchService(OrderSourceUpdateService):
                 )
             )
             return result
+
+    def dispatch_automatically(self, *, order_id: str, request_id: str) -> dict[str, Any]:
+        with self._session_factory() as session:
+            order = self._require_order(session, order_id)
+            if order.source != "feishu" or order.lifecycle not in {"DRAFT", "PUBLISHED"}:
+                raise OrderConflict("当前订单不参与自动派工")
+            rows = self._details(session, order_id)
+            factory_names = {
+                factory.factory_id: factory.factory_name
+                for factory in session.scalars(select(Factory))
+            }
+            groups: dict[str, list[str]] = {}
+            for row in rows:
+                if row.dispatch_state != "UNASSIGNED":
+                    continue
+                factory_id = row.matched_factory_id
+                if factory_id is None:
+                    factory_id = next((fid for fid, name in factory_names.items()
+                                       if name == row.factory_name), None)
+                if factory_id is not None:
+                    groups.setdefault(factory_id, []).append(row.detail_id)
+            versions = {row.detail_id: row.version for row in rows}
+            version = order.version
+        dispatched = 0
+        failures = {}
+        for factory_id, detail_ids in sorted(groups.items()):
+            try:
+                result = self._dispatch_saved(
+                    actor_id=None, order_id=order_id, version=version,
+                    detail_ids=detail_ids, versions=versions, request_id=request_id,
+                    scope=f"order.auto_dispatch:{order_id}",
+                    idempotency_key=f"{request_id}:{factory_id}",
+                    request_hash=_hash([detail_ids, versions]),
+                )
+                version = result.version
+                dispatched += 1
+            except (OrderConflict, OrderValidationError) as error:
+                failures[factory_id] = str(error)
+        return {"dispatched_groups": dispatched, "blocked_factories": failures}
 
     # ------------------------------------------------------------------
     # validation

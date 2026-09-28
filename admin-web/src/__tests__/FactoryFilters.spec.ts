@@ -2,23 +2,20 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { afterEach, expect, it, vi } from "vitest";
 import OrdersPage from "@/pages/OrdersPage.vue";
-import OrderImportPage from "@/pages/OrderImportPage.vue";
 import RepairsPage from "@/pages/RepairsPage.vue";
-import { identityApi, orderApi, orderImportApi, repairApi } from "@/api/client";
+import { identityApi, orderApi, repairApi } from "@/api/client";
 
 afterEach(() => vi.restoreAllMocks());
-it.each(["orders", "imports", "repairs"])("%s preserves selected factories through candidate search and reset", async (page) => {
+it.each(["orders", "repairs"])("%s preserves selected factories through candidate search and reset", async (page) => {
   vi.spyOn(identityApi, "listFactoryOptions").mockResolvedValue({items:[{factoryId:"a",factoryName:"工厂甲",supplierNumber:"a"},{factoryId:"b",factoryName:"工厂乙",supplierNumber:"b"}],total:2});
   vi.spyOn(identityApi, "listFactories").mockResolvedValue({items:[{factoryName:"工厂甲"},{factoryName:"工厂乙"}],total:2} as never);
   vi.spyOn(repairApi, "listFactoryOptions").mockResolvedValue({items:["工厂甲","工厂乙"]});
   vi.spyOn(repairApi, "listPeriodOptions").mockResolvedValue({items:[]});
-  vi.spyOn(orderImportApi, "latestRun").mockResolvedValue(null);
   const orders = vi.spyOn(orderApi, "list").mockResolvedValue({items:[],total:21} as never);
-  const imports = vi.spyOn(orderImportApi, "list").mockResolvedValue({items:[],total:21} as never);
   const repairs = vi.spyOn(repairApi, "listSummaries").mockResolvedValue({items:[],total:21} as never);
-  const component = page === "orders" ? OrdersPage : page === "imports" ? OrderImportPage : RepairsPage;
-  const list = page === "orders" ? orders : page === "imports" ? imports : repairs;
-  const field = page === "orders" ? "factoryIds" : page === "imports" ? "factoryNames" : "factories";
+  const component = page === "orders" ? OrdersPage : RepairsPage;
+  const list = page === "orders" ? orders : repairs;
+  const field = page === "orders" ? "factoryIds" : "factories";
   const router = createRouter({history:createMemoryHistory(),routes:[{path:"/",component}]});
   await router.push("/");
   const wrapper = mount(component,{global:{plugins:[router],stubs:{AdminShell:{template:"<div><slot/></div>"}}}});
@@ -31,10 +28,8 @@ it.each(["orders", "imports", "repairs"])("%s preserves selected factories throu
   expect(list).toHaveBeenCalledTimes(count);
   expect(wrapper.get('.order-multiselect').findAll('.order-multiselect-option input[type="checkbox"]').filter(x=>x.isVisible())).toHaveLength(1);
   await wrapper.get('.order-multiselect-option input').setValue(true); await flushPromises();
-  if(page === "imports") expect(list).toHaveBeenCalledTimes(count);
   await input.setValue("乙");
   await wrapper.get('.order-multiselect-option input').setValue(true); await flushPromises();
-  if(page === "imports") await wrapper.get('form').trigger("submit");
   await flushPromises();
   expect(list).toHaveBeenLastCalledWith(expect.objectContaining({[field]:page === "orders"?["a","b"]:["工厂甲","工厂乙"],page:1}));
   await input.setValue("无匹配");

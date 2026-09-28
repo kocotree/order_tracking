@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.models import (
     OrderDetail,
     OrderImportCandidateLine,
-    OrderImportRun,
     OrderImportSourceCursor,
     OrderImportSourceRecord,
     ProcessingContract,
@@ -104,16 +103,11 @@ def test_upgrade_preserves_execution_ids_and_unassigned_legacy_drafts(
         # These columns also exist at revision 0033. Seed actual pre-migration import data.
         with Session(test_database_engine) as session, session.begin():
             now = datetime(2026, 9, 1)
-            session.add(
-                OrderImportRun(
-                    run_id="legacy-run",
-                    status="COMPLETED",
-                    started_at=now,
-                    requested_by=admin,
-                    request_id="legacy-run",
-                )
-            )
-            session.flush()
+            session.execute(text("""
+                INSERT INTO order_import_runs
+                    (run_id, status, started_at, requested_by, request_id)
+                VALUES ('legacy-run', 'COMPLETED', :now, :admin, 'legacy-run')
+            """), {"now": now, "admin": admin})
             session.add(
                 OrderImportSourceCursor(
                     source_scope="legacy",

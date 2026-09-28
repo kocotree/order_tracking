@@ -56,7 +56,7 @@ function content(){
  <section class="section-card"><header class="detail-section-header"><h2>操作日志</h2></header><div class="dispatch-logs">已从飞书导入订单资料${logs.map(log=>`<br>${esc(log)}`).join('')}</div></section></article>`;
 }
 function render(){
- document.querySelector('#app').innerHTML=renderAppShell({content:content(),notifications:[],activeModule:'orders',topbarTitle:'订单详情 · 407#',sidebarSectionLabel:'订单与发货',sideNavItems:[{label:'订单列表',icon:'orders',route:'/orders',isActive:true},{label:'待导入订单',icon:'import',route:'/pending-imports'},{label:'发货单列表',icon:'shipment',route:'/shipments'},{label:'返修退回',icon:'repair',route:'/repairs'}]});
+ document.querySelector('#app').innerHTML=renderAppShell({content:content(),notifications:[],activeModule:'orders',topbarTitle:'订单详情 · 407#',sidebarSectionLabel:'订单与发货',sideNavItems:[{label:'订单列表',icon:'orders',route:'/orders',isActive:true},{label:'发货单列表',icon:'shipment',route:'/shipments'},{label:'返修退回',icon:'repair',route:'/repairs'}]});
  bindAppShell([]);
  document.querySelectorAll('[data-route]').forEach(b=>b.addEventListener('click',()=>location.href='./index.html#'+b.dataset.route));
  document.querySelector('[data-back]').onclick=()=>location.href='./index.html#/orders';

@@ -5,8 +5,6 @@ import { bindDashboardPage, renderDashboardPage } from "./pages/dashboard.js";
 import { bindNotificationListPage, renderNotificationListPage } from "./pages/notification-list.js";
 import { bindOrderListPage, renderOrderListPage } from "./pages/order-list.js";
 import { bindOrderDetailPage, renderOrderDetailPage } from "./pages/order-detail.js?v=20260915-issue-102";
-import { bindPendingImportListPage, renderPendingImportListPage } from "./pages/pending-import-list.js";
-import { bindPendingImportDetailPage, renderPendingImportDetailPage } from "./pages/pending-import-detail.js?v=20260915-issue-102";
 import { bindShipmentListPage, renderShipmentListPage } from "./pages/shipment-list.js";
 import { bindShipmentDetailPage, renderShipmentDetailPage } from "./pages/shipment-detail.js";
 import { bindRepairListPage, renderRepairListPage } from "./pages/repair-list.js";
@@ -50,7 +48,6 @@ function renderRoute(route) {
   }
 
   const orderDetailMatch = route.match(/^\/orders\/(.+)$/);
-  const pendingImportDetailMatch = route.match(/^\/pending-imports\/(.+)$/);
   const shipmentDetailMatch = route.match(/^\/shipments\/(.+)$/);
   const repairDetailMatch = route.match(/^\/repairs\/(.+)$/);
 
@@ -79,7 +76,6 @@ function renderRoute(route) {
       sidebarSectionLabel: "订单与发货",
       sideNavItems: [
         { label: "订单列表", icon: "orders", route: "/orders", isActive: true },
-        { label: "待导入订单", icon: "import", route: "/pending-imports" },
         { label: "发货单列表", icon: "shipment", route: "/shipments" },
         { label: "返修退回", icon: "repair", route: "/repairs" },
       ],
@@ -87,27 +83,12 @@ function renderRoute(route) {
       bind: bindOrderListPage,
       title: "订单列表｜跟单管理系统低保真原型",
     },
-    "/pending-imports": {
-      activeModule: "orders",
-      topbarTitle: "待导入订单",
-      sidebarSectionLabel: "订单与发货",
-      sideNavItems: [
-        { label: "订单列表", icon: "orders", route: "/orders" },
-        { label: "待导入订单", icon: "import", route: "/pending-imports", isActive: true },
-        { label: "发货单列表", icon: "shipment", route: "/shipments" },
-        { label: "返修退回", icon: "repair", route: "/repairs" },
-      ],
-      content: renderPendingImportListPage,
-      bind: bindPendingImportListPage,
-      title: "待导入订单｜跟单管理系统低保真原型",
-    },
     "/shipments": {
       activeModule: "orders",
       topbarTitle: "发货单列表",
       sidebarSectionLabel: "订单与发货",
       sideNavItems: [
         { label: "订单列表", icon: "orders", route: "/orders" },
-        { label: "待导入订单", icon: "import", route: "/pending-imports" },
         { label: "发货单列表", icon: "shipment", route: "/shipments", isActive: true },
         { label: "返修退回", icon: "repair", route: "/repairs" },
       ],
@@ -121,7 +102,6 @@ function renderRoute(route) {
       sidebarSectionLabel: "订单与发货",
       sideNavItems: [
         { label: "订单列表", icon: "orders", route: "/orders" },
-        { label: "待导入订单", icon: "import", route: "/pending-imports" },
         { label: "发货单列表", icon: "shipment", route: "/shipments" },
         { label: "返修退回", icon: "repair", route: "/repairs", isActive: true },
       ],
@@ -135,7 +115,6 @@ function renderRoute(route) {
       sidebarSectionLabel: "订单与发货",
       sideNavItems: [
         { label: "订单列表", icon: "orders", route: "/orders" },
-        { label: "待导入订单", icon: "import", route: "/pending-imports" },
         { label: "发货单列表", icon: "shipment", route: "/shipments" },
         { label: "返修退回", icon: "repair", route: "/repairs", isActive: true },
       ],
@@ -179,30 +158,12 @@ function renderRoute(route) {
         sidebarSectionLabel: "订单与发货",
         sideNavItems: [
           { label: "订单列表", icon: "orders", route: "/orders", isActive: true },
-          { label: "待导入订单", icon: "import", route: "/pending-imports" },
           { label: "发货单列表", icon: "shipment", route: "/shipments" },
           { label: "返修退回", icon: "repair", route: "/repairs" },
         ],
         content: () => renderOrderDetailPage(orderNo),
         bind: () => bindOrderDetailPage(orderNo),
         title: `${orderNo} 订单详情｜跟单管理系统低保真原型`,
-      }
-    : null;
-  const pendingImportOrderNo = pendingImportDetailMatch ? decodeURIComponent(pendingImportDetailMatch[1]) : "";
-  const pendingImportDetailPage = pendingImportDetailMatch
-    ? {
-        activeModule: "orders",
-        topbarTitle: `待导入订单详情 · ${pendingImportOrderNo}`,
-        sidebarSectionLabel: "订单与发货",
-        sideNavItems: [
-          { label: "订单列表", icon: "orders", route: "/orders" },
-          { label: "待导入订单", icon: "import", route: "/pending-imports", isActive: true },
-          { label: "发货单列表", icon: "shipment", route: "/shipments" },
-          { label: "返修退回", icon: "repair", route: "/repairs" },
-        ],
-        content: () => renderPendingImportDetailPage(pendingImportOrderNo),
-        bind: () => bindPendingImportDetailPage(pendingImportOrderNo),
-        title: `${pendingImportOrderNo} 待导入订单详情｜跟单管理系统低保真原型`,
       }
     : null;
   const shipmentNo = shipmentDetailMatch ? decodeURIComponent(shipmentDetailMatch[1]) : "";
@@ -213,7 +174,6 @@ function renderRoute(route) {
         sidebarSectionLabel: "订单与发货",
         sideNavItems: [
           { label: "订单列表", icon: "orders", route: "/orders" },
-          { label: "待导入订单", icon: "import", route: "/pending-imports" },
           { label: "发货单列表", icon: "shipment", route: "/shipments", isActive: true },
           { label: "返修退回", icon: "repair", route: "/repairs" },
         ],
@@ -230,7 +190,6 @@ function renderRoute(route) {
         sidebarSectionLabel: "订单与发货",
         sideNavItems: [
           { label: "订单列表", icon: "orders", route: "/orders" },
-          { label: "待导入订单", icon: "import", route: "/pending-imports" },
           { label: "发货单列表", icon: "shipment", route: "/shipments" },
           { label: "返修退回", icon: "repair", route: "/repairs", isActive: true },
         ],
@@ -239,7 +198,7 @@ function renderRoute(route) {
         title: `${repairNo} 返修详情｜跟单管理系统低保真原型`,
       }
     : null;
-  const page = repairDetailPage ?? shipmentDetailPage ?? pendingImportDetailPage ?? detailPage ?? routes[route] ?? routes["/dashboard"];
+  const page = repairDetailPage ?? shipmentDetailPage ?? detailPage ?? routes[route] ?? routes["/dashboard"];
 
   appRoot.innerHTML = renderAppShell({
     content: page.content(),
@@ -254,7 +213,7 @@ function renderRoute(route) {
   page.bind();
   document.title = page.title;
 
-  if (!routes[route] && !detailPage && !pendingImportDetailPage && !shipmentDetailPage && !repairDetailPage) {
+  if (!routes[route] && !detailPage && !shipmentDetailPage && !repairDetailPage) {
     showToast("页面待设计", "当前地址尚未开放，已返回订单看板。");
   }
 }

@@ -19,7 +19,6 @@
 
       <div class="dashboard-overview">
         <section class="dashboard-stat-grid" aria-label="订单统计">
-          <RouterLink class="dashboard-stat-card" to="/orders/import"><span>待导入订单</span><strong>{{ dashboard?.pendingImportOrders ?? 0 }}</strong></RouterLink>
           <RouterLink class="dashboard-stat-card" :to="{ path: '/shipments', query: { dateFrom: shanghaiToday(), dateTo: shanghaiToday() } }"><span>今日发货记录</span><strong>{{ dashboard?.todayShipments ?? 0 }}</strong></RouterLink>
           <RouterLink class="dashboard-stat-card" :to="{ path: '/orders', query: { status: '已逾期' } }"><span>逾期订单</span><strong>{{ dashboard?.overdueOrders ?? 0 }}</strong></RouterLink>
         </section>

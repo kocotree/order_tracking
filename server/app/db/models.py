@@ -498,9 +498,10 @@ class OrderImportRun(Base):
     active_key: Mapped[str | None] = mapped_column(String(64))
     started_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
-    requested_by: Mapped[str] = mapped_column(
-        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    requested_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
     )
+    sync_result: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     request_id: Mapped[str] = mapped_column(String(64), nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(String(191))
     pages_read: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
@@ -683,11 +684,11 @@ class Order(Base):
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
     deleted_by: Mapped[str | None] = mapped_column(ForeignKey("users.user_id", ondelete="RESTRICT"))
-    created_by: Mapped[str] = mapped_column(
-        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    created_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
     )
-    updated_by: Mapped[str] = mapped_column(
-        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    updated_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT")
     )
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
@@ -1747,6 +1748,9 @@ class OrderDetail(Base):
     )
     dispatch_batch_id: Mapped[str | None] = mapped_column(String(36))
     dispatch_state: Mapped[str] = mapped_column(String(16), nullable=False)
+    auto_dispatch_paused: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0"
+    )
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)

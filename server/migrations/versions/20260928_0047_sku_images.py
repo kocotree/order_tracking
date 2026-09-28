@@ -2,8 +2,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.mysql import DATETIME
 
-revision = "20260928_0046"
-down_revision = "20260924_0045"
+revision = "20260928_0047"
+down_revision = "20260928_0046"
 branch_labels = None
 depends_on = None
 

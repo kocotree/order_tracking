@@ -2735,6 +2735,10 @@ export interface components {
             startedAt: string;
             /** Status */
             status: string;
+            /** Syncresult */
+            syncResult: {
+                [key: string]: unknown;
+            };
         };
         /** IncomingDifferenceListResponse */
         IncomingDifferenceListResponse: {

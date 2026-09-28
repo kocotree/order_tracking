@@ -62,6 +62,7 @@ class ImportRunSnapshot:
     skipped_records: int
     failed_records: int
     error_code: str | None
+    sync_result: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -279,6 +280,11 @@ class OrderImportService:
             seen_record_ids: set[str] = set()
             skipped = 0
             failed = 0
+            preserved_pending = set(session.scalars(
+                select(OrderImportCandidate.order_no).where(
+                    OrderImportCandidate.status == "PENDING"
+                )
+            )) if run.requested_by is None else set()
             for row in rows:
                 normalized_order_no = (row.order_no or "").strip().upper() or None
                 if normalized_order_no and len(normalized_order_no) > 100:
@@ -300,6 +306,9 @@ class OrderImportService:
                     skipped += 1
                     continue
                 existing_order_no = source.order_no if source is not None else None
+                if {existing_order_no, normalized_order_no} & preserved_pending:
+                    skipped += 1
+                    continue
                 if any(
                     self._order_is_frozen(session, order_no)
                     for order_no in {existing_order_no, normalized_order_no}
@@ -327,7 +336,8 @@ class OrderImportService:
                     session.flush()
                 else:
                     if (
-                        source.source_modified_at is not None
+                        run.requested_by is not None
+                        and source.source_modified_at is not None
                         and row.source_modified_at is not None
                         and (
                             row.source_modified_at < source.source_modified_at
@@ -562,7 +572,6 @@ class OrderImportService:
             if run is None:
                 run = session.scalar(
                     select(OrderImportRun)
-                    .where(OrderImportRun.status == "SUCCEEDED")
                     .order_by(OrderImportRun.started_at.desc(), OrderImportRun.run_id.desc())
                 )
             return self._snapshot(run) if run else None
@@ -982,11 +991,25 @@ class OrderImportService:
     def confirm_candidate(
         self, *, actor_id: str, candidate_id: str, request_id: str, version: int | None = None
     ) -> str:
+        with self._session_factory() as session:
+            self._require_admin(session, actor_id)
+        return self._create_draft(
+            actor_id=actor_id, candidate_id=candidate_id, request_id=request_id, version=version
+        )
+
+    def create_draft_automatically(self, *, candidate_id: str, request_id: str) -> str:
+        return self._create_draft(actor_id=None, candidate_id=candidate_id, request_id=request_id)
+
+    def _create_draft(
+        self, *, actor_id: str | None, candidate_id: str, request_id: str,
+        version: int | None = None,
+    ) -> str:
         now = self._clock().replace(tzinfo=None)
         order_id = str(uuid4())
         try:
             with self._session_factory() as session, session.begin():
-                self._require_admin(session, actor_id)
+                if actor_id is not None:
+                    self._require_admin(session, actor_id)
                 candidate = session.scalar(
                     select(OrderImportCandidate)
                     .where(OrderImportCandidate.candidate_id == candidate_id)
@@ -1029,7 +1052,7 @@ class OrderImportService:
                     ):
                         raise ValueError("candidate source identity changed")
                     fields = source.normalized_fields or {}
-                    if fields.get("contractDateMappingVersion") != 4:
+                    if actor_id is not None and fields.get("contractDateMappingVersion") != 4:
                         raise ValueError("来源解析规则已更新，请先重新获取飞书订单再导入")
                     date_key = f"source:{source.source_record_pk}"
                     old_date_key = self._date_key(line.source_sku_id, line.factory_name)
@@ -1119,7 +1142,7 @@ class OrderImportService:
                             ),
                         },
                         actor_id=actor_id,
-                        source_terminal="web_admin",
+                        source_terminal="web_admin" if actor_id else "system",
                         created_at=now,
                     )
                 )
@@ -1700,7 +1723,7 @@ class OrderImportService:
         request_id: str,
         action: str,
         candidate: OrderImportCandidate,
-        actor_id: str,
+        actor_id: str | None,
         changes: dict[str, object] | None = None,
     ) -> None:
         session.add(
@@ -1715,7 +1738,7 @@ class OrderImportService:
                     **(changes or {}),
                 },
                 actor_id=actor_id,
-                source_terminal="web_admin",
+                source_terminal="web_admin" if actor_id else "system",
             )
         )
 
@@ -1768,4 +1791,5 @@ class OrderImportService:
             skipped_records=run.skipped_records,
             failed_records=run.failed_records,
             error_code=run.error_code,
+            sync_result=run.sync_result,
         )

@@ -132,8 +132,10 @@ it("links statistics to Shanghai today and overdue filters, and requests unread 
   expect(wrapper.get(".dashboard-notification-list strong").text()).toBe("希望工厂提交发货");
   expect(wrapper.get(".dashboard-notification-list small").text()).toBe("希望工厂发货：童帽等，总计560件");
   const links = wrapper.findAll(".dashboard-stat-card");
-  expect(links[1].attributes("href")).toBe("/shipments?dateFrom=2026-09-06&dateTo=2026-09-06");
-  await links[2].trigger("click"); await flushPromises();
+  expect(links).toHaveLength(2);
+  expect(wrapper.text()).not.toContain("待导入订单");
+  expect(links[0].attributes("href")).toBe("/shipments?dateFrom=2026-09-06&dateTo=2026-09-06");
+  await links[1].trigger("click"); await flushPromises();
   expect(router.currentRoute.value.query.status).toBe("已逾期");
   wrapper.unmount(); vi.useRealTimers();
 });

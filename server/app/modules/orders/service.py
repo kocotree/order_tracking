@@ -491,6 +491,7 @@ class OrderService:
             detail.contract_ship_date = assignment.contract_ship_date
             detail.assignment_id = assignment.order_assignment_id
             detail.dispatch_state = "ASSIGNED" if assignment.is_active else "UNASSIGNED"
+            detail.auto_dispatch_paused = not assignment.is_active
             session.flush()
             assignment.detail_id = detail.detail_id
         order.detail_mode = True
@@ -568,6 +569,7 @@ class OrderService:
             for detail in details:
                 if detail.assignment_id in ids:
                     detail.dispatch_state = "UNASSIGNED"
+                    detail.auto_dispatch_paused = True
                     detail.assignment_id = None
                     detail.dispatch_batch_id = None
                     detail.version += 1
@@ -1871,7 +1873,7 @@ class OrderService:
         request_id: str,
         action: str,
         order_id: str,
-        actor_id: str,
+        actor_id: str | None,
         changes: dict[str, object],
     ) -> None:
         session.add(
@@ -1882,7 +1884,7 @@ class OrderService:
                 target_id=order_id,
                 changes=changes,
                 actor_id=actor_id,
-                source_terminal="web",
+                source_terminal="web" if actor_id else "system",
             )
         )
 

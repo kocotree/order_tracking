@@ -42,23 +42,12 @@ def test_agent_order_draft_publish_and_contract_qualification(
                      "Accept": "application/json, text/event-stream"},
         ).json()["result"]["tools"]
         names = {tool["name"] for tool in listed}
-        assert {"start_import_run", "list_import_candidates", "import_candidates",
-                "create_order_draft", "update_order_details", "preview_source_refresh",
+        assert {"get_import_run", "create_order_draft", "update_order_details",
+                "preview_source_refresh",
                 "preview_dispatch", "confirm_dispatch", "list_order_contracts",
                 "export_contract", "withdraw_factory_dispatch", "reopen_order"} <= names
-        start_schema = next(tool for tool in listed if tool["name"] == "start_import_run")
-        assert "idempotency_key" in start_schema["inputSchema"]["required"]
-        started = _call(client, access, "start_import_run", {
-            "idempotency_key": "mcp-153-import-run",
-        })["structuredContent"]
-        same_run = _call(client, access, "start_import_run", {
-            "idempotency_key": "mcp-153-import-run",
-        })["structuredContent"]
-        assert started["runId"] == same_run["runId"]
-        run = _call(client, access, "get_import_run", {
-            "run_id": started["runId"],
-        })["structuredContent"]
-        assert run["runId"] == started["runId"]
+        assert not {"start_import_run", "list_import_candidates", "get_import_candidate",
+                    "import_candidates", "update_candidate_lines", "exclude_candidate"} & names
 
         created = _call(client, access, "create_order_draft", {
             "order_no": "MCP-153", "order_date": "2026-09-21", "tracker": "松子",
@@ -165,14 +154,6 @@ def test_agent_456_source_snapshot_date_and_dispatch(
     )) as client:
         _login(client)
         access = _exchange(client, _code(client)).json()["access_token"]
-        candidates = _call(client, access, "list_import_candidates", {
-            "status": "IMPORTED",
-        })["structuredContent"]["items"]
-        assert len(candidates) == 1
-        audit = _call(client, access, "get_candidate_audit", {
-            "candidate_id": candidates[0]["candidateId"],
-        })["structuredContent"]
-        assert audit["total"] > 0
         current = _call(client, access, "get_order", {"order_id": order_id})[
             "structuredContent"
         ]

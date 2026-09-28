@@ -126,7 +126,7 @@ type ShellModule = {
 
 const modules: ShellModule[] = [
   { id: "dashboard", label: "订单看板", route: "/", items: [{ label: "看板首页", route: "/" }] },
-  { id: "orders", label: "订单与发货", route: "/orders", items: [{ label: "订单列表", route: "/orders", icon: "orders" }, { label: "待导入订单", route: "/orders/import", icon: "import" }, { label: "发货单列表", route: "/shipments", icon: "shipment" }, { label: "返修退回", route: "/repairs", icon: "repair" }] },
+  { id: "orders", label: "订单与发货", route: "/orders", items: [{ label: "订单列表", route: "/orders", icon: "orders" }, { label: "发货单列表", route: "/shipments", icon: "shipment" }, { label: "返修退回", route: "/repairs", icon: "repair" }] },
   { id: "products", label: "产品资料", route: "/products", items: [{ label: "产品列表", route: "/products" }] },
   { id: "factory", label: "工厂资料", route: "/factories", items: [{ label: "工厂列表", route: "/factories" }] },
   { id: "people", label: "人员管理", route: "/people/factory-applications", items: [{ label: "人员管理", route: "/people/factory-applications" }] },

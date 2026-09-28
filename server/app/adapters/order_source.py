@@ -44,7 +44,7 @@ class FeishuOrderSource(Protocol):
     ) -> list[SourceOrderRow]: ...
 
     def read_pages(
-        self, *, modified_since: datetime | None = None
+        self, *, modified_since: datetime | None = None, include_purchase: bool = True
     ) -> Iterable[list[SourceOrderRow]]: ...
 
 
@@ -60,7 +60,7 @@ class DisabledFeishuOrderSource:
         raise ExternalAdapterUnavailable("feishu_order_source_not_configured")
 
     def read_pages(
-        self, *, modified_since: datetime | None = None
+        self, *, modified_since: datetime | None = None, include_purchase: bool = True
     ) -> Iterable[list[SourceOrderRow]]:
         raise ExternalAdapterUnavailable("feishu_order_source_not_configured")
 
@@ -83,7 +83,7 @@ class FakeFeishuOrderSource:
         return [row for page in self.read_pages() for row in page if row.record_id in record_ids]
 
     def read_pages(
-        self, *, modified_since: datetime | None = None
+        self, *, modified_since: datetime | None = None, include_purchase: bool = True
     ) -> Iterable[list[SourceOrderRow]]:
         self.modified_since_requests.append(modified_since)
         for page_number, page in enumerate(self._pages, start=1):
@@ -155,7 +155,7 @@ class AppCredentialFeishuOrderSource:
             raise ExternalAdapterUnavailable("feishu_order_source_unavailable") from error
 
     def read_pages(
-        self, *, modified_since: datetime | None = None
+        self, *, modified_since: datetime | None = None, include_purchase: bool = True
     ) -> Iterable[list[SourceOrderRow]]:
         if modified_since is not None and not self._config.incremental_table_scope_confirmed:
             raise ExternalAdapterUnavailable(
@@ -213,9 +213,8 @@ class AppCredentialFeishuOrderSource:
                         raise ExternalAdapterUnavailable("feishu_base_read_failed")
                     data = payload.get("data") or {}
                     items = data.get("items") or []
-                    yield self._enrich_purchase_quantities(
-                        [self._parse_record(item, field_names) for item in items]
-                    )
+                    rows = [self._parse_record(item, field_names) for item in items]
+                    yield self._enrich_purchase_quantities(rows) if include_purchase else rows
                     if not data.get("has_more"):
                         break
                     page_token = data.get("page_token")

@@ -10,6 +10,7 @@ from app.adapters.order_source import FakeFeishuOrderSource
 from app.adapters.private_files import FakePrivateFileStore
 from app.db.models import (
     Factory,
+    Order,
     OrderImportCandidateLine,
     OrderLine,
     ProcessingContract,
@@ -19,11 +20,35 @@ from app.db.models import (
 from app.modules.contracts import ContractService
 from app.modules.contracts.workbook import ContractWorkbookRenderer
 from app.modules.order_import import OrderImportService
+from app.modules.order_import.auto_sync import OrderAutoSync
 from app.modules.orders import AssignmentInput, DraftLineInput, OrderService
 from app.modules.orders.dispatch import OrderDispatchService
 from tests.integration.test_order_dispatch import _row
 from tests.integration.test_order_import import _seed_import_dependencies
 from tests.integration.test_order_lifecycle import _seed_order_dependencies
+
+
+def test_automatic_import_and_dispatch_freeze_the_sku_image(
+    test_database_engine: Engine,
+) -> None:
+    _seed_import_dependencies(test_database_engine)
+    sessions = sessionmaker(test_database_engine, expire_on_commit=False)
+    with sessions() as session, session.begin():
+        session.get(Product, "product-import").image_object_key = "products/wrong-common"
+        variant = session.get(ProductVariant, "variant-import")
+        variant.image_object_key = "products/sku-auto"
+        variant.image_cache_status = "cached"
+    sync = OrderAutoSync(sessions, source=FakeFeishuOrderSource([[_row()]]))
+    run_id = sync.ensure_due()
+    assert run_id is not None
+    for _ in range(100):
+        if sync.run_step({"runId": run_id}):
+            break
+    else:
+        raise AssertionError("自动同步未完成")
+    with sessions() as session:
+        assert session.scalar(select(Order)).lifecycle == "PUBLISHED"
+        assert session.scalar(select(OrderLine)).image_object_key_snapshot == "products/sku-auto"
 
 
 def test_import_dispatch_and_contract_freeze_sku_image_without_rewriting_history(

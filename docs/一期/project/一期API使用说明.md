@@ -36,7 +36,7 @@
 | 小程序登录 | `/api/v1/mini/auth/wechat`，需要绑定时调用 `/mini/auth/phone`；业务请求使用 `Authorization: Bearer …` |
 | 会话续期 | 网页 `/auth/refresh`，小程序 `/mini/auth/refresh`；客户端合并并发续期，失效后回到登录流程 |
 | 防重复提交 | 声明 `Idempotency-Key` 的接口为一次业务提交保留同一键；不因超时生成新键重复创建 |
-| 并发编辑 | 携带接口定义的版本值；候选单条导入使用 `X-Candidate-Version`。冲突后重新读取，不盲目覆盖他人结果 |
+| 并发编辑 | 携带接口定义的订单/明细版本值。冲突后重新读取，不盲目覆盖他人结果 |
 
 部分幂等头在 OpenAPI 中可空，但运行时对提交动作仍要求提供；以路由中的校验和业务错误为准。不要自行把所有 GET 或 PUT 都加上相同幂等策略。
 
@@ -46,14 +46,14 @@
 
 | 流程 | 顺序 | 成功判断 |
 |---|---|---|
-| 飞书导入 | `POST /admin/import-runs` → `GET /admin/import-runs/{run_id}` → `GET /admin/import-candidates` → 候选详情 → 日期 PATCH → `POST /admin/import-candidates/{candidate_id}/confirm` | 获取任务结束且候选校验通过；导入只生成草稿，不等于发布 |
+| 飞书自动同步 | worker每20分钟执行；`GET /admin/import-runs/latest` 或 `GET /admin/import-runs/{run_id}` 查询 | syncResult包含新建/更新/无变化订单数、派工组数、失败及阻断原因；SUCCEEDED表示任务结束，逐单失败仍须检查 |
 | 草稿发布 | `POST /admin/orders` 或导入草稿 → `PUT /admin/orders/{order_id}` → `POST /admin/orders/{order_id}/publish` → `GET /orders/{order_id}` | 派工完整、日期齐备，相关工厂可见 |
 | 工厂发货 | `GET /factory/shipment-catalog` → `POST /factory/shipments/drafts` → 草稿 PUT／附件上传 → `POST /factory/shipments/drafts/{shipment_id}/submit` | 正式单与有效数量形成；超时先查详情再决定是否重试 |
 | 管理员核对 | `GET /admin/shipments/{shipment_id}/receipt` → 同路径 PUT → `POST /admin/shipments/{shipment_id}/receipt/confirm` | 保存不改进度，整单确认才固化数量；确认后回读订单及单据 |
 | 退回补发 | `POST /admin/shipments/{shipment_id}/returns` → 回读订单 → 工厂普通发货流程 | 退回扣减原派工进度，不建立质检返修单 |
 | 质检返修 | `POST /admin/repair-previews` → 预览 GET → 预览 confirm → 工厂任务 GET → return-draft GET/PUT → return-batches POST | 返修与报废合计计入返回数量，达标自动完成；不改普通订单进度 |
 
-日期 PATCH 路径为 `/admin/import-candidates/{candidate_id}/lines/{candidate_line_id}/date`。收货、返修草稿具体版本字段不要相互套用。
+Issue #187退役 `POST /admin/import-runs` 及全部 `/admin/import-candidates` 操作，返回410且不执行写入；OpenAPI保留旧路径声明供兼容识别。MCP移除候选操作和手动获取工具，保留get_import_run及历史审计查询。订单详情已有来源更新预览/确认和手动派工接口继续有效。收货、返修草稿具体版本字段不要相互套用。
 
 ## 查询与错误处理
 

@@ -4,11 +4,9 @@ from typing import Any
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
-from pydantic import Field
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.contracts import ContractFactoryStatusResponse
-from app.api.order_import import _candidate_response, _run_response
+from app.api.order_import import _run_response
 from app.api.orders import (
     AuditLogListResponse,
     DetailFieldsBatchItem,
@@ -42,54 +40,14 @@ def register_order_tools(
     def order_result(name: str, callback: Callable[[str, str], Any]) -> dict[str, Any]:
         return read(name, lambda user_id, rid: _order_response(callback(user_id, rid), rid))
 
-    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False))
-    def start_import_run(
-        idempotency_key: str = Field(min_length=1, max_length=191),
-    ) -> dict[str, Any]:
-        """手动获取飞书新订单。返回后台任务 ID；重复请求使用同一个幂等键。"""
-        return read("start_import_run", lambda uid, rid: _run_response(
-            imports.create_or_reuse_run(actor_id=uid, request_id=rid,
-                                        idempotency_key=idempotency_key), rid
-        ))
-
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     def get_import_run(run_id: str | None = None) -> dict[str, Any]:
-        """查询指定获取任务；省略任务 ID 时查询最近任务。"""
+        """查询订单自动同步任务；省略任务 ID 时查询最近任务。"""
         return read("get_import_run", lambda uid, rid: (
             _run_response(item, rid) if (item := (
                 imports.get_run(actor_id=uid, run_id=run_id) if run_id
                 else imports.latest_run(actor_id=uid)
             )) else None
-        ))
-
-    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-    def list_import_candidates(
-        status: str = "PENDING", keyword: str = "", category: str | None = None,
-        factory_names: list[str] | None = None, trackers: list[str] | None = None,
-        validation_state: str | None = None, sort_by: str = "default",
-        sort_order: str = "asc", page: int = 1, page_size: int = 20,
-    ) -> dict[str, Any]:
-        """按网页筛选和分页查询飞书候选。写入须使用返回的稳定 ID。"""
-        if page < 1 or not 1 <= page_size <= 100 or len(keyword) > 255:
-            raise ValueError("invalid candidate pagination or keyword")
-
-        def query(uid: str, _rid: str) -> dict[str, Any]:
-            items, total = imports.list_candidates(
-                actor_id=uid, status=status, keyword=keyword, category=category,
-                factory_names=factory_names, trackers=trackers,
-                validation_state=validation_state, sort_by=sort_by,
-                sort_order=sort_order, page=page, page_size=page_size,
-            )
-            return {"items": [_candidate_response(item).model_dump(mode="json", by_alias=True)
-                              for item in items], "total": total,
-                    "page": page, "pageSize": page_size}
-        return read("list_import_candidates", query)
-
-    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-    def get_import_candidate(candidate_id: str) -> dict[str, Any]:
-        """查询候选和全部来源明细、校验问题及版本。"""
-        return read("get_import_candidate", lambda uid, _rid: _candidate_response(
-            imports.get_candidate(actor_id=uid, candidate_id=candidate_id)
         ))
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -102,102 +60,6 @@ def register_order_tools(
                 total=len(items), request_id=rid,
             )
         return read("get_candidate_audit", query)
-
-    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False))
-    def update_candidate_lines(
-        candidate_id: str, version: int,
-        lines: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        """保存候选明细，仅写明确给出的工厂 ID、合同出货时间和已发数量。"""
-        from app.api.order_import import CandidateLinesWrite
-
-        payload = CandidateLinesWrite.model_validate({"version": version, "lines": lines})
-        return read("update_candidate_lines", lambda uid, rid: _candidate_response(
-            imports.save_candidate_lines(
-                actor_id=uid, candidate_id=candidate_id, version=payload.version,
-                updates=[(line.candidate_line_id, line.model_dump(
-                    exclude={"candidate_line_id"}, exclude_unset=True
-                )) for line in payload.lines], request_id=rid,
-            )
-        ))
-
-    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False))
-    def import_candidates(
-        candidates: list[dict[str, Any]], allow_partial: bool = False,
-    ) -> dict[str, Any]:
-        """按候选 ID 和版本导入。默认先预检全部，任一不合格则零提交；仅明确允许时继续合格项。"""
-        if not candidates or len(candidates) > 100:
-            raise ValueError("candidate count must be 1..100")
-        targets: list[tuple[str, int]] = []
-        for item in candidates:
-            candidate_id, version = item.get("candidateId"), item.get("version")
-            if (not isinstance(candidate_id, str) or not candidate_id
-                or isinstance(version, bool) or not isinstance(version, int) or version < 1):
-                raise ValueError("each candidate needs candidateId and positive version")
-            targets.append((candidate_id, version))
-        if len({item[0] for item in targets}) != len(targets):
-            raise ValueError("duplicate candidate ID")
-
-        def execute(uid: str, rid: str) -> dict[str, Any]:
-            checked: list[tuple[str, int, str | None, str | None]] = []
-            for candidate_id, version in targets:
-                try:
-                    candidate = imports.get_candidate(actor_id=uid, candidate_id=candidate_id)
-                except ValueError as failure:
-                    checked.append((candidate_id, version, str(failure), None))
-                    continue
-                error = None
-                imported_order_id = candidate.imported_order_id
-                if imported_order_id and candidate.status == "IMPORTED":
-                    pass
-                elif candidate.status != "PENDING" or candidate.version != version:
-                    error = "candidate state or version changed"
-                elif candidate.validation_state != "READY":
-                    error = "candidate is not ready"
-                checked.append((candidate_id, version, error, imported_order_id))
-            if any(error for _, _, error, _ in checked) and not allow_partial:
-                return {"items": [
-                    {"candidateId": candidate_id, "version": version,
-                     "error": error,
-                     "status": "succeeded" if imported_order_id else "notExecuted",
-                     **({"orderId": imported_order_id} if imported_order_id else {})}
-                    for candidate_id, version, error, imported_order_id in checked
-                ]}
-            results = []
-            stopped = False
-            for candidate_id, version, error, imported_order_id in checked:
-                result = {"candidateId": candidate_id, "version": version}
-                if imported_order_id:
-                    results.append({**result, "status": "succeeded",
-                                    "orderId": imported_order_id})
-                    continue
-                if stopped or error:
-                    results.append({**result, "error": error, "status": "notExecuted"})
-                    continue
-                try:
-                    order_id = imports.confirm_candidate(
-                        actor_id=uid, candidate_id=candidate_id,
-                        version=version, request_id=rid,
-                    )
-                except ValueError as failure:
-                    results.append({**result, "status": "failed", "error": str(failure)})
-                    stopped = not allow_partial
-                except (SQLAlchemyError, TimeoutError):
-                    results.append({**result, "status": "needsReconciliation",
-                                    "error": "结果待核实，请以原候选 ID 重查后重试"})
-                    stopped = True
-                else:
-                    results.append({**result, "status": "succeeded", "orderId": order_id})
-            return {"items": results}
-        return read("import_candidates", execute)
-
-    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
-    def exclude_candidate(candidate_id: str) -> dict[str, Any]:
-        """排除完整待处理候选；不会删除飞书来源。需要用户明确授权。"""
-        def execute(uid: str, rid: str) -> dict[str, Any]:
-            imports.exclude_candidate(actor_id=uid, candidate_id=candidate_id, request_id=rid)
-            return {"excluded": True}
-        return read("exclude_candidate", execute)
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False))
     def create_order_draft(

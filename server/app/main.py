@@ -43,6 +43,7 @@ from app.adapters.wechat import (
     WechatIdentityConfig,
 )
 from app.api.agent_oauth import create_agent_oauth_router
+from app.api.box_labels import create_box_label_router
 from app.api.contracts import create_contract_router
 from app.api.factory_access import create_factory_router
 from app.api.feishu_bot import create_feishu_bot_router
@@ -64,6 +65,14 @@ from app.local_demo import (
 )
 from app.logging import StructuredLogger, configure_uvicorn_access_log_redaction
 from app.mcp.server import create_agent_mcp
+from app.modules.box_labels import BoxLabelService
+from app.modules.box_labels.service import (
+    BoxLabelError,
+    BoxLabelGenerationError,
+    BoxLabelNotFound,
+    BoxLabelPermissionDenied,
+)
+from app.modules.box_labels.workbook import BoxLabelWorkbookRenderer
 from app.modules.contracts import (
     ContractConflict,
     ContractError,
@@ -141,6 +150,7 @@ def create_app(
     order_source: FeishuOrderSource | None = None,
     order_import_service: OrderImportService | None = None,
     contract_service: ContractService | None = None,
+    box_label_service: BoxLabelService | None = None,
     shipment_service: ShipmentService | None = None,
     notifications_audit_service: NotificationsAuditService | None = None,
     incoming_difference_service: IncomingDifferenceService | None = None,
@@ -355,6 +365,14 @@ def create_app(
             ),
             file_store=private_file_store,
         )
+    if box_label_service is None:
+        box_label_service = BoxLabelService(
+            session_factory,
+            renderer=BoxLabelWorkbookRenderer(
+                Path(__file__).resolve().parent / "templates/box_label_v1.xlsx"
+            ),
+            file_store=private_file_store,
+        )
     if local_demo_enabled:
         seed_local_demo_products(session_factory)
     if notifications_audit_service is None:
@@ -385,6 +403,7 @@ def create_app(
     )
     app.include_router(create_order_import_router(order_import_service, identity_service))
     app.include_router(create_contract_router(contract_service, identity_service))
+    app.include_router(create_box_label_router(box_label_service, identity_service))
     app.include_router(create_shipment_router(shipment_service, identity_service))
     app.include_router(
         create_notifications_audit_router(notifications_audit_service, identity_service)
@@ -599,6 +618,21 @@ def create_app(
             status_code, code, message = 500, "contract_generation_failed", "合同文件生成失败"
         else:
             status_code, code, message = 400, "contract_error", "合同操作失败"
+        return JSONResponse(
+            status_code=status_code,
+            content={"code": code, "message": message, "requestId": request.state.request_id},
+        )
+
+    @app.exception_handler(BoxLabelError)
+    async def handle_box_label_error(request: Request, error: BoxLabelError) -> JSONResponse:
+        if isinstance(error, BoxLabelPermissionDenied):
+            status_code, code, message = 403, "permission_denied", "没有权限执行该操作"
+        elif isinstance(error, BoxLabelNotFound):
+            status_code, code, message = 404, "not_found", "箱贴或导出文件不存在"
+        elif isinstance(error, BoxLabelGenerationError):
+            status_code, code, message = 503, "box_label_generation_failed", str(error)
+        else:
+            status_code, code, message = 422, "validation_failed", str(error)
         return JSONResponse(
             status_code=status_code,
             content={"code": code, "message": message, "requestId": request.state.request_id},

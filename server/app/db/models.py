@@ -878,6 +878,35 @@ class ContractExport(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
 
 
+class BoxLabelExport(Base):
+    __tablename__ = "box_label_exports"
+    __table_args__ = (
+        UniqueConstraint("order_id", "group_id", name="uq_box_label_order_group"),
+    )
+
+    export_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    order_id: Mapped[str] = mapped_column(
+        ForeignKey("orders.order_id", ondelete="RESTRICT"), nullable=False
+    )
+    group_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    factory_id: Mapped[str] = mapped_column(
+        ForeignKey("factories.factory_id", ondelete="RESTRICT"), nullable=False
+    )
+    product_id: Mapped[str] = mapped_column(
+        ForeignKey("products.product_id", ondelete="RESTRICT"), nullable=False
+    )
+    color: Mapped[str] = mapped_column(String(255), nullable=False)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    template_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    stored_file_id: Mapped[int] = mapped_column(
+        ForeignKey("stored_files.file_id", ondelete="RESTRICT"), nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+
+
 class Shipment(Base):
     __tablename__ = "shipments"
     __table_args__ = (

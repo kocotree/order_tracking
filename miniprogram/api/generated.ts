@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/box-label-exports/{export_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Label */
+        get: operations["download_label_api_v1_admin_box_label_exports__export_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/contract-exports/{export_id}/download": {
         parameters: {
             query?: never;
@@ -461,6 +478,40 @@ export interface paths {
         get: operations["audit_logs_api_v1_admin_orders__order_id__audit_logs_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/box-labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Labels */
+        get: operations["list_labels_api_v1_admin_orders__order_id__box_labels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{order_id}/box-labels/{group_id}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Label */
+        post: operations["export_label_api_v1_admin_orders__order_id__box_labels__group_id__exports_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2118,6 +2169,41 @@ export interface components {
         Body_upload_draft_file_api_v1_factory_shipments_drafts__shipment_id__files_post: {
             /** File */
             file: string;
+        };
+        /** BoxLabelExportResponse */
+        BoxLabelExportResponse: {
+            /** Downloadurl */
+            downloadUrl: string;
+            /** Exportid */
+            exportId: string;
+            /** Filename */
+            filename: string;
+            /** Requestid */
+            requestId: string;
+        };
+        /** BoxLabelList */
+        BoxLabelList: {
+            /** Items */
+            items: components["schemas"]["BoxLabelRow"][];
+            /** Requestid */
+            requestId: string;
+        };
+        /** BoxLabelRow */
+        BoxLabelRow: {
+            /** Color */
+            color: string;
+            /** Eligible */
+            eligible: boolean;
+            /** Factoryid */
+            factoryId: string;
+            /** Factoryname */
+            factoryName: string;
+            /** Groupid */
+            groupId: string;
+            /** Ineligiblereason */
+            ineligibleReason: string | null;
+            /** Productname */
+            productName: string;
         };
         /** CandidateDateWrite */
         CandidateDateWrite: {
@@ -3977,6 +4063,39 @@ export interface operations {
             };
         };
     };
+    download_label_api_v1_admin_box_label_exports__export_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                export_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     download_export_api_v1_admin_contract_exports__export_id__download_get: {
         parameters: {
             query?: never;
@@ -5040,6 +5159,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditLogListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_labels_api_v1_admin_orders__order_id__box_labels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoxLabelList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_label_api_v1_admin_orders__order_id__box_labels__group_id__exports_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                order_id: string;
+                group_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoxLabelExportResponse"];
                 };
             };
             /** @description Validation Error */

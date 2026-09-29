@@ -485,6 +485,105 @@
         "title": "Body_upload_draft_file_api_v1_factory_shipments_drafts__shipment_id__files_post",
         "type": "object"
       },
+      "BoxLabelExportResponse": {
+        "properties": {
+          "downloadUrl": {
+            "title": "Downloadurl",
+            "type": "string"
+          },
+          "exportId": {
+            "title": "Exportid",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "requestId": {
+            "title": "Requestid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exportId",
+          "filename",
+          "downloadUrl",
+          "requestId"
+        ],
+        "title": "BoxLabelExportResponse",
+        "type": "object"
+      },
+      "BoxLabelList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BoxLabelRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "requestId": {
+            "title": "Requestid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "requestId"
+        ],
+        "title": "BoxLabelList",
+        "type": "object"
+      },
+      "BoxLabelRow": {
+        "properties": {
+          "color": {
+            "title": "Color",
+            "type": "string"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "factoryId": {
+            "title": "Factoryid",
+            "type": "string"
+          },
+          "factoryName": {
+            "title": "Factoryname",
+            "type": "string"
+          },
+          "groupId": {
+            "title": "Groupid",
+            "type": "string"
+          },
+          "ineligibleReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ineligiblereason"
+          },
+          "productName": {
+            "title": "Productname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupId",
+          "factoryId",
+          "factoryName",
+          "productName",
+          "color",
+          "eligible",
+          "ineligibleReason"
+        ],
+        "title": "BoxLabelRow",
+        "type": "object"
+      },
       "CandidateDateWrite": {
         "properties": {
           "contractShipDate": {
@@ -6037,6 +6136,62 @@
         "summary": "Audit Logs"
       }
     },
+    "/api/v1/admin/box-label-exports/{export_id}/download": {
+      "get": {
+        "operationId": "download_label_api_v1_admin_box_label_exports__export_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Label",
+        "tags": [
+          "box-label-admin"
+        ]
+      }
+    },
     "/api/v1/admin/contract-exports/{export_id}/download": {
       "get": {
         "operationId": "download_export_api_v1_admin_contract_exports__export_id__download_get",
@@ -8420,6 +8575,147 @@
         "summary": "Audit Logs",
         "tags": [
           "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/box-labels": {
+      "get": {
+        "operationId": "list_labels_api_v1_admin_orders__order_id__box_labels_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoxLabelList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Labels",
+        "tags": [
+          "box-label-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/box-labels/{group_id}/exports": {
+      "post": {
+        "operationId": "export_label_api_v1_admin_orders__order_id__box_labels__group_id__exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoxLabelExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Label",
+        "tags": [
+          "box-label-admin"
         ]
       }
     },

@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from app.db.models import OrderAssignment
+from app.db.models import Order, OrderAssignment
 from app.modules.orders import OrderConflict
 from app.modules.orders.dispatch import OrderDispatchService
 from tests.integration.test_order_dispatch import _row, setup_dispatch_order
@@ -65,12 +65,28 @@ def test_dispatch_status_value_filter_and_count_share_one_source_detail_rule(
         actor_id=ACTOR, include_drafts=True, dispatch_status="未派工"
     )
     assert total == 1 and [item.order_id for item in items] == [oid]
+    assert service.pending_dispatch_count(actor_id=ACTOR) == 1
+    items, total = service.list_visible(
+        actor_id=ACTOR, include_drafts=True, dispatch_status="待派工"
+    )
+    assert total == 1 and [item.order_id for item in items] == [oid]
 
     partial = dispatch(service, oid, [draft.details[0].detail_id], "partial")
     assert partial.dispatch_status == "部分派工"
     items, total = service.list_visible(actor_id=ACTOR, dispatch_status="部分派工")
     assert total == 1 and [item.order_id for item in items] == [oid]
-    from app.db.models import Order
+    assert service.pending_dispatch_count(actor_id=ACTOR) == 1
+    assert service.list_visible(
+        actor_id=ACTOR, include_drafts=True, dispatch_status="待派工"
+    )[1] == 1
+    with sessions() as session, session.begin():
+        session.get_one(Order, oid).lifecycle = "COMPLETED"
+    assert service.pending_dispatch_count(actor_id=ACTOR) == 0
+    assert service.list_visible(
+        actor_id=ACTOR, include_drafts=True, dispatch_status="待派工"
+    )[1] == 0
+    with sessions() as session, session.begin():
+        session.get_one(Order, oid).lifecycle = "PUBLISHED"
 
     with sessions() as session, session.begin():
         session.add_all(
@@ -100,6 +116,11 @@ def test_dispatch_status_value_filter_and_count_share_one_source_detail_rule(
     )
     assert total == 3
     assert [item.dispatch_status for item in ascending] == ["未派工", "部分派工", "全部派工"]
+    pending, pending_total = service.list_visible(
+        actor_id=ACTOR, include_drafts=True, dispatch_status="待派工", page_size=1
+    )
+    assert pending_total == service.pending_dispatch_count(actor_id=ACTOR) == 2
+    assert len(pending) == 1
     descending, _ = service.list_visible(
         actor_id=ACTOR, include_drafts=True, sort_by="dispatchStatusDesc", page_size=100
     )
@@ -115,6 +136,7 @@ def test_dispatch_status_value_filter_and_count_share_one_source_detail_rule(
     items, total = service.list_visible(actor_id=ACTOR, dispatch_status="全部派工")
     assert total == 2 and oid in [item.order_id for item in items]
     assert service.list_visible(actor_id=ACTOR, dispatch_status="部分派工")[1] == 0
+    assert service.pending_dispatch_count(actor_id=ACTOR) == 1
 
 
 def test_source_overdue_filter_count_and_completion(test_database_engine: Engine):

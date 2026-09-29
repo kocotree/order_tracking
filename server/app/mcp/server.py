@@ -145,9 +145,7 @@ def create_agent_mcp(
             overdue, shipments = orders.dashboard_counts(actor_id=user_id)
             return DashboardResponse(
                 total_orders=total, overdue_orders=overdue,
-                pending_import_orders=(
-                    imports.pending_count(actor_id=user_id) if imports is not None else 0
-                ),
+                pending_dispatch_orders=orders.pending_dispatch_count(actor_id=user_id),
                 today_shipments=shipments,
                 recent_orders=[_order_response(item, request_id) for item in items[:10]],
                 request_id=request_id,

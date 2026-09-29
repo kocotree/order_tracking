@@ -348,6 +348,7 @@ def test_dashboard_counts_all_orders_and_beijing_business_day(
         assert response.status_code == 200
         payload = response.json()
         assert payload["overdueOrders"] == 105
+        assert payload["pendingDispatchOrders"] == 0
         assert payload["todayShipments"] == 2
         assert len(payload["recentOrders"]) == 10
 

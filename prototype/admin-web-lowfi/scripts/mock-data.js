@@ -125,6 +125,15 @@ export const dashboardData = {
   updatedAt: "2026-08-12 15:40",
   stats: [
     {
+      id: "pending-dispatch-orders",
+      label: "待派工订单",
+      value: 7,
+      unit: "单",
+      detail: "含未派工及部分派工",
+      tone: "info",
+      destination: "订单列表",
+    },
+    {
       id: "recent-shipments",
       label: "今日发货记录",
       value: 4,

@@ -182,7 +182,9 @@ def page_orders(
     )
     if status != "all":
         query = query.where(state == status)
-    if dispatch_state != "all":
+    if dispatch_state == "待派工":
+        query = query.where(Order.lifecycle != "COMPLETED", dispatch.in_(["未派工", "部分派工"]))
+    elif dispatch_state != "all":
         query = query.where(dispatch == dispatch_state)
     dates = (
         select(OrderAssignment.contract_ship_date)

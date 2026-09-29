@@ -54,7 +54,7 @@
 
             <label class="order-select-field">
               <span class="sr-only">派工状态</span>
-              <select v-model="dispatchStatus" aria-label="派工状态" @change="search"><option value="all">全部派工状态</option><option value="全部派工">全部派工</option><option value="部分派工">部分派工</option><option value="未派工">未派工</option></select>
+              <select v-model="dispatchStatus" aria-label="派工状态" @change="changeDispatchStatus"><option value="all">全部派工状态</option><option value="全部派工">全部派工</option><option value="部分派工">部分派工</option><option value="未派工">未派工</option></select>
             </label>
             <button class="order-secondary-button" type="button" @click="reset">重置</button>
             <button class="order-primary-button" type="submit">搜索</button>
@@ -160,6 +160,8 @@ const category = ref(queryValue("category"));
 const factoryIds = ref<string[]>(queryValues("factoryId"));
 const selectedTrackers = ref<string[]>(queryValues("tracker"));
 const dispatchStatus = ref(["全部派工", "部分派工", "未派工"].includes(queryValue("dispatchStatus")) ? queryValue("dispatchStatus") : "all");
+const pendingDispatch = ref(queryValue("dispatchStatus") === "待派工");
+const activeDispatchStatus = computed(() => pendingDispatch.value ? "待派工" : dispatchStatus.value);
 const sortBy = ref(initialTableSort ? initialSort : "priority");
 const tableSortKey = ref<TableSortKey | null>(initialTableSort?.[1] as TableSortKey | undefined ?? null);
 const tableSortDirection = ref<"asc" | "desc">(initialTableSort?.[2] === "Desc" ? "desc" : "asc");
@@ -194,7 +196,7 @@ function listQuery() {
   if (category.value) query.category = category.value;
   if (factoryIds.value.length) query.factoryId = factoryIds.value;
   if (selectedTrackers.value.length) query.tracker = selectedTrackers.value;
-  if (dispatchStatus.value !== "all") query.dispatchStatus = dispatchStatus.value;
+  if (activeDispatchStatus.value !== "all") query.dispatchStatus = activeDispatchStatus.value;
   if (sortBy.value !== "priority") query.sortBy = sortBy.value;
   if (page.value !== 1) query.page = String(page.value);
   return query;
@@ -206,7 +208,7 @@ async function load() { const requestId = ++requestSequence;
   loading.value = true;
   errorMessage.value = "";
   try {
-    const result = await orderApi.list({ keyword: keyword.value, status: status.value, dispatchStatus: dispatchStatus.value, category: category.value || undefined, factoryIds: factoryIds.value, trackers: selectedTrackers.value, sortBy: sortBy.value, includeDrafts: true, page: page.value, pageSize });
+    const result = await orderApi.list({ keyword: keyword.value, status: status.value, dispatchStatus: activeDispatchStatus.value, category: category.value || undefined, factoryIds: factoryIds.value, trackers: selectedTrackers.value, sortBy: sortBy.value, includeDrafts: true, page: page.value, pageSize });
     if (requestId !== requestSequence) return;
     const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
     if (page.value > lastPage) { page.value = lastPage; await router?.replace({ path: "/orders", query: listQuery() }); await load(); return; }
@@ -221,6 +223,7 @@ async function load() { const requestId = ++requestSequence;
 
 async function syncAndLoad() { await router?.replace({ path: "/orders", query: listQuery() }); await load(); }
 async function search() { page.value = 1; await syncAndLoad(); }
+async function changeDispatchStatus() { pendingDispatch.value = false; await search(); }
 async function setStatus(value: string) { status.value = value; await search(); }
 async function go(value: number) { if (value < 1 || value > totalPages.value || value === page.value) return; page.value = value; await syncAndLoad(); }
 
@@ -233,7 +236,7 @@ async function toggleSort(key: TableSortKey) {
 
 async function reset() {
   factorySearch.value = "";
-  keyword.value = ""; status.value = "all"; dispatchStatus.value = "all"; category.value = ""; factoryIds.value = []; selectedTrackers.value = [];
+  keyword.value = ""; status.value = "all"; dispatchStatus.value = "all"; pendingDispatch.value = false; category.value = ""; factoryIds.value = []; selectedTrackers.value = [];
   sortBy.value = "priority"; tableSortKey.value = null; tableSortDirection.value = "asc";
   await search();
 }

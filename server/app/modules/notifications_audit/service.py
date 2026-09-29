@@ -43,6 +43,7 @@ from app.db.models import (
     ShipmentVoidRequest,
     User,
 )
+from app.logging import StructuredLogger
 from app.modules.infrastructure import utc_now
 
 logger = logging.getLogger(__name__)
@@ -119,8 +120,12 @@ class AuditPage:
 
 
 class NotificationsAuditService:
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self, session_factory: sessionmaker[Session], *,
+        event_logger: StructuredLogger | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._events = event_logger or StructuredLogger()
 
     def record_authorizations(
         self,
@@ -271,6 +276,7 @@ class NotificationsAuditService:
             message.locked_by = worker_id
             message.locked_at = current
             message.attempts += 1
+            attempt = message.attempts
             request = self._delivery_request(message)
 
         try:
@@ -320,6 +326,20 @@ class NotificationsAuditService:
                         exhausted = True
                     if message.event_type == "incoming_diff.registered":
                         self._queue_incoming_diff_delivery_failure(session, message, current)
+            self._events.event(
+                "notification.delivery_failed", level="WARNING",
+                fields={
+                    "deliveryId": request.delivery_id,
+                    "channel": request.channel,
+                    "attempt": attempt,
+                    "status": "manual_review" if exhausted else "pending",
+                    "errorCode": error.code,
+                    "stage": error.stage,
+                    "upstreamStatus": error.upstream_status,
+                    "upstreamCode": error.upstream_code,
+                    "exceptionType": type(raw_error.__cause__ or raw_error).__name__,
+                },
+            )
             if exhausted and ops_alert_notifier is not None:
                 alert = OpsAlert(
                     delivery_id=request.delivery_id,
@@ -364,6 +384,11 @@ class NotificationsAuditService:
                 message.sent_at = current
                 message.locked_by = None
                 message.locked_at = None
+        self._events.event(
+            "notification.delivery_completed",
+            fields={"deliveryId": request.delivery_id, "channel": request.channel,
+                    "attempt": attempt, "status": "completed"},
+        )
         return True
 
     def recover_stale_outbox(self, *, before: datetime) -> int:

@@ -26,6 +26,7 @@ from app.db.models import (
     User,
     UserSession,
 )
+from app.logging import record_request_actor
 from app.modules.identity_access.security import PhoneProtector
 
 
@@ -693,7 +694,9 @@ class IdentityAccessService:
                     shared.last_activity_at = now
             if activity:
                 active_session.last_activity_at = now
-            return self._user_snapshot(user)
+            snapshot = self._user_snapshot(user)
+            record_request_actor(snapshot.user_id, terminal)
+            return snapshot
 
     def get_my_application(self, *, user_id: str) -> AdminApplicationSnapshot | None:
         with self._session_factory() as session:

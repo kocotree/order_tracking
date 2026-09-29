@@ -1,4 +1,6 @@
+import json
 from datetime import date, datetime, timedelta
+from io import StringIO
 
 import pytest
 from sqlalchemy import Engine
@@ -28,6 +30,7 @@ from app.db.models import (
     StoredFile,
     User,
 )
+from app.logging import StructuredLogger
 from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.orders import AssignmentInput, DraftLineInput, OrderService
 
@@ -806,7 +809,8 @@ def test_unexpected_delivery_failure_is_safely_retried_and_stale_claim_is_recove
     sessions, _order_service, _draft = _publish_order(
         test_database_engine, factory_user_ids=["factory-notice-user"]
     )
-    service = NotificationsAuditService(sessions)
+    stream = StringIO()
+    service = NotificationsAuditService(sessions, event_logger=StructuredLogger(stream=stream))
     service.record_authorizations(
         user_id="factory-notice-user",
         results={"factory_status": "accepted"},
@@ -822,6 +826,15 @@ def test_unexpected_delivery_failure_is_safely_retried_and_stale_claim_is_recove
         wechat_notifier=UnexpectedFailureWechatNotifier(),
         now=ready_at,
     ) is True
+    event = json.loads(stream.getvalue())
+    assert event["event"] == "notification.delivery_failed"
+    assert event["deliveryId"] > 0
+    assert event["channel"] == "wechat"
+    assert event["attempt"] == 1
+    assert event["status"] == "pending"
+    assert event["errorCode"] == "unexpected_delivery_error"
+    assert event["exceptionType"] == "RuntimeError"
+    assert "secret" not in stream.getvalue()
     with sessions() as session, session.begin():
         delivery = session.query(OutboxMessage).filter_by(message_kind="delivery").one()
         assert delivery.last_error_code == "unexpected_delivery_error"

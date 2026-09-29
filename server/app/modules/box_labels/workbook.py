@@ -69,7 +69,7 @@ class BoxLabelWorkbookRenderer:
             if image_data is not None:
                 sheet.embed_image(
                     f"A{start + 1}", image_name,
-                    {"image_data": BytesIO(image_data)},
+                    {"image_data": BytesIO(image_data), "cell_format": image_format},
                 )
         workbook.close()
         content = output.getvalue()

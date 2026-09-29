@@ -8,7 +8,8 @@ import pytest
 from openpyxl import load_workbook
 from PIL import Image
 
-from app.modules.contracts.workbook import ContractWorkbookRenderer
+from app.modules.contracts.workbook import ContractWorkbookError, ContractWorkbookRenderer
+from app.modules.product_sync.color import extract_color
 
 V2_FIXED_TEXT = [
     "合同条款：",
@@ -345,3 +346,138 @@ def test_renderer_preserves_table_styles_for_each_product_group() -> None:
             assert cell.border.left.style == "thin"
             assert cell.border.right.style == "thin"
             assert cell.border.bottom.style == "thin"
+
+
+@pytest.mark.parametrize(
+    ("value", "color"),
+    [
+        ("藏青,54", "藏青"),
+        ("米色 / 52cm", "米色"),
+        ("黄色;S", "黄色"),
+        ("麻灰;110/60", "麻灰"),
+        ("粉色;", "粉色"),
+        ("星夜蓝100", "星夜蓝"),
+        ("兔兔奶糖S", "兔兔奶糖"),
+        ("冰川蓝均码", "冰川蓝"),
+        ("蓝2色100", "蓝2色"),
+        ("蓝色", "蓝色"),
+        ("蓝色2", None),
+        ("蓝色/", None),
+        ("", None),
+    ],
+)
+def test_contract_color_uses_only_unambiguous_combinations(
+    value: str, color: str | None,
+) -> None:
+    assert extract_color(value) == color
+
+
+def test_v3_groups_nonadjacent_sizes_by_product_and_color_and_chooses_sku_image() -> None:
+    template = Path(__file__).resolve().parents[2] / "app/templates/processing_contract_v2.xlsx"
+    images = {}
+    for name, color in (("blue", "blue"), ("red", "red"), ("other", "green")):
+        output = BytesIO()
+        Image.new("RGB", (120, 80), color=color).save(output, format="PNG")
+        images[name] = output.getvalue()
+    renderer = ContractWorkbookRenderer(
+        template_paths={"v2": template}, image_loader=lambda key: images[key],
+    )
+    lines = [
+        {"productId": "p1", "skuId": "B", "itemNo": "I1", "productName": "同名",
+         "propertiesValue": "蓝色,M", "quantity": 2, "imageObjectKey": "blue"},
+        {"productId": "p1", "skuId": "R", "itemNo": "I1", "productName": "同名",
+         "propertiesValue": "红色,M", "quantity": 3, "imageObjectKey": "red"},
+        {"productId": "p1", "skuId": "A", "itemNo": "I1", "productName": "同名",
+         "propertiesValue": "蓝色,S", "quantity": 4, "imageObjectKey": None},
+        {"productId": "p2", "skuId": "C", "itemNo": "I2", "productName": "同名",
+         "propertiesValue": "蓝色,S", "quantity": 5, "imageObjectKey": "other"},
+    ]
+
+    sheet = load_workbook(BytesIO(renderer.render(_snapshot(lines), template_version="v3")))["合同"]
+
+    assert [sheet[f"D{row}"].value for row in range(8, 12)] == [
+        "蓝色,M", "蓝色,S", "红色,M", "蓝色,S",
+    ]
+    assert [sheet[f"E{row}"].value for row in range(8, 12)] == [2, 4, 3, 5]
+    assert {"A8:A9", "B8:B9", "C8:C9"} <= {
+        str(item) for item in sheet.merged_cells.ranges
+    }
+    assert [image.anchor._from.row for image in sheet._images] == [7, 9, 10]
+    assert [Image.open(BytesIO(image._data())).getpixel((0, 0)) for image in sheet._images] == [
+        (0, 0, 255), (255, 0, 0), (0, 128, 0),
+    ]
+    assert str(sheet.print_area) == "'合同'!$A$1:$I$55"
+
+
+def test_v3_fails_when_selected_image_cannot_be_read() -> None:
+    template = Path(__file__).resolve().parents[2] / "app/templates/processing_contract_v2.xlsx"
+    renderer = ContractWorkbookRenderer(
+        template_paths={"v2": template}, image_loader=lambda _key: None,
+    )
+    line = {"productId": "p1", "skuId": "A", "itemNo": "I1",
+            "productName": "产品", "propertiesValue": "蓝色,S", "quantity": 1,
+            "imageObjectKey": "missing"}
+
+    with pytest.raises(ContractWorkbookError, match="image is unavailable"):
+        renderer.render(_snapshot([line]), template_version="v3")
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_v3_selects_lowest_sku_with_image_regardless_of_input_order(reverse: bool) -> None:
+    template = Path(__file__).resolve().parents[2] / "app/templates/processing_contract_v2.xlsx"
+    selected = []
+    output = BytesIO()
+    Image.new("RGB", (60, 60), color="blue").save(output, format="PNG")
+    renderer = ContractWorkbookRenderer(
+        template_paths={"v2": template},
+        image_loader=lambda key: selected.append(key) or output.getvalue(),
+    )
+    lines = [
+        {"productId": "p", "skuId": sku, "itemNo": "I", "productName": "产品",
+         "propertiesValue": f"蓝色,{size}", "quantity": 1, "imageObjectKey": image}
+        for sku, size, image in (("B", "M", "images/b"), ("A", "S", "images/a"))
+    ]
+    if reverse:
+        lines.reverse()
+
+    renderer.render(_snapshot(lines), template_version="v3")
+
+    assert selected == ["images/a"]
+
+
+def test_v3_keeps_unknown_colors_separate_and_extends_print_area() -> None:
+    template = Path(__file__).resolve().parents[2] / "app/templates/processing_contract_v2.xlsx"
+    renderer = ContractWorkbookRenderer(template_paths={"v2": template})
+    lines = [
+        {"productId": "p", "skuId": str(index), "itemNo": "I", "productName": "产品",
+         "propertiesValue": f"未知颜色{index}号", "quantity": index + 1,
+         "imageObjectKey": None}
+        for index in range(13)
+    ]
+
+    sheet = load_workbook(BytesIO(renderer.render(_snapshot(lines), template_version="v3")))["合同"]
+
+    assert sheet["D20"].value == "未知颜色12号"
+    assert sheet["E21"].value == "=SUM(E8:E20)"
+    assert str(sheet.print_area) == "'合同'!$A$1:$I$56"
+    assert not any(
+        merged.min_col <= 3 and merged.max_col >= 1 and merged.max_row > merged.min_row
+        for merged in sheet.merged_cells.ranges if merged.min_row >= 8 and merged.min_row <= 20
+    )
+    assert not sheet._images
+
+
+def test_saved_v2_contract_keeps_its_original_product_merge() -> None:
+    template = Path(__file__).resolve().parents[2] / "app/templates/processing_contract_v2.xlsx"
+    renderer = ContractWorkbookRenderer(template_paths={"v2": template})
+    lines = [
+        {"productId": "p", "itemNo": "I", "productName": "产品",
+         "propertiesValue": color, "quantity": 1, "imageObjectKey": None}
+        for color in ("蓝色,S", "红色,S")
+    ]
+
+    sheet = load_workbook(BytesIO(renderer.render(_snapshot(lines), template_version="v2")))["合同"]
+
+    assert {"A8:A9", "B8:B9", "C8:C9"} <= {
+        str(item) for item in sheet.merged_cells.ranges
+    }

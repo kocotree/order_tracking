@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
@@ -27,9 +26,7 @@ def test_box_label_api_requires_web_admin_and_csrf(
     mini = identity.issue_session(user_id=ADMIN_ID, terminal="mini")
     service = BoxLabelService(
         sessions,
-        renderer=BoxLabelWorkbookRenderer(
-            Path(__file__).resolve().parents[2] / "app/templates/box_label_v1.xlsx"
-        ),
+        renderer=BoxLabelWorkbookRenderer(),
         file_store=FakePrivateFileStore(bucket="box-label-api-test"),
     )
     app = create_app(

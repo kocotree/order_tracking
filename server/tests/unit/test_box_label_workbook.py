@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+from zipfile import ZipFile
 
 from openpyxl import load_workbook
 from PIL import Image
@@ -54,13 +55,23 @@ def test_template_and_rendered_labels_keep_two_printable_copies() -> None:
         "factory": "晟衣", "itemNo": "KQ26168",
         "productName": "暖呼吸羽绒马甲", "color": "冰川蓝",
     }
-    content = BoxLabelWorkbookRenderer(TEMPLATE).render(values, source.getvalue())
+    content = BoxLabelWorkbookRenderer().render(values, source.getvalue())
     rendered = load_workbook(BytesIO(content))
     result = rendered.active
     assert result is not None
-    assert len(result._images) == 2
-    assert [picture.anchor._from.row for picture in result._images] == [1, 11]
+    assert len(result._images) == 0
+    # openpyxl 不识别单元格图片；WPS 实际显示另行验收。
+    with ZipFile(BytesIO(content)) as package:
+        assert "xl/richData/rdrichvalue.xml" in package.namelist()
+        assert "xl/richData/_rels/richValueRel.xml.rels" in package.namelist()
+        assert "/xl/richData/_rels/richValueRel.xml.rels" not in package.namelist()
+        assert "xl/media/image1.png" in package.namelist()
+    assert result["A2"].value == result["A12"].value == "#VALUE!"
     assert str(result.print_area).endswith("$A$1:$E$18")
+    assert {str(item) for item in result.merged_cells.ranges} == {
+        str(item) for item in sheet.merged_cells.ranges
+    }
+    assert result.sheet_format.defaultRowHeight == sheet.sheet_format.defaultRowHeight
     for start in (1, 11):
         assert result.cell(start, 2).value == "工厂：晟衣"
         assert result.cell(start + 1, 2).value == "货号：KQ26168"
@@ -68,3 +79,15 @@ def test_template_and_rendered_labels_keep_two_printable_copies() -> None:
         assert result.cell(start + 3, 2).value == "颜色：冰川蓝"
         for offset in (4, 5, 6, 7):
             assert result.cell(start + offset, 2).value == sheet.cell(start + offset, 2).value
+
+
+def test_webp_image_is_embedded_as_png() -> None:
+    source = BytesIO()
+    Image.new("RGB", (20, 10), "red").save(source, format="WEBP")
+    values = {
+        "factory": "晟衣", "itemNo": "KQ26168",
+        "productName": "暖呼吸羽绒马甲", "color": "冰川蓝",
+    }
+    content = BoxLabelWorkbookRenderer().render(values, source.getvalue())
+    with ZipFile(BytesIO(content)) as package:
+        assert "xl/media/image1.png" in package.namelist()

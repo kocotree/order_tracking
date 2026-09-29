@@ -18,6 +18,7 @@ dependencies = [
   "python-multipart>=0.0.20,<1",
   "sqlalchemy>=2.0,<3",
   "uvicorn[standard]>=0.35,<1",
+  "xlsxwriter>=3.2.9,<4",
 ]
 
 [dependency-groups]
@@ -50,5 +51,5 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["oss2.*", "pymysql.*"]
+module = ["oss2.*", "pymysql.*", "xlsxwriter.*"]
 ignore_missing_imports = true

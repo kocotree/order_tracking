@@ -1457,6 +1457,107 @@ def _bot_action(event_id: str, batch_id: str, action: str,
             "event": {"operator": {"open_id": open_id}, "action": {"value": value}}}
 
 
+def test_feishu_bot_accepts_multiple_images_in_one_post(test_database_engine: Engine) -> None:
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        session.add(ExternalIdentity(
+            platform="feishu", scope="test-scope",
+            platform_subject="tenant-test:open-1", user_id=ADMIN,
+        ))
+    picture = BytesIO()
+    Image.new("RGB", (4, 4), (255, 255, 255)).save(picture, format="PNG")
+    media = _BotMedia(picture.getvalue())
+    files = FakePrivateFileStore(bucket="incoming-test")
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    bot = FeishuBotService(
+        sessions, files=files, media=media, identity_scope="test-scope",
+        codec=IncomingWorkbookCodec(Settings(database_url="mysql+pymysql://local/test")),
+        recognition=IncomingDiffRecognitionService(
+            sessions, files=files, recognizer=FakeIncomingDiffRecognizer([])),
+    )
+    event = _bot_event("post-1", kind="post")
+    event["event"]["message"]["content"] = json.dumps({"title": "", "content": [
+        [{"tag": "img", "image_key": "image-a"}],
+        [{"tag": "img", "image_key": "image-b"}],
+    ]})
+    bot.event(event)
+    bot.event(event)
+    replay = _bot_event("post-replay", kind="post")
+    replay["event"]["message"] = event["event"]["message"]
+    bot.event(replay)
+    with Session(test_database_engine) as session:
+        batches = session.scalars(select(IncomingDiffBatch)).all()
+        images = session.scalars(select(IncomingDiffImage).order_by(
+            IncomingDiffImage.sort_order)).all()
+        replies = session.scalars(select(OutboxMessage).where(
+            OutboxMessage.event_type == "incoming_diff.bot_reply")).all()
+        assert len(batches) == 1 and batches[0].status == "COLLECTING"
+        assert [(image.feishu_image_key, image.sort_order, image.batch_id)
+                for image in images] == [
+                    ("image-a", 1, batches[0].batch_id),
+                    ("image-b", 2, batches[0].batch_id),
+                ]
+        assert len(replies) == 2
+        assert all(reply.payload["recipientOpenId"] == "open-1" for reply in replies)
+    assert media.downloads == ["image", "image"]
+
+
+def test_feishu_bot_post_download_failure_stays_in_one_failed_batch(
+    test_database_engine: Engine,
+) -> None:
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        session.add(ExternalIdentity(
+            platform="feishu", scope="test-scope",
+            platform_subject="tenant-test:open-1", user_id=ADMIN,
+        ))
+
+    class FailingSecondImage(_BotMedia):
+        def download_resource(self, message_id: str, file_key: str,
+                              resource_type: str) -> bytes:
+            self.downloads.append(file_key)
+            return self.image if file_key == "image-a" else b""
+
+    picture = BytesIO()
+    Image.new("RGB", (4, 4), (255, 255, 255)).save(picture, format="PNG")
+    media = FailingSecondImage(picture.getvalue())
+    files = FakePrivateFileStore(bucket="incoming-test")
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    bot = FeishuBotService(
+        sessions, files=files, media=media, identity_scope="test-scope",
+        codec=IncomingWorkbookCodec(Settings(database_url="mysql+pymysql://local/test")),
+        recognition=IncomingDiffRecognitionService(
+            sessions, files=files, recognizer=FakeIncomingDiffRecognizer([])),
+    )
+    text_post = _bot_event("text-post", kind="post")
+    text_post["event"]["message"]["content"] = json.dumps({
+        "content": [[{"tag": "text", "text": "普通消息"}]],
+    })
+    bot.event(text_post)
+    event = _bot_event("failed-post", kind="post")
+    event["event"]["message"]["content"] = json.dumps({"content": [[
+        {"tag": "img", "image_key": "image-a"},
+        {"tag": "img", "image_key": "image-b"},
+        {"tag": "img", "image_key": "image-c"},
+    ]]})
+    bot.event(event)
+    with Session(test_database_engine) as session:
+        batches = session.scalars(select(IncomingDiffBatch)).all()
+        images = session.scalars(select(IncomingDiffImage).order_by(
+            IncomingDiffImage.sort_order)).all()
+        replies = session.scalars(select(OutboxMessage).where(
+            OutboxMessage.event_type == "incoming_diff.bot_reply")).all()
+        assert len(batches) == 1 and batches[0].status == "FAILED"
+        assert [(image.feishu_image_key, image.ocr_status, image.batch_id)
+                for image in images] == [
+                    ("image-a", "PENDING", batches[0].batch_id),
+                    ("image-b", "FAILED", batches[0].batch_id),
+                ]
+        assert len(replies) == 2
+        assert any("图片读取失败" in reply.payload["summary"] for reply in replies)
+    assert media.downloads == ["image-a", "image-b"]
+
+
 def test_feishu_bot_photo_workbook_upload_confirm_and_replay(
     test_database_engine: Engine,
 ) -> None:

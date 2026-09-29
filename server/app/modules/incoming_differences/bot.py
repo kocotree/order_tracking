@@ -157,7 +157,7 @@ class FeishuBotService:
         if (not isinstance(open_id, str) or not open_id or
                 not isinstance(chat_id, str) or not chat_id or
                 not isinstance(message_id, str) or not message_id or
-                message.get("chat_type") != "p2p" or kind not in {"image", "file"}):
+                message.get("chat_type") != "p2p" or kind not in {"image", "file", "post"}):
             return {}
         try:
             content = json.loads(str(message.get("content", "")))
@@ -165,12 +165,24 @@ class FeishuBotService:
             return {}
         if not isinstance(content, dict):
             return {}
-        file_key = content.get("image_key" if kind == "image" else "file_key")
-        filename = content.get("file_name") if kind == "file" else None
-        if (not isinstance(file_key, str) or not file_key or
-                (kind == "file" and (not isinstance(filename, str) or
-                 not filename.endswith(".xlsx")))):
-            return {}
+        if kind == "post":
+            blocks = content.get("content")
+            if not isinstance(blocks, list):
+                return {}
+            image_keys = list(dict.fromkeys(
+                node["image_key"] for row in blocks if isinstance(row, list)
+                for node in row if isinstance(node, dict) and node.get("tag") == "img"
+                and isinstance(node.get("image_key"), str) and node["image_key"]
+            ))
+            if not image_keys:
+                return {}
+        else:
+            file_key = content.get("image_key" if kind == "image" else "file_key")
+            filename = content.get("file_name") if kind == "file" else None
+            if (not isinstance(file_key, str) or not file_key or
+                    (kind == "file" and (not isinstance(filename, str) or
+                     not filename.endswith(".xlsx")))):
+                return {}
         event_id = header.get("event_id")
         if not isinstance(event_id, str) or not event_id:
             return {}
@@ -180,10 +192,16 @@ class FeishuBotService:
         if actor_id is None:
             self._reply(None, open_id, message_id, DENIED)
             return {}
-        if kind == "image":
+        if kind == "post":
+            for index, image_key in enumerate(image_keys, 1):
+                if not self._image(actor_id, open_id, chat_id, message_id, image_key,
+                                   reply_key=f"{message_id}:{index}"):
+                    break
+        elif kind == "image":
+            assert isinstance(file_key, str)
             self._image(actor_id, open_id, chat_id, message_id, file_key)
         else:
-            assert isinstance(filename, str)
+            assert isinstance(file_key, str) and isinstance(filename, str)
             self._uploaded(actor_id, open_id, chat_id, message_id, file_key, filename)
         return {}
 
@@ -301,12 +319,13 @@ class FeishuBotService:
             ).limit(1))
 
     def _image(self, actor_id: str, open_id: str, chat_id: str,
-               message_id: str, image_key: str) -> None:
+               message_id: str, image_key: str, *, reply_key: str | None = None) -> bool:
         with self._sessions() as session:
             if session.scalar(select(IncomingDiffImage.image_id).where(
                 IncomingDiffImage.feishu_message_id == message_id,
+                IncomingDiffImage.feishu_image_key == image_key,
             )) is not None:
-                return
+                return True
         batch = self._batch(actor_id, chat_id, status="COLLECTING")
         batch_id = (batch.batch_id if batch else
                     self._registration.create_batch(submitter_id=actor_id,
@@ -335,12 +354,12 @@ class FeishuBotService:
                     ocr_status="FAILED", failure_reason="download_failed", created_at=utc_now()))
                 current.status = "FAILED"
             self._reply(
-                actor_id, open_id, message_id,
+                actor_id, open_id, reply_key or message_id,
                 f"第 {count + 1} 张图片无法识别（图片读取失败），"
                 "本批次未生成核对表。请重拍后重新发送。",
                 batch_id=batch_id,
             )
-            return
+            return False
         self._files.put(object_key=object_key, content=content, content_type=mime_type)
         with self._sessions() as session, session.begin():
             stored = StoredFile(bucket=self._files.bucket, object_key=object_key,
@@ -367,16 +386,17 @@ class FeishuBotService:
                 old = session.get(IncomingDiffBatch, image.duplicate_of_batch_id)
                 old_no = old.batch_no if old else image.duplicate_of_batch_id
             self._reply(
-                actor_id, open_id, message_id,
+                actor_id, open_id, reply_key or message_id,
                 f"第 {image.sort_order} 张图片与批次 {old_no} 的图片内容相同。"
                 "如确认是另一次实际差异，点击“继续核对”；否则请移除该图片。",
                 batch_id=batch_id,
                 buttons=[("继续核对", "continue", {"imageId": image.image_id})],
             )
         else:
-            self._reply(actor_id, open_id, message_id,
+            self._reply(actor_id, open_id, reply_key or message_id,
                         f"已收到第 {image.sort_order} 张图片。继续发送，或点击“生成核对表”。",
                         batch_id=batch_id, buttons=[("生成核对表", "generate", {})])
+        return True
 
     def _uploaded(self, actor_id: str, open_id: str, chat_id: str,
                   message_id: str, file_key: str, filename: str) -> None:

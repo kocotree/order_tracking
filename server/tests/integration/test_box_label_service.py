@@ -1,7 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from io import BytesIO
-from pathlib import Path
 
 import pytest
 from openpyxl import load_workbook
@@ -15,6 +14,7 @@ from app.adapters.private_files import (
     PrivateFileStoreUnavailable,
 )
 from app.db.models import (
+    BoxLabelExport,
     Factory,
     Order,
     OrderAssignment,
@@ -49,9 +49,8 @@ def test_group_export_is_stable_and_fails_before_freezing_unavailable_image(
     _seed_published_order(test_database_engine)
     sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
     files = FakePrivateFileStore(bucket="box-label-test")
-    template = Path(__file__).resolve().parents[2] / "app/templates/box_label_v1.xlsx"
     service = BoxLabelService(
-        sessions, renderer=BoxLabelWorkbookRenderer(template), file_store=files
+        sessions, renderer=BoxLabelWorkbookRenderer(), file_store=files
     )
     with sessions() as session, session.begin():
         original = session.get(ProductVariant, VARIANT_ID)
@@ -111,10 +110,14 @@ def test_group_export_is_stable_and_fails_before_freezing_unavailable_image(
     downloaded = service.download(actor_id=ADMIN_ID, export_id=export_id)[1]
     sheet = load_workbook(BytesIO(downloaded)).active
     assert sheet is not None
-    assert len(sheet._images) == 2
+    assert len(sheet._images) == 0
+    assert sheet["A2"].value == sheet["A12"].value == "#VALUE!"
     assert sheet["B1"].value == sheet["B11"].value == "工厂：合同测试工厂"
     assert sheet["B4"].value == sheet["B14"].value == "颜色：米色"
     assert sheet["B5"].value == sheet["B15"].value == "尺码："
+    with sessions() as session:
+        saved = session.get(BoxLabelExport, export_id)
+        assert saved is not None and saved.template_version == "v2"
     with sessions() as session, session.begin():
         factory = session.get(Factory, FACTORY_ID)
         product = session.get(Product, PRODUCT_ID)
@@ -136,9 +139,7 @@ def test_true_missing_image_is_blank_but_pending_image_is_blocked(
     files = FakePrivateFileStore(bucket="box-label-blank-test")
     service = BoxLabelService(
         sessions,
-        renderer=BoxLabelWorkbookRenderer(
-            Path(__file__).resolve().parents[2] / "app/templates/box_label_v1.xlsx"
-        ),
+        renderer=BoxLabelWorkbookRenderer(),
         file_store=files,
     )
     group = service.list_for_order(actor_id=ADMIN_ID, order_id=ORDER_ID)[0]
@@ -195,9 +196,7 @@ def test_matched_factory_with_unmatched_product_or_color_remains_visible(
         ])
     service = BoxLabelService(
         sessions,
-        renderer=BoxLabelWorkbookRenderer(
-            Path(__file__).resolve().parents[2] / "app/templates/box_label_v1.xlsx"
-        ),
+        renderer=BoxLabelWorkbookRenderer(),
         file_store=FakePrivateFileStore(bucket="box-label-unmatched-test"),
     )
     rows = service.list_for_order(actor_id=ADMIN_ID, order_id=ORDER_ID)
@@ -208,9 +207,7 @@ def test_matched_factory_with_unmatched_product_or_color_remains_visible(
 def test_failed_storage_does_not_freeze_the_first_export(test_database_engine: Engine) -> None:
     _seed_published_order(test_database_engine)
     sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
-    renderer = BoxLabelWorkbookRenderer(
-        Path(__file__).resolve().parents[2] / "app/templates/box_label_v1.xlsx"
-    )
+    renderer = BoxLabelWorkbookRenderer()
     broken = BoxLabelService(
         sessions, renderer=renderer,
         file_store=FakePrivateFileStore(bucket="box-label-retry", fail_put=True),

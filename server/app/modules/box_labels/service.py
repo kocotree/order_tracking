@@ -243,7 +243,7 @@ class BoxLabelService:
                     product_id=group.product_id,
                     color=group.color,
                     snapshot=values,
-                    template_version="v1",
+                    template_version="v2",
                     stored_file_id=stored.file_id,
                     created_by=actor_id,
                     created_at=now,

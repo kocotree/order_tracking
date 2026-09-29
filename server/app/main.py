@@ -368,9 +368,7 @@ def create_app(
     if box_label_service is None:
         box_label_service = BoxLabelService(
             session_factory,
-            renderer=BoxLabelWorkbookRenderer(
-                Path(__file__).resolve().parent / "templates/box_label_v1.xlsx"
-            ),
+            renderer=BoxLabelWorkbookRenderer(),
             file_store=private_file_store,
         )
     if local_demo_enabled:

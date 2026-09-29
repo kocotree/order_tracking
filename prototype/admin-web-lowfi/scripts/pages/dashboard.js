@@ -8,6 +8,7 @@ const searchIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><cir
 function renderStats() {
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
   const entries = [
+    { label: "待派工订单", route: "/orders?dispatchStatus=待派工" },
     { label: "今日发货记录", route: `/shipments?dateFrom=${today}&dateTo=${today}` },
     { label: "逾期订单", route: "/orders?status=已逾期" },
   ];

@@ -263,7 +263,7 @@ class OrderListResponse(ApiModel):
 class DashboardResponse(ApiModel):
     total_orders: int
     overdue_orders: int
-    pending_import_orders: int
+    pending_dispatch_orders: int
     today_shipments: int
     recent_orders: list[OrderResponse]
     request_id: str
@@ -782,11 +782,7 @@ def create_order_router(
         return DashboardResponse(
             total_orders=total,
             overdue_orders=overdue,
-            pending_import_orders=(
-                order_import_service.pending_count(actor_id=actor.user_id)
-                if order_import_service is not None
-                else 0
-            ),
+            pending_dispatch_orders=service.pending_dispatch_count(actor_id=actor.user_id),
             today_shipments=shipments,
             recent_orders=[_order_response(item, request.state.request_id) for item in items[:10]],
             request_id=request.state.request_id,

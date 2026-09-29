@@ -29,6 +29,7 @@ from app.db.models import (
     ShipmentLine,
     User,
 )
+from app.modules.orders.admin_query import dispatch_status as order_dispatch_status
 from app.modules.orders.admin_query import display_status, page_orders
 from app.modules.product_sync.categories import PRODUCT_CATEGORY_ALLOWLIST
 
@@ -899,7 +900,7 @@ class OrderService:
                 query = query.where(matched)
             if status not in {"all", "草稿", "已完成", "已逾期", "未完成"}:
                 raise OrderValidationError("invalid status")
-            if dispatch_status not in {"all", "未派工", "部分派工", "全部派工"}:
+            if dispatch_status not in {"all", "未派工", "部分派工", "全部派工", "待派工"}:
                 raise OrderValidationError("invalid dispatch status")
             orders, total = page_orders(
                 session,
@@ -1296,6 +1297,22 @@ class OrderService:
                 or 0
             )
             return int(overdue), int(shipments)
+
+    def pending_dispatch_count(self, *, actor_id: str) -> int:
+        with self._session_factory() as session:
+            self._require_admin(session, actor_id)
+            return int(
+                session.scalar(
+                    select(func.count())
+                    .select_from(Order)
+                    .where(
+                        Order.deleted_at.is_(None),
+                        Order.lifecycle != "COMPLETED",
+                        order_dispatch_status().in_(["未派工", "部分派工"]),
+                    )
+                )
+                or 0
+            )
 
     @staticmethod
     def _page_snapshot_data(

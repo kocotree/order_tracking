@@ -75,6 +75,37 @@ it("opens the overdue tab from the dashboard query", async () => {
   wrapper.unmount();
 });
 
+it("keeps dashboard pending dispatch across pages and clears it on selection or reset", async () => {
+  vi.spyOn(identityApi, "listFactoryOptions").mockResolvedValue({ items: [], total: 0 } as never);
+  const list = vi.spyOn(orderApi, "list").mockResolvedValue({ items: [sampleOrder], total: 11, page: 1, pageSize: 10 } as never);
+  const router = createRouter({ history: createMemoryHistory(), routes: [
+    { path: "/orders", component: OrdersPage },
+    { path: "/orders/:orderId", component: { template: "<div/>" } },
+  ] });
+  await router.push("/orders?dispatchStatus=待派工");
+  const wrapper = mount(OrdersPage, { global: { plugins: [router], stubs: { AdminShell: { template: "<div><slot/></div>" } } } });
+  await flushPromises();
+  expect(wrapper.get('select[aria-label="派工状态"]').element).toHaveProperty("value", "all");
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ dispatchStatus: "待派工", includeDrafts: true, page: 1 }));
+  await wrapper.findAll("button").find((button) => button.text() === "2")!.trigger("click");
+  await flushPromises();
+  expect(router.currentRoute.value.query).toMatchObject({ dispatchStatus: "待派工", page: "2" });
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ dispatchStatus: "待派工", page: 2 }));
+  await wrapper.findAll("button").find((button) => button.text() === "重置")!.trigger("click");
+  await flushPromises();
+  expect(router.currentRoute.value.query.dispatchStatus).toBeUndefined();
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ dispatchStatus: "all", page: 1 }));
+  wrapper.unmount();
+  await router.push("/orders?dispatchStatus=待派工");
+  const selected = mount(OrdersPage, { global: { plugins: [router], stubs: { AdminShell: { template: "<div><slot/></div>" } } } });
+  await flushPromises();
+  await selected.get('select[aria-label="派工状态"]').setValue("部分派工");
+  await flushPromises();
+  expect(router.currentRoute.value.query.dispatchStatus).toBe("部分派工");
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ dispatchStatus: "部分派工", page: 1 }));
+  selected.unmount();
+});
+
 it("restores filters from the URL and carries them into order details", async () => {
   vi.spyOn(identityApi, "listFactoryOptions").mockResolvedValue({ items: [], total: 0 } as never);
   const list = vi.spyOn(orderApi, "list").mockResolvedValue({ items: [sampleOrder], total: 11, page: 2, pageSize: 10 } as never);

@@ -1312,8 +1312,8 @@
             "title": "Overdueorders",
             "type": "integer"
           },
-          "pendingImportOrders": {
-            "title": "Pendingimportorders",
+          "pendingDispatchOrders": {
+            "title": "Pendingdispatchorders",
             "type": "integer"
           },
           "recentOrders": {
@@ -1339,7 +1339,7 @@
         "required": [
           "totalOrders",
           "overdueOrders",
-          "pendingImportOrders",
+          "pendingDispatchOrders",
           "todayShipments",
           "recentOrders",
           "requestId"

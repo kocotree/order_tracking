@@ -2417,8 +2417,8 @@ export interface components {
         DashboardResponse: {
             /** Overdueorders */
             overdueOrders: number;
-            /** Pendingimportorders */
-            pendingImportOrders: number;
+            /** Pendingdispatchorders */
+            pendingDispatchOrders: number;
             /** Recentorders */
             recentOrders: components["schemas"]["OrderResponse"][];
             /** Requestid */

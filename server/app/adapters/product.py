@@ -782,12 +782,17 @@ class PrivateProductImageStore:
                         continue
                     response.raise_for_status()
                     content_type = response.headers.get("content-type", "").split(";", 1)[0]
-                    if not content_type.startswith("image/"):
+                    if (not content_type.startswith("image/")
+                            and content_type != "application/octet-stream"):
                         raise ProductImageCacheError("product_image_type_invalid")
                     content = response.content
                     if len(content) > self._max_bytes:
                         raise ProductImageCacheError("product_image_too_large")
                     with Image.open(BytesIO(content)) as image:
+                        detected_type = image.get_format_mimetype()
+                        if detected_type is None or not detected_type.startswith("image/"):
+                            raise ProductImageCacheError("product_image_type_invalid")
+                        content_type = detected_type
                         image.verify()
                     object_key = f"products/images/{sha256(content).hexdigest()}"
                     self._file_store.put(

@@ -15,7 +15,9 @@ def test_worker_failure_logs_identity_and_result_without_payload_or_error_text()
                 payload={"secret": "sensitive workbook text"},
             )
 
-        def claim_next_job(self, *, worker_id: str, now: datetime) -> SimpleNamespace:
+        def claim_next_job(self, *, worker_id: str, now: datetime,
+                           job_types: tuple[str, ...]) -> SimpleNamespace:
+            assert job_types == ("incoming_diff.recognize",)
             return self.claimed
 
         def retry_job(self, *, job_id: int, error_code: str,

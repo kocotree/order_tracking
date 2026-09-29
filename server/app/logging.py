@@ -66,9 +66,11 @@ def configure_uvicorn_access_log_redaction() -> None:
 
 
 class StructuredLogger:
-    def __init__(self, *, stream: TextIO | None = None, level: str = "INFO") -> None:
+    def __init__(self, *, stream: TextIO | None = None, level: str = "INFO",
+                 fields: Mapping[str, Any] | None = None) -> None:
         self._stream = stream or sys.stdout
         self._level = logging.getLevelNamesMapping()[level.upper()]
+        self._fields = fields or {}
 
     def event(
         self, event: str, *, fields: Mapping[str, Any], request_id: str | None = None,
@@ -81,6 +83,7 @@ class StructuredLogger:
             "level": level.upper(),
             "event": event,
             **({"requestId": request_id} if request_id is not None else {}),
+            **redact_sensitive(self._fields),
             **redact_sensitive(fields),
         }
         self._stream.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")

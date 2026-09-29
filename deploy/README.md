@@ -37,8 +37,23 @@ shell history. Confirm the exact SHA equals the CI-passed target before continui
 3. Set `ORDER_TRACKING_BACKUP_CONFIRMED=yes` only for the release shell.
 4. Run `scripts/release.sh shared-test <commit> <successful-ci-run-id>`.
 5. Review `docker compose ps`, worker/API logs, and internal health results.
+   `scripts/health-check.sh` also verifies that `docker compose top worker` lists
+   the `sync`, `incoming`, and `notification` child processes.
 6. Configure and verify Traefik/HTTPS only after internal health is green.
 7. Keep all real notification switches false until each first-send gate is approved.
+
+The single worker container starts three serial task processes. Their JSON logs
+include `role` and `workerId`; job failures include `jobId` and `jobType`, and
+delivery logs include `deliveryId`. Each child owns its database pool and external
+clients. With SQLAlchemy defaults, three worker pools permit up to 45 connections
+in total; include the API pool when checking the MySQL connection limit. A child
+exit stops its siblings and exits nonzero so Docker restarts the whole container.
+SIGTERM/SIGINT stops new claims; the manager waits 30 seconds, kills any child
+still running, and reaps all children. Compose allows 45 seconds before force
+stopping the container. Interrupted generic jobs recover after their five-minute
+stale lease; `order_auto_sync` uses its existing lock-aware recovery. Outbox
+processing recovers in the notification process. Check `docker compose top worker`
+and the three `worker.started` events after a restart before treating it as live.
 
 Production uses the image CD procedure below with an approved immutable tag.
 A production tag authorizes that version’s server deployment. It does not

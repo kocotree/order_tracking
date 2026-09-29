@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -59,6 +60,53 @@ def test_job_queue_claims_only_ready_work_and_recovers_stale_claim(
     assert recovered is not None
     assert recovered.id == ready_id
     assert recovered.locked_by == "worker-b"
+
+
+def test_role_claim_and_recovery_keep_other_running_jobs(
+    test_database_engine: Engine,
+) -> None:
+    store = InfrastructureStore(sessionmaker(test_database_engine, class_=Session))
+    now = datetime.now(UTC).replace(tzinfo=None)
+    sync_id = store.enqueue_job(job_type="order_import", dedupe_key="role-sync",
+                                payload={}, available_at=now)
+    incoming_id = store.enqueue_job(job_type="incoming_diff.recognize",
+                                    dedupe_key="role-incoming", payload={}, available_at=now)
+    notification_id = store.enqueue_job(job_type="notification_due_scan",
+                                        dedupe_key="role-notification", payload={},
+                                        available_at=now)
+
+    sync = store.claim_next_job(worker_id="sync", now=now, job_types=("order_import",))
+    incoming = store.claim_next_job(worker_id="incoming", now=now,
+                                    job_types=("incoming_diff.recognize",))
+    assert sync is not None and sync.id == sync_id
+    assert incoming is not None and incoming.id == incoming_id
+    assert store.recover_stale_jobs(before=now + timedelta(minutes=6),
+                                    job_types=("notification_due_scan",)) == 0
+    assert store.get_job(job_id=sync_id).status == "running"
+    assert store.get_job(job_id=incoming_id).status == "running"
+    claimed = store.claim_next_job(worker_id="notification", now=now,
+                                   job_types=("notification_due_scan",))
+    assert claimed is not None and claimed.id == notification_id
+    assert store.recover_stale_jobs(before=now + timedelta(minutes=6),
+                                    job_types=("order_import",)) == 1
+    assert store.get_job(job_id=incoming_id).status == "running"
+
+
+def test_concurrent_claim_executes_job_once(test_database_engine: Engine) -> None:
+    store = InfrastructureStore(sessionmaker(test_database_engine, class_=Session))
+    now = datetime.now(UTC).replace(tzinfo=None)
+    job_id = store.enqueue_job(job_type="order_import", dedupe_key="one-claim",
+                               payload={}, available_at=now)
+
+    def claim(worker_id: str) -> int | None:
+        job = store.claim_next_job(worker_id=worker_id, now=now,
+                                   job_types=("order_import",))
+        return job.id if job is not None else None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        claims = list(pool.map(claim, ("one", "two")))
+    assert claims.count(job_id) == 1
+    assert claims.count(None) == 1
 
 
 def test_outbox_and_audit_public_entries_are_deduplicated_and_retrievable(

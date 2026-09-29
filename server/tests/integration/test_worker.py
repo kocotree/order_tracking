@@ -53,3 +53,21 @@ def test_worker_runs_maintenance_and_persistent_work_sources_when_job_queue_is_e
 
     assert worker.run_once() is True
     assert calls == ["maintenance", "outbox"]
+
+
+def test_notification_sources_each_advance_with_continuous_events(
+    test_database_engine: Engine,
+) -> None:
+    store = InfrastructureStore(sessionmaker(test_database_engine, class_=Session))
+    calls: list[str] = []
+    worker = Worker(
+        store=store, worker_id="notification-test", handlers={},
+        work_sources=[
+            lambda: calls.append("event") is None,
+            lambda: calls.append("delivery") is None,
+        ],
+    )
+
+    assert worker.run_once()
+    assert worker.run_once()
+    assert calls == ["event", "delivery", "event", "delivery"]

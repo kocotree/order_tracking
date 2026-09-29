@@ -47,5 +47,13 @@ export const useNotificationsStore = defineStore("notifications", () => {
     pending.set(item.notificationId, operation);
     return operation;
   }
-  return { recent, unreadCount, revision, refresh, markRead, setUser };
+  async function markAllRead() {
+    const user = owner;
+    await notificationApi.markAllRead();
+    if (user !== owner) return;
+    recent.value = [];
+    unreadCount.value = 0;
+    revision.value++;
+  }
+  return { recent, unreadCount, revision, refresh, markRead, markAllRead, setUser };
 });

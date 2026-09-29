@@ -181,3 +181,109 @@ def test_notification_and_audit_http_contract_enforces_terminal_owner_csrf_and_r
         )
         assert invalid_role_template.status_code == 422
         assert factory.get("/api/v1/admin/audit-logs").status_code == 401
+
+
+def test_admin_marks_all_own_unread_notifications_across_pages(
+    test_database_engine: Engine,
+    test_database_url: str,
+) -> None:
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    with sessions() as session, session.begin():
+        session.add_all(
+            [
+                User(
+                    user_id="bulk-admin", role="admin", is_enabled=True, feishu_display_name="本人"
+                ),
+                User(
+                    user_id="bulk-other",
+                    role="admin",
+                    is_enabled=True,
+                    feishu_display_name="其他人",
+                ),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                Notification(
+                    recipient_id="bulk-admin",
+                    category="SHIPMENT",
+                    event_type="shipment.submitted",
+                    target_type="shipment",
+                    target_id=str(index),
+                    title=f"发货 {index}",
+                    summary="待查看",
+                    target_path=f"/shipments/{index}",
+                    dedupe_key=f"bulk-{index}",
+                    created_at=datetime(2026, 9, 29, 9, index),
+                )
+                for index in range(11)
+            ]
+            + [
+                Notification(
+                    recipient_id="bulk-admin",
+                    category="SHIPMENT",
+                    event_type="shipment.submitted",
+                    target_type="shipment",
+                    target_id="already-read",
+                    title="既有已读通知",
+                    summary="已查看",
+                    target_path="/shipments/already-read",
+                    dedupe_key="bulk-already-read",
+                    read_at=datetime(2026, 9, 29, 8),
+                    created_at=datetime(2026, 9, 29, 8),
+                ),
+                Notification(
+                    recipient_id="bulk-other",
+                    category="SHIPMENT",
+                    event_type="shipment.submitted",
+                    target_type="shipment",
+                    target_id="other",
+                    title="其他管理员通知",
+                    summary="待查看",
+                    target_path="/shipments/other",
+                    dedupe_key="bulk-other",
+                    created_at=datetime(2026, 9, 29, 10),
+                )
+            ]
+        )
+
+    identity = IdentityAccessService(
+        sessions,
+        token_secret=b"bulk-token-secret",
+        phone_encryption_secret=b"bulk-phone-secret",
+        phone_digest_secret=b"bulk-digest-secret",
+    )
+    own_session = identity.issue_session(user_id="bulk-admin", terminal="web")
+    other_session = identity.issue_session(user_id="bulk-other", terminal="web")
+    app = create_app(
+        database_url=test_database_url,
+        identity_service=identity,
+        notifications_audit_service=NotificationsAuditService(sessions),
+    )
+
+    with TestClient(app, base_url="https://testserver") as anonymous:
+        assert anonymous.post("/api/v1/admin/notifications/read-all").status_code == 401
+
+    with TestClient(app, base_url="https://testserver") as admin:
+        admin.cookies.set("ot_web_session", own_session.access_token)
+        admin.cookies.set("ot_csrf", own_session.csrf_token or "")
+        assert admin.get("/api/v1/admin/notifications?status=unread&page=2").json()["total"] == 11
+        assert admin.post("/api/v1/admin/notifications/read-all").status_code == 403
+        headers = {"X-CSRF-Token": own_session.csrf_token or ""}
+        marked = admin.post("/api/v1/admin/notifications/read-all", headers=headers)
+        assert marked.status_code == 204
+        assert admin.get("/api/v1/admin/notifications/unread-count").json()["count"] == 0
+        assert admin.get("/api/v1/admin/notifications?status=unread&page=1").json()["total"] == 0
+        assert admin.get("/api/v1/admin/notifications?status=all&page=1").json()["total"] == 12
+        all_page_two = admin.get("/api/v1/admin/notifications?status=all&page=2").json()
+        already_read = all_page_two["items"][-1]
+        assert already_read["readAt"].startswith("2026-09-29T08:00:00")
+        assert (
+            admin.post("/api/v1/admin/notifications/read-all", headers=headers).status_code
+            == 204
+        )
+
+    with TestClient(app, base_url="https://testserver") as other:
+        other.cookies.set("ot_web_session", other_session.access_token)
+        assert other.get("/api/v1/admin/notifications/unread-count").json()["count"] == 1

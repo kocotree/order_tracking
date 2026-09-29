@@ -507,4 +507,5 @@ export const notificationApi = {
     request<NotificationList>(`/v1/admin/notifications?status=${status}&page=${page}&pageSize=${pageSize}`),
   unreadCount: () => request<UnreadCount>("/v1/admin/notifications/unread-count"),
   markRead: (notificationId:number) => request<void>(`/v1/admin/notifications/${notificationId}/read`, { method:"POST" }),
+  markAllRead: () => request<void>("/v1/admin/notifications/read-all", { method:"POST" }),
 };

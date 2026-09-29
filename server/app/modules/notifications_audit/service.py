@@ -867,6 +867,14 @@ class NotificationsAuditService:
             session.flush()
             return self._snapshot(notification)
 
+    def mark_all_read(self, *, user_id: str) -> None:
+        with self._session_factory() as session, session.begin():
+            session.execute(
+                update(Notification)
+                .where(Notification.recipient_id == user_id, Notification.read_at.is_(None))
+                .values(read_at=utc_now())
+            )
+
     def list_audit_logs(
         self,
         *,

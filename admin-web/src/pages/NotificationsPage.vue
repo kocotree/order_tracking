@@ -12,7 +12,11 @@
               <button type="button" :class="{ 'is-active': status === 'unread' }" @click="setStatus('unread')">未读</button>
             </nav>
             <button class="notification-mark-all-button" type="button" aria-label="全部标为已读" title="全部标为已读" :disabled="markingAll || !notificationStore.unreadCount" @click="markAllRead">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m14 4 6 6M19 3l-8.5 8.5m-1 1 4 4M2 22l4-9 5 5-9 4Z" /></svg>
+              <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                <path d="M20.5 14.5 25.9 2.9a1.8 1.8 0 0 1 3.3 1.5l-5.5 11.7" />
+                <path d="m16.6 12.7 7.7 3.6a1 1 0 0 1 .5 1.3l-1 2.1a1 1 0 0 1-1.3.5l-7.7-3.6a1 1 0 0 1-.5-1.3l1-2.1a1 1 0 0 1 1.3-.5Z" />
+                <path d="M15 17.5c-2.4 4.7-5.8 7.1-11.8 7.5 4.1 4.6 9.1 6.1 13.7 5.4 4.6-.7 7.8-5.2 6.8-10.4M5.6 25.2c3.1 1.8 6.9 1.6 9.4-.7M9.8 28.6c4.3 1.4 7.3-1 8.4-4.4" />
+              </svg>
             </button>
           </div>
         </header>

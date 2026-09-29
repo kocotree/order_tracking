@@ -73,6 +73,10 @@ def test_template_and_rendered_labels_keep_two_printable_copies() -> None:
     }
     assert result.sheet_format.defaultRowHeight == sheet.sheet_format.defaultRowHeight
     for start in (1, 11):
+        image_cell = result.cell(start + 1, 1)
+        template_cell = sheet.cell(start + 1, 1)
+        assert image_cell.border.left.style == template_cell.border.left.style
+        assert image_cell.border.top.style == template_cell.border.top.style
         assert result.cell(start, 2).value == "工厂：晟衣"
         assert result.cell(start + 1, 2).value == "货号：KQ26168"
         assert result.cell(start + 2, 2).value == "品名：暖呼吸羽绒马甲"

@@ -4,7 +4,7 @@ from io import StringIO
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
-from app.logging import StructuredLogger
+from app.logging import StructuredLogger, record_request_actor
 from app.main import create_app
 
 
@@ -34,6 +34,27 @@ def test_request_log_includes_duration_and_error_code() -> None:
     assert isinstance(log_entry["durationMs"], int)
     assert log_entry["durationMs"] >= 0
     assert "do-not-log" not in stream.getvalue()
+
+
+def test_authenticated_request_log_includes_user_and_terminal_without_cross_request_leak() -> None:
+    router = APIRouter()
+
+    @router.get("/actor")
+    def actor() -> dict[str, str]:
+        record_request_actor("user-1", "mini")
+        return {"status": "ok"}
+
+    stream = StringIO()
+    with TestClient(create_app(extra_routers=[router],
+                               event_logger=StructuredLogger(stream=stream))) as client:
+        assert client.get("/actor").status_code == 200
+        assert client.get("/missing").status_code == 404
+
+    actor_log, anonymous_log = (json.loads(line) for line in stream.getvalue().splitlines())
+    assert actor_log["userId"] == "user-1"
+    assert actor_log["terminal"] == "mini"
+    assert "userId" not in anonymous_log
+    assert "terminal" not in anonymous_log
 
 
 def test_unhandled_error_uses_safe_response_with_request_id() -> None:

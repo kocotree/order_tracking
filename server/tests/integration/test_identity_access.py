@@ -1,3 +1,4 @@
+from contextvars import Context
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -8,6 +9,7 @@ from app.adapters.avatar import FakeAvatarStore
 from app.adapters.identity import FakeFeishuIdentity
 from app.adapters.wechat import FakeWechatIdentity, WechatProfile
 from app.db.models import AdminApplication, User
+from app.logging import request_log_fields
 from app.modules.identity_access import (
     AvatarInvalid,
     FeishuProfile,
@@ -294,6 +296,15 @@ def test_disabling_admin_revokes_all_sessions_and_enable_does_not_revive_them(
         service.authenticate_session(token=mini.access_token, terminal="mini").user_id
         == ordinary.user_id
     )
+
+    log_fields: dict[str, str] = {}
+
+    def authenticate_for_log() -> None:
+        request_log_fields.set(log_fields)
+        service.authenticate_session(token=web.access_token, terminal="web")
+
+    Context().run(authenticate_for_log)
+    assert log_fields == {"userId": ordinary.user_id, "terminal": "web"}
 
     disabled = service.set_admin_enabled(
         actor_id=super_admin.user_id,

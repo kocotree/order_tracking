@@ -2,6 +2,7 @@ import json
 import logging
 import sys
 from collections.abc import Mapping
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any, TextIO
 
@@ -16,6 +17,16 @@ SENSITIVE_KEY_PARTS = {
     "token",
     "verificationcode",
 }
+
+request_log_fields: ContextVar[dict[str, str] | None] = ContextVar(
+    "request_log_fields", default=None
+)
+
+
+def record_request_actor(user_id: str, terminal: str) -> None:
+    fields = request_log_fields.get()
+    if fields is not None:
+        fields.update({"userId": user_id, "terminal": terminal})
 
 
 def is_sensitive_key(key: object) -> bool:

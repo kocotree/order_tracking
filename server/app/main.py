@@ -64,7 +64,11 @@ from app.local_demo import (
     create_local_demo_router,
     local_demo_order_source,
 )
-from app.logging import StructuredLogger, configure_uvicorn_access_log_redaction
+from app.logging import (
+    StructuredLogger,
+    configure_uvicorn_access_log_redaction,
+    request_log_fields,
+)
 from app.mcp.server import create_agent_mcp
 from app.modules.box_labels import BoxLabelService
 from app.modules.box_labels.service import (
@@ -503,7 +507,12 @@ def create_app(
         request_id = uuid4().hex
         request.state.request_id = request_id
         request.state.request_started = monotonic()
-        response = await call_next(request)
+        request.state.log_fields = {}
+        context_token = request_log_fields.set(request.state.log_fields)
+        try:
+            response = await call_next(request)
+        finally:
+            request_log_fields.reset(context_token)
         response.headers["X-Request-ID"] = request_id
         if response.status_code >= 400 or request.url.path not in {"/health/live", "/health/ready"}:
             logger.event(
@@ -514,6 +523,7 @@ def create_app(
                     "path": request.url.path,
                     "statusCode": response.status_code,
                     "durationMs": round((monotonic() - request.state.request_started) * 1000),
+                    **request.state.log_fields,
                     **({"errorCode": getattr(request.state, "error_code", "http_error")}
                        if response.status_code >= 400 else {}),
                 },
@@ -529,7 +539,8 @@ def create_app(
             level="ERROR",
             fields={"method": request.method, "path": request.url.path, "statusCode": 500,
                     "durationMs": round((monotonic() - request.state.request_started) * 1000),
-                    "errorCode": "internal_error", "exceptionType": type(error).__name__},
+                    "errorCode": "internal_error", "exceptionType": type(error).__name__,
+                    **request.state.log_fields},
         )
         return JSONResponse(
             status_code=500,

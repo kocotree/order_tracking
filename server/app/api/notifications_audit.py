@@ -166,6 +166,14 @@ def create_notifications_audit_router(
             request_id=request.state.request_id,
         )
 
+    @router.post("/admin/notifications/read-all", status_code=204)
+    def admin_mark_all_read(
+        ot_web_session: str | None = Cookie(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> None:
+        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
+        service.mark_all_read(user_id=actor.user_id)
+
     @router.post(
         "/admin/notifications/{notification_id}/read", response_model=NotificationResponse
     )

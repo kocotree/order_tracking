@@ -6,11 +6,22 @@
           <button class="detail-back-button notifications-back-button" type="button" @click="goBack" aria-label="返回上一页">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>返回
           </button>
-          <nav class="notification-tabs" aria-label="通知筛选">
-            <button type="button" :class="{ 'is-active': status === 'all' }" @click="setStatus('all')">全部</button>
-            <button type="button" :class="{ 'is-active': status === 'unread' }" @click="setStatus('unread')">未读</button>
-          </nav>
+          <div class="notification-header-actions">
+            <nav class="notification-tabs" aria-label="通知筛选">
+              <button type="button" :class="{ 'is-active': status === 'all' }" @click="setStatus('all')">全部</button>
+              <button type="button" :class="{ 'is-active': status === 'unread' }" @click="setStatus('unread')">未读</button>
+            </nav>
+            <button class="notification-mark-all-button" type="button" aria-label="全部标为已读" title="全部标为已读" :disabled="markingAll || !notificationStore.unreadCount" @click="markAllRead">
+              <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                <path d="M20.5 14.5 25.9 2.9a1.8 1.8 0 0 1 3.3 1.5l-5.5 11.7" />
+                <path d="m16.6 12.7 7.7 3.6a1 1 0 0 1 .5 1.3l-1 2.1a1 1 0 0 1-1.3.5l-7.7-3.6a1 1 0 0 1-.5-1.3l1-2.1a1 1 0 0 1 1.3-.5Z" />
+                <path d="M15 17.5c-2.4 4.7-5.8 7.1-11.8 7.5 4.1 4.6 9.1 6.1 13.7 5.4 4.6-.7 7.8-5.2 6.8-10.4M5.6 25.2c3.1 1.8 6.9 1.6 9.4-.7M9.8 28.6c4.3 1.4 7.3-1 8.4-4.4" />
+              </svg>
+            </button>
+          </div>
         </header>
+        <p v-if="markAllMessage" class="notification-action-message" role="status">{{ markAllMessage }}</p>
+        <p v-if="markAllError" class="notification-action-error" role="alert">{{ markAllError }}</p>
         <p v-if="loading" class="page-state">正在加载通知…</p>
         <p v-else-if="errorMessage" class="page-error">{{ errorMessage }}</p>
         <div v-else-if="items.length" class="notification-list">
@@ -49,6 +60,9 @@ const items = ref<NotificationItem[]>([]);
 const total = ref(0);
 const loading = ref(true);
 const errorMessage = ref("");
+const markAllMessage = ref("");
+const markAllError = ref("");
+const markingAll = ref(false);
 const totalPages = computed(() => Math.max(Math.ceil(total.value / 10), 1));
 
 function goBack() {
@@ -68,6 +82,18 @@ async function load() {
 async function syncRoute() { await router.push({ path:"/notifications", query:{ status:status.value, page:String(page.value) } }); await load(); }
 async function setStatus(value:"all"|"unread") { status.value = value; page.value = 1; await syncRoute(); }
 async function setPage(value:number) { page.value = value; await syncRoute(); }
+async function markAllRead() {
+  markingAll.value = true; markAllError.value = ""; markAllMessage.value = "";
+  try {
+    await notificationStore.markAllRead();
+    if (status.value === "unread") {
+      page.value = 1;
+      await syncRoute();
+    } else await load();
+    markAllMessage.value = "已全部标为已读";
+  } catch { markAllError.value = "全部标为已读失败，请重试"; }
+  finally { markingAll.value = false; }
+}
 async function open(item:NotificationItem) {
   try {
     await notificationStore.markRead(item);

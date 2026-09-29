@@ -8170,6 +8170,61 @@
         "summary": "Admin Notifications"
       }
     },
+    "/api/v1/admin/notifications/read-all": {
+      "post": {
+        "operationId": "admin_mark_all_read_api_v1_admin_notifications_read_all_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Mark All Read"
+      }
+    },
     "/api/v1/admin/notifications/unread-count": {
       "get": {
         "operationId": "admin_unread_count_api_v1_admin_notifications_unread_count_get",

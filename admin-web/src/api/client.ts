@@ -30,6 +30,9 @@ export type User = components["schemas"]["UserResponse"];
 export type ContractFactoryStatus = components["schemas"]["ContractFactoryStatusResponse"];
 export type ContractFactoryStatusList = components["schemas"]["ContractFactoryStatusListResponse"];
 export type ContractExport = components["schemas"]["ContractExportResponse"];
+export type BoxLabelRow = components["schemas"]["BoxLabelRow"];
+export type BoxLabelList = components["schemas"]["BoxLabelList"];
+export type BoxLabelExport = components["schemas"]["BoxLabelExportResponse"];
 
 export type ShipmentReceipt = components["schemas"]["ReceiptResponse"];
 export type ShipmentReceiptOptions = components["schemas"]["ReceiptOptionsResponse"];
@@ -422,6 +425,17 @@ export const contractApi = {
       },
     ),
   download: (value: ContractExport) => download(value.downloadUrl, value.filename),
+};
+
+export const boxLabelApi = {
+  list: (orderId: string) => request<BoxLabelList>(
+    `/v1/admin/orders/${encodeURIComponent(orderId)}/box-labels`,
+  ),
+  export: (orderId: string, groupId: string) => request<BoxLabelExport>(
+    `/v1/admin/orders/${encodeURIComponent(orderId)}/box-labels/${encodeURIComponent(groupId)}/exports`,
+    { method: "POST", headers: idempotencyHeaders() },
+  ),
+  download: (value: BoxLabelExport) => download(value.downloadUrl, value.filename),
 };
 
 export type ShipmentSummary = components["schemas"]["ShipmentSummaryResponse"];

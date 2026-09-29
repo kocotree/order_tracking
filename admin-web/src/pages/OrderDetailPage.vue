@@ -11,6 +11,7 @@
               <span class="status-badge" :class="statusTone(order)"><i aria-hidden="true"></i>{{ order.displayStatus }}</span>
               <button v-if="order.lifecycle === 'DRAFT' && !order.detailMode" class="detail-primary-button" type="button" @click="openAction('publish')">发布订单</button>
               <button class="detail-outline-button" type="button" data-testid="contract-export-open" :disabled="!contractButtonEnabled" :title="contractButtonTitle" @click="openContractExport">导出加工合同</button>
+              <button class="detail-outline-button" type="button" data-testid="box-label-open" @click="openBoxLabels">导出箱贴</button>
               <button v-if="order.lifecycle !== 'DRAFT'" class="detail-outline-button" type="button" :disabled="interactionBusy || hasUnsavedDetails" @click="openWithdrawal">撤回派工</button>
               <button v-if="order.lifecycle === 'PUBLISHED'" class="detail-primary-button" type="button" :disabled="!canComplete || interactionBusy" @click="openAction('complete')">确认订单完成</button>
               <button v-if="order.lifecycle === 'COMPLETED'" class="detail-outline-button" type="button" @click="openAction('reopen')">撤销完成</button>
@@ -189,6 +190,22 @@
           </template>
         </section>
       </div>
+      <div v-if="boxLabelDialogOpen" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="box-label-title">
+        <section class="modal contract-export-dialog is-factory-list">
+          <header><h2 id="box-label-title">导出箱贴</h2><button type="button" aria-label="关闭导出箱贴弹窗" :disabled="exportingBoxLabel !== null" @click="boxLabelDialogOpen = false">×</button></header>
+          <div class="contract-export-body">
+            <p v-if="loadingBoxLabels">正在加载箱贴…</p>
+            <p v-else-if="!boxLabels.length && !boxLabelError">暂无可导出的箱贴</p>
+            <div v-else-if="boxLabels.length" class="contract-factory-table-wrap">
+              <table class="contract-factory-table box-label-table">
+                <thead><tr><th>工厂</th><th>产品名称</th><th>颜色</th><th>操作</th></tr></thead>
+                <tbody><tr v-for="item in boxLabels" :key="item.groupId"><td>{{ item.factoryName }}</td><td>{{ item.productName }}</td><td>{{ item.color }}</td><td><button class="detail-text-button" type="button" :disabled="!item.eligible || exportingBoxLabel !== null" :title="item.ineligibleReason || undefined" @click="exportBoxLabel(item)">{{ !item.eligible ? item.ineligibleReason : exportingBoxLabel === item.groupId ? '生成中…' : '导出' }}</button></td></tr></tbody>
+              </table>
+            </div>
+            <p v-if="boxLabelError" class="page-error contract-export-error" role="alert">{{ boxLabelError }}</p>
+          </div>
+        </section>
+      </div>
     </article>
   </AdminShell>
 </template>
@@ -197,7 +214,7 @@
 import { sortedCategories } from "@/productCategories";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, contractApi, identityApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview, type IncomingDifference } from "@/api/client";
+import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type BoxLabelRow, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview, type IncomingDifference } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 
 const relatedShipments = ref<Shipment[]>([]);
@@ -515,6 +532,7 @@ watch(() => route.params.orderId, () => {
   detailDrafts.value = {}; order.value = null; relatedShipments.value = []; auditLogs.value = []; incomingDifferences.value = []; incomingExpanded.value = false; incomingDrafts.value = {}; incomingError.value = ""; incomingSuccess.value = ""; incomingSaving.value = null;
   withdrawalDialog.value?.close(); withdrawalBusy.value = false;
   contractFactories.value = []; pendingAction.value = null; contractDialogOpen.value = false;
+  boxLabelDialogOpen.value = false; boxLabels.value = []; boxLabelError.value = "";
   void load();
 });
 const auditLogs = ref<AuditLogList["items"]>([]);
@@ -558,6 +576,7 @@ async function saveIncoming(item: IncomingDifference) {
   } finally { if (target === orderId) incomingSaving.value = null; }
 }
 const contractFactories = ref<ContractFactoryStatus[]>([]); const loadingContracts = ref(false); const contractDialogOpen = ref(false); const selectedContractFactory = ref<ContractFactoryStatus | null>(null); const contractSigningDate = ref(""); const contractError = ref(""); const exportingContract = ref(false);
+const boxLabelDialogOpen = ref(false); const boxLabels = ref<BoxLabelRow[]>([]); const loadingBoxLabels = ref(false); const boxLabelError = ref(""); const exportingBoxLabel = ref<string | null>(null);
 const number = (value: number | null) => value == null ? "—" : value.toLocaleString("zh-CN");
 const dateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
 const pageTitle = computed(() => order.value ? `订单详情 · ${order.value.orderNo}` : "订单详情");
@@ -617,6 +636,20 @@ function selectContractFactory(factory: ContractFactoryStatus) { selectedContrac
 function openContractExport() { if (!order.value) return; contractError.value = ""; contractDialogOpen.value = true; if (contractFactories.value.length === 1) selectContractFactory(contractFactories.value[0]); else selectedContractFactory.value = null; }
 function closeContractExport() { contractDialogOpen.value = false; selectedContractFactory.value = null; contractError.value = ""; }
 async function confirmContractExport() { const factory = selectedContractFactory.value; if (!factory || !contractSigningDate.value) return; exportingContract.value = true; contractError.value = ""; try { const exported = await contractApi.export(orderId, factory.factoryId, contractSigningDate.value); await contractApi.download(exported); closeContractExport(); await loadContracts(); } catch (error) { contractError.value = error instanceof ApiError ? error.message : "加工合同导出失败"; } finally { exportingContract.value = false; } }
+async function openBoxLabels() {
+  boxLabelDialogOpen.value = true; boxLabels.value = []; boxLabelError.value = ""; loadingBoxLabels.value = true;
+  const target = orderId;
+  try { const result = await boxLabelApi.list(target); if (target === orderId) boxLabels.value = result.items; }
+  catch (error) { if (target === orderId) boxLabelError.value = error instanceof ApiError ? error.message : "箱贴加载失败，请重试。"; }
+  finally { if (target === orderId) loadingBoxLabels.value = false; }
+}
+async function exportBoxLabel(item: BoxLabelRow) {
+  if (exportingBoxLabel.value !== null || !item.eligible) return;
+  exportingBoxLabel.value = item.groupId; boxLabelError.value = "";
+  try { const exported = await boxLabelApi.export(orderId, item.groupId); await boxLabelApi.download(exported); }
+  catch (error) { boxLabelError.value = error instanceof ApiError ? error.message : "箱贴导出失败，请重试。"; }
+  finally { exportingBoxLabel.value = null; }
+}
 async function confirmAction() { if (!order.value || !pendingAction.value) return; acting.value = true; actionError.value = ""; try { const action = pendingAction.value; if (action === "delete") { await orderApi.delete(orderId); await router.replace(listRoute()); return; } if (action === "publish") await orderApi.publish(orderId, order.value.version); if (action === "complete") await orderApi.complete(orderId); if (action === "reopen") await orderApi.reopen(orderId, reopenReason.value); pendingAction.value = null; await load(); } catch (error) { actionError.value = error instanceof ApiError ? error.message : "订单操作失败"; } finally { acting.value = false; } }
 onMounted(() => { void Promise.all([load(), loadFactoryOptions()]); });
 </script>

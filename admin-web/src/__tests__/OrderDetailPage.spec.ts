@@ -2,7 +2,7 @@ import { useRoute } from "vue-router";
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, contractApi, identityApi, orderApi, shipmentApi, type Shipment, type Order } from "@/api/client";
+import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, shipmentApi, type Shipment, type Order } from "@/api/client";
 import OrderDetailPage from "@/pages/OrderDetailPage.vue";
 
 const routerPush = vi.hoisted(() => vi.fn());
@@ -89,6 +89,27 @@ describe("incoming differences on order detail", () => {
 });
 
 describe("order detail prototype alignment", () => {
+  it("shows the four box-label columns and exports its sole eligible row", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    vi.spyOn(boxLabelApi, "list").mockResolvedValue({
+      items: [{ groupId: "group-1", factoryId: "factory-1", factoryName: "盛泰", productName: "轻量防风马甲", color: "雾蓝", eligible: true, ineligibleReason: null }],
+      requestId: "box-label-list",
+    });
+    const exportSpy = vi.spyOn(boxLabelApi, "export").mockResolvedValue({ exportId: "export-1", filename: "092#_盛泰_轻量防风马甲_雾蓝.xlsx", downloadUrl: "/api/v1/admin/box-label-exports/export-1/download", requestId: "box-label-export" });
+    const downloadSpy = vi.spyOn(boxLabelApi, "download").mockResolvedValue();
+    const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
+    await flushPromises();
+    await wrapper.get('[data-testid="box-label-open"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get("#box-label-title").text()).toBe("导出箱贴");
+    expect(wrapper.findAll(".box-label-table th").map((cell) => cell.text())).toEqual(["工厂", "产品名称", "颜色", "操作"]);
+    expect(wrapper.findAll(".box-label-table tbody tr")).toHaveLength(1);
+    await wrapper.get(".box-label-table button").trigger("click");
+    await flushPromises();
+    expect(exportSpy).toHaveBeenCalledWith("order-1", "group-1");
+    expect(downloadSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("shows the export entry disabled when the order has no matched factory", async () => {
     vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
     const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });

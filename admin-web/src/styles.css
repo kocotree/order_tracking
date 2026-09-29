@@ -391,6 +391,10 @@ h1, h2, p { margin-top: 0; }
 .contract-factory-table th:nth-child(3) { width: 190px; }
 .contract-factory-table th:nth-child(4) { width: 130px; }
 .contract-factory-table th:nth-child(5) { width: 90px; }
+.box-label-table th:nth-child(1) { width: 140px; }
+.box-label-table th:nth-child(2) { width: 290px; }
+.box-label-table th:nth-child(3) { width: 150px; }
+.box-label-table th:nth-child(4) { width: 100px; }
 .contract-ready-badge { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 9px; font-size: 12px; font-weight: 700; white-space: nowrap; border-radius: 999px; }
 .contract-ready-badge.is-ready { color: var(--success); background: var(--success-bg); }
 .contract-ready-badge.is-missing { color: var(--warning); background: var(--warning-bg); }

@@ -22,7 +22,7 @@ from app.db.models import (
 )
 from app.modules.box_labels.workbook import BoxLabelWorkbookRenderer
 from app.modules.contracts.service import CONTRACT_MIME
-from app.modules.product_sync.color import extract_color as extract_product_color
+from app.modules.product_sync.color import extract_color
 
 
 class BoxLabelError(ValueError):
@@ -53,15 +53,6 @@ class BoxLabelGroup:
     eligible: bool
     ineligible_reason: str | None
     variants: tuple[ProductVariant, ...] = ()
-
-
-def extract_color(properties: str | None) -> str | None:
-    value = (properties or "").strip()
-    # 旧聚水潭样本中的 120/60 整体为尺码，公共规则单独按分隔符解析会截错。
-    match = re.fullmatch(r"(.+?[\u4e00-\u9fff])\d{2,3}/\d{2,3}[A-Z]?", value)
-    if match:
-        return match.group(1)
-    return extract_product_color(value)
 
 
 def group_id(factory_id: str, product_id: str, color: str) -> str:
@@ -140,7 +131,7 @@ class BoxLabelService:
             ]
         grouped: dict[str, BoxLabelGroup] = {}
         for index, (factory, product, variant, source_name, properties) in enumerate(source):
-            color = extract_color(properties)
+            color = extract_color(properties or "")
             reason = "产品未匹配" if product is None else "颜色无法确定" if not color else None
             key = (
                 group_id(factory.factory_id, product.product_id, color)

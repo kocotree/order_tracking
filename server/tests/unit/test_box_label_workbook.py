@@ -4,8 +4,9 @@ from pathlib import Path
 from openpyxl import load_workbook
 from PIL import Image
 
-from app.modules.box_labels.service import BoxLabelService, extract_color, group_id
+from app.modules.box_labels.service import BoxLabelService, group_id
 from app.modules.box_labels.workbook import BoxLabelWorkbookRenderer
+from app.modules.product_sync.color import extract_color
 
 TEMPLATE = Path(__file__).resolve().parents[2] / "app/templates/box_label_v1.xlsx"
 
@@ -18,6 +19,7 @@ def test_real_spec_formats_and_ambiguous_color() -> None:
         "咖啡;": "咖啡",
         "米色 / 52cm": "米色",
         "23号冰川蓝均码": "23号冰川蓝",
+        "23号冰川蓝无尺码": "23号冰川蓝",
         "蓝色小熊;S": "蓝色小熊",
         "冰川蓝": "冰川蓝",
         "蓝2": None,

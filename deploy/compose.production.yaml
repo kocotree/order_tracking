@@ -51,6 +51,7 @@ services:
   worker:
     <<: *server
     command: ["uv", "run", "--no-sync", "python", "-m", "app.worker"]
+    stop_grace_period: 45s
     volumes:
       - jst-token:/var/lib/order-tracking/jst
 

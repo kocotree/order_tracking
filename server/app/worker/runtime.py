@@ -27,6 +27,7 @@ class Worker:
         self._store = store
         self._worker_id = worker_id
         self._handlers = handlers
+        self._job_types = tuple(handlers)
         self._terminal_failure_handlers = terminal_failure_handlers or {}
         self._retry_limits = retry_limits or {}
         self._retry_delay_seconds = retry_delay_seconds
@@ -37,9 +38,14 @@ class Worker:
     def run_once(self, *, now: datetime | None = None) -> bool:
         if self._maintenance is not None:
             self._maintenance()
-        claimed = self._store.claim_next_job(worker_id=self._worker_id, now=now or utc_now())
+        claimed = self._store.claim_next_job(
+            worker_id=self._worker_id, now=now or utc_now(), job_types=self._job_types
+        )
+        worked = False
         if claimed is None:
-            return any(source() for source in self._work_sources)
+            for source in self._work_sources:
+                worked = source() or worked
+            return worked
         handler = self._handlers.get(claimed.job_type)
         if handler is None:
             self._store.fail_job(job_id=claimed.id, error_code="handler_not_registered")
@@ -79,6 +85,8 @@ class Worker:
                     terminal_failure_handler(claimed.payload, error)
             return True
         self._store.complete_job(job_id=claimed.id)
+        for source in self._work_sources:
+            source()
         return True
 
     def run(self, *, stop_event: Event, poll_interval: float = 1.0) -> int:

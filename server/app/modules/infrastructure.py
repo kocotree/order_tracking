@@ -1,3 +1,4 @@
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -101,13 +102,18 @@ class InfrastructureStore:
                 return existing_id
             return job.id
 
-    def claim_next_job(self, *, worker_id: str, now: datetime) -> ClaimedJob | None:
+    def claim_next_job(
+        self, *, worker_id: str, now: datetime, job_types: Collection[str] | None = None
+    ) -> ClaimedJob | None:
+        if job_types is not None and not job_types:
+            return None
         with self._session_factory() as session, session.begin():
             job = session.scalar(
                 select(BackgroundJob)
                 .where(
                     BackgroundJob.status == "pending",
                     BackgroundJob.available_at <= now,
+                    *([BackgroundJob.job_type.in_(job_types)] if job_types is not None else []),
                 )
                 .order_by(BackgroundJob.id)
                 .with_for_update(skip_locked=True)
@@ -129,7 +135,11 @@ class InfrastructureStore:
                 attempts=job.attempts,
             )
 
-    def recover_stale_jobs(self, *, before: datetime) -> int:
+    def recover_stale_jobs(
+        self, *, before: datetime, job_types: Collection[str] | None = None
+    ) -> int:
+        if job_types is not None and not job_types:
+            return 0
         with self._session_factory() as session, session.begin():
             result = cast(
                 CursorResult[Any],
@@ -139,6 +149,7 @@ class InfrastructureStore:
                         BackgroundJob.status == "running",
                         BackgroundJob.locked_at < before,
                         BackgroundJob.job_type != "order_auto_sync",
+                        *([BackgroundJob.job_type.in_(job_types)] if job_types is not None else []),
                     )
                     .values(
                         status="pending",

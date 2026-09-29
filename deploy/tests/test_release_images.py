@@ -27,6 +27,11 @@ if [[ "$1 $2" == 'image inspect' ]]; then
 fi
 if [[ "$*" == *'run --rm migrate'* && "$FAILURE" == migration ]]; then exit 1; fi
 if [[ "$*" == *'up -d'* && "$FAILURE" == health ]]; then exit 1; fi
+if [[ "$*" == *'top worker'* ]]; then
+  echo 'python -m app.worker --role sync'
+  echo 'python -m app.worker --role incoming'
+  if [[ "$FAILURE" != role ]]; then echo 'python -m app.worker --role notification'; fi
+fi
 ''',
                 "python3": f'''#!/bin/bash
 if [[ "$1" == *backup-production.py ]]; then
@@ -86,6 +91,13 @@ fi
         self.assertLess(calls.index("backup\n"), calls.index("run --rm migrate"))
         self.assertIn("v1.0.1", config)
         self.assertTrue(recorded)
+
+    def test_missing_worker_role_stops_release(self):
+        result, calls, config, recorded = self.run_release("role")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("worker role missing: notification", result.stderr)
+        self.assertIn("v1.0.0", config)
+        self.assertFalse(recorded)
 
 
 if __name__ == "__main__":

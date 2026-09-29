@@ -32,7 +32,7 @@ uv run python -m scripts.export_openapi --check
 uv run uvicorn app.main:create_app --factory --reload
 ```
 
-启动 worker：
+启动 worker（管理进程会启动同步、来货出入、通知三个子进程）：
 
 ```bash
 uv run python -m app.worker

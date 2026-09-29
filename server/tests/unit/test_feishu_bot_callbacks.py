@@ -15,6 +15,7 @@ from app.adapters.notifications import (
     AppCredentialFeishuSender,
     DeliveryRequest,
     FeishuNotificationConfig,
+    NotificationDeliveryError,
 )
 from app.api.feishu_bot import create_feishu_bot_router
 from app.modules.incoming_differences.bot import FeishuBotService, FeishuCallbackVerifier
@@ -298,6 +299,69 @@ def test_bot_card_uses_v2_callback_button_structure() -> None:
     assert button["behaviors"] == [{"type": "callback", "value": {
         "action": "confirm", "batchId": "batch-1", "version": 1,
     }}]
+
+
+def test_feishu_file_upload_failure_preserves_safe_stage_and_status() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("tenant_access_token/internal"):
+            return httpx.Response(200, json={"code": 0, "tenant_access_token": "fake-token",
+                                             "expire": 7200})
+        assert request.url.path.endswith("/im/v1/files")
+        return httpx.Response(503, text="secret upstream response")
+
+    sender = AppCredentialFeishuSender(
+        FeishuNotificationConfig(app_id="fake-app", app_secret="fake-secret",
+                                 admin_web_base_url="", ops_alert_recipient_user_id=""),
+        sessionmaker(), transport=httpx.MockTransport(respond),
+    )
+
+    with pytest.raises(NotificationDeliveryError) as caught:
+        sender.send_file(recipient_id="admin", recipient_open_id="open-1",
+                         filename="sheet.xlsx", content=b"workbook")
+
+    assert caught.value.stage == "file_upload"
+    assert caught.value.upstream_status == 503
+    assert caught.value.retryable is True
+    assert "secret upstream response" not in str(caught.value)
+
+
+def test_feishu_card_failure_preserves_safe_stage_and_platform_code() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("tenant_access_token/internal"):
+            return httpx.Response(200, json={"code": 0, "tenant_access_token": "fake-token",
+                                             "expire": 7200})
+        return httpx.Response(200, json={"code": 230001, "msg": "secret upstream response"})
+
+    sender = AppCredentialFeishuSender(
+        FeishuNotificationConfig(app_id="fake-app", app_secret="fake-secret",
+                                 admin_web_base_url="", ops_alert_recipient_user_id=""),
+        sessionmaker(), transport=httpx.MockTransport(respond),
+    )
+
+    with pytest.raises(NotificationDeliveryError) as caught:
+        sender.send_card(recipient_id="admin", recipient_open_id="open-1", card={})
+
+    assert caught.value.stage == "card_send"
+    assert caught.value.upstream_code == 230001
+    assert caught.value.retryable is False
+    assert "secret upstream response" not in str(caught.value)
+
+
+def test_feishu_token_failure_identifies_token_exchange_stage() -> None:
+    sender = AppCredentialFeishuSender(
+        FeishuNotificationConfig(app_id="fake-app", app_secret="fake-secret",
+                                 admin_web_base_url="", ops_alert_recipient_user_id=""),
+        sessionmaker(), transport=httpx.MockTransport(
+            lambda _request: httpx.Response(503, text="secret upstream response")
+        ),
+    )
+
+    with pytest.raises(NotificationDeliveryError) as caught:
+        sender.send_file(recipient_id="admin", recipient_open_id="open-1",
+                         filename="sheet.xlsx", content=b"workbook")
+
+    assert caught.value.stage == "token_exchange"
+    assert caught.value.upstream_status == 503
 
 
 def test_workbook_missing_field_reply_names_the_field() -> None:

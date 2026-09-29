@@ -35,6 +35,7 @@ from app.adapters.product import (
 )
 from app.adapters.vision import DisabledIncomingDiffRecognizer, QwenIncomingDiffRecognizer
 from app.db.session import create_database_engine
+from app.logging import StructuredLogger
 from app.modules.incoming_differences.bot import CONFIRM_JOB, REGENERATE_JOB, FeishuBotService
 from app.modules.incoming_differences.recognition import (
     IncomingDiffRecognitionService,
@@ -54,6 +55,7 @@ from app.worker.runtime import Worker
 
 def main() -> None:
     settings = Settings()
+    event_logger = StructuredLogger(level=settings.log_level)
     engine = create_database_engine(settings.database_url)
     stop_event = Event()
     signal.signal(signal.SIGTERM, lambda _signum, _frame: stop_event.set())
@@ -168,7 +170,7 @@ def main() -> None:
         service=OrderImportService(sessions), source=order_source
     )
     auto_sync = OrderAutoSync(sessions, source=order_source)
-    notification_service = NotificationsAuditService(sessions)
+    notification_service = NotificationsAuditService(sessions, event_logger=event_logger)
     store.recover_stale_jobs(before=utc_now() - timedelta(minutes=5))
     wechat_notifier: WechatNotifier = (
         AppCredentialWechatNotifier(
@@ -243,6 +245,7 @@ def main() -> None:
     Worker(
         store=store,
         worker_id=worker_id,
+        event_logger=event_logger,
         handlers={
             **product_handlers.handlers(),
             **order_handlers.handlers(),

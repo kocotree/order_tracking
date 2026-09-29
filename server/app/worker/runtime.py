@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from threading import Event
 from typing import Any
 
+from app.logging import StructuredLogger
 from app.modules.infrastructure import InfrastructureStore, utc_now
 
 JobHandler = Callable[[dict[str, Any]], None]
@@ -21,6 +22,7 @@ class Worker:
         retry_delay_seconds: int = 30,
         maintenance: Callable[[], None] | None = None,
         work_sources: list[Callable[[], bool]] | None = None,
+        event_logger: StructuredLogger | None = None,
     ) -> None:
         self._store = store
         self._worker_id = worker_id
@@ -30,6 +32,7 @@ class Worker:
         self._retry_delay_seconds = retry_delay_seconds
         self._maintenance = maintenance
         self._work_sources = work_sources or []
+        self._events = event_logger or StructuredLogger()
 
     def run_once(self, *, now: datetime | None = None) -> bool:
         if self._maintenance is not None:
@@ -40,6 +43,12 @@ class Worker:
         handler = self._handlers.get(claimed.job_type)
         if handler is None:
             self._store.fail_job(job_id=claimed.id, error_code="handler_not_registered")
+            self._events.event(
+                "job.failed", level="ERROR",
+                fields={"jobId": claimed.id, "jobType": claimed.job_type,
+                        "attempt": claimed.attempts, "status": "failed",
+                        "errorCode": "handler_not_registered"},
+            )
             return True
         try:
             handler(claimed.payload)
@@ -51,8 +60,18 @@ class Worker:
                     error_code="handler_failed",
                     available_at=(now or utc_now()) + timedelta(seconds=self._retry_delay_seconds),
                 )
+                status = "pending"
             else:
                 self._store.fail_job(job_id=claimed.id, error_code="handler_failed")
+                status = "failed"
+            self._events.event(
+                "job.failed", level="ERROR",
+                fields={"jobId": claimed.id, "jobType": claimed.job_type,
+                        "attempt": claimed.attempts, "status": status,
+                        "errorCode": "handler_failed",
+                        "exceptionType": type(error).__name__},
+            )
+            if status == "failed":
                 terminal_failure_handler = self._terminal_failure_handlers.get(
                     claimed.job_type
                 )

@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from time import monotonic
 from typing import Any
 from uuid import uuid4
 
@@ -162,7 +163,7 @@ def create_app(
     resolved_database_url = settings.database_url
     engine = create_database_engine(resolved_database_url)
     session_factory = create_session_factory(engine)
-    logger = event_logger or StructuredLogger()
+    logger = event_logger or StructuredLogger(level=settings.log_level)
     configure_uvicorn_access_log_redaction()
     local_demo_enabled = settings.app_env == "local_demo"
     if private_file_store is None:
@@ -501,26 +502,34 @@ def create_app(
     ) -> Response:
         request_id = uuid4().hex
         request.state.request_id = request_id
+        request.state.request_started = monotonic()
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
-        logger.event(
-            "request.completed",
-            request_id=request_id,
-            fields={
-                "method": request.method,
-                "path": request.url.path,
-                "statusCode": response.status_code,
-            },
-        )
+        if response.status_code >= 400 or request.url.path not in {"/health/live", "/health/ready"}:
+            logger.event(
+                "request.completed",
+                request_id=request_id,
+                fields={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "statusCode": response.status_code,
+                    "durationMs": round((monotonic() - request.state.request_started) * 1000),
+                    **({"errorCode": getattr(request.state, "error_code", "http_error")}
+                       if response.status_code >= 400 else {}),
+                },
+            )
         return response
 
     @app.exception_handler(Exception)
-    async def handle_unexpected_error(request: Request, _error: Exception) -> JSONResponse:
+    async def handle_unexpected_error(request: Request, error: Exception) -> JSONResponse:
         request_id = request.state.request_id
         logger.event(
             "request.failed",
             request_id=request_id,
-            fields={"method": request.method, "path": request.url.path, "statusCode": 500},
+            level="ERROR",
+            fields={"method": request.method, "path": request.url.path, "statusCode": 500,
+                    "durationMs": round((monotonic() - request.state.request_started) * 1000),
+                    "errorCode": "internal_error", "exceptionType": type(error).__name__},
         )
         return JSONResponse(
             status_code=500,
@@ -534,6 +543,7 @@ def create_app(
 
     @app.exception_handler(OAuthInvalid)
     async def handle_oauth_error(request: Request, error: OAuthInvalid) -> JSONResponse:
+        request.state.error_code = error.error
         return JSONResponse(
             status_code=401 if error.error == "invalid_client" else 400,
             content={"error": error.error},
@@ -564,6 +574,7 @@ def create_app(
             status_code, code, message = 422, "validation_failed", "提交内容校验失败"
         else:
             status_code, code, message = 422, "identity_error", "身份操作失败"
+        request.state.error_code = code
         return JSONResponse(
             status_code=status_code,
             content={
@@ -578,6 +589,7 @@ def create_app(
         request: Request,
         _error: ExternalAdapterUnavailable,
     ) -> JSONResponse:
+        request.state.error_code = "external_service_unavailable"
         return JSONResponse(
             status_code=503,
             content={
@@ -599,6 +611,7 @@ def create_app(
             status_code, code, message = 400, "validation_failed", str(error)
         else:
             status_code, code, message = 400, "order_error", "订单操作失败"
+        request.state.error_code = code
         return JSONResponse(
             status_code=status_code,
             content={"code": code, "message": message, "requestId": request.state.request_id},
@@ -618,6 +631,7 @@ def create_app(
             status_code, code, message = 500, "contract_generation_failed", "合同文件生成失败"
         else:
             status_code, code, message = 400, "contract_error", "合同操作失败"
+        request.state.error_code = code
         return JSONResponse(
             status_code=status_code,
             content={"code": code, "message": message, "requestId": request.state.request_id},
@@ -633,6 +647,7 @@ def create_app(
             status_code, code, message = 503, "box_label_generation_failed", str(error)
         else:
             status_code, code, message = 422, "validation_failed", str(error)
+        request.state.error_code = code
         return JSONResponse(
             status_code=status_code,
             content={"code": code, "message": message, "requestId": request.state.request_id},
@@ -650,6 +665,7 @@ def create_app(
             status_code, code, message = 422, "validation_failed", str(error)
         else:
             status_code, code, message = 400, "shipment_error", "发货单操作失败"
+        request.state.error_code = code
         return JSONResponse(
             status_code=status_code,
             content={"code": code, "message": message, "requestId": request.state.request_id},
@@ -669,6 +685,7 @@ def create_app(
             status_code, code, message = 422, "validation_failed", str(error)
         else:
             status_code, code, message = 400, "incoming_difference_error", "来货出入操作失败"
+        request.state.error_code = code
         return JSONResponse(
             status_code=status_code,
             content={"code": code, "message": message, "requestId": request.state.request_id},
@@ -677,6 +694,7 @@ def create_app(
     @app.exception_handler(StarletteHTTPException)
     async def handle_http_error(request: Request, error: StarletteHTTPException) -> JSONResponse:
         not_found = error.status_code == 404
+        request.state.error_code = "not_found" if not_found else "http_error"
         return JSONResponse(
             status_code=error.status_code,
             content={
@@ -697,6 +715,7 @@ def create_app(
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
         except SQLAlchemyError:
+            request.state.error_code = "service_unavailable"
             return JSONResponse(
                 status_code=503,
                 content={

@@ -77,3 +77,18 @@ def test_uvicorn_access_log_removes_query_string_before_rendering() -> None:
     assert "303" in rendered
     assert "oauth-sensitive-state" not in rendered
     assert "code=applicant" not in rendered
+
+
+def test_structured_logger_respects_configured_level_for_worker_events() -> None:
+    stream = StringIO()
+    logger = StructuredLogger(stream=stream, level="WARNING")
+
+    logger.event("job.completed", fields={"jobId": 12})
+    logger.event("job.failed", fields={"jobId": 12}, level="ERROR")
+
+    assert json.loads(stream.getvalue()) == {
+        "timestamp": json.loads(stream.getvalue())["timestamp"],
+        "level": "ERROR",
+        "event": "job.failed",
+        "jobId": 12,
+    }

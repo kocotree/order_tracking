@@ -42,12 +42,17 @@ class OpsAlert:
 
 class NotificationDeliveryError(RuntimeError):
     def __init__(
-        self, code: str, *, retryable: bool, safe_summary: str = "外部通知发送失败"
+        self, code: str, *, retryable: bool, safe_summary: str = "外部通知发送失败",
+        stage: str | None = None, upstream_status: int | None = None,
+        upstream_code: int | None = None,
     ) -> None:
         super().__init__(safe_summary)
         self.code = code
         self.retryable = retryable
         self.safe_summary = safe_summary
+        self.stage = stage
+        self.upstream_status = upstream_status
+        self.upstream_code = upstream_code
 
 
 class WechatNotifier(Protocol):
@@ -151,20 +156,44 @@ class AppCredentialFeishuSender:
 
     def send_file(self, *, recipient_id: str, content: bytes, filename: str,
                   recipient_open_id: str | None = None) -> None:
-        with httpx.Client(base_url=self._config.base_url, timeout=30,
-                          transport=self._transport) as client:
-            token = self._tenant_access_token(client)
-            response = client.post(
-                "/open-apis/im/v1/files", headers={"Authorization": f"Bearer {token}"},
-                data={"file_type": "xls", "file_name": filename},
-                files={"file": (filename, content,
-                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-            )
-            response.raise_for_status()
-            payload = response.json()
-            file_key = payload.get("data", {}).get("file_key") if payload.get("code") == 0 else None
-            if not isinstance(file_key, str):
-                raise NotificationDeliveryError("feishu_file_upload_failed", retryable=True)
+        stage = "token_exchange"
+        try:
+            with httpx.Client(base_url=self._config.base_url, timeout=30,
+                              transport=self._transport) as client:
+                token = self._tenant_access_token(client)
+                stage = "file_upload"
+                response = client.post(
+                    "/open-apis/im/v1/files", headers={"Authorization": f"Bearer {token}"},
+                    data={"file_type": "xls", "file_name": filename},
+                    files={"file": (filename, content,
+                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise ValueError("invalid Feishu file response")
+                data = payload.get("data")
+                file_key = (
+                    data.get("file_key")
+                    if payload.get("code") == 0 and isinstance(data, dict) else None
+                )
+                if not isinstance(file_key, str):
+                    platform_code = payload.get("code")
+                    raise NotificationDeliveryError(
+                        "feishu_file_upload_failed", retryable=True, stage=stage,
+                        upstream_code=platform_code if isinstance(platform_code, int) else None,
+                    )
+        except NotificationDeliveryError:
+            raise
+        except httpx.HTTPStatusError as error:
+            raise NotificationDeliveryError(
+                "feishu_file_upload_failed", retryable=True, stage=stage,
+                upstream_status=error.response.status_code,
+            ) from error
+        except (httpx.HTTPError, TypeError, ValueError) as error:
+            raise NotificationDeliveryError(
+                "feishu_file_upload_failed", retryable=True, stage=stage,
+            ) from error
         self._send_message(recipient_id=recipient_id, recipient_open_id=recipient_open_id,
                            msg_type="file", content={"file_key": file_key})
 
@@ -176,20 +205,26 @@ class AppCredentialFeishuSender:
         content: dict[str, object],
         recipient_open_id: str | None = None,
     ) -> None:
+        send_stage = {"interactive": "card_send", "file": "file_send"}.get(
+            msg_type, "text_send"
+        )
         open_id = recipient_open_id or self._recipient_openid(recipient_id)
         if open_id is None:
             raise NotificationDeliveryError(
                 "feishu_recipient_unbound",
                 retryable=False,
                 safe_summary="接收人未绑定飞书身份",
+                stage="recipient_lookup",
             )
         try:
+            stage = "token_exchange"
             with httpx.Client(
                 base_url=self._config.base_url,
                 timeout=30,
                 transport=self._transport,
             ) as client:
                 token = self._tenant_access_token(client)
+                stage = send_stage
                 response = client.post(
                     "/open-apis/im/v1/messages",
                     params={"receive_id_type": "open_id"},
@@ -202,11 +237,14 @@ class AppCredentialFeishuSender:
                 )
                 response.raise_for_status()
                 payload = response.json()
-                if not isinstance(payload, dict) or payload.get("code") != 0:
+                platform_code = payload.get("code") if isinstance(payload, dict) else None
+                if platform_code != 0:
                     raise NotificationDeliveryError(
                         "feishu_delivery_rejected",
                         retryable=False,
                         safe_summary="飞书通知被平台拒绝",
+                        stage=send_stage,
+                        upstream_code=platform_code if isinstance(platform_code, int) else None,
                     )
         except NotificationDeliveryError:
             raise
@@ -216,12 +254,15 @@ class AppCredentialFeishuSender:
                 "feishu_delivery_unavailable",
                 retryable=status_code == 429 or status_code >= 500,
                 safe_summary="飞书通知接口暂时不可用",
+                stage=stage,
+                upstream_status=status_code,
             ) from error
         except (httpx.HTTPError, TypeError, ValueError) as error:
             raise NotificationDeliveryError(
                 "feishu_delivery_unavailable",
                 retryable=True,
                 safe_summary="飞书通知接口暂时不可用",
+                stage=stage,
             ) from error
 
     def _recipient_openid(self, recipient_id: str) -> str | None:

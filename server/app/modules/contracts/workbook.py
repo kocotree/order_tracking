@@ -148,7 +148,10 @@ class ContractWorkbookRenderer:
         if template_version == "v3":
             color_groups: dict[tuple[str, str | int], list[dict[str, Any]]] = {}
             for index, line in enumerate(lines):
-                color = line.get("color") or extract_color(str(line["propertiesValue"]))
+                color = (
+                    line["color"] if "color" in line
+                    else extract_color(str(line["propertiesValue"]))
+                )
                 key = (str(line["productId"]), str(color) if color else index)
                 color_groups.setdefault(key, []).append(line)
             groups = list(color_groups.values())

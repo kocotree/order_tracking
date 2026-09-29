@@ -481,3 +481,19 @@ def test_saved_v2_contract_keeps_its_original_product_merge() -> None:
     assert {"A8:A9", "B8:B9", "C8:C9"} <= {
         str(item) for item in sheet.merged_cells.ranges
     }
+
+
+def test_v3_keeps_saved_unknown_color_separate_on_repeat_export() -> None:
+    template = Path(__file__).resolve().parents[2] / "app/templates/processing_contract_v2.xlsx"
+    renderer = ContractWorkbookRenderer(template_paths={"v2": template})
+    lines = [
+        {"productId": "p", "skuId": size, "color": None, "itemNo": "I",
+         "productName": "产品", "propertiesValue": f"蓝色,{size}",
+         "quantity": 1, "imageObjectKey": None,
+         "representativeImageObjectKey": None}
+        for size in ("S", "M")
+    ]
+
+    sheet = load_workbook(BytesIO(renderer.render(_snapshot(lines), template_version="v3")))["合同"]
+
+    assert "A8:A9" not in {str(item) for item in sheet.merged_cells.ranges}

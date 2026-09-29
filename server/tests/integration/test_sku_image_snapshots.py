@@ -1,8 +1,10 @@
 from datetime import date
+from io import BytesIO
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from PIL import Image
 from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import sessionmaker
 
@@ -78,9 +80,12 @@ def test_import_dispatch_and_contract_freeze_sku_image_without_rewriting_history
         request_id="image-confirm",
     )
     templates = Path(__file__).resolve().parents[2] / "app/templates"
+    image_output = BytesIO()
+    Image.new("RGB", (80, 80), color="blue").save(image_output, format="PNG")
     contracts = ContractService(
         sessions, workbook_renderer=ContractWorkbookRenderer(
             template_paths={"v2": templates / "processing_contract_v2.xlsx"},
+            image_loader=lambda _key: image_output.getvalue(),
         ), file_store=FakePrivateFileStore(bucket="images"),
     )
     contracts.create_export(

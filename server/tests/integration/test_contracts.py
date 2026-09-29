@@ -6,6 +6,7 @@ from threading import Barrier
 
 import pytest
 from openpyxl import load_workbook
+from PIL import Image
 from sqlalchemy import Engine, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -54,7 +55,7 @@ def _clean(engine: Engine) -> None:
             delete(OrderLine).where(OrderLine.order_id.in_([ORDER_ID, SECOND_ORDER_ID]))
         )
         session.execute(delete(Order).where(Order.order_id.in_([ORDER_ID, SECOND_ORDER_ID])))
-        session.execute(delete(ProductVariant).where(ProductVariant.variant_id == VARIANT_ID))
+        session.execute(delete(ProductVariant).where(ProductVariant.product_id == PRODUCT_ID))
         session.execute(delete(Product).where(Product.product_id == PRODUCT_ID))
         session.execute(delete(UserSession).where(UserSession.user_id == ADMIN_ID))
         session.execute(delete(User).where(User.user_id == ADMIN_ID))
@@ -573,6 +574,7 @@ def test_new_contract_uses_v2_without_reading_factory_phone(
         ),
         file_store=file_store,
         clock=lambda: datetime(2026, 9, 17, 9, 30, tzinfo=UTC),
+        template_version="v2",
     )
 
     try:
@@ -600,6 +602,99 @@ def test_new_contract_uses_v2_without_reading_factory_phone(
         assert sheet["E49"].value.endswith("电话：")
     finally:
         _clean(test_database_engine)
+
+
+def test_new_contract_freezes_sku_color_images_without_reusing_old_order_image(
+    test_database_engine: Engine,
+) -> None:
+    _clean(test_database_engine)
+    _seed_published_order(test_database_engine)
+    now = datetime(2026, 9, 29, tzinfo=UTC)
+    with Session(test_database_engine) as session, session.begin():
+        original = session.get(ProductVariant, VARIANT_ID)
+        original.image_cache_status = "cached"
+        original.image_object_key = "images/blue-b"
+        first_line = session.scalar(select(OrderLine).where(OrderLine.order_id == ORDER_ID))
+        first_line.image_object_key_snapshot = "images/old-product-level"
+        for variant_id, sku_id, properties, image_key in (
+            ("contract-blue-a", "6970000000000", "米色 / 54cm", None),
+            ("contract-red", "6970000000002", "红色 / 52cm", "images/red"),
+        ):
+            session.add(ProductVariant(
+                variant_id=variant_id, product_id=PRODUCT_ID, source_sku_id=sku_id,
+                properties_value=properties, source_category="童帽春夏",
+                source_enabled=1, is_available=True, image_object_key=image_key,
+                image_cache_status="cached" if image_key else "missing",
+                source_modified_at=now, first_synced_at=now, last_synced_at=now,
+            ))
+            session.flush()
+            line = OrderLine(
+                order_id=ORDER_ID, product_variant_id=variant_id, order_quantity=10,
+                sku_id_snapshot=sku_id, product_name_snapshot="儿童遮阳帽",
+                properties_value_snapshot=properties, category_snapshot="童帽春夏",
+                image_object_key_snapshot="images/old-product-level",
+                created_at=now, updated_at=now,
+            )
+            session.add(line)
+            session.flush()
+            session.add(OrderAssignment(
+                order_line_id=line.order_line_id, factory_id=FACTORY_ID,
+                assigned_quantity=10, factory_name_snapshot="合同测试工厂",
+                created_at=now, updated_at=now,
+            ))
+    images = {}
+    for key, color in (("images/blue-b", "blue"), ("images/red", "red")):
+        output = BytesIO()
+        Image.new("RGB", (80, 80), color=color).save(output, format="PNG")
+        images[key] = output.getvalue()
+    template = Path(__file__).resolve().parents[2] / "app/templates/processing_contract_v2.xlsx"
+    sessions = sessionmaker(test_database_engine, expire_on_commit=False)
+    service = ContractService(
+        sessions,
+        workbook_renderer=ContractWorkbookRenderer(
+            template_paths={"v2": template}, image_loader=lambda key: images[key],
+        ),
+        file_store=FakePrivateFileStore(bucket="contract-color-test"),
+    )
+
+    first = service.create_export(
+        actor_id=ADMIN_ID, order_id=ORDER_ID, factory_id=FACTORY_ID,
+        signing_date=date(2026, 9, 29), idempotency_key="color-first",
+        request_id="color-first",
+    )
+    with sessions() as session:
+        contract = session.get(ProcessingContract, first.contract_id)
+        assert contract.template_version == "v3"
+        snapshot = contract.contract_snapshot
+        assert [line["imageObjectKey"] for line in snapshot["lines"]] == [
+            "images/blue-b", None, "images/red",
+        ]
+        assert [line["representativeImageObjectKey"] for line in snapshot["lines"]] == [
+            "images/blue-b", "images/blue-b", "images/red",
+        ]
+        assert session.scalar(select(OrderLine).where(
+            OrderLine.order_id == ORDER_ID
+        )).image_object_key_snapshot == "images/old-product-level"
+    _filename, content, _mime = service.download(actor_id=ADMIN_ID, export_id=first.export_id)
+    sheet = load_workbook(BytesIO(content))["合同"]
+    assert [image.anchor._from.row for image in sheet._images] == [7, 9]
+    with sessions() as session, session.begin():
+        session.get(ProductVariant, VARIANT_ID).image_object_key = "images/changed"
+    repeated = service.create_export(
+        actor_id=ADMIN_ID, order_id=ORDER_ID, factory_id=FACTORY_ID,
+        signing_date=None, idempotency_key="color-repeat", request_id="color-repeat",
+    )
+    with sessions() as session:
+        assert session.get(ProcessingContract, first.contract_id).contract_snapshot == snapshot
+    _filename, repeated_content, _mime = service.download(
+        actor_id=ADMIN_ID, export_id=repeated.export_id,
+    )
+    repeated_sheet = load_workbook(BytesIO(repeated_content))["合同"]
+    assert [image.anchor._from.row for image in repeated_sheet._images] == [7, 9]
+    assert [image._data() for image in repeated_sheet._images] == [
+        image._data() for image in sheet._images
+    ]
+    _clean(test_database_engine)
 
 
 def test_repeat_export_reuses_first_snapshot_and_same_request_is_idempotent(

@@ -2,6 +2,7 @@ from collections.abc import Callable
 from copy import copy
 from datetime import date
 from io import BytesIO
+from itertools import groupby
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,8 @@ from openpyxl.drawing.image import Image as OpenpyxlImage
 from openpyxl.utils.cell import range_boundaries
 from openpyxl.worksheet.worksheet import Worksheet
 from PIL import Image as PillowImage
+
+from app.modules.product_sync.color import extract_color
 
 
 class ContractWorkbookError(RuntimeError):
@@ -35,7 +38,9 @@ class ContractWorkbookRenderer:
         lines = list(snapshot.get("lines") or [])
         if not lines:
             raise ContractWorkbookError("contract requires at least one line")
-        template_path = self._template_paths.get(template_version)
+        template_path = self._template_paths.get(
+            "v2" if template_version == "v3" else template_version
+        )
         if template_path is None:
             raise ContractWorkbookError("contract template version is invalid")
         workbook = load_workbook(template_path)
@@ -44,7 +49,7 @@ class ContractWorkbookRenderer:
         sheet = workbook["合同"]
         extra_rows = self._prepare_detail_area(sheet, len(lines))
         self._write_header(sheet, snapshot)
-        self._write_lines(sheet, lines, snapshot)
+        self._write_lines(sheet, lines, snapshot, template_version=template_version)
         self._write_totals(sheet, len(lines), extra_rows)
         if template_version == "v1":
             self._write_delivery_term(sheet, snapshot, extra_rows)
@@ -137,7 +142,24 @@ class ContractWorkbookRenderer:
         sheet: Worksheet,
         lines: list[dict[str, Any]],
         snapshot: dict[str, Any],
+        *,
+        template_version: str,
     ) -> None:
+        if template_version == "v3":
+            color_groups: dict[tuple[str, str | int], list[dict[str, Any]]] = {}
+            for index, line in enumerate(lines):
+                color = (
+                    line["color"] if "color" in line
+                    else extract_color(str(line["propertiesValue"]))
+                )
+                key = (str(line["productId"]), str(color) if color else index)
+                color_groups.setdefault(key, []).append(line)
+            groups = list(color_groups.values())
+        else:
+            groups = [list(group) for _, group in groupby(
+                lines, key=lambda line: line["productId"]
+            )]
+        lines = [line for group in groups for line in group]
         start_row = 8
         for offset, line in enumerate(lines):
             row = start_row + offset
@@ -146,15 +168,9 @@ class ContractWorkbookRenderer:
             sheet.cell(row, 6, None)
             sheet.cell(row, 7, f'=IF(OR(E{row}="",F{row}=""),"",E{row}*F{row})')
         group_start = start_row
-        for index in range(1, len(lines) + 1):
-            boundary = (
-                index == len(lines)
-                or lines[index]["productId"] != lines[index - 1]["productId"]
-            )
-            if not boundary:
-                continue
-            group_end = start_row + index - 1
-            line = lines[index - 1]
+        for group in groups:
+            group_end = group_start + len(group) - 1
+            line = group[-1]
             sheet.cell(group_start, 1, str(line.get("itemNo") or ""))
             sheet.cell(group_start, 2, str(line["productName"]))
             if group_end > group_start:
@@ -165,11 +181,24 @@ class ContractWorkbookRenderer:
                         end_row=group_end,
                         end_column=column,
                     )
+            image_key = line.get("imageObjectKey")
+            if template_version == "v3":
+                image_key = (
+                    group[0]["representativeImageObjectKey"]
+                    if "representativeImageObjectKey" in group[0]
+                    else next(
+                        (candidate.get("imageObjectKey") for candidate in sorted(
+                            group, key=lambda candidate: str(candidate.get("skuId") or "")
+                        ) if candidate.get("imageObjectKey")),
+                        None,
+                    )
+                )
             self._add_product_image(
                 sheet,
-                object_key=line.get("imageObjectKey"),
+                object_key=image_key,
                 start_row=group_start,
                 end_row=group_end,
+                strict=template_version == "v3",
             )
             group_start = group_end + 1
         last_row = start_row + len(lines) - 1
@@ -185,17 +214,22 @@ class ContractWorkbookRenderer:
         object_key: object,
         start_row: int,
         end_row: int,
+        strict: bool = False,
     ) -> None:
         if not object_key:
             return
         try:
             content = self._image_loader(str(object_key))
             if not content or len(content) > 5 * 1024 * 1024:
+                if strict:
+                    raise ContractWorkbookError("contract image is unavailable")
                 return
             with PillowImage.open(BytesIO(content)) as source:
                 source.verify()
                 width, height = source.size
             if width <= 0 or height <= 0 or width > 6000 or height > 6000:
+                if strict:
+                    raise ContractWorkbookError("contract image dimensions are invalid")
                 return
             max_width = 145.0
             max_height = sum(
@@ -207,7 +241,11 @@ class ContractWorkbookRenderer:
             image.width = width * scale
             image.height = height * scale
             sheet.add_image(image, f"C{start_row}")
-        except Exception:
+        except Exception as error:
+            if strict:
+                if isinstance(error, ContractWorkbookError):
+                    raise
+                raise ContractWorkbookError("contract image could not be loaded") from error
             return
 
     @staticmethod

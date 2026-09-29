@@ -30,6 +30,7 @@ from app.db.models import (
     User,
 )
 from app.modules.contracts.workbook import ContractWorkbookRenderer
+from app.modules.product_sync.color import extract_color
 
 CONTRACT_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -89,7 +90,7 @@ class ContractService:
         workbook_renderer: ContractWorkbookRenderer | None = None,
         file_store: PrivateFileStore | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-        template_version: str = "v2",
+        template_version: str = "v3",
     ) -> None:
         self._session_factory = session_factory
         self._workbook_renderer = workbook_renderer
@@ -266,6 +267,7 @@ class ContractService:
                         contract_no=contract_no,
                         signing_date=signing_date,
                         include_phone=self._template_version == "v1",
+                        template_version=self._template_version,
                     )
                     contract = ProcessingContract(
                         contract_id=str(uuid4()),
@@ -517,6 +519,7 @@ class ContractService:
         contract_no: str,
         signing_date: date,
         include_phone: bool,
+        template_version: str,
     ) -> dict[str, Any]:
         if order.detail_mode:
             detail_rows = session.execute(
@@ -552,9 +555,11 @@ class ContractService:
                         assignment.assigned_quantity if active else detail.order_quantity
                     ),
                     "imageObjectKey": (
-                        line.image_object_key_snapshot if active
+                        variant.cached_image_key if template_version == "v3"
+                        else line.image_object_key_snapshot if active
                         else variant.cached_image_key
                     ),
+                    **({"skuId": variant.source_sku_id} if template_version == "v3" else {}),
                 })
         else:
             assignment_query = (
@@ -578,12 +583,32 @@ class ContractService:
                     "productName": line.product_name_snapshot,
                     "propertiesValue": line.properties_value_snapshot,
                     "quantity": assignment.assigned_quantity,
-                    "imageObjectKey": line.image_object_key_snapshot,
+                    "imageObjectKey": (
+                        _variant.cached_image_key if template_version == "v3"
+                        else line.image_object_key_snapshot
+                    ),
+                    **({"skuId": _variant.source_sku_id} if template_version == "v3" else {}),
                 }
                 for line, assignment, _variant, product in rows
             ]
         if not lines:
             raise ContractNotFound("factory assignment not found")
+        if template_version == "v3":
+            groups: dict[tuple[str, str | int], list[dict[str, Any]]] = {}
+            for index, line in enumerate(lines):
+                color = extract_color(str(line["propertiesValue"]))
+                line["color"] = color
+                key = (str(line["productId"]), color if color else index)
+                groups.setdefault(key, []).append(line)
+            for group in groups.values():
+                representative = next(
+                    (line["imageObjectKey"] for line in sorted(
+                        group, key=lambda item: str(item["skuId"])
+                    ) if line["imageObjectKey"]),
+                    None,
+                )
+                for line in group:
+                    line["representativeImageObjectKey"] = representative
         factory_snapshot = {
             "factoryId": factory.factory_id,
             "factoryCode": factory.factory_code,

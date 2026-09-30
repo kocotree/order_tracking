@@ -111,8 +111,9 @@ def sync_role(settings: Settings, sessions: sessionmaker[Session],
         PrivateProductImageStore(files) if isinstance(files, AliyunOssPrivateFileStore)
         else DisabledProductImageStore()
     )
+    product_sync = ProductSyncService(sessions, source=product_source)
     product_handlers = ProductWorkerHandlers(
-        sync_service=ProductSyncService(sessions, source=product_source),
+        sync_service=product_sync,
         image_service=ProductImageService(sessions, image_store=image_store),
         worker_id=worker_id,
     )
@@ -137,9 +138,9 @@ def sync_role(settings: Settings, sessions: sessionmaker[Session],
         else DisabledFeishuOrderSource()
     )
     order_handlers = OrderImportWorkerHandlers(
-        service=OrderImportService(sessions), source=order_source
+        service=OrderImportService(sessions, product_sync=product_sync), source=order_source
     )
-    auto_sync = OrderAutoSync(sessions, source=order_source)
+    auto_sync = OrderAutoSync(sessions, source=order_source, product_sync=product_sync)
     handlers = {**product_handlers.handlers(), **order_handlers.handlers(),
                 JOB_TYPE: auto_sync.handle}
     failures = {**order_handlers.terminal_failure_handlers(), JOB_TYPE: auto_sync.fail}

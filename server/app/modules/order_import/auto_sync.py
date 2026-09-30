@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.errors import ExternalAdapterUnavailable
 from app.adapters.order_source import FeishuOrderSource
+from app.adapters.product import ProductSourceError
 from app.db.models import (
     AuditLog,
     BackgroundJob,
@@ -19,6 +20,7 @@ from app.db.models import (
 from app.modules.order_import.service import ACTIVE_KEY, OrderImportService
 from app.modules.orders import OrderConflict, OrderValidationError
 from app.modules.orders.dispatch import OrderDispatchService
+from app.modules.product_sync.service import ProductSyncService
 
 JOB_TYPE = "order_auto_sync"
 LOCK_NAME = "order_tracking_auto_sync"
@@ -28,12 +30,15 @@ class OrderAutoSync:
     def __init__(
         self, sessions: sessionmaker[Session], *, source: FeishuOrderSource,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        product_sync: ProductSyncService | None = None,
     ) -> None:
         self._sessions = sessions
         self._source = source
         self._clock = clock
-        self._importer = OrderImportService(sessions, clock=clock)
-        self._orders = OrderDispatchService(sessions, source=source, clock=clock)
+        self._importer = OrderImportService(sessions, clock=clock, product_sync=product_sync)
+        self._orders = OrderDispatchService(
+            sessions, source=source, clock=clock, product_sync=product_sync,
+        )
 
     def _now(self) -> datetime:
         return self._clock().replace(tzinfo=None)
@@ -198,7 +203,7 @@ class OrderAutoSync:
             state["failed_orders"] += 1
             changes["errorCode"] = type(error).__name__
             if isinstance(error, (ValueError, OrderConflict, OrderValidationError,
-                                  ExternalAdapterUnavailable)):
+                                  ExternalAdapterUnavailable, ProductSourceError)):
                 changes["reason"] = str(error)
             if phase == "discover":
                 state["phase"] = "create"

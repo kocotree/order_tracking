@@ -71,6 +71,7 @@ class SourcePurchaseItem:
 class JstProductSource(Protocol):
     def fetch_targeted_page(
         self, *, page_number: int, name: str | None = None, i_id: str | None = None,
+        sku_id: str | None = None,
     ) -> SourceProductPage: ...
 
     def fetch_incremental_page(
@@ -209,16 +210,18 @@ class AppCredentialJstProductSource:
 
     def fetch_targeted_page(
         self, *, page_number: int, name: str | None = None, i_id: str | None = None,
+        sku_id: str | None = None,
     ) -> SourceProductPage:
-        if page_number < 1 or bool(name) == bool(i_id):
+        if page_number < 1 or sum(bool(value) for value in (name, i_id, sku_id)) != 1:
             raise ProductSourceError("product_target_invalid")
-        target = i_id or name
+        target = sku_id or i_id or name
         if not isinstance(target, str) or not target.strip() or len(target) > 255:
             raise ProductSourceError("product_target_invalid")
         data = self._request_data({
             "page_index": page_number,
             "page_size": self._config.page_size,
-            **({"i_ids": [target]} if i_id else {"exactly_name": target}),
+            **({"sku_ids": target} if sku_id else
+               {"i_ids": [target]} if i_id else {"exactly_name": target}),
         })
         if data.get("page_index", page_number) != page_number:
             raise ProductSourceError("product_source_pagination_invalid")
@@ -720,8 +723,9 @@ class ProductImageStore(Protocol):
 class DisabledJstProductSource:
     def fetch_targeted_page(
         self, *, page_number: int, name: str | None = None, i_id: str | None = None,
+        sku_id: str | None = None,
     ) -> SourceProductPage:
-        del page_number, name, i_id
+        del page_number, name, i_id, sku_id
         raise ProductSourceError("product_source_not_configured")
 
     def fetch_initial_page(
@@ -865,8 +869,9 @@ class FakeJstProductSource:
 
     def fetch_targeted_page(
         self, *, page_number: int, name: str | None = None, i_id: str | None = None,
+        sku_id: str | None = None,
     ) -> SourceProductPage:
-        del name, i_id
+        del name, i_id, sku_id
         return self._page(self._targeted_pages, page_number)
 
     def fetch_initial_page(

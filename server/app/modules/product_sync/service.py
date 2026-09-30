@@ -167,18 +167,23 @@ class ProductSyncService:
         self._source = source
 
     def fetch_targeted_records(
-        self, *, name: str | None, i_id: str | None,
+        self, *, name: str | None, i_id: str | None, sku_id: str | None = None,
     ) -> tuple[SourceProductVariant, ...]:
-        if bool(name) == bool(i_id) or not (i_id or name or "").strip():
+        if (sum(bool(value) for value in (name, i_id, sku_id)) != 1
+                or not (sku_id or i_id or name or "").strip()):
             raise ProductSourceError("product_target_invalid")
         records: dict[str, SourceProductVariant] = {}
         page_number = 1
         while True:
-            page = self._source.fetch_targeted_page(page_number=page_number, name=name, i_id=i_id)
+            page = self._source.fetch_targeted_page(
+                page_number=page_number, name=name, i_id=i_id,
+                **({"sku_id": sku_id} if sku_id else {}),
+            )
             if page.page_number != page_number:
                 raise ProductSourceError("product_source_pagination_invalid")
             for record in page.items:
-                if (i_id and record.i_id != i_id) or (name and record.name != name):
+                if ((i_id and record.i_id != i_id) or (name and record.name != name)
+                        or (sku_id and record.sku_id != sku_id)):
                     raise ProductSourceError("product_target_mismatch")
                 previous = records.get(record.sku_id)
                 if previous is not None and previous != record:
@@ -190,9 +195,20 @@ class ProductSyncService:
             if len(records) > 10_000 or page_number >= 200:
                 raise ProductSourceError("product_target_too_large")
             page_number += 1
-        if not records:
+        if not records and not sku_id:
             raise ProductSourceError("product_target_not_found")
         return tuple(records[key] for key in sorted(records))
+
+    def recover_sku(self, sku_id: str, *, request_id: str, actor_id: str | None) -> set[str]:
+        records = self.fetch_targeted_records(name=None, i_id=None, sku_id=sku_id)
+        if not records:
+            return {sku_id}
+        preview = self.preview_targeted(i_id=records[0].i_id)
+        self.run_targeted(
+            i_id=records[0].i_id, expected_digest=preview["digest"], request_id=request_id,
+            worker_id="order-product-recovery", actor_id=actor_id, source_terminal="system",
+        )
+        return {item["skuId"] for item in preview["items"]} | {sku_id}
 
     def _targeted_preview(
         self, session: Session, records: tuple[SourceProductVariant, ...],
@@ -244,6 +260,7 @@ class ProductSyncService:
                         reason = "same_timestamp_conflict"
                         blocked = True
                     elif (variant.is_available and product is not None and product.is_available
+                          and product.name == record.name
                           and variant.image_source_ref == record.pic
                           and variant.image_cache_status in {"cached", "missing"}):
                         action = "existing"
@@ -269,6 +286,7 @@ class ProductSyncService:
     def run_targeted(
         self, *, expected_digest: str, request_id: str, worker_id: str,
         name: str | None = None, i_id: str | None = None, actor_id: str | None = None,
+        source_terminal: str = "internal_cli",
     ) -> ProductSyncResult:
         run_id = self._start_or_resume_run(
             run_type="targeted", start_cursor=None, request_id=request_id, worker_id=worker_id,
@@ -307,7 +325,7 @@ class ProductSyncService:
                     target_type="product_sync_run", target_id=run_id,
                     changes={"runType": "targeted", "styles": preview["styles"],
                              "created": created, "updated": updated, "digest": expected_digest},
-                    actor_id=actor_id, source_terminal="internal_cli",
+                    actor_id=actor_id, source_terminal=source_terminal,
                 ))
                 if included:
                     self._enqueue_candidate_revalidation(

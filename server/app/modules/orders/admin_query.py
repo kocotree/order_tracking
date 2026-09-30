@@ -202,9 +202,11 @@ def page_orders(
     )
     if factory_id is not None:
         dates = dates.where(OrderAssignment.factory_id == factory_id)
-    rows = source_rows()
+    # 日期直接来自明细，避免为每个订单的日期聚合重复关联数量台账。
     source_dates = (
-        select(rows.c.contract_ship_date).where(rows.c.order_id == Order.order_id).correlate(Order)
+        select(OrderDetail.contract_ship_date)
+        .where(OrderDetail.order_id == Order.order_id)
+        .correlate(Order)
     )
     if ship_date_from or ship_date_to:
         matching_dates = dates
@@ -218,9 +220,11 @@ def page_orders(
             )
         source_matching = source_dates
         if ship_date_from:
-            source_matching = source_matching.where(rows.c.contract_ship_date >= ship_date_from)
+            source_matching = source_matching.where(
+                OrderDetail.contract_ship_date >= ship_date_from
+            )
         if ship_date_to:
-            source_matching = source_matching.where(rows.c.contract_ship_date <= ship_date_to)
+            source_matching = source_matching.where(OrderDetail.contract_ship_date <= ship_date_to)
         query = query.where(
             case(
                 (Order.detail_mode.is_(True), source_matching.exists()),
@@ -241,7 +245,7 @@ def page_orders(
             (
                 Order.detail_mode.is_(True),
                 source_dates.with_only_columns(
-                    func.min(rows.c.contract_ship_date)
+                    func.min(OrderDetail.contract_ship_date)
                 ).scalar_subquery(),
             ),
             else_=first_date,
@@ -250,7 +254,7 @@ def page_orders(
             (
                 Order.detail_mode.is_(True),
                 source_dates.with_only_columns(
-                    func.max(rows.c.contract_ship_date)
+                    func.max(OrderDetail.contract_ship_date)
                 ).scalar_subquery(),
             ),
             else_=last_date,
@@ -427,6 +431,7 @@ def page_orders(
         "shippedQuantity",
         "progressPercent",
     }:
+        rows = source_rows()
         source_query = select(rows).where(rows.c.order_id == Order.order_id).correlate(Order)
         source_value: ColumnElement[Any]
         if normalized in {"productName", "factory"}:

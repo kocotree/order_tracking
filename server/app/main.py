@@ -126,7 +126,7 @@ from app.modules.orders import (
 )
 from app.modules.orders.dispatch import OrderDispatchService
 from app.modules.orders.source_update import OrderSourceUpdateService
-from app.modules.product_sync import ProductCatalogService
+from app.modules.product_sync import ProductCatalogService, ProductSyncService
 from app.modules.repairs.confirmation import RepairConfirmationService
 from app.modules.repairs.preview import RepairPreviewService
 from app.modules.repairs.returns import RepairReturnService
@@ -301,6 +301,7 @@ def create_app(
         )
     if order_source is None and local_demo_enabled:
         order_source = local_demo_order_source(session_factory)
+    product_sync = None
     if order_source is None:
         purchase_source = (
             AppCredentialJstProductSource(
@@ -325,6 +326,8 @@ def create_app(
             ))
             else None
         )
+        if purchase_source is not None:
+            product_sync = ProductSyncService(session_factory, source=purchase_source)
         order_source = (
             AppCredentialFeishuOrderSource(
                 FeishuOrderSourceConfig(
@@ -350,13 +353,15 @@ def create_app(
             )
             else DisabledFeishuOrderSource()
         )
-    source_updates = OrderSourceUpdateService(session_factory, source=order_source)
+    source_updates = OrderSourceUpdateService(
+        session_factory, source=order_source, product_sync=product_sync,
+    )
     dispatch_svc = OrderDispatchService(session_factory, source=order_source)
 
     if order_service is None:
         order_service = OrderService(session_factory, execution_guard=shipment_service)
     if order_import_service is None:
-        order_import_service = OrderImportService(session_factory)
+        order_import_service = OrderImportService(session_factory, product_sync=product_sync)
     if contract_service is None:
         contract_service = ContractService(
             session_factory,

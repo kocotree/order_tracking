@@ -32,6 +32,7 @@ from app.modules.orders.service import (
     OrderSnapshot,
     OrderValidationError,
 )
+from app.modules.product_sync.service import ProductSyncService
 
 FIELDS = {
     "source_sku_id": "产品编码",
@@ -86,9 +87,11 @@ class OrderSourceUpdateService(OrderService):
         *,
         source: FeishuOrderSource,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        product_sync: ProductSyncService | None = None,
     ) -> None:
         super().__init__(session_factory, clock=clock)
         self._source = source
+        self._product_importer = OrderImportService(session_factory, product_sync=product_sync)
 
     def _check(
         self, session: Session, actor_id: str | None, order_id: str, version: int,
@@ -545,6 +548,9 @@ class OrderSourceUpdateService(OrderService):
         versions, fetched = self._read(
             order_id, actor_id, version, detail_ids, allow_legacy=allow_legacy
         )
+        self._product_importer.recover_products(
+            list(fetched.values()), request_id=request_id, actor_id=actor_id,
+        )
         with self._session_factory() as session, session.begin():
             self._check(session, actor_id, order_id, version, lock=True)
             rows = self._details(session, order_id, lock=True)
@@ -740,6 +746,7 @@ class OrderSourceUpdateService(OrderService):
                 raise OrderConflict("自动来源更新仅处理飞书订单")
             version = order.version
         versions, fetched = self._read(order_id, None, version, None)
+        self._product_importer.recover_products(list(fetched.values()), request_id=request_id)
         with self._session_factory() as session, session.begin():
             order = self._check(session, None, order_id, version, lock=True)
             rows = self._details(session, order_id, lock=True)

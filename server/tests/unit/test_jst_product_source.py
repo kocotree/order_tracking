@@ -946,9 +946,11 @@ def test_targeted_product_query_uses_exact_name_or_style_without_catalog_scan(
     ), transport=httpx.MockTransport(respond))
     assert source.fetch_targeted_page(page_number=1, name="测试手套").has_next
     assert not source.fetch_targeted_page(page_number=2, i_id="TEST-GLOVE").has_next
+    assert source.fetch_targeted_page(page_number=1, sku_id="6941716573324").has_next
     assert bodies == [
         {"page_index": 1, "page_size": 50, "exactly_name": "测试手套"},
         {"page_index": 2, "page_size": 50, "i_ids": ["TEST-GLOVE"]},
+        {"page_index": 1, "page_size": 50, "sku_ids": "6941716573324"},
     ]
     with pytest.raises(ProductSourceError, match="product_target_invalid"):
         source.fetch_targeted_page(page_number=1)

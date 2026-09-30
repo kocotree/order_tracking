@@ -29,6 +29,7 @@ from app.db.models import (
 )
 from app.modules.orders.service import TRACKERS, OrderAuditSnapshot, OrderService
 from app.modules.product_sync.categories import PRODUCT_CATEGORY_ALLOWLIST, category_summary
+from app.modules.product_sync.service import ProductSyncService
 
 ACTIVE_KEY = "feishu-order-import"
 LOCAL_DEPENDENCY_ISSUES = frozenset(
@@ -188,9 +189,28 @@ class OrderImportService:
         session_factory: sessionmaker[Session],
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        product_sync: ProductSyncService | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._clock = clock
+        self._product_sync = product_sync
+
+    def recover_products(
+        self, rows: list[SourceOrderRow], *, request_id: str, actor_id: str | None = None,
+    ) -> None:
+        if self._product_sync is None:
+            return
+        checked: set[str] = set()
+        for row in rows:
+            sku_id = (row.source_sku_id or "").strip()
+            if not sku_id or sku_id in checked:
+                continue
+            with self._session_factory() as session:
+                matched = self.match_source_row(session, row)[0] is not None
+            if not matched:
+                checked.update(self._product_sync.recover_sku(
+                    sku_id, request_id=request_id, actor_id=actor_id,
+                ))
 
     def create_or_reuse_run(
         self, *, actor_id: str, request_id: str, idempotency_key: str | None = None
@@ -269,6 +289,12 @@ class OrderImportService:
         source_scope: str = "feishu-production-orders",
         finalize: bool = True,
     ) -> ImportRunSnapshot:
+        with self._session_factory() as session:
+            run = session.get(OrderImportRun, run_id)
+            if run is None or run.active_key != ACTIVE_KEY:
+                raise ValueError("active import run not found")
+            request_id, actor_id = run.request_id, run.requested_by
+        self.recover_products(rows, request_id=request_id, actor_id=actor_id)
         now = self._clock().replace(tzinfo=None)
         with self._session_factory() as session, session.begin():
             run = session.get(OrderImportRun, run_id)

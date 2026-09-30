@@ -1343,6 +1343,7 @@ class OrderService:
         dict[int, int],
         dict[str, list[OrderDetail]],
         dict[str, str],
+        dict[str, int],
     ]:
         lines: dict[str, list[OrderLine]] = {}
         assignments: dict[int, list[OrderAssignment]] = {}
@@ -1350,7 +1351,7 @@ class OrderService:
         details: dict[str, list[OrderDetail]] = {}
         item_numbers: dict[str, str] = {}
         if not orders:
-            return lines, assignments, quantities, details, {}
+            return lines, assignments, quantities, details, {}, {}
         source_order_ids = [item.order_id for item in orders if item.detail_mode]
         if source_order_ids and factory_id is None:
             for detail, variant_id, item_number in session.execute(
@@ -1412,7 +1413,9 @@ class OrderService:
             .group_by(QuantityLedger.order_assignment_id)
         ):
             quantities[assignment_id] = int(quantity)
-        return lines, assignments, quantities, details, item_numbers
+        detail_ids = [row.detail_id for group in details.values() for row in group]
+        pending = pending_totals(session, detail_ids) if detail_ids else {}
+        return lines, assignments, quantities, details, item_numbers, pending
 
     def _snapshot(
         self,
@@ -1427,6 +1430,7 @@ class OrderService:
             dict[int, int],
             dict[str, list[OrderDetail]],
             dict[str, str],
+            dict[str, int],
         ]
         | None = None,
     ) -> OrderSnapshot:
@@ -1677,7 +1681,11 @@ class OrderService:
                 .group_by(QuantityLedger.order_assignment_id)
             ):
                 ledger_totals[assignment_id] = int(delta)
-        pending_ledger = pending_totals(session, [row.detail_id for row in ordered])
+        pending_ledger = (
+            preloaded[5]
+            if preloaded is not None
+            else pending_totals(session, [row.detail_id for row in ordered])
+        )
         details = []
         for row in ordered:
             assignment = (

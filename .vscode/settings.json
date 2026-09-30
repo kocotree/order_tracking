@@ -7,7 +7,7 @@
   "markdown-pdf.margin.right": "15mm",
   "markdown-pdf.displayHeaderFooter": false,
   "markdown-pdf.styles": [
-    "docs/一期/manuals/pdf-style.css"
+    "docs/shared/delivery/manuals/pdf-style.css"
   ],
   "markdown-pdf.stylesRelativePathFile": false
 }

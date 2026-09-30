@@ -1,6 +1,6 @@
 # 管理员网页端
 
-Vue 3、TypeScript、Vite、Vue Router、Pinia 和 Element Plus 工程，当前已实现管理员登录和申请，以及 S02 工厂资料、工厂用户申请审核和用户启停页面。
+Vue 3、TypeScript、Vite、Vue Router 和 Pinia 工程，当前包含飞书登录、订单及未派工维护、合同与箱贴、发货收货、返修周期、基础资料、人员和通知。日常使用见[管理员手册](../docs/shared/delivery/manuals/管理员操作手册.md)，版本及验收边界见[交付清单](../docs/shared/delivery/交付清单.md)。
 
 项目固定 Node.js 24 与 pnpm 11.22.0。本机没有 Node.js 24 时，可使用项目 CI 或 Node.js 24 容器执行同样命令；不要把本机 Node.js 26 当成项目基线。
 

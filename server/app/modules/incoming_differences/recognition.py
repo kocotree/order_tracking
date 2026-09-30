@@ -51,6 +51,12 @@ class IncomingDiffRecognitionService:
             stored = session.get(StoredFile, file_id)
             if stored is None:
                 raise ValueError("图片文件不存在")
+            existing = session.scalar(select(IncomingDiffImage).where(
+                IncomingDiffImage.batch_id == batch_id,
+                IncomingDiffImage.content_sha256 == stored.content_sha256,
+            ).order_by(IncomingDiffImage.sort_order).limit(1))
+            if existing is not None:
+                return existing
             previous = session.scalar(
                 select(IncomingDiffImage.batch_id)
                 .join(IncomingDiffBatch, IncomingDiffBatch.batch_id == IncomingDiffImage.batch_id)
@@ -204,7 +210,7 @@ class IncomingDiffRecognitionService:
 
     @staticmethod
     def _owned_batch(session: Session, batch_id: str, actor_id: str) -> IncomingDiffBatch:
-        batch = session.get(IncomingDiffBatch, batch_id)
+        batch = session.get(IncomingDiffBatch, batch_id, with_for_update=True)
         actor = session.get(User, actor_id)
         if (batch is None or actor is None or actor.role != "admin"
                 or not actor.is_enabled or batch.submitter_id != actor_id):

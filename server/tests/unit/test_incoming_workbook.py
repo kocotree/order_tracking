@@ -87,7 +87,7 @@ def test_generated_and_returned_workbook_preserves_original_image_bytes(image_fo
         with ZipFile(BytesIO(document)) as archive:
             images = [archive.read(name) for name in archive.namelist()
                       if name.startswith("xl/media/")]
-        assert len(images) == 3
+        assert len(images) == 1
         assert all(image == original.getvalue() for image in images)
 
 
@@ -108,7 +108,12 @@ def test_generate_structure_and_ac07_edits() -> None:
     assert workbook["甲工厂"].column_dimensions["I"].hidden
     assert tuple(workbook["甲工厂"].cell(1, col).value for col in range(1, 9)) == HEADERS
     assert workbook["甲工厂"].row_dimensions[2].height == 96
-    assert len(workbook["甲工厂"]._images) == 2
+    assert len(workbook["甲工厂"]._images) == 1
+    assert workbook["甲工厂"]._images[0].anchor._from.row == 1
+    assert workbook["甲工厂"]._images[0].anchor._from.col == 7
+    assert not workbook["待确认"]._images
+    assert workbook["甲工厂"]["H3"].value is None
+    assert workbook["甲工厂"]["I3"].value
     assert workbook["甲工厂"]["D2"].value is None
     assert workbook["甲工厂"]["E2"].value is None
     assert workbook["甲工厂"]["G2"].value is None
@@ -152,6 +157,28 @@ def test_missing_token_reports_sheet_and_row() -> None:
         "code": "missing_token", "sheet": "甲工厂", "row": 4,
         "message": "数据行缺少行标识",
     }]
+
+
+def test_each_source_image_is_anchored_at_its_first_detail() -> None:
+    _, _, source = _source()
+    source.extend([
+        {**source[0], "imageId": "image-B", "quantity": 4},
+        {**source[1], "imageId": "image-B", "quantity": -5},
+    ])
+    content, signature, lines = _codec().generate(
+        batch_id=BATCH, version=1, lines=source,
+        images={IMAGE: _image(), "image-B": _image()},
+        generated_at=datetime(2026, 9, 30, tzinfo=UTC),
+    )
+    book = load_workbook(BytesIO(content))
+    assert [(picture.anchor._from.col, picture.anchor._from.row)
+            for picture in book["甲工厂"]._images] == [(7, 1), (7, 3)]
+    assert not book["甲工厂"].merged_cells
+    parsed = _codec().parse(content, batch_id=BATCH, version=1,
+                            signature=signature, previous_lines=lines)
+    assert [(line["imageId"], line["quantity"]) for line in parsed] == [
+        (IMAGE, -1), (IMAGE, 2), ("image-B", 4), ("image-B", -5), (IMAGE, 1),
+    ]
 
 
 def test_token_from_another_batch_is_rejected() -> None:

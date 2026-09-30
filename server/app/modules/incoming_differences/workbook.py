@@ -65,6 +65,7 @@ class IncomingWorkbookCodec:
         workbook.remove(first_sheet)
         sheets: dict[str, Worksheet] = {}
         snapshot: list[dict[str, object]] = []
+        embedded_images: set[str] = set()
         for sequence, raw in enumerate(lines, 1):
             image_id = str(raw["imageId"])
             if image_id not in images:
@@ -101,12 +102,14 @@ class IncomingWorkbookCodec:
             for column in (1, 2, 6):
                 sheet.cell(row, column).data_type = "s"
             sheet.row_dimensions[row].height = 96
-            picture = ExcelImage(BytesIO(images[image_id]))
-            scale = min(240 / picture.width, 124 / picture.height, 1)
-            picture.width = round(picture.width * scale)
-            picture.height = round(picture.height * scale)
-            picture.anchor = f"H{row}"
-            sheet.add_image(picture)
+            if image_id not in embedded_images:
+                picture = ExcelImage(BytesIO(images[image_id]))
+                scale = min(240 / picture.width, 124 / picture.height, 1)
+                picture.width = round(picture.width * scale)
+                picture.height = round(picture.height * scale)
+                picture.anchor = f"H{row}"
+                sheet.add_image(picture)
+                embedded_images.add(image_id)
             snapshot.append({
                 **{key: value for key, value in raw.items() if key != "sourceBusinessDate"},
                 "imageId": image_id, "lineToken": token,

@@ -393,7 +393,7 @@ def create_shipment_router(
         status_code=201,
         tags=["shipment-factory"],
     )
-    async def upload_draft_file(
+    def upload_draft_file(
         shipment_id: str,
         file: Annotated[UploadFile, File()],
         response: Response,
@@ -410,7 +410,7 @@ def create_shipment_router(
             shipment_id=shipment_id,
             filename=file.filename or "shipment-evidence",
             declared_mime_type=file.content_type or "application/octet-stream",
-            content=await file.read(SHIPMENT_FILE_MAX_BYTES + 1),
+            content=file.file.read(SHIPMENT_FILE_MAX_BYTES + 1),
             idempotency_key=idempotency_key,
             expected_version=version,
         )

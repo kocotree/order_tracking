@@ -305,7 +305,7 @@ def create_repair_router(
         status_code=201,
         tags=["repair-admin-web"],
     )
-    async def create_preview(
+    def create_preview(
         file: Annotated[UploadFile, File()],
         replaces_preview_id: Annotated[str | None, Form(alias="replacesPreviewId")] = None,
         web_token: str | None = Cookie(default=None, alias="ot_web_session"),
@@ -319,7 +319,7 @@ def create_repair_router(
             require_csrf=True,
         )
         admin(user)
-        content = await file.read()
+        content = file.file.read()
         try:
             return _preview_response(
                 workflow.create_preview(

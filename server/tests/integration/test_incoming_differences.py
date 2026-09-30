@@ -1188,8 +1188,9 @@ def test_confirm_accepts_new_row_without_image_date(test_database_engine: Engine
         assert record is not None and record.source_business_date is None
 
 
+@pytest.mark.parametrize("unassigned", [False, True])
 def test_candidate_matching_skips_zero_unshipped_and_orders_by_contract_date(
-    test_database_engine: Engine,
+    test_database_engine: Engine, unassigned: bool,
 ) -> None:
     with Session(test_database_engine) as session, session.begin():
         _seed_masters(session)
@@ -1236,20 +1237,38 @@ def test_candidate_matching_skips_zero_unshipped_and_orders_by_contract_date(
         session.flush()
         later.detail_id = detail.detail_id
         later_id = later.order_assignment_id
+        if unassigned:
+            for assignment in (earliest, later):
+                pending = session.get(OrderDetail, assignment.detail_id)
+                pending.source_shipped_quantity = assignment.initial_shipped_quantity
+                pending.contract_ship_date = assignment.contract_ship_date
+                pending.assignment_id = None
+                pending.dispatch_state = "UNASSIGNED"
+                assignment.is_active = False
     service = _service(test_database_engine)
     query = {"factory_id": FACTORY_A, "product_code": "IDF-ITEM", "spec": "红色 / 110"}
-    assert service.match_assignment(**query) == first
+    assert service.match_detail(**query) == "idf-detail-1"
     with Session(test_database_engine) as session, session.begin():
+        session.get(OrderAssignment, later_id).contract_ship_date = date(2026, 9, 10)
+        session.get(OrderDetail, "idf-detail-later").contract_ship_date = date(2026, 9, 10)
+    assert service.match_detail(**query) is None
+    with Session(test_database_engine) as session, session.begin():
+        session.get(OrderAssignment, later_id).contract_ship_date = date(2026, 9, 20)
+        session.get(OrderDetail, "idf-detail-later").contract_ship_date = date(2026, 9, 20)
         session.add(QuantityLedger(
-            order_assignment_id=first, source_type="ADMIN_ADJUST", source_id="idf-ledger-1",
+            order_assignment_id=None if unassigned else first,
+            order_detail_id="idf-detail-1" if unassigned else None,
+            source_type="ADMIN_ADJUST", source_id="idf-ledger-1",
             quantity_delta=90, actor_id=ADMIN, created_at=SOURCE_TIME,
         ))
-    assert service.match_assignment(**query) == later_id
+    assert service.match_detail(**query) == "idf-detail-later"
     with Session(test_database_engine) as session, session.begin():
         later = session.get(OrderAssignment, later_id)
         assert later is not None
         later.initial_shipped_quantity = later.assigned_quantity
-    assert service.match_assignment(**query) is None
+        if unassigned:
+            session.get(OrderDetail, "idf-detail-later").source_shipped_quantity = 20
+    assert service.match_detail(**query) is None
 
 
 def test_recognition_worker_retries_and_only_saves_candidates(
@@ -1267,6 +1286,7 @@ def test_recognition_worker_retries_and_only_saves_candidates(
             original_filename="vision.jpg", mime_type="image/jpeg",
             size_bytes=len(content), content_sha256=digest, uploaded_by=ADMIN,
         ))
+        session.get(ProductVariant, "idf-variant-1").properties_value = "红色110"
     sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
     payload = json.dumps({
         "factoryName": "来货测试工厂1", "productCode": "IDF-ITEM",
@@ -1340,6 +1360,7 @@ def test_same_batch_recognizes_different_products_per_image(test_database_engine
     with Session(test_database_engine) as session, session.begin():
         _seed_masters(session)
         _seed_order(session)
+        session.get(ProductVariant, "idf-variant-1").properties_value = "红色110"
         for file_id, content in ((9709, b"product-one"), (9710, b"product-two")):
             key = f"images/{file_id}.jpg"
             files.put(object_key=key, content=content, content_type="image/jpeg")
@@ -1558,12 +1579,21 @@ def test_feishu_bot_post_download_failure_stays_in_one_failed_batch(
     assert media.downloads == ["image-a", "image-b"]
 
 
+@pytest.mark.parametrize("unassigned", [False, True])
 def test_feishu_bot_photo_workbook_upload_confirm_and_replay(
-    test_database_engine: Engine,
+    test_database_engine: Engine, unassigned: bool,
 ) -> None:
     with Session(test_database_engine) as session, session.begin():
         _seed_masters(session)
         assignment_id, _ = _seed_order(session)
+        session.get(ProductVariant, "idf-variant-1").properties_value = "红色110"
+        if unassigned:
+            session.get(OrderAssignment, assignment_id).is_active = False
+            detail = session.get(OrderDetail, "idf-detail-1")
+            detail.assignment_id = None
+            detail.dispatch_state = "UNASSIGNED"
+            detail.source_shipped_quantity = 100
+            assignment_id = None
         session.add_all([
             ExternalIdentity(platform="feishu", scope="test-scope",
                              platform_subject=f"tenant-test:{open_id}", user_id=user_id)
@@ -1626,7 +1656,11 @@ def test_feishu_bot_photo_workbook_upload_confirm_and_replay(
         stored = session.get(StoredFile, workbook.file_id)
         assert stored is not None
         edited = load_workbook(BytesIO(files.get(object_key=stored.object_key)))
+        assert edited["来货测试工厂1"]["B2"].value == "红色110"
+        assert edited["来货测试工厂1"]["F2"].value == "PO-1"
+        assert workbook.line_snapshot[0]["detailId"] == "idf-detail-1"
         edited["来货测试工厂1"]["C2"] = 3
+        edited["来货测试工厂1"]["F2"] = None
         output = BytesIO()
         edited.save(output)
         media.workbook = output.getvalue()
@@ -1637,6 +1671,10 @@ def test_feishu_bot_photo_workbook_upload_confirm_and_replay(
         batch = session.get(IncomingDiffBatch, batch_id)
         uploaded = session.get(IncomingDiffWorkbook, batch.current_workbook_id)
         assert uploaded is not None and uploaded.version == 2
+        assert uploaded.line_snapshot[0]["purchaseOrderId"] == "PO-1"
+        returned = session.get(StoredFile, uploaded.file_id)
+        assert load_workbook(BytesIO(files.get(object_key=returned.object_key)))[
+            "来货测试工厂1"]["F2"].value == "PO-1"
     bot.card_action(_bot_action("confirm", batch_id, "confirm", version=2))
     assert worker.run_once()
     bot.card_action(_bot_action("confirm-again", batch_id, "confirm", version=2))
@@ -1755,7 +1793,7 @@ def test_feishu_bot_reports_ambiguous_purchase_suborders(
     )
     message = bot._registration_errors(
         [{"sheetName": "来货测试工厂1", "rowNumber": 2,
-          "reason": "未匹配到唯一派工"}],
+          "reason": "未匹配到唯一订单明细"}],
         [{"sheetName": "来货测试工厂1", "rowNumber": 2,
           "productCode": "IDF-ITEM", "productName": "来货测试产品",
           "spec": "红色 / 110", "purchaseOrderId": "PO-1"}],

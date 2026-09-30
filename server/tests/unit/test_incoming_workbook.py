@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from io import BytesIO
+from zipfile import ZipFile
 
 import pytest
 from openpyxl import load_workbook
@@ -67,6 +68,36 @@ def test_deployment_rejects_local_fake_signing_key() -> None:
     with pytest.raises(ValueError, match="签名密钥未配置"):
         IncomingWorkbookCodec(settings.model_copy(update={"app_env": "production"}))
     assert settings.incoming_diff_workbook_signing_secret not in repr(settings)
+
+
+@pytest.mark.parametrize("image_format", ["PNG", "JPEG"])
+def test_generated_and_returned_workbook_preserves_original_image_bytes(image_format: str) -> None:
+    original = BytesIO()
+    Image.new("RGB", (1200, 600), "red").save(original, format=image_format)
+    _, _, source_lines = _source()
+    content, _, lines = _codec().generate(
+        batch_id=BATCH, version=1, lines=source_lines,
+        images={IMAGE: original.getvalue()}, generated_at=datetime(2026, 9, 30, tzinfo=UTC),
+    )
+    advanced, _ = _codec().advance(
+        content, batch_id=BATCH, version=2, lines=lines,
+        generated_at=datetime(2026, 9, 30, tzinfo=UTC),
+    )
+    for document in (content, advanced):
+        with ZipFile(BytesIO(document)) as archive:
+            images = [archive.read(name) for name in archive.namelist()
+                      if name.startswith("xl/media/")]
+        assert len(images) == 3
+        assert all(image == original.getvalue() for image in images)
+
+
+def test_generated_workbook_respects_return_upload_uncompressed_limit() -> None:
+    _, _, lines = _source()
+    with pytest.raises(ValueError, match="解压后超过上限"):
+        _codec(limits=IncomingWorkbookLimits(max_uncompressed_bytes=1)).generate(
+            batch_id=BATCH, version=1, lines=lines, images={IMAGE: _image()},
+            generated_at=datetime(2026, 9, 30, tzinfo=UTC),
+        )
 
 
 def test_generate_structure_and_ac07_edits() -> None:

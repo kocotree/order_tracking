@@ -15,6 +15,7 @@ from app.db.models import (
     AuditLog,
     Factory,
     IdempotencyRecord,
+    IncomingDiffRecord,
     Order,
     OrderAssignment,
     OrderCompletionRecord,
@@ -31,6 +32,7 @@ from app.db.models import (
 )
 from app.modules.orders.admin_query import dispatch_status as order_dispatch_status
 from app.modules.orders.admin_query import display_status, page_orders
+from app.modules.orders.quantities import pending_totals
 from app.modules.product_sync.categories import PRODUCT_CATEGORY_ALLOWLIST
 
 TRACKERS = frozenset({"烧麦", "松子", "橄榄", "大葱", "青椒"})
@@ -569,6 +571,22 @@ class OrderService:
                 item.updated_at = now
             for detail in details:
                 if detail.assignment_id in ids:
+                    detail.source_shipped_quantity = next(
+                        item.initial_shipped_quantity for item in assignments
+                        if item.order_assignment_id == detail.assignment_id
+                    )
+                    for ledger in session.scalars(select(QuantityLedger).where(
+                        QuantityLedger.order_assignment_id == detail.assignment_id,
+                        QuantityLedger.source_type.in_(
+                            ("INCOMING_DIFF", "INCOMING_DIFF_ADJUST", "ADMIN_ADJUSTMENT")
+                        ),
+                    )):
+                        ledger.order_detail_id = detail.detail_id
+                        ledger.order_assignment_id = None
+                    for record in session.scalars(select(IncomingDiffRecord).where(
+                        IncomingDiffRecord.detail_id == detail.detail_id
+                    )):
+                        record.order_assignment_id = None
                     detail.dispatch_state = "UNASSIGNED"
                     detail.auto_dispatch_paused = True
                     detail.assignment_id = None
@@ -1659,6 +1677,7 @@ class OrderService:
                 .group_by(QuantityLedger.order_assignment_id)
             ):
                 ledger_totals[assignment_id] = int(delta)
+        pending_ledger = pending_totals(session, [row.detail_id for row in ordered])
         details = []
         for row in ordered:
             assignment = (
@@ -1675,6 +1694,8 @@ class OrderService:
             else:
                 quantity = row.order_quantity
                 shipped = row.source_shipped_quantity
+                if shipped is not None:
+                    shipped += pending_ledger.get(row.detail_id, 0)
             valid = quantity is not None and quantity > 0 and shipped is not None and shipped >= 0
             pending = (
                 max(quantity - shipped, 0)

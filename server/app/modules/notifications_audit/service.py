@@ -21,6 +21,7 @@ from app.adapters.notifications import (
 from app.db.models import (
     Factory,
     IncomingDiffBatch,
+    IncomingDiffRecord,
     Notification,
     NotificationAuthorization,
     Order,
@@ -1321,9 +1322,17 @@ class NotificationsAuditService:
         self, session: Session, message: OutboxMessage
     ) -> None:
         order = session.get(Order, str(message.payload["orderId"]))
-        if order is None:
+        if order is None or order.deleted_at is not None or order.lifecycle == "DRAFT":
             return
-        record_count = int(message.payload["recordCount"])
+        record_count = session.scalar(select(func.count()).select_from(IncomingDiffRecord)
+            .join(OrderAssignment,
+                  OrderAssignment.order_assignment_id == IncomingDiffRecord.order_assignment_id)
+            .where(IncomingDiffRecord.batch_id == message.aggregate_id,
+                   IncomingDiffRecord.order_id == order.order_id,
+                   OrderAssignment.factory_id == str(message.payload["factoryId"]),
+                   OrderAssignment.is_active.is_(True))) or 0
+        if not record_count:
+            return
         for user in self._enabled_factory_users(
             session, str(message.payload["factoryId"])
         ):
@@ -1354,7 +1363,14 @@ class NotificationsAuditService:
         self, session: Session, message: OutboxMessage
     ) -> None:
         order = session.get(Order, str(message.payload["orderId"]))
-        if order is None:
+        if order is None or order.deleted_at is not None or order.lifecycle == "DRAFT":
+            return
+        if session.scalar(select(IncomingDiffRecord.record_id)
+            .join(OrderAssignment,
+                  OrderAssignment.order_assignment_id == IncomingDiffRecord.order_assignment_id)
+            .where(IncomingDiffRecord.record_id == message.aggregate_id,
+                   OrderAssignment.factory_id == str(message.payload["factoryId"]),
+                   OrderAssignment.is_active.is_(True))) is None:
             return
         for user in self._enabled_factory_users(
             session, str(message.payload["factoryId"])

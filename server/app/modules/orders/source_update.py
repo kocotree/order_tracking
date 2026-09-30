@@ -13,6 +13,7 @@ from app.adapters.order_source import AppCredentialFeishuOrderSource, FeishuOrde
 from app.db.models import (
     Factory,
     IdempotencyRecord,
+    IncomingDiffRecord,
     Order,
     OrderAssignment,
     OrderChangePreview,
@@ -23,6 +24,7 @@ from app.db.models import (
     User,
 )
 from app.modules.order_import import OrderImportService, SourceOrderRow
+from app.modules.orders.quantities import pending_totals
 from app.modules.orders.service import (
     TRACKERS,
     OrderConflict,
@@ -175,6 +177,7 @@ class OrderSourceUpdateService(OrderService):
                 raise OrderConflict("订单版本已变化，请重新加载后重试")
             rows = self._details(session, order_id, lock=True)
             rows_by_id = {row.detail_id: row for row in rows}
+            pending = pending_totals(session, list(rows_by_id))
             audits: list[dict[str, object]] = []
             state_changed = False
             for detail_id, detail_version, changes in updates:
@@ -198,6 +201,9 @@ class OrderSourceUpdateService(OrderService):
                     factory = session.get(Factory, factory_id)
                     if factory is None or not factory.is_enabled:
                         raise OrderValidationError("工厂不存在或已停用")
+                    self._validate_incoming(session, detail, {
+                        "matched_factory_id": factory_id,
+                    })
                     detail_changed |= (
                         detail.factory_name != factory.factory_name
                         or detail.matched_factory_id != factory.factory_id
@@ -227,6 +233,7 @@ class OrderSourceUpdateService(OrderService):
                     detail.contract_ship_date = contract_ship_date
                     detail.date_override_enabled = True
                 if "shipped_quantity" in changes:
+                    before: int | None
                     shipped = changes["shipped_quantity"]
                     if isinstance(shipped, bool) or not isinstance(shipped, int) or shipped < 0:
                         raise OrderValidationError("已发数量须为非负整数")
@@ -253,16 +260,28 @@ class OrderSourceUpdateService(OrderService):
                             audit["shippedQuantity"] = {"before": before, "after": shipped}
                             detail_changed = True
                     else:
+                        before = detail.source_shipped_quantity
+                        if before is not None:
+                            before += pending.get(detail_id, 0)
                         detail_changed |= (
-                            detail.source_shipped_quantity != shipped
+                            before != shipped
                             or not detail.shipped_override_enabled
                         )
-                        if detail.source_shipped_quantity != shipped:
+                        if before != shipped:
                             audit["shippedQuantity"] = {
-                                "before": detail.source_shipped_quantity,
+                                "before": before,
                                 "after": shipped,
                             }
-                        detail.source_shipped_quantity = shipped
+                        if detail_id in pending:
+                            assert before is not None
+                            if before != shipped:
+                                session.add(QuantityLedger(
+                                    order_detail_id=detail_id, source_type="ADMIN_ADJUSTMENT",
+                                    source_id=str(uuid4()), quantity_delta=shipped - before,
+                                    actor_id=actor_id, created_at=self._now(),
+                                ))
+                        else:
+                            detail.source_shipped_quantity = shipped
                         detail.shipped_override_enabled = True
                 if not detail_changed:
                     continue
@@ -459,7 +478,7 @@ class OrderSourceUpdateService(OrderService):
                 else None
             )
         )
-        return {
+        values = {
             "parse_issues": issues,
             "source_sku_id": row.source_sku_id,
             "product_name": row.product_name,
@@ -490,6 +509,28 @@ class OrderSourceUpdateService(OrderService):
             if row.source_modified_at
             else None,
         }
+        OrderSourceUpdateService._validate_incoming(session, detail, values)
+        return values
+
+    @staticmethod
+    def _validate_incoming(
+        session: Session, detail: OrderDetail, values: dict[str, Any],
+    ) -> None:
+        if session.scalar(select(IncomingDiffRecord.record_id).where(
+            IncomingDiffRecord.detail_id == detail.detail_id
+        ).limit(1)) is None:
+            return
+        if any(values[key] != getattr(detail, key) for key in (
+            "matched_factory_id", "matched_variant_id",
+            "purchase_order_id", "purchase_order_item_id",
+        ) if key in values):
+            raise OrderConflict("明细已有来货出入，不能变更工厂、SKU 或采购归属")
+        if "source_shipped_quantity" in values:
+            baseline = values["source_shipped_quantity"]
+            if baseline is None or baseline + pending_totals(session, [detail.detail_id]).get(
+                detail.detail_id, 0
+            ) < 0:
+                raise OrderConflict("来源已发数量更新后无法承接来货出入")
 
     def preview(
         self,

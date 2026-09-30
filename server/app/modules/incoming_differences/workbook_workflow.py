@@ -12,7 +12,6 @@ from app.db.models import (
     IncomingDiffBatch,
     IncomingDiffImage,
     IncomingDiffWorkbook,
-    OrderAssignment,
     OrderDetail,
     StoredFile,
     User,
@@ -103,7 +102,7 @@ class IncomingWorkbookWorkflow:
                     changed = any(line.get(field) != source.get(field) for field in (
                         "sheetName", "productName", "spec", "quantity", "purchaseOrderId"
                     ))
-                    if changed or line.get("orderAssignmentId") is None:
+                    if changed or not (line.get("detailId") or line.get("orderAssignmentId")):
                         factory_id = session.scalar(select(Factory.factory_id).where(
                             Factory.factory_name == line["factoryName"],
                             Factory.is_enabled.is_(True),
@@ -114,7 +113,7 @@ class IncomingWorkbookWorkflow:
                         same_origin = all(line.get(field) == source.get(field) for field in (
                             "sheetName", "productName", "spec", "purchaseOrderId"
                         ))
-                        assignment_id = self._matching.match_assignment(
+                        detail_id = self._matching.match_detail(
                             factory_id=factory_id,
                             product_code=(str(source["productCode"])
                                           if same_product and source.get("productCode") else None),
@@ -125,11 +124,13 @@ class IncomingWorkbookWorkflow:
                                                     if same_origin and
                                                     source.get("purchaseOrderItemId") else None),
                         )
-                        assignment = (session.get(OrderAssignment, assignment_id)
-                                      if assignment_id else None)
-                        detail = (session.get(OrderDetail, assignment.detail_id)
-                                  if assignment and assignment.detail_id else None)
-                        line["orderAssignmentId"] = assignment_id
+                        detail = session.get(OrderDetail, detail_id) if detail_id else None
+                        line["detailId"] = detail_id
+                        line["factoryId"] = factory_id
+                        line["variantId"] = detail.matched_variant_id if detail else None
+                        line["orderAssignmentId"] = detail.assignment_id if detail else None
+                        if detail:
+                            line["purchaseOrderId"] = detail.purchase_order_id
                         line["purchaseOrderItemId"] = (
                             detail.purchase_order_item_id if detail else None
                         )

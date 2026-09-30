@@ -34,6 +34,10 @@ def source_rows() -> Subquery:
         .subquery()
     )
     active = (OrderDetail.dispatch_state == "ASSIGNED") & OrderAssignment.is_active.is_(True)
+    pending = (select(QuantityLedger.order_detail_id,
+                      func.sum(QuantityLedger.quantity_delta).label("quantity"))
+               .where(QuantityLedger.order_detail_id.is_not(None))
+               .group_by(QuantityLedger.order_detail_id).subquery())
     return (
         select(
             OrderDetail.order_id,
@@ -53,13 +57,14 @@ def source_rows() -> Subquery:
                     active,
                     OrderAssignment.initial_shipped_quantity + func.coalesce(ledger.c.quantity, 0),
                 ),
-                else_=OrderDetail.source_shipped_quantity,
+                else_=OrderDetail.source_shipped_quantity + func.coalesce(pending.c.quantity, 0),
             ).label("shipped"),
         )
         .outerjoin(
             OrderAssignment, OrderAssignment.order_assignment_id == OrderDetail.assignment_id
         )
         .outerjoin(ledger, ledger.c.assignment_id == OrderAssignment.order_assignment_id)
+        .outerjoin(pending, pending.c.order_detail_id == OrderDetail.detail_id)
         .subquery("source_rows")
     )
 

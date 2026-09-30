@@ -5,12 +5,13 @@ from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import (
     Factory,
     IdempotencyRecord,
+    IncomingDiffRecord,
     Order,
     OrderAssignment,
     OrderChangePreview,
@@ -19,6 +20,7 @@ from app.db.models import (
     OutboxMessage,
     Product,
     ProductVariant,
+    QuantityLedger,
     User,
 )
 from app.modules.orders.service import (
@@ -300,6 +302,13 @@ class OrderDispatchService(OrderSourceUpdateService):
                 session.flush()
 
                 row.assignment_id = assignment.order_assignment_id
+                session.execute(update(QuantityLedger).where(
+                    QuantityLedger.order_detail_id == row.detail_id
+                ).values(order_assignment_id=assignment.order_assignment_id, order_detail_id=None))
+                session.execute(update(IncomingDiffRecord).where(
+                    IncomingDiffRecord.detail_id == row.detail_id,
+                    IncomingDiffRecord.order_assignment_id.is_(None),
+                ).values(order_assignment_id=assignment.order_assignment_id))
                 row.dispatch_batch_id = batch_id
                 row.dispatch_state = "ASSIGNED"
                 row.auto_dispatch_paused = False

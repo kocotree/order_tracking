@@ -507,14 +507,14 @@ def create_identity_router(
         response_model=AvatarResponse,
         tags=["identity-mini"],
     )
-    async def replace_mini_avatar(
+    def replace_mini_avatar(
         request: Request,
         avatar: Annotated[UploadFile, File()],
         authorization: str | None = Header(default=None),
         idempotency_key: str = Header(alias="Idempotency-Key"),
     ) -> AvatarResponse:
         user = mini_user(authorization)
-        content = await avatar.read()
+        content = avatar.file.read()
         stored = service.replace_mini_avatar(
             user_id=user.user_id,
             original_filename=avatar.filename or "avatar",

@@ -11,7 +11,6 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.drawing.image import Image as ExcelImage
 from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.worksheet.worksheet import Worksheet
-from PIL import Image as PillowImage
 
 from app.settings.config import Settings
 
@@ -65,7 +64,6 @@ class IncomingWorkbookCodec:
         assert first_sheet is not None
         workbook.remove(first_sheet)
         sheets: dict[str, Worksheet] = {}
-        resized_images: dict[str, bytes] = {}
         snapshot: list[dict[str, object]] = []
         for sequence, raw in enumerate(lines, 1):
             image_id = str(raw["imageId"])
@@ -103,9 +101,10 @@ class IncomingWorkbookCodec:
             for column in (1, 2, 6):
                 sheet.cell(row, column).data_type = "s"
             sheet.row_dimensions[row].height = 96
-            if image_id not in resized_images:
-                resized_images[image_id] = self._resized_image(images[image_id])
-            picture = ExcelImage(BytesIO(resized_images[image_id]))
+            picture = ExcelImage(BytesIO(images[image_id]))
+            scale = min(240 / picture.width, 124 / picture.height, 1)
+            picture.width = round(picture.width * scale)
+            picture.height = round(picture.height * scale)
             picture.anchor = f"H{row}"
             sheet.add_image(picture)
             snapshot.append({
@@ -118,8 +117,7 @@ class IncomingWorkbookCodec:
         output = BytesIO()
         workbook.save(output)
         content = output.getvalue()
-        if len(content) > self._limits.max_source_bytes:
-            raise ValueError("生成的核对表超过文件大小上限")
+        self._check_output_size(content)
         return content, signature, snapshot
 
     def parse(
@@ -236,6 +234,10 @@ class IncomingWorkbookCodec:
         lines: list[dict[str, object]], generated_at: datetime,
     ) -> tuple[bytes, str]:
         workbook = self._open(content)
+        for line in lines:
+            cell = workbook[str(line["sheetName"])].cell(int(str(line["rowNumber"])), 6)
+            cell.value = str(line["purchaseOrderId"]) if line.get("purchaseOrderId") else None
+            cell.data_type = "s"
         signature = self._signature(batch_id, version, [str(line["lineToken"]) for line in lines])
         metadata = workbook["_核对标识"]
         metadata["B2"] = version
@@ -243,7 +245,18 @@ class IncomingWorkbookCodec:
         metadata["B4"] = signature
         output = BytesIO()
         workbook.save(output)
-        return output.getvalue(), signature
+        saved = output.getvalue()
+        self._check_output_size(saved)
+        return saved, signature
+
+    def _check_output_size(self, content: bytes) -> None:
+        if len(content) > self._limits.max_source_bytes:
+            raise ValueError("生成的核对表超过文件大小上限")
+        with ZipFile(BytesIO(content)) as archive:
+            if sum(entry.file_size for entry in archive.infolist()) > (
+                self._limits.max_uncompressed_bytes
+            ):
+                raise ValueError("生成的核对表解压后超过上限")
 
     def _open(self, content: bytes) -> Workbook:
         if len(content) > self._limits.max_source_bytes:
@@ -301,14 +314,6 @@ class IncomingWorkbookCodec:
     def _signature(self, batch_id: str, version: int, tokens: list[str]) -> str:
         payload = "|".join((batch_id, str(version), *sorted(tokens))).encode()
         return hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
-
-    @staticmethod
-    def _resized_image(content: bytes) -> bytes:
-        with PillowImage.open(BytesIO(content)) as source:
-            source.thumbnail((240, 124), PillowImage.Resampling.LANCZOS)
-            output = BytesIO()
-            source.convert("RGB").save(output, format="JPEG", quality=85)
-            return output.getvalue()
 
     @staticmethod
     def _issue(code: str, sheet: str, row: int, message: str) -> dict[str, str | int]:

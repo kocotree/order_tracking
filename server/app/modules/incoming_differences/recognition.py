@@ -19,7 +19,6 @@ from app.db.models import (
     Factory,
     IncomingDiffBatch,
     IncomingDiffImage,
-    OrderAssignment,
     OrderDetail,
     StoredFile,
     User,
@@ -146,21 +145,23 @@ class IncomingDiffRecognitionService:
                     Factory.factory_name == factory_name, Factory.is_enabled.is_(True)
                 )) if factory_name else None
             for line in parsed["lines"]:
-                spec = (f"{line['color']} / {line['size']}" if line["color"] and line["size"]
-                        else line["color"] or None)
-                assignment_id = self._matching.match_assignment(
+                spec = f"{line['color'] or ''}{line['size'] or ''}" or None
+                detail_id = self._matching.match_detail(
                     factory_id=factory_id, product_code=parsed["productCode"],
                     product_name=parsed["productName"], spec=spec,
                 )
-                line["orderAssignmentId"] = assignment_id
+                line["detailId"] = detail_id
+                line["factoryId"] = factory_id
+                line["variantId"] = None
+                line["orderAssignmentId"] = None
                 line["purchaseOrderId"] = None
                 line["purchaseOrderItemId"] = None
-                if assignment_id is not None:
+                if detail_id is not None:
                     with self._sessions() as session:
-                        assignment = session.get(OrderAssignment, assignment_id)
-                        assert assignment is not None and assignment.detail_id is not None
-                        detail = session.get(OrderDetail, assignment.detail_id)
+                        detail = session.get(OrderDetail, detail_id)
                         assert detail is not None
+                        line["orderAssignmentId"] = detail.assignment_id
+                        line["variantId"] = detail.matched_variant_id
                         line["purchaseOrderId"] = detail.purchase_order_id
                         line["purchaseOrderItemId"] = detail.purchase_order_item_id
             with self._sessions() as session, session.begin():

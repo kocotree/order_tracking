@@ -480,8 +480,7 @@ class FeishuBotService:
                 if image.ocr_status != "SUCCEEDED" or not isinstance(parsed, dict):
                     raise ValueError("image_recognition_incomplete")
                 for line in parsed["lines"]:
-                    spec = (f"{line['color']} / {line['size']}"
-                            if line["color"] and line["size"] else line["color"] or "")
+                    spec = f"{line['color'] or ''}{line['size'] or ''}"
                     lines.append({
                         "imageId": image.image_id, "factoryName": parsed.get("factoryName"),
                         "productName": parsed.get("productName"),
@@ -490,12 +489,16 @@ class FeishuBotService:
                         "purchaseOrderId": line.get("purchaseOrderId"),
                         "purchaseOrderItemId": line.get("purchaseOrderItemId"),
                         "orderAssignmentId": line.get("orderAssignmentId"),
+                        "detailId": line.get("detailId"),
+                        "factoryId": line.get("factoryId"),
+                        "variantId": line.get("variantId"),
                     })
             open_id = batch.feishu_open_id
             batch_no = batch.batch_no
         workbook = self._workbooks.generate(batch_id=batch_id, actor_id=actor_id,
                                              lines=lines, regenerate=regenerate)
-        pending = sum(not line.get("orderAssignmentId") for line in lines)
+        pending = sum(not (line.get("detailId") or line.get("orderAssignmentId"))
+                      for line in lines)
         self._reply(
             actor_id, open_id, f"generated:{workbook.workbook_id}",
             f"批次 {batch_no} 核对表已生成：共 {len(lines)} 条明细，{pending} 条待确认。"
@@ -557,7 +560,7 @@ class FeishuBotService:
                        "由提交人确认登记，本次不重复生效。")
         else:
             message = (f"批次 {result.batch_no} 已正式登记 {result.record_count} 条来货出入，"
-                       f"已通知 {result.factory_count} 个工厂。")
+                       f"涉及 {result.factory_count} 个工厂。")
         self._reply(actor_id, open_id, f"confirmed:{batch_id}:{version}", message,
                     batch_id=batch_id)
 
@@ -608,7 +611,7 @@ class FeishuBotService:
                     f"{sheet} 第 {row} 行少 {quantity} 件会使该规格已发数量小于 0，"
                     "本批次未登记。"
                 )
-            elif source and source.get("purchaseOrderId") and reason == "未匹配到唯一派工":
+            elif source and source.get("purchaseOrderId") and reason == "未匹配到唯一订单明细":
                 po = str(source["purchaseOrderId"])
                 with self._sessions() as session:
                     factory_id = session.scalar(select(Factory.factory_id).where(
@@ -619,7 +622,7 @@ class FeishuBotService:
                     ).where(OrderDetail.purchase_order_id == po,
                             OrderDetail.purchase_order_item_id.is_not(None))).all())
                 # ponytail: 错误路径逐个复用现有匹配器；子单量变大时再合并查询。
-                count = sum(self._registration.match_assignment(
+                count = sum(self._registration.match_detail(
                     factory_id=factory_id,
                     product_code=(str(source["productCode"])
                                   if source.get("productCode") else None),

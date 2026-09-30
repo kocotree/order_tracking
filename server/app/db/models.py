@@ -1162,12 +1162,23 @@ class QuantityLedger(Base):
             "source_type", "source_id", "order_assignment_id", name="uq_quantity_ledger_source"
         ),
         CheckConstraint("quantity_delta <> 0", name="ck_quantity_ledger_nonzero"),
+        CheckConstraint(
+            "(order_assignment_id IS NULL) <> (order_detail_id IS NULL)",
+            name="ck_quantity_ledger_owner",
+        ),
+        UniqueConstraint(
+            "source_type", "source_id", "order_detail_id", name="uq_quantity_ledger_detail_source"
+        ),
         Index("ix_quantity_ledger_assignment", "order_assignment_id", "created_at"),
+        Index("ix_quantity_ledger_detail", "order_detail_id"),
     )
 
     ledger_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    order_assignment_id: Mapped[int] = mapped_column(
-        ForeignKey("order_assignments.order_assignment_id", ondelete="RESTRICT"), nullable=False
+    order_assignment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("order_assignments.order_assignment_id", ondelete="RESTRICT")
+    )
+    order_detail_id: Mapped[str | None] = mapped_column(
+        ForeignKey("order_details.detail_id", ondelete="RESTRICT")
     )
     source_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source_id: Mapped[str] = mapped_column(String(36), nullable=False)
@@ -1934,8 +1945,8 @@ class IncomingDiffRecord(Base):
     detail_id: Mapped[str] = mapped_column(
         ForeignKey("order_details.detail_id", ondelete="RESTRICT"), nullable=False
     )
-    order_assignment_id: Mapped[int] = mapped_column(
-        ForeignKey("order_assignments.order_assignment_id", ondelete="RESTRICT"), nullable=False
+    order_assignment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("order_assignments.order_assignment_id", ondelete="RESTRICT")
     )
     variant_id: Mapped[str] = mapped_column(
         ForeignKey("product_variants.variant_id", ondelete="RESTRICT"), nullable=False

@@ -21,13 +21,13 @@ from app.db.models import (
     Order,
     OrderAssignment,
     OrderDetail,
-    OrderLine,
     OutboxMessage,
     Product,
     ProductVariant,
     QuantityLedger,
     User,
 )
+from app.modules.orders.quantities import active_assignment, detail_shipped, pending_totals
 
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
 CONFIRM_SCOPE = "incoming_diff_confirm"
@@ -93,7 +93,7 @@ class IncomingDifferenceView:
 
 @dataclass(frozen=True)
 class _ParsedLine:
-    order_assignment_id: int
+    detail_id: str
     quantity: int
     purchase_order_id: str
     purchase_order_item_id: str
@@ -168,7 +168,7 @@ class IncomingDifferenceService:
                 batch_id=batch.batch_id, batch_no=batch.batch_no, status=batch.status
             )
 
-    def match_assignment(
+    def match_detail(
         self,
         *,
         factory_id: str | None = None,
@@ -178,8 +178,8 @@ class IncomingDifferenceService:
         variant_id: str | None = None,
         purchase_order_id: str | None = None,
         purchase_order_item_id: str | None = None,
-    ) -> int | None:
-        """精确定位 SKU，再按有效未发数量和合同出货时间选择派工。"""
+    ) -> str | None:
+        """唯一明细忽略未发数量，多明细沿用合同出货时间规则。"""
         if not factory_id or not (product_code or product_name) or not (spec or variant_id):
             return None
         sku = (
@@ -199,20 +199,16 @@ class IncomingDifferenceService:
             if len(variants) != 1:
                 return None
             statement = (
-                select(OrderAssignment)
-                .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-                .join(Order, Order.order_id == OrderLine.order_id)
-                .join(OrderDetail, OrderDetail.detail_id == OrderAssignment.detail_id)
+                select(OrderDetail)
+                .join(Order, Order.order_id == OrderDetail.order_id)
                 .where(
-                    OrderAssignment.is_active.is_(True),
-                    OrderAssignment.factory_id == factory_id,
-                    OrderLine.product_variant_id == variants[0],
+                    OrderDetail.matched_factory_id == factory_id,
+                    OrderDetail.matched_variant_id == variants[0],
                     OrderDetail.purchase_order_id.is_not(None),
                     OrderDetail.purchase_order_id != "",
                     OrderDetail.purchase_order_item_id.is_not(None),
                     OrderDetail.purchase_order_item_id != "",
                     Order.deleted_at.is_(None),
-                    Order.lifecycle.in_(("PUBLISHED", "COMPLETED")),
                 )
             )
             if purchase_order_id:
@@ -222,31 +218,56 @@ class IncomingDifferenceService:
                     OrderDetail.purchase_order_item_id == purchase_order_item_id
                 )
             candidates = session.scalars(statement.order_by(
-                OrderAssignment.contract_ship_date.is_(None),
-                OrderAssignment.contract_ship_date,
-                OrderAssignment.order_assignment_id,
+                OrderDetail.contract_ship_date.is_(None),
+                OrderDetail.contract_ship_date,
+                OrderDetail.detail_id,
             )).all()
             if not candidates:
                 return None
+            if len(candidates) == 1:
+                return candidates[0].detail_id
             ledger_rows = session.execute(
                 select(QuantityLedger.order_assignment_id, func.sum(QuantityLedger.quantity_delta))
                 .where(QuantityLedger.order_assignment_id.in_(
-                    assignment.order_assignment_id for assignment in candidates
+                    detail.assignment_id for detail in candidates if detail.assignment_id
                 ))
                 .group_by(QuantityLedger.order_assignment_id)
             ).all()
             totals = {row[0]: int(row[1]) for row in ledger_rows}
-            remaining = [
-                assignment for assignment in candidates
-                if assignment.assigned_quantity - assignment.initial_shipped_quantity
-                - totals.get(assignment.order_assignment_id, 0) > 0
-            ]
+            pending = pending_totals(session, [detail.detail_id for detail in candidates])
+            remaining = []
+            for detail in candidates:
+                quantity: int | None
+                shipped: int | None
+                assignment = session.get(OrderAssignment, detail.assignment_id) \
+                    if detail.assignment_id else None
+                if assignment and assignment.is_active and detail.dispatch_state == "ASSIGNED":
+                    ship_date = assignment.contract_ship_date
+                    quantity = assignment.assigned_quantity
+                    shipped = assignment.initial_shipped_quantity + totals.get(
+                        assignment.order_assignment_id, 0
+                    )
+                else:
+                    ship_date = detail.contract_ship_date
+                    quantity = detail.order_quantity
+                    shipped = detail.source_shipped_quantity
+                    if shipped is not None:
+                        shipped += pending.get(detail.detail_id, 0)
+                if quantity is not None and shipped is not None and quantity > shipped:
+                    remaining.append((detail, ship_date))
             if not remaining:
                 return None
+            remaining.sort(key=lambda item: (item[1] is None, item[1] or date.max))
             if (len(remaining) > 1
-                    and remaining[0].contract_ship_date == remaining[1].contract_ship_date):
+                    and remaining[0][1] == remaining[1][1]):
                 return None
-            return remaining[0].order_assignment_id
+            return remaining[0][0].detail_id
+
+    def match_assignment(self, **criteria: Any) -> int | None:
+        detail_id = self.match_detail(**criteria)
+        with self._session_factory() as session:
+            detail = session.get(OrderDetail, detail_id) if detail_id else None
+            return detail.assignment_id if detail else None
 
     def confirm(self, *, batch_id: str, workbook_version: int, actor_id: str) -> ConfirmResult:
         current, _business_date = self._now()
@@ -300,11 +321,18 @@ class IncomingDifferenceService:
                 if reason is not None:
                     issues.append(_issue(raw, reason))
                     continue
+                detail_id = raw.get("detailId")
+                if not detail_id and raw.get("orderAssignmentId"):
+                    old_assignment = session.get(OrderAssignment, int(raw["orderAssignmentId"]))
+                    detail_id = old_assignment.detail_id if old_assignment else None
+                if not detail_id:
+                    issues.append(_issue(raw, "未匹配到唯一订单明细"))
+                    continue
                 parsed.append(
                     (
                         raw,
                         _ParsedLine(
-                            order_assignment_id=int(raw["orderAssignmentId"]),
+                            detail_id=str(detail_id),
                             quantity=int(raw["quantity"]),
                             purchase_order_id=str(raw["purchaseOrderId"]),
                             purchase_order_item_id=str(raw["purchaseOrderItemId"]),
@@ -315,50 +343,48 @@ class IncomingDifferenceService:
             if not issues and not parsed:
                 raise IncomingDifferenceValidationError("核对表没有可登记的数据行", [])
 
-            assignment_ids = sorted({line.order_assignment_id for _raw, line in parsed})
+            detail_ids = sorted({line.detail_id for _raw, line in parsed})
+            order_ids = session.scalars(select(OrderDetail.order_id).where(
+                OrderDetail.detail_id.in_(detail_ids)
+            )).all()
+            orders = {order.order_id: order for order in session.scalars(
+                select(Order).where(Order.order_id.in_(order_ids))
+                .order_by(Order.order_id).with_for_update()
+            )}
+            details = {detail.detail_id: detail for detail in session.scalars(
+                select(OrderDetail).where(OrderDetail.detail_id.in_(detail_ids))
+                .order_by(OrderDetail.detail_id).with_for_update()
+            )}
             assignments = {
-                assignment.order_assignment_id: assignment
-                for assignment in session.scalars(
-                    select(OrderAssignment)
-                    .where(OrderAssignment.order_assignment_id.in_(assignment_ids))
-                    .order_by(OrderAssignment.order_assignment_id)
-                    .with_for_update()
-                ).all()
+                detail_id: active_assignment(session, detail)
+                for detail_id, detail in details.items()
             }
-            contexts = _assignment_contexts(session, assignment_ids)
+            contexts = _detail_contexts(session, detail_ids)
             for raw, line in parsed:
-                assignment = assignments.get(line.order_assignment_id)
-                if assignment is None or not assignment.is_active:
-                    issues.append(_issue(raw, "派工不存在或已失效"))
-                elif line.order_assignment_id not in contexts:
-                    issues.append(_issue(raw, "派工缺少订单明细，无法登记"))
+                detail = details.get(line.detail_id)
+                if (detail is None or line.detail_id not in contexts
+                        or orders[detail.order_id].deleted_at is not None):
+                    issues.append(_issue(raw, "订单明细不存在或归属无效"))
+                elif (detail.purchase_order_id != line.purchase_order_id
+                      or detail.purchase_order_item_id != line.purchase_order_item_id
+                      or (raw.get("variantId") and raw["variantId"] != detail.matched_variant_id)
+                      or (raw.get("factoryId") and raw["factoryId"] != detail.matched_factory_id)):
+                    issues.append(_issue(raw, "采购、工厂或 SKU 归属已变化"))
 
             # 统一已发下限没有数据库约束，锁行之后重算再判断
             if issues:
                 raise IncomingDifferenceValidationError(_issue_message(issues), issues)
-            ledger_totals: dict[int, int] = {
-                row.order_assignment_id: int(row.total)
-                for row in session.execute(
-                    select(
-                        QuantityLedger.order_assignment_id,
-                        func.coalesce(func.sum(QuantityLedger.quantity_delta), 0).label(
-                            "total"
-                        ),
-                    )
-                    .where(QuantityLedger.order_assignment_id.in_(assignment_ids))
-                    .group_by(QuantityLedger.order_assignment_id)
-                ).all()
-            }
-            before = {
-                assignment_id: assignments[assignment_id].initial_shipped_quantity
-                + ledger_totals.get(assignment_id, 0)
-                for assignment_id in assignment_ids
-            }
+            before: dict[str, int] = {}
+            for detail_id, detail in details.items():
+                shipped = detail_shipped(session, detail)
+                if shipped is None:
+                    raise IncomingDifferenceValidationError("明细已发数量未知，不能登记", [])
+                before[detail_id] = shipped
             after = dict(before)
             for _raw, line in parsed:
-                after[line.order_assignment_id] += line.quantity
+                after[line.detail_id] += line.quantity
             for raw, line in parsed:
-                resulting = after[line.order_assignment_id]
+                resulting = after[line.detail_id]
                 if resulting < 0:
                     issues.append(
                         _issue(raw, f"登记后统一已发数量为 {resulting}，不能小于 0")
@@ -366,9 +392,17 @@ class IncomingDifferenceService:
             if issues:
                 raise IncomingDifferenceValidationError(_issue_message(issues), issues)
 
+            for detail in details.values():
+                detail.version += 1
+                detail.updated_at = current
+            for order in orders.values():
+                order.version += 1
+                order.updated_at = current
             records: list[IncomingDiffRecord] = []
             for _raw, line in parsed:
-                context = contexts[line.order_assignment_id]
+                context = contexts[line.detail_id]
+                assignment = assignments[line.detail_id]
+                assignment_id = assignment.order_assignment_id if assignment else None
                 record_id = self._id_factory()
                 records.append(
                     IncomingDiffRecord(
@@ -378,7 +412,7 @@ class IncomingDifferenceService:
                         image_id=line.image_id,
                         order_id=context.order_id,
                         detail_id=context.detail_id,
-                        order_assignment_id=line.order_assignment_id,
+                        order_assignment_id=assignment_id,
                         variant_id=context.variant_id,
                         purchase_order_id=line.purchase_order_id,
                         purchase_order_item_id=line.purchase_order_item_id,
@@ -398,7 +432,8 @@ class IncomingDifferenceService:
                 session.add(records[-1])
                 session.add(
                     QuantityLedger(
-                        order_assignment_id=line.order_assignment_id,
+                        order_assignment_id=assignment_id,
+                        order_detail_id=line.detail_id if assignment_id is None else None,
                         source_type=LEDGER_SOURCE_TYPE,
                         source_id=record_id,
                         quantity_delta=line.quantity,
@@ -419,11 +454,15 @@ class IncomingDifferenceService:
                         "workbookVersion": workbook.version,
                         "recordCount": len(records),
                         "assignments": {
-                            str(assignment_id): {
-                                "before": before[assignment_id],
-                                "after": after[assignment_id],
+                            str(assignment.order_assignment_id): {
+                                "before": before[detail_id],
+                                "after": after[detail_id],
                             }
-                            for assignment_id in assignment_ids
+                            for detail_id, assignment in assignments.items() if assignment
+                        },
+                        "details": {
+                            detail_id: {"before": before[detail_id], "after": after[detail_id]}
+                            for detail_id in detail_ids
                         },
                     },
                     actor_id=actor_id,
@@ -433,7 +472,7 @@ class IncomingDifferenceService:
 
             grouped: dict[tuple[str, str], list[_ParsedLine]] = {}
             for _raw, line in parsed:
-                context = contexts[line.order_assignment_id]
+                context = contexts[line.detail_id]
                 grouped.setdefault((context.factory_id, context.order_id), []).append(line)
             for (factory_id, order_id), lines in sorted(grouped.items()):
                 order_no = next(
@@ -509,6 +548,9 @@ class IncomingDifferenceService:
             actor = session.get(User, actor_id)
             if actor is None or not actor.is_enabled or actor.role != "admin":
                 raise IncomingDifferencePermissionDenied("只有已启用的管理员可以调整来货出入")
+            order = session.get(Order, order_id, with_for_update=True)
+            if order is None or order.deleted_at is not None:
+                raise IncomingDifferenceNotFound("订单不存在")
             record = session.scalars(
                 select(IncomingDiffRecord)
                 .where(
@@ -528,22 +570,13 @@ class IncomingDifferenceService:
             if delta == 0:
                 return _record_view(session, record)
 
-            assignment = session.scalars(
-                select(OrderAssignment)
-                .where(OrderAssignment.order_assignment_id == record.order_assignment_id)
-                .with_for_update()
-            ).one_or_none()
-            if assignment is None or not assignment.is_active:
-                raise IncomingDifferenceValidationError("记录关联的派工不存在或已失效", [])
-            ledger_total = int(
-                session.scalar(
-                    select(func.coalesce(func.sum(QuantityLedger.quantity_delta), 0)).where(
-                        QuantityLedger.order_assignment_id == record.order_assignment_id
-                    )
-                )
-                or 0
-            )
-            before_shipped = assignment.initial_shipped_quantity + ledger_total
+            detail = session.get(OrderDetail, record.detail_id, with_for_update=True)
+            if detail is None or detail.matched_variant_id != record.variant_id:
+                raise IncomingDifferenceValidationError("记录关联的订单明细已变化", [])
+            assignment = active_assignment(session, detail)
+            before_shipped = detail_shipped(session, detail)
+            if before_shipped is None:
+                raise IncomingDifferenceValidationError("明细已发数量未知，不能调整", [])
             after_shipped = before_shipped + delta
             if after_shipped < 0:
                 raise IncomingDifferenceValidationError(
@@ -566,7 +599,8 @@ class IncomingDifferenceService:
             )
             session.add(
                 QuantityLedger(
-                    order_assignment_id=record.order_assignment_id,
+                    order_assignment_id=assignment.order_assignment_id if assignment else None,
+                    order_detail_id=detail.detail_id if assignment is None else None,
                     source_type="INCOMING_DIFF_ADJUST",
                     source_id=adjustment_id,
                     quantity_delta=delta,
@@ -577,6 +611,10 @@ class IncomingDifferenceService:
             record.quantity = quantity
             record.version += 1
             record.updated_at = current
+            detail.version += 1
+            detail.updated_at = current
+            order.version += 1
+            order.updated_at = current
             session.add(
                 AuditLog(
                     request_id=request_id,
@@ -606,7 +644,7 @@ class IncomingDifferenceService:
                     payload={
                         "recordId": record_id,
                         "adjustmentId": adjustment_id,
-                        "factoryId": assignment.factory_id,
+                        "factoryId": detail.matched_factory_id,
                         "orderId": order_id,
                         "orderNo": order.order_no,
                         "beforeQuantity": before_quantity,
@@ -629,11 +667,9 @@ class IncomingDifferenceService:
                 raise IncomingDifferenceNotFound("订单不存在")
             statement = (
                 select(IncomingDiffRecord)
-                .join(
-                    OrderAssignment,
-                    OrderAssignment.order_assignment_id
-                    == IncomingDiffRecord.order_assignment_id,
-                )
+                .join(OrderDetail, OrderDetail.detail_id == IncomingDiffRecord.detail_id)
+                .outerjoin(OrderAssignment,
+                           OrderAssignment.order_assignment_id == OrderDetail.assignment_id)
                 .where(IncomingDiffRecord.order_id == order_id)
                 .order_by(IncomingDiffRecord.registered_at, IncomingDiffRecord.record_id)
             )
@@ -641,7 +677,10 @@ class IncomingDifferenceService:
             if not is_admin:
                 if not actor.factory_id:
                     raise IncomingDifferencePermissionDenied("账号未绑定工厂")
-                statement = statement.where(OrderAssignment.factory_id == actor.factory_id)
+                statement = statement.where(
+                    OrderAssignment.factory_id == actor.factory_id,
+                    OrderAssignment.is_active.is_(True), OrderDetail.dispatch_state == "ASSIGNED",
+                )
             records = session.scalars(statement).all()
         return [
             IncomingDifferenceView(
@@ -669,8 +708,8 @@ class IncomingDifferenceService:
 def _line_reason(raw: dict[str, Any], image_ids: set[str]) -> str | None:
     if not isinstance(raw, dict):
         return "数据行格式不正确"
-    if not raw.get("orderAssignmentId"):
-        return "未匹配到唯一派工"
+    if not (raw.get("orderAssignmentId") or raw.get("detailId")):
+        return "未匹配到唯一订单明细"
     if not raw.get("quantity"):
         return "数量不能为 0"
     if not raw.get("purchaseOrderId"):
@@ -718,33 +757,32 @@ def _issue_message(issues: list[dict[str, Any]]) -> str:
     )
 
 
-def _assignment_contexts(
-    session: Session, assignment_ids: list[int]
-) -> dict[int, _AssignmentContext]:
+def _detail_contexts(
+    session: Session, detail_ids: list[str]
+) -> dict[str, _AssignmentContext]:
     rows = session.execute(
         select(
-            OrderAssignment.order_assignment_id,
-            OrderAssignment.detail_id,
-            OrderAssignment.factory_id,
+            OrderDetail.detail_id,
+            OrderDetail.matched_factory_id.label("factory_id"),
             Order.order_id,
             Order.order_no,
-            OrderLine.product_variant_id,
-            OrderLine.product_name_snapshot,
-            OrderLine.properties_value_snapshot,
+            ProductVariant.variant_id.label("product_variant_id"),
+            Product.name.label("product_name_snapshot"),
+            ProductVariant.properties_value.label("properties_value_snapshot"),
             Product.source_i_id,
         )
-        .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-        .join(Order, Order.order_id == OrderLine.order_id)
-        .join(ProductVariant, ProductVariant.variant_id == OrderLine.product_variant_id)
+        .select_from(OrderDetail)
+        .join(Order, Order.order_id == OrderDetail.order_id)
+        .join(ProductVariant, ProductVariant.variant_id == OrderDetail.matched_variant_id)
         .join(Product, Product.product_id == ProductVariant.product_id)
         .where(
-            OrderAssignment.order_assignment_id.in_(assignment_ids),
-            OrderAssignment.detail_id.is_not(None),
+            OrderDetail.detail_id.in_(detail_ids),
+            OrderDetail.matched_factory_id.is_not(None),
             Order.deleted_at.is_(None),
         )
     ).all()
     return {
-        row.order_assignment_id: _AssignmentContext(
+        row.detail_id: _AssignmentContext(
             order_id=row.order_id,
             order_no=row.order_no,
             detail_id=str(row.detail_id),

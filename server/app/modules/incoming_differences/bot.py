@@ -193,13 +193,10 @@ class FeishuBotService:
             self._reply(None, open_id, message_id, DENIED)
             return {}
         if kind == "post":
-            for index, image_key in enumerate(image_keys, 1):
-                if not self._image(actor_id, open_id, chat_id, message_id, image_key,
-                                   reply_key=f"{message_id}:{index}"):
-                    break
+            self._images(actor_id, open_id, chat_id, message_id, image_keys)
         elif kind == "image":
             assert isinstance(file_key, str)
-            self._image(actor_id, open_id, chat_id, message_id, file_key)
+            self._images(actor_id, open_id, chat_id, message_id, [file_key])
         else:
             assert isinstance(file_key, str) and isinstance(filename, str)
             self._uploaded(actor_id, open_id, chat_id, message_id, file_key, filename)
@@ -318,19 +315,58 @@ class FeishuBotService:
                 IncomingDiffBatch.created_at.desc(), IncomingDiffBatch.batch_id.desc()
             ).limit(1))
 
-    def _image(self, actor_id: str, open_id: str, chat_id: str,
-               message_id: str, image_key: str, *, reply_key: str | None = None) -> bool:
+    def _images(self, actor_id: str, open_id: str, chat_id: str,
+                message_id: str, image_keys: list[str]) -> None:
         with self._sessions() as session:
-            if session.scalar(select(IncomingDiffImage.image_id).where(
-                IncomingDiffImage.feishu_message_id == message_id,
-                IncomingDiffImage.feishu_image_key == image_key,
+            if session.scalar(select(OutboxMessage.id).where(
+                OutboxMessage.dedupe_key == f"incoming-diff-bot:{message_id}",
             )) is not None:
-                return True
+                return
         batch = self._batch(actor_id, chat_id, status="COLLECTING")
         batch_id = (batch.batch_id if batch else
                     self._registration.create_batch(submitter_id=actor_id,
                                                     feishu_chat_id=chat_id,
                                                     feishu_open_id=open_id).batch_id)
+        received: dict[str, IncomingDiffImage] = {}
+        added = 0
+        for image_key in image_keys:
+            result = self._image(actor_id, open_id, batch_id, message_id, image_key)
+            if result is None:
+                return
+            image, created = result
+            added += int(created and image.image_id not in received)
+            received[image.image_id] = image
+        with self._sessions() as session:
+            total = session.scalar(select(func.count()).select_from(IncomingDiffImage).where(
+                IncomingDiffImage.batch_id == batch_id)) or 0
+            messages = [f"本次新增 {added} 张图片，本批次累计 {total} 张。"
+                        "继续发送，或点击“生成核对表”。"]
+            duplicates = len(image_keys) - added
+            if duplicates:
+                messages.append(f"本批次已收到其中 {duplicates} 张相同图片，已跳过。")
+            buttons: list[tuple[str, str, dict[str, object]]] = [("生成核对表", "generate", {})]
+            for image in received.values():
+                if image.duplicate_of_batch_id and not image.duplicate_ack_at:
+                    old = session.get(IncomingDiffBatch, image.duplicate_of_batch_id)
+                    old_no = old.batch_no if old else image.duplicate_of_batch_id
+                    messages.append(
+                        f"第 {image.sort_order} 张图片与批次 {old_no} 的图片内容相同。"
+                        "如确认是另一次实际差异，点击对应的“继续核对”。")
+                    buttons.append((f"第 {image.sort_order} 张继续核对", "continue",
+                                    {"imageId": image.image_id}))
+        self._reply(actor_id, open_id, message_id, "\n".join(messages),
+                    batch_id=batch_id, buttons=buttons)
+
+    def _image(self, actor_id: str, open_id: str, batch_id: str,
+               message_id: str, image_key: str) -> tuple[IncomingDiffImage, bool] | None:
+        with self._sessions() as session:
+            existing = session.scalar(select(IncomingDiffImage).where(
+                IncomingDiffImage.batch_id == batch_id,
+                IncomingDiffImage.feishu_message_id == message_id,
+                IncomingDiffImage.feishu_image_key == image_key,
+            ))
+            if existing is not None:
+                return existing, True
         object_key = f"incoming-differences/{batch_id}/images/{uuid4()}"
         try:
             content = self._media.download_resource(message_id, image_key, "image")
@@ -354,12 +390,12 @@ class FeishuBotService:
                     ocr_status="FAILED", failure_reason="download_failed", created_at=utc_now()))
                 current.status = "FAILED"
             self._reply(
-                actor_id, open_id, reply_key or message_id,
+                actor_id, open_id, message_id,
                 f"第 {count + 1} 张图片无法识别（图片读取失败），"
                 "本批次未生成核对表。请重拍后重新发送。",
                 batch_id=batch_id,
             )
-            return False
+            return None
         self._files.put(object_key=object_key, content=content, content_type=mime_type)
         with self._sessions() as session, session.begin():
             stored = StoredFile(bucket=self._files.bucket, object_key=object_key,
@@ -381,22 +417,12 @@ class FeishuBotService:
                     session.delete(cleanup_file)
             self._files.delete(object_key=object_key)
             raise
-        if image.duplicate_of_batch_id:
-            with self._sessions() as session:
-                old = session.get(IncomingDiffBatch, image.duplicate_of_batch_id)
-                old_no = old.batch_no if old else image.duplicate_of_batch_id
-            self._reply(
-                actor_id, open_id, reply_key or message_id,
-                f"第 {image.sort_order} 张图片与批次 {old_no} 的图片内容相同。"
-                "如确认是另一次实际差异，点击“继续核对”；否则请移除该图片。",
-                batch_id=batch_id,
-                buttons=[("继续核对", "continue", {"imageId": image.image_id})],
-            )
-        else:
-            self._reply(actor_id, open_id, reply_key or message_id,
-                        f"已收到第 {image.sort_order} 张图片。继续发送，或点击“生成核对表”。",
-                        batch_id=batch_id, buttons=[("生成核对表", "generate", {})])
-        return True
+        created = image.file_id == file_id
+        if not created:
+            with self._sessions() as session, session.begin():
+                session.delete(session.get(StoredFile, file_id))
+            self._files.delete(object_key=object_key)
+        return image, created
 
     def _uploaded(self, actor_id: str, open_id: str, chat_id: str,
                   message_id: str, file_key: str, filename: str) -> None:

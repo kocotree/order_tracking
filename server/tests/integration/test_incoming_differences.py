@@ -3,8 +3,10 @@
 import hashlib
 import json
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from io import BytesIO
+from threading import Barrier
 from typing import Any
 
 import pytest
@@ -1302,6 +1304,9 @@ def test_recognition_worker_retries_and_only_saves_candidates(
     batch = _service(test_database_engine).create_batch(submitter_id=ADMIN)
     image = recognition.add_image(batch_id=batch.batch_id, actor_id=ADMIN,
                                   file_id=9709, feishu_image_key="vision-key")
+    duplicate = recognition.add_image(batch_id=batch.batch_id, actor_id=ADMIN,
+                                      file_id=9709, feishu_image_key="another-vision-key")
+    assert duplicate.image_id == image.image_id
     job_id = recognition.freeze_and_enqueue(batch_id=batch.batch_id, actor_id=ADMIN)
     store = InfrastructureStore(sessions)
     worker = Worker(store=store, worker_id="vision-test",
@@ -1314,6 +1319,7 @@ def test_recognition_worker_retries_and_only_saves_candidates(
     assert store.get_job(job_id=job_id).status == "pending"
     assert worker.run_once(now=now)
     assert store.get_job(job_id=job_id).status == "completed"
+    assert fake.calls == 2
     with Session(test_database_engine) as session:
         saved = session.get(IncomingDiffImage, image.image_id)
         assert saved is not None and saved.ocr_status == "SUCCEEDED"
@@ -1353,6 +1359,32 @@ def test_duplicate_image_needs_explicit_acknowledgement(test_database_engine: En
     recognition.acknowledge_duplicate(batch_id=batch.batch_id, image_id=image.image_id,
                                       actor_id=ADMIN)
     recognition.freeze_and_enqueue(batch_id=batch.batch_id, actor_id=ADMIN)
+
+
+def test_same_batch_concurrent_duplicate_images_keep_one_source(
+    test_database_engine: Engine,
+) -> None:
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    recognition = IncomingDiffRecognitionService(
+        sessions, files=FakePrivateFileStore(bucket="incoming-test"),
+        recognizer=FakeIncomingDiffRecognizer([]), clock=lambda: NOW,
+    )
+    batch = _service(test_database_engine).create_batch(submitter_id=ADMIN)
+    barrier = Barrier(2)
+
+    def receive(key: str) -> str:
+        barrier.wait(timeout=5)
+        return recognition.add_image(batch_id=batch.batch_id, actor_id=ADMIN,
+                                     file_id=FILE_IDS[0], feishu_image_key=key).image_id
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        image_ids = list(pool.map(receive, ["concurrent-a", "concurrent-b"]))
+    assert image_ids[0] == image_ids[1]
+    next_image = recognition.add_image(batch_id=batch.batch_id, actor_id=ADMIN,
+                                       file_id=FILE_IDS[1], feishu_image_key="different")
+    assert next_image.sort_order == 2
 
 
 def test_same_batch_recognizes_different_products_per_image(test_database_engine: Engine) -> None:
@@ -1478,7 +1510,10 @@ def _bot_action(event_id: str, batch_id: str, action: str,
             "event": {"operator": {"open_id": open_id}, "action": {"value": value}}}
 
 
-def test_feishu_bot_accepts_multiple_images_in_one_post(test_database_engine: Engine) -> None:
+@pytest.mark.parametrize("duplicate", [False, True])
+def test_feishu_bot_accepts_multiple_images_in_one_post(
+    test_database_engine: Engine, duplicate: bool,
+) -> None:
     with Session(test_database_engine) as session, session.begin():
         _seed_masters(session)
         session.add(ExternalIdentity(
@@ -1487,7 +1522,18 @@ def test_feishu_bot_accepts_multiple_images_in_one_post(test_database_engine: En
         ))
     picture = BytesIO()
     Image.new("RGB", (4, 4), (255, 255, 255)).save(picture, format="PNG")
-    media = _BotMedia(picture.getvalue())
+
+    class DifferentImages(_BotMedia):
+        def download_resource(self, message_id: str, file_key: str,
+                              resource_type: str) -> bytes:
+            self.downloads.append(resource_type)
+            output = BytesIO()
+            colors = {"image-a": "red", "image-b": "red" if duplicate else "blue",
+                      "image-c": "green"}
+            Image.new("RGB", (4, 4), colors[file_key]).save(output, format="PNG")
+            return output.getvalue()
+
+    media = DifferentImages(picture.getvalue())
     files = FakePrivateFileStore(bucket="incoming-test")
     sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
     bot = FeishuBotService(
@@ -1513,14 +1559,100 @@ def test_feishu_bot_accepts_multiple_images_in_one_post(test_database_engine: En
         replies = session.scalars(select(OutboxMessage).where(
             OutboxMessage.event_type == "incoming_diff.bot_reply")).all()
         assert len(batches) == 1 and batches[0].status == "COLLECTING"
+        expected = [("image-a", 1, batches[0].batch_id)]
+        if not duplicate:
+            expected.append(("image-b", 2, batches[0].batch_id))
         assert [(image.feishu_image_key, image.sort_order, image.batch_id)
-                for image in images] == [
-                    ("image-a", 1, batches[0].batch_id),
-                    ("image-b", 2, batches[0].batch_id),
-                ]
-        assert len(replies) == 2
+                for image in images] == expected
+        assert len(replies) == 1
+        assert replies[0].payload["summary"] == (
+            "本次新增 1 张图片，本批次累计 1 张。继续发送，或点击“生成核对表”。\n"
+            "本批次已收到其中 1 张相同图片，已跳过。" if duplicate else
+            "本次新增 2 张图片，本批次累计 2 张。继续发送，或点击“生成核对表”。")
+        assert [button["action"] for button in replies[0].payload["buttons"]] == ["generate"]
         assert all(reply.payload["recipientOpenId"] == "open-1" for reply in replies)
     assert media.downloads == ["image", "image"]
+    supplement = _bot_event("post-2", kind="post")
+    supplement["event"]["message"]["content"] = json.dumps({"content": [[
+        {"tag": "img", "image_key": "image-b"},
+        {"tag": "img", "image_key": "image-c"},
+    ]]})
+    bot.event(supplement)
+    bot.event(_bot_event("supplement-replay", kind="post") | {
+        "event": supplement["event"],
+    })
+    with Session(test_database_engine) as session:
+        replies = session.scalars(select(OutboxMessage).where(
+            OutboxMessage.event_type == "incoming_diff.bot_reply").order_by(OutboxMessage.id)).all()
+        assert len(replies) == 2
+        assert replies[1].payload["summary"] == (
+            f"本次新增 1 张图片，本批次累计 {2 if duplicate else 3} 张。"
+            "继续发送，或点击“生成核对表”。\n本批次已收到其中 1 张相同图片，已跳过。")
+        assert session.scalar(select(func.count()).select_from(StoredFile).where(
+            StoredFile.object_key.like("incoming-differences/%"))) == (2 if duplicate else 3)
+    assert files.object_count == (2 if duplicate else 3)
+    single = _bot_event("single-duplicate")
+    single["event"]["message"]["content"] = json.dumps({"image_key": "image-b"})
+    bot.event(single)
+    with Session(test_database_engine) as session:
+        reply = session.scalar(select(OutboxMessage).where(
+            OutboxMessage.dedupe_key == "incoming-diff-bot:msg-single-duplicate"))
+        assert reply.payload["summary"] == (
+            f"本次新增 0 张图片，本批次累计 {2 if duplicate else 3} 张。"
+            "继续发送，或点击“生成核对表”。\n本批次已收到其中 1 张相同图片，已跳过。")
+    assert files.object_count == (2 if duplicate else 3)
+
+
+def test_feishu_bot_post_keeps_cross_batch_duplicate_acknowledgement(
+    test_database_engine: Engine,
+) -> None:
+    picture = BytesIO()
+    Image.new("RGB", (4, 4), "red").save(picture, format="PNG")
+    with Session(test_database_engine) as session, session.begin():
+        _seed_masters(session)
+        session.add(ExternalIdentity(
+            platform="feishu", scope="test-scope",
+            platform_subject="tenant-test:open-1", user_id=ADMIN))
+        session.add(IncomingDiffBatch(
+            batch_id="old-batch", batch_no="IN20260901-01", submitter_id=ADMIN,
+            status="CONFIRMED", confirmed_at=SOURCE_TIME,
+            created_at=SOURCE_TIME, updated_at=SOURCE_TIME))
+        session.flush()
+        session.add(IncomingDiffImage(
+            image_id="old-image", batch_id="old-batch", sort_order=1,
+            feishu_image_key="old-key", file_id=FILE_IDS[0],
+            content_sha256=hashlib.sha256(picture.getvalue()).hexdigest(),
+            ocr_status="SUCCEEDED", created_at=SOURCE_TIME))
+    sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
+    files = FakePrivateFileStore(bucket="incoming-test")
+    recognition = IncomingDiffRecognitionService(
+        sessions, files=files, recognizer=FakeIncomingDiffRecognizer([]))
+    bot = FeishuBotService(
+        sessions, files=files, media=_BotMedia(picture.getvalue()), identity_scope="test-scope",
+        codec=IncomingWorkbookCodec(Settings(database_url="mysql+pymysql://local/test")),
+        recognition=recognition)
+    event = _bot_event("cross-batch", kind="post")
+    event["event"]["message"]["content"] = json.dumps({"content": [[
+        {"tag": "img", "image_key": "copy-a"},
+        {"tag": "img", "image_key": "copy-b"},
+    ]]})
+    bot.event(event)
+    with Session(test_database_engine) as session:
+        replies = session.scalars(select(OutboxMessage)).all()
+        assert len(replies) == 1
+        reply = replies[0].payload
+        assert "本次新增 1 张图片，本批次累计 1 张" in reply["summary"]
+        assert "IN20260901-01" in reply["summary"]
+        assert [button["action"] for button in reply["buttons"]] == ["generate", "continue"]
+        batch_id = reply["targetId"]
+        continue_value = reply["buttons"][1]["value"]
+    with pytest.raises(ValueError, match="重复图片"):
+        recognition.freeze_and_enqueue(batch_id=batch_id, actor_id=ADMIN)
+    action = _bot_action("acknowledge", batch_id, "continue")
+    action["event"]["action"]["value"].update(continue_value)
+    bot.card_action(action)
+    recognition.freeze_and_enqueue(batch_id=batch_id, actor_id=ADMIN)
+    assert files.object_count == 1
 
 
 def test_feishu_bot_post_download_failure_stays_in_one_failed_batch(
@@ -1574,7 +1706,7 @@ def test_feishu_bot_post_download_failure_stays_in_one_failed_batch(
                     ("image-a", "PENDING", batches[0].batch_id),
                     ("image-b", "FAILED", batches[0].batch_id),
                 ]
-        assert len(replies) == 2
+        assert len(replies) == 1
         assert any("图片读取失败" in reply.payload["summary"] for reply in replies)
     assert media.downloads == ["image-a", "image-b"]
 

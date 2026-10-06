@@ -28,15 +28,11 @@ from app.modules.orders import (
 
 
 class ConfigurableExecutionGuard:
-    def __init__(self, *, shipments: bool = False, pending_void: bool = False) -> None:
+    def __init__(self, *, shipments: bool = False) -> None:
         self.shipments = shipments
-        self.pending_void = pending_void
 
     def has_valid_shipments(self, *, order_id: str) -> bool:
         return self.shipments
-
-    def has_pending_void_requests(self, *, order_id: str) -> bool:
-        return self.pending_void
 
 
 def _clean_order_tables(engine: Engine) -> None:
@@ -504,7 +500,7 @@ def test_display_status_uses_east_eight_business_date(
     assert service.get(order_id=draft.order_id).display_status == "已逾期"
 
 
-def test_execution_guard_blocks_withdraw_delete_and_complete(
+def test_execution_guard_blocks_delete_and_incomplete_order_cannot_complete(
     test_database_engine: Engine,
 ) -> None:
     admin_id, factory_a_id, _, variant_id = _seed_order_dependencies(test_database_engine)
@@ -541,11 +537,8 @@ def test_execution_guard_blocks_withdraw_delete_and_complete(
             request_id="req-guard-delete",
             idempotency_key="guard-delete",
         )
-    pending_service = OrderService(
-        sessions, execution_guard=ConfigurableExecutionGuard(pending_void=True)
-    )
     with pytest.raises(OrderConflict):
-        pending_service.complete(
+        setup_service.complete(
             actor_id=admin_id,
             order_id=draft.order_id,
             request_id="req-guard-complete",

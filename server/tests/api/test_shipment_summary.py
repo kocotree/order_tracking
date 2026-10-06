@@ -45,7 +45,7 @@ def seed_shipments(engine: Engine, count: int) -> None:
                 shipment_no=f"发货{index}",
                 factory_id=FACTORY_IDS[0],
                 created_by=USER_IDS[0],
-                status=["SHIPPED", "WITHDRAWN", "VOIDED", "VOID_PENDING"][index % 4],
+                status=["SHIPPED", "WITHDRAWN", "VOIDED", "SHIPPED"][index % 4],
                 business_date=date(2026, 9, 1) + timedelta(days=index % 3),
                 submitted_at=datetime(2026, 9, 1) + timedelta(seconds=index),
             )

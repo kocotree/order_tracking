@@ -356,6 +356,7 @@ def test_withdraw_reopens_completed_order_and_preserves_submission_history(
 def test_withdraw_rejects_returned_and_retired_approval_routes(withdrawal_clients):
     admin, factory, _, _, _, sid = withdrawal_clients
     formal = admin.get(f"/api/v1/admin/shipments/{sid}").json()
+    assert "voidRequest" not in formal
     returned = admin.post(
         f"/api/v1/admin/shipments/{sid}/returns",
         json={

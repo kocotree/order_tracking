@@ -9,7 +9,7 @@ export default async function setupReceiptFixture(page) {
     {boxNo:3,groupKey:null,items:[{...line,boxItemId:4,quantity:100}]},
     {boxNo:4,groupKey:null,items:[{...line2,boxItemId:5,quantity:100}]},
     {boxNo:5,groupKey:null,items:[{...line2,boxItemId:6,quantity:100}]}
-  ], files:[],returnEvents:[],voidRequest:null,receipt:null,receiptDifferences:[] };
+  ], files:[],returnEvents:[],receipt:null,receiptDifferences:[] };
   let receipt = {version:0,status:'DRAFT',items:shipment.boxes.flatMap(b=>b.items.map(i=>({boxItemId:i.boxItemId,quantity:i.quantity,assignmentId:i.assignmentId}))),confirmedAt:null,confirmedByName:null};
   await page.route('**/api/v1/**', async route => {
     const path = route.request().url().split('?')[0].replace(/^https?:\/\/[^/]+/, '');

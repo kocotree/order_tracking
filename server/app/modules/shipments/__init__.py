@@ -17,7 +17,6 @@ from app.modules.shipments.service import (
     ShipmentReturnLineSnapshot,
     ShipmentService,
     ShipmentValidationError,
-    ShipmentVoidRequestSnapshot,
 )
 
 __all__ = [
@@ -39,5 +38,4 @@ __all__ = [
     "ShipmentReturnLineSnapshot",
     "ShipmentService",
     "ShipmentValidationError",
-    "ShipmentVoidRequestSnapshot",
 ]

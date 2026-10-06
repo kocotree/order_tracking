@@ -3706,7 +3706,6 @@ export interface components {
              * @default 1
              */
             version: number;
-            voidRequest?: components["schemas"]["ShipmentVoidRequestResponse"] | null;
             /** Withdrawaldraftid */
             withdrawalDraftId?: string | null;
         };
@@ -3864,32 +3863,6 @@ export interface components {
             totalBoxes: number;
             /** Totalquantity */
             totalQuantity: number;
-        };
-        /** ShipmentVoidRequestResponse */
-        ShipmentVoidRequestResponse: {
-            /** Reason */
-            reason: string;
-            /** Requestid */
-            requestId: string;
-            /**
-             * Requestedat
-             * Format: date-time
-             */
-            requestedAt: string;
-            /** Requestedby */
-            requestedBy: string;
-            /** Requestedbyname */
-            requestedByName: string;
-            /** Reviewcomment */
-            reviewComment?: string | null;
-            /** Reviewedat */
-            reviewedAt?: string | null;
-            /** Reviewedby */
-            reviewedBy?: string | null;
-            /** Shipmentid */
-            shipmentId: string;
-            /** Status */
-            status: string;
         };
         /** SourceDifferenceResponse */
         SourceDifferenceResponse: {

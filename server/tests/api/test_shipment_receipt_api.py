@@ -391,7 +391,7 @@ def test_invalid_receipt_quantities_are_rejected(
     assert admin.get(url).json()["version"] == 0
 
 
-@pytest.mark.parametrize("blocked", ["return", "pending", "voided"])
+@pytest.mark.parametrize("blocked", ["return", "withdrawn", "voided"])
 def test_inverse_state_blocks_receipt_writes(
     receipt_clients: tuple[TestClient, TestClient, str], blocked: str,
     test_database_engine: Engine,
@@ -415,7 +415,7 @@ def test_inverse_state_blocks_receipt_writes(
         with Session(test_database_engine) as session, session.begin():
             stored = session.get(Shipment, shipment_id)
             assert stored is not None
-            stored.status = "VOIDED" if blocked == "voided" else "VOID_PENDING"
+            stored.status = "VOIDED" if blocked == "voided" else "WITHDRAWN"
     assert (
         admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]}).status_code == 409
     )

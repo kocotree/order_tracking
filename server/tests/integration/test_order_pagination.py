@@ -300,7 +300,7 @@ def test_dashboard_counts_all_orders_and_beijing_business_day(
         for index, (status, business_date, deleted) in enumerate(
             [
                 ("SHIPPED", date(2026, 9, 9), False),
-                ("VOID_PENDING", date(2026, 9, 9), False),
+                ("SHIPPED", date(2026, 9, 9), False),
                 ("WITHDRAWN", date(2026, 9, 9), False),
                 ("VOIDED", date(2026, 9, 9), False),
                 ("DRAFT", date(2026, 9, 9), False),

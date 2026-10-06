@@ -26,7 +26,6 @@ from app.db.models import (
     RepairReturnBatch,
     RepairReturnLine,
     Shipment,
-    ShipmentVoidRequest,
     StoredFile,
     User,
 )
@@ -35,30 +34,21 @@ from app.modules.notifications_audit import NotificationsAuditService
 from app.modules.orders import AssignmentInput, DraftLineInput, OrderService
 
 
-def _seed_historical_void_request(
+def _seed_withdrawn_event(
     sessions: sessionmaker[Session], *, shipment_id: str, reason: str, now: datetime
 ) -> None:
     with sessions.begin() as session:
         shipment = session.get(Shipment, shipment_id)
         assert shipment is not None
-        shipment.status = "VOID_PENDING"
-        request = ShipmentVoidRequest(
-            request_id=f"void-{shipment_id}"[:36],
-            shipment_id=shipment_id,
-            active_shipment_id=shipment_id,
-            requested_by="factory-notice-user",
-            reason=reason,
-            status="PENDING",
-            idempotency_key=shipment_id,
-            created_at=now,
-        )
-        session.add(request)
+        shipment.status = "WITHDRAWN"
         session.add(OutboxMessage(
-            event_type="shipment.void_requested",
+            event_type="shipment.withdrawn",
             aggregate_type="shipment",
             aggregate_id=shipment_id,
-            dedupe_key=f"shipment-void-request:{request.request_id}",
-            payload={"shipmentId": shipment_id, "requestId": request.request_id},
+            dedupe_key=f"shipment-withdrawn:{shipment_id}",
+            payload={"shipmentId": shipment_id, "shipmentNo": shipment.shipment_no,
+                     "actorId": "factory-notice-user", "reason": reason,
+                     "occurredAt": "2026-08-27 17:00", "quantity": 15},
             status="pending",
             available_at=now,
         ))
@@ -1241,7 +1231,7 @@ def test_due_scan_stops_and_restores_for_fully_shipped_factory_and_completed_ord
     assert service.scan_due_reminders(business_date=date(2026, 9, 7)) == 2
 
 
-def test_void_request_only_sends_to_unique_enabled_named_admins(
+def test_withdrawal_only_sends_to_unique_enabled_named_admins(
     test_database_engine: Engine,
 ) -> None:
     sessions, _, _ = _publish_order(test_database_engine, factory_user_ids=["factory-notice-user"])
@@ -1294,7 +1284,7 @@ def test_void_request_only_sends_to_unique_enabled_named_admins(
                 submitted_at=now,
             )
         )
-    _seed_historical_void_request(
+    _seed_withdrawn_event(
         sessions, shipment_id="void-card", reason="箱数填错，请撤回", now=now,
     )
     service = NotificationsAuditService(sessions)
@@ -1482,9 +1472,9 @@ def test_shipment_and_withdrawal_notify_only_involved_order_trackers(
     expected = {"walnut", "second-tracker"}
     if tracker_state in {"enabled", "full_name"}:
         expected.add("admin-notice")
-    for template in ["admin_shipment", "admin_void_request"]:
-        if template == "admin_void_request":
-            _seed_historical_void_request(
+    for template in ["admin_shipment", "admin_withdrawn"]:
+        if template == "admin_withdrawn":
+            _seed_withdrawn_event(
                 sessions, shipment_id=draft.shipment_id, reason="测试撤回", now=now,
             )
         assert service.consume_next_business_event(worker_id="tracker-event", now=now)
@@ -1497,9 +1487,9 @@ def test_shipment_and_withdrawal_notify_only_involved_order_trackers(
         assert {item.recipient_id for item in feishu.sent} == expected
         assert len(feishu.sent) == len(expected)
         assert {item.template_key for item in feishu.sent} == {template}
-        if template == "admin_void_request":
-            assert feishu.sent[0].title == "通知工厂甲申请撤回发货"
-            assert feishu.sent[0].summary == "通知工厂甲申请撤回：通知测试童帽，总计15件，等待审核"
+        if template == "admin_withdrawn":
+            assert feishu.sent[0].title == "通知工厂甲已撤回发货"
+            assert "扣回15件" in feishu.sent[0].summary
         assert wechat.sent == []
         # The unrelated tracker retains station notifications but receives no Feishu.
         assert service.list_notifications(

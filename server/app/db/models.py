@@ -913,7 +913,7 @@ class Shipment(Base):
         UniqueConstraint("shipment_no", name="uq_shipments_no"),
         UniqueConstraint("active_draft_owner_id", name="uq_shipments_active_draft_owner"),
         CheckConstraint(
-            "status IN ('DRAFT', 'SHIPPED', 'VOID_PENDING', 'VOIDED', 'WITHDRAWN')",
+            "status IN ('DRAFT', 'SHIPPED', 'VOIDED', 'WITHDRAWN')",
             name="ck_shipments_status",
         ),
         Index("ix_shipments_factory_status", "factory_id", "status", "created_at"),
@@ -1073,6 +1073,7 @@ class ShipmentFile(Base):
 
 
 class ShipmentVoidRequest(Base):
+    # 仅映射历史归档表，现行业务不再读写。
     __tablename__ = "shipment_void_requests"
     __table_args__ = (
         UniqueConstraint(

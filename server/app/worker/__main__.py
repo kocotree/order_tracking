@@ -3,7 +3,7 @@ import os
 import signal
 import socket
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event
 from zoneinfo import ZoneInfo
@@ -33,6 +33,7 @@ from app.adapters.product import (
     JstProductSourceConfig,
     PrivateProductImageStore,
 )
+from app.adapters.shipment_writeback import FeishuShipmentWriter
 from app.adapters.vision import DisabledIncomingDiffRecognizer, QwenIncomingDiffRecognizer
 from app.db.session import create_database_engine
 from app.logging import StructuredLogger
@@ -49,6 +50,7 @@ from app.modules.order_import import OrderImportService
 from app.modules.order_import.auto_sync import JOB_TYPE, OrderAutoSync
 from app.modules.order_import.worker import OrderImportWorkerHandlers
 from app.modules.product_sync import ProductImageService, ProductSyncService, ProductWorkerHandlers
+from app.modules.shipment_writeback.service import ShipmentWriteback
 from app.settings.config import Settings
 from app.worker.runtime import JobHandler, TerminalFailureHandler, Worker
 from app.worker.supervisor import supervise
@@ -57,6 +59,7 @@ ROLE_JOB_TYPES = {
     "sync": frozenset({
         "order_auto_sync", "order_import", "order_import_revalidate",
         "product-sync-initial", "product-sync-incremental", "product-image-cache",
+        "shipment_writeback",
     }),
     "incoming": frozenset({
         "incoming_diff.recognize", CONFIRM_JOB, REGENERATE_JOB,
@@ -141,11 +144,29 @@ def sync_role(settings: Settings, sessions: sessionmaker[Session],
         service=OrderImportService(sessions, product_sync=product_sync), source=order_source
     )
     auto_sync = OrderAutoSync(sessions, source=order_source, product_sync=product_sync)
+    writeback = ShipmentWriteback(
+        sessions, source_scope=order_source.source_scope,
+        target=FeishuShipmentWriter(
+            order_source._config,
+            total_field_id=settings.shipment_writeback_total_field_id,
+            baseline_formula=settings.shipment_writeback_baseline_formula,
+        ) if settings.shipment_writeback_enabled
+        and isinstance(order_source, AppCredentialFeishuOrderSource) else None,
+    )
     handlers = {**product_handlers.handlers(), **order_handlers.handlers(),
-                JOB_TYPE: auto_sync.handle}
+                JOB_TYPE: auto_sync.handle, "shipment_writeback": writeback.handle}
     failures = {**order_handlers.terminal_failure_handlers(), JOB_TYPE: auto_sync.fail}
+    next_writeback_scan: datetime | None = None
+
     def ensure_auto_sync() -> None:
+        nonlocal next_writeback_scan
         auto_sync.ensure_due()
+        current = datetime.now(UTC)
+        if settings.shipment_writeback_enabled and (
+            next_writeback_scan is None or current >= next_writeback_scan
+        ):
+            writeback.ensure_due(now=current)
+            next_writeback_scan = current + timedelta(minutes=1)
 
     maintenance = (
         ensure_auto_sync if not isinstance(order_source, DisabledFeishuOrderSource)

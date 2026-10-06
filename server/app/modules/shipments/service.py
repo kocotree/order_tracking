@@ -39,6 +39,7 @@ from app.db.models import (
     StoredFile,
     User,
 )
+from app.modules.shipment_writeback.facts import capture, lock_facts
 from app.modules.shipments.workbook import (
     DailyShipmentWorkbookLine,
     DailyShipmentWorkbookSnapshot,
@@ -1088,9 +1089,10 @@ class ShipmentService:
         now: datetime | None = None,
         expected_version: int | None = None,
     ) -> ShipmentDraftSnapshot:
-        current = now or datetime.now(UTC)
-        business_date = current.astimezone(BUSINESS_TIME_ZONE).date()
         with self._sessions.begin() as session:
+            lock_facts(session)
+            current = now or datetime.now(UTC)
+            business_date = current.astimezone(BUSINESS_TIME_ZONE).date()
             shipment = self._owned_shipment(session, shipment_id, actor_id, factory_id, lock=True)
             if shipment.source_shipment_id:
                 return self._resubmit(
@@ -1183,6 +1185,7 @@ class ShipmentService:
                     available_at=current,
                 )
             )
+            capture(session, shipment, key=f"submit:{shipment_id}", at=current)
             session.flush()
             return self._detail_snapshot(session, shipment)
 
@@ -1340,12 +1343,14 @@ class ShipmentService:
         reason: str,
         expected_version: int,
         idempotency_key: str,
+        now: datetime | None = None,
     ) -> ShipmentDraftSnapshot:
         reason = reason.strip()
         if not reason or len(reason) > 500:
             raise ShipmentValidationError("请填写撤回原因")
-        current = datetime.now(UTC)
         with self._sessions.begin() as session:
+            lock_facts(session)
+            current = now or datetime.now(UTC)
             original = self._receipt_shipment(session, shipment_id)
             if original.factory_id != factory_id or original.source_shipment_id:
                 raise ShipmentNotFound("shipment not found")
@@ -1507,6 +1512,7 @@ class ShipmentService:
                 )
             original.status = "WITHDRAWN"
             original.version += 1
+            capture(session, original, key=f"withdraw:{draft_id}", at=current)
             session.add(
                 OutboxMessage(
                     event_type="shipment.withdrawn",
@@ -1633,6 +1639,7 @@ class ShipmentService:
         original.business_date = draft.business_date = current.astimezone(BUSINESS_TIME_ZONE).date()
         original.version += 1
         draft.version += 1
+        capture(session, original, key=f"resubmit:{draft.shipment_id}", at=current)
         session.add(
             AuditLog(
                 request_id=key[:64],

@@ -266,3 +266,7 @@ def test_deployment_rejects_privileged_or_loopback_database_url(
 
     with pytest.raises(ValidationError, match="least-privilege non-loopback database"):
         Settings(**values)  # type: ignore[arg-type]
+def test_shipment_writeback_requires_explicit_configuration() -> None:
+    with pytest.raises(ValueError, match="shipment writeback requires"):
+        Settings(_env_file=None, database_url="mysql+pymysql://test@localhost/test",
+                 shipment_writeback_enabled=True)

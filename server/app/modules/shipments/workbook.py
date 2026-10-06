@@ -41,6 +41,7 @@ class DailyShipmentWorkbookLine:
     product_name: str
     properties_value: str
     packed_quantity: int
+    purchase_order_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -82,24 +83,7 @@ class ShipmentWorkbookRenderer:
             raise ShipmentWorkbookError("shipment template sheets are invalid")
         workbook.remove(workbook["Sheet3"])
         self._write_daily_detail(workbook["发货明细"], snapshot)
-        self._write_summary(
-            workbook["汇总"],
-            ShipmentWorkbookSnapshot(
-                business_date=snapshot.business_date,
-                total_boxes=snapshot.total_boxes,
-                lines=[
-                    ShipmentWorkbookLine(
-                        order_no=line.order_no,
-                        box_no=str(line.box_no),
-                        item_no=line.item_no,
-                        product_name=line.product_name,
-                        properties_value=line.properties_value,
-                        packed_quantity=line.packed_quantity,
-                    )
-                    for line in snapshot.lines
-                ],
-            ),
-        )
+        self._write_daily_summary(workbook["汇总"], snapshot)
         return self._save(workbook, snapshot.business_date)
 
     @staticmethod
@@ -237,6 +221,52 @@ class ShipmentWorkbookRenderer:
         sheet.cell(total_row, 1, "汇总")
         sheet.cell(total_row, 3, snapshot.total_boxes)
         sheet.cell(total_row, 7, total_quantity)
+
+    @staticmethod
+    def _write_daily_summary(
+        sheet: Worksheet, snapshot: DailyShipmentWorkbookSnapshot
+    ) -> None:
+        sheet.delete_rows(1, sheet.max_row)
+        total_quantity = sum(line.packed_quantity for line in snapshot.lines)
+        sheet.append([
+            f"KK发货汇总 {snapshot.factory_name} {snapshot.business_date:%Y-%m-%d} "
+            f"共计{total_quantity}件"
+        ])
+        sheet.merge_cells("A1:H1")
+        sheet.append([
+            "日期", "名称", "颜色/规格", "数量", "单价", "总金额", "采购单号", "入库单号"
+        ])
+        grouped: dict[tuple[str, str], list[DailyShipmentWorkbookLine]] = {}
+        for line in snapshot.lines:
+            grouped.setdefault((line.item_no, line.properties_value), []).append(line)
+        name_start = 3
+        previous_name: str | None = None
+        for row, (_, lines) in enumerate(
+            sorted(grouped.items(), key=lambda entry: (entry[1][0].product_name, entry[0])), 3
+        ):
+            name = lines[0].product_name
+            if name != previous_name:
+                if row - name_start > 1:
+                    sheet.merge_cells(start_row=name_start, end_row=row - 1,
+                                      start_column=2, end_column=2)
+                name_start = row
+                previous_name = name
+            purchase_ids = sorted({line.purchase_order_id for line in lines
+                                   if line.purchase_order_id})
+            sheet.append([
+                snapshot.business_date, name, lines[0].properties_value,
+                sum(line.packed_quantity for line in lines), None, None,
+                "、".join(purchase_ids) or None, None,
+            ])
+            sheet.cell(row, 1).number_format = "m.d"
+            sheet.cell(row, 7).number_format = "@"
+        last_row = sheet.max_row
+        if last_row > name_start:
+            sheet.merge_cells(start_row=name_start, end_row=last_row,
+                              start_column=2, end_column=2)
+        if last_row > 3:
+            sheet.merge_cells(start_row=3, end_row=last_row, start_column=1, end_column=1)
+        sheet.append(["汇总", None, None, total_quantity])
 
     @staticmethod
     def _write_summary(sheet: Worksheet, snapshot: ShipmentWorkbookSnapshot) -> None:

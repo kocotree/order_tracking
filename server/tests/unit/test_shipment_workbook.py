@@ -150,3 +150,37 @@ def test_repeated_exports_have_identical_bytes() -> None:
     sleep(2.1)
     assert renderer.render(shipment) == first_shipment
     assert renderer.render_daily(daily) == first_daily
+
+
+def test_daily_summary_layout_merges_dates_names_and_keeps_purchase_orders() -> None:
+    template = Path(__file__).resolve().parents[3] / "docs/reference/厂家发货模版.xlsx"
+    content = ShipmentWorkbookRenderer(template_path=template).render_daily(
+        DailyShipmentWorkbookSnapshot(
+            factory_name="工厂A", business_date=date(2026, 10, 6),
+            shipment_count=2, total_boxes=4,
+            lines=[
+                DailyShipmentWorkbookLine("S1", "O1", 1, "I1", "帽子", "白", 6, "001"),
+                DailyShipmentWorkbookLine("S2", "O2", 1, "I1", "帽子", "白", 4, "002"),
+                DailyShipmentWorkbookLine("S2", "O2", 2, "I1", "帽子", "黑", 3, "002"),
+                DailyShipmentWorkbookLine("S2", "O2", 3, "I2", "衣服", "蓝", 2),
+            ],
+        )
+    )
+    workbook = load_workbook(BytesIO(content))
+    sheet = workbook["汇总"]
+    assert sheet["A1"].value == "KK发货汇总 工厂A 2026-10-06 共计15件"
+    assert list(sheet.values)[1] == (
+        "日期", "名称", "颜色/规格", "数量", "单价", "总金额", "采购单号", "入库单号"
+    )
+    assert sheet["A3"].value.date() == date(2026, 10, 6)
+    assert sheet["A3"].number_format == "m.d"
+    assert {str(value) for value in sheet.merged_cells.ranges} == {
+        "A1:H1", "A3:A5", "B3:B4"
+    }
+    assert [list(row)[1:] for row in list(sheet.values)[2:5]] == [
+        ["帽子", "白", 10, None, None, "001、002", None],
+        [None, "黑", 3, None, None, "002", None],
+        ["衣服", "蓝", 2, None, None, None, None],
+    ]
+    assert list(sheet.values)[5] == ("汇总", None, None, 15, None, None, None, None)
+    assert workbook["发货明细"]["A1"].value.endswith("共计2单 4箱 15件")

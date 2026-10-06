@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     feishu_order_view_id: str = ""
     feishu_order_field_ids: dict[str, str] = Field(default_factory=dict)
     feishu_order_incremental_table_scope_confirmed: bool = False
+    shipment_writeback_enabled: bool = False
+    shipment_writeback_total_field_id: str = ""
+    shipment_writeback_baseline_formula: str = Field(default="", repr=False)
     oss_region: str = ""
     oss_endpoint: str = ""
     oss_access_key_id: str = ""
@@ -78,6 +81,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_identity_secrets_outside_local_development(self) -> "Settings":
+        if self.shipment_writeback_enabled and not all((
+            self.feishu_order_app_id, self.feishu_order_app_secret,
+            self.feishu_order_app_token, self.feishu_order_table_id, self.feishu_order_view_id,
+            self.feishu_order_field_ids.get("订单编号"),
+            self.feishu_order_field_ids.get("下单明细ID"),
+            self.shipment_writeback_total_field_id,
+            self.shipment_writeback_baseline_formula.startswith("ROUND(SUM("),
+            self.shipment_writeback_baseline_formula.endswith("),0)"),
+        )):
+            raise ValueError("shipment writeback requires source credentials and approved formula")
         if self.app_env in {"shared_test", "production"} and not all(
             [
                 self.identity_token_secret,

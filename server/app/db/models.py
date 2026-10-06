@@ -2006,3 +2006,60 @@ class OrderChangePreview(Base):
     created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+
+
+class ShipmentWritebackControl(Base):
+    __tablename__ = "shipment_writeback_control"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    history_ready: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    structure: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class ShipmentWritebackFact(Base):
+    __tablename__ = "shipment_writeback_facts"
+    __table_args__ = (
+        UniqueConstraint("event_key", name="uq_writeback_fact_event"),
+        Index("ix_writeback_fact_time", "occurred_at", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    root_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    event_key: Mapped[str] = mapped_column(String(191), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    lines: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+
+
+class ShipmentWritebackStage(Base):
+    __tablename__ = "shipment_writeback_stages"
+
+    stage_key: Mapped[str] = mapped_column(String(10), primary_key=True)
+    source_scope: Mapped[str] = mapped_column(String(191), nullable=False)
+    since: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    until: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    excluded: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+
+class ShipmentWritebackClaim(Base):
+    __tablename__ = "shipment_writeback_claims"
+
+    root_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    stage_key: Mapped[str] = mapped_column(
+        ForeignKey("shipment_writeback_stages.stage_key"), nullable=False,
+    )
+    fact_id: Mapped[int] = mapped_column(ForeignKey("shipment_writeback_facts.id"), nullable=False)
+
+
+class ShipmentWritebackRow(Base):
+    __tablename__ = "shipment_writeback_rows"
+
+    stage_key: Mapped[str] = mapped_column(
+        ForeignKey("shipment_writeback_stages.stage_key"), primary_key=True,
+    )
+    record_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    identity: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    field_id: Mapped[str | None] = mapped_column(String(100))
+    before_value: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

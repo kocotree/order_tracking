@@ -17,6 +17,7 @@ from app.db.models import (
     Order,
     OrderAssignment,
     OrderCompletionRecord,
+    OrderDetail,
     OrderLine,
     OutboxMessage,
     Product,
@@ -986,6 +987,19 @@ def test_web_admin_downloads_realtime_factory_day_shipment_summary(
             assert first_book["发货明细"]["A1"].value == (
                 f"KK发货汇总 S07接口工厂1 {first['businessDate']} 共计1单 1箱 12件"
             )
+            assert first_book["汇总"]["G3"].value is None
+
+        with Session(test_database_engine) as session, session.begin():
+            session.add(OrderDetail(
+                detail_id="daily-export-detail", order_id=ORDER_ID, origin="manual",
+                sort_order=0, accepted_raw_fields={}, parse_issues=[],
+                dispatch_state="DISPATCHED", purchase_order_id="00123456789",
+                created_at=datetime(2026, 10, 6), updated_at=datetime(2026, 10, 6),
+            ))
+            session.flush()
+            assignment = session.get(OrderAssignment, assignment_id)
+            assert assignment is not None
+            assignment.detail_id = "daily-export-detail"
 
         with TestClient(app, base_url="https://testserver") as factory_client:
             factory_client.headers["Authorization"] = f"Bearer {factory.access_token}"
@@ -1020,19 +1034,14 @@ def test_web_admin_downloads_realtime_factory_day_shipment_summary(
                 f"KK发货汇总 S07接口工厂1 {first['businessDate']} 共计2单 2箱 20件"
             )
             summary = workbook["汇总"]
-            assert [summary.cell(1, column).value for column in range(1, 6)] == [
-                "日期",
-                "货号",
-                "名称",
-                "颜色/规格",
-                "数量",
+            assert [summary.cell(2, column).value for column in range(1, 9)] == [
+                "日期", "名称", "颜色/规格", "数量", "单价", "总金额", "采购单号", "入库单号",
             ]
-            assert [summary.cell(2, column).value for column in range(2, 6)] == [
-                "ITEM-SHIPMENT-API",
-                "S07接口测试产品",
-                "海军蓝 / 120",
-                20,
+            assert [summary.cell(3, column).value for column in range(2, 5)] == [
+                "S07接口测试产品", "海军蓝 / 120", 20,
             ]
+            assert summary["D4"].value == 20
+            assert summary["G3"].value == "00123456789"
 
         with Session(test_database_engine) as session, session.begin():
             stored = session.get(Shipment, second["shipmentId"])
@@ -1043,7 +1052,7 @@ def test_web_admin_downloads_realtime_factory_day_shipment_summary(
             pending = load_workbook(
                 BytesIO(admin_client.get(path, params=params).content), data_only=False
             )
-            assert pending["汇总"]["E2"].value == 20
+            assert pending["汇总"]["D3"].value == 20
 
         with Session(test_database_engine) as session, session.begin():
             stored = session.get(Shipment, second["shipmentId"])
@@ -1057,8 +1066,16 @@ def test_web_admin_downloads_realtime_factory_day_shipment_summary(
             assert withdrawn["发货明细"]["A1"].value == (
                 f"KK发货汇总 S07接口工厂1 {first['businessDate']} 共计1单 1箱 12件"
             )
-            assert withdrawn["汇总"]["E2"].value == 12
+            assert withdrawn["汇总"]["D3"].value == 12
     finally:
+        with Session(test_database_engine) as session, session.begin():
+            assignment = session.get(OrderAssignment, assignment_id)
+            assert assignment is not None
+            assignment.detail_id = None
+            session.flush()
+            session.execute(delete(OrderDetail).where(
+                OrderDetail.detail_id == "daily-export-detail"
+            ))
         _clean(test_database_engine)
 
 

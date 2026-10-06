@@ -20,6 +20,7 @@ from app.db.models import (
     Order,
     OrderAssignment,
     OrderCompletionRecord,
+    OrderDetail,
     OrderLine,
     OutboxMessage,
     Product,
@@ -1966,6 +1967,16 @@ class ShipmentService:
             raise ShipmentValidationError("shipment workbook renderer is unavailable")
         with self._sessions() as session:
             factory, rows = self._daily_shipment_rows(session, factory_id, business_date)
+            purchase_ids = {
+                assignment_id: purchase_id
+                for assignment_id, purchase_id in session.execute(
+                    select(OrderAssignment.order_assignment_id, OrderDetail.purchase_order_id)
+                    .outerjoin(OrderDetail, OrderDetail.detail_id == OrderAssignment.detail_id)
+                    .where(OrderAssignment.order_assignment_id.in_(
+                        {line.order_assignment_id for _, _, _, line, _ in rows}
+                    ))
+                ).all()
+            }
             shipment_ids = {shipment.shipment_id for shipment, *_rest in rows}
             total_boxes = len(
                 {
@@ -1987,6 +1998,7 @@ class ShipmentService:
                         product_name=line.product_name_snapshot,
                         properties_value=line.properties_value_snapshot,
                         packed_quantity=item.quantity,
+                        purchase_order_id=purchase_ids[line.order_assignment_id],
                     )
                     for shipment, box, item, line, item_no in rows
                 ],

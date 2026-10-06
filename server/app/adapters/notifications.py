@@ -331,7 +331,7 @@ class AppCredentialFeishuBusinessNotifier:
             self._send_incoming_diff(request)
             return
         if request.template_key in {
-            "admin_shipment", "admin_repair", "admin_void_request", "admin_withdrawn"
+            "admin_shipment", "admin_repair", "admin_withdrawn"
         }:
             self._send_admin_card(request)
             return
@@ -472,14 +472,13 @@ class AppCredentialFeishuBusinessNotifier:
             )
             button = "查看返修详情"
         else:
-            withdrawn = request.template_key == "admin_withdrawn"
-            button = "查看发货单" if withdrawn else "查看并处理"
+            button = "查看发货单"
             for key, label in (
                 ("factoryName", "工厂"),
                 ("shipmentNo", "发货单号"),
-                ("applicant", "撤回人" if withdrawn else "申请人"),
-                ("requestedAt", "撤回时间" if withdrawn else "申请时间"),
-                ("reason", "撤回原因" if withdrawn else "申请原因"),
+                ("applicant", "撤回人"),
+                ("requestedAt", "撤回时间"),
+                ("reason", "撤回原因"),
             ):
                 elements.append(
                     {

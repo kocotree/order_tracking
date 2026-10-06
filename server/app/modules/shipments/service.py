@@ -36,7 +36,6 @@ from app.db.models import (
     ShipmentReceiptItem,
     ShipmentReturnEvent,
     ShipmentReturnLine,
-    ShipmentVoidRequest,
     StoredFile,
     User,
 )
@@ -135,20 +134,6 @@ class ShipmentBoxSnapshot:
 
 
 @dataclass(frozen=True)
-class ShipmentVoidRequestSnapshot:
-    request_id: str
-    shipment_id: str
-    status: str
-    reason: str
-    requested_by: str
-    requested_by_name: str
-    requested_at: datetime
-    reviewed_by: str | None = None
-    reviewed_at: datetime | None = None
-    review_comment: str | None = None
-
-
-@dataclass(frozen=True)
 class ShipmentReturnInput:
     shipment_line_id: int
     quantity: int
@@ -223,7 +208,6 @@ class ShipmentDraftSnapshot:
     lines: list[ShipmentLineSnapshot] = field(default_factory=list)
     boxes: list[ShipmentBoxSnapshot] = field(default_factory=list)
     files: list[ShipmentFileSnapshot] = field(default_factory=list)
-    void_request: ShipmentVoidRequestSnapshot | None = None
     return_events: list[ShipmentReturnEventSnapshot] = field(default_factory=list)
     receipt: ReceiptSnapshot | None = None
     receipt_differences: list[ShipmentLineSnapshot] = field(default_factory=list)
@@ -1882,7 +1866,7 @@ class ShipmentService:
                     .join(Shipment, Shipment.shipment_id == ShipmentLine.shipment_id)
                     .where(
                         OrderLine.order_id == order_id,
-                        Shipment.status.in_(("SHIPPED", "VOID_PENDING")),
+                        Shipment.status == "SHIPPED",
                         Shipment.source_shipment_id.is_(None),
                     )
                     .limit(1)
@@ -1898,9 +1882,7 @@ class ShipmentService:
             shipment = session.get(Shipment, shipment_id)
             if (
                 shipment is None
-                or shipment.status not in (
-                    ("SHIPPED",) if factory_id is not None else ("SHIPPED", "VOID_PENDING")
-                )
+                or shipment.status != "SHIPPED"
                 or (factory_id is not None and shipment.factory_id != factory_id)
                 or shipment.source_shipment_id is not None
                 or shipment.deleted_at is not None
@@ -2050,7 +2032,7 @@ class ShipmentService:
                 .where(
                     Shipment.factory_id == factory_id,
                     Shipment.business_date == business_date,
-                    Shipment.status.in_(("SHIPPED", "VOID_PENDING")),
+                    Shipment.status == "SHIPPED",
                     Shipment.source_shipment_id.is_(None),
                     Shipment.deleted_at.is_(None),
                     Shipment.shipment_no.is_not(None),
@@ -2123,7 +2105,7 @@ class ShipmentService:
                 .join(ShipmentBoxItem, ShipmentBoxItem.box_id == ShipmentBox.box_id)
                 .where(
                     Shipment.business_date == business_date,
-                    Shipment.status.in_(("SHIPPED", "VOID_PENDING")),
+                    Shipment.status == "SHIPPED",
                     Shipment.source_shipment_id.is_(None),
                     Shipment.deleted_at.is_(None),
                     Shipment.shipment_no.is_not(None),
@@ -2145,26 +2127,6 @@ class ShipmentService:
             "totalOriginalQuantity": sum(item["totalOriginalQuantity"] for item in factories),
             "factories": factories,
         }
-
-    def has_pending_void_requests(self, *, order_id: str) -> bool:
-        with self._sessions() as session:
-            return bool(
-                session.scalar(
-                    select(ShipmentVoidRequest.request_id)
-                    .join(Shipment, Shipment.shipment_id == ShipmentVoidRequest.shipment_id)
-                    .join(ShipmentLine, ShipmentLine.shipment_id == Shipment.shipment_id)
-                    .join(
-                        OrderAssignment,
-                        OrderAssignment.order_assignment_id == ShipmentLine.order_assignment_id,
-                    )
-                    .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-                    .where(
-                        OrderLine.order_id == order_id,
-                        ShipmentVoidRequest.status == "PENDING",
-                    )
-                    .limit(1)
-                )
-            )
 
     @staticmethod
     def _preferred_order_query(*, order_id: str, factory_id: str) -> Select[tuple[str]]:
@@ -2454,12 +2416,6 @@ class ShipmentService:
                     ),
                 )
             )
-        void_request = session.scalar(
-            select(ShipmentVoidRequest)
-            .where(ShipmentVoidRequest.shipment_id == shipment.shipment_id)
-            .order_by(ShipmentVoidRequest.created_at.desc(), ShipmentVoidRequest.request_id.desc())
-            .limit(1)
-        )
         return_events = list(
             session.scalars(
                 select(ShipmentReturnEvent)
@@ -2491,11 +2447,6 @@ class ShipmentService:
             files=[self._file_snapshot(link, stored) for link, stored in file_rows],
             created_at=shipment.created_at,
             submitted_at=shipment.submitted_at,
-            void_request=(
-                self._void_request_snapshot(session, void_request)
-                if void_request is not None
-                else None
-            ),
             return_events=[self._return_event_snapshot(session, item) for item in return_events],
             receipt=receipt,
             receipt_differences=[
@@ -2566,26 +2517,6 @@ class ShipmentService:
             size_bytes=stored.size_bytes,
             content_sha256=stored.content_sha256,
             display_order=relationship.display_order,
-        )
-
-    @staticmethod
-    def _void_request_snapshot(
-        session: Session, request: ShipmentVoidRequest
-    ) -> ShipmentVoidRequestSnapshot:
-        requester = session.get(User, request.requested_by)
-        return ShipmentVoidRequestSnapshot(
-            request_id=request.request_id,
-            shipment_id=request.shipment_id,
-            status=request.status,
-            reason=request.reason,
-            requested_by=request.requested_by,
-            requested_by_name=(
-                requester.feishu_display_name if requester is not None else request.requested_by
-            ),
-            requested_at=request.created_at,
-            reviewed_by=request.reviewed_by,
-            reviewed_at=request.reviewed_at,
-            review_comment=request.review_comment,
         )
 
     @staticmethod

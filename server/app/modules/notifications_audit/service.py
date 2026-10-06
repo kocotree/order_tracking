@@ -39,9 +39,7 @@ from app.db.models import (
     ShipmentBoxItem,
     ShipmentLine,
     ShipmentReceipt,
-    ShipmentReceiptItem,
     ShipmentReturnLine,
-    ShipmentVoidRequest,
     User,
 )
 from app.logging import StructuredLogger
@@ -188,12 +186,8 @@ class NotificationsAuditService:
                 self._consume_order_unpublished(session, message)
             elif message.event_type == "shipment.submitted":
                 self._consume_shipment_submitted(session, message)
-            elif message.event_type == "shipment.void_requested":
-                self._consume_void_requested(session, message)
             elif message.event_type == "shipment.withdrawn":
                 self._consume_withdrawn(session, message)
-            elif message.event_type in {"shipment.void_approved", "shipment.void_rejected"}:
-                self._consume_void_result(session, message)
             elif message.event_type == "shipment.receipt_confirmed":
                 self._consume_receipt_confirmed(session, message)
             elif message.event_type == "shipment.returned":
@@ -1215,82 +1209,6 @@ class NotificationsAuditService:
                     "requestedAt": str(message.payload["occurredAt"]),
                     "reason": str(message.payload["reason"]),
                 })
-
-    def _consume_void_requested(self, session: Session, message: OutboxMessage) -> None:
-        shipment = session.get(Shipment, message.aggregate_id)
-        if shipment is None:
-            return
-        request = session.get(ShipmentVoidRequest, str(message.payload["requestId"]))
-        if request is None or request.shipment_id != shipment.shipment_id:
-            raise ValueError("withdrawal event has no matching request")
-        factory = session.get(Factory, shipment.factory_id)
-        factory_name = factory.factory_name if factory else "工厂"
-        lines = session.scalars(
-            select(ShipmentLine)
-            .where(ShipmentLine.shipment_id == shipment.shipment_id)
-            .order_by(ShipmentLine.line_id)
-        ).all()
-        product_summary = _notification_products([line.product_name_snapshot for line in lines])
-        total_quantity = sum(line.quantity for line in lines)
-        receipt = session.get(ShipmentReceipt, shipment.shipment_id)
-        if receipt is not None and receipt.status == "CONFIRMED":
-            total_quantity = int(session.scalar(
-                select(func.coalesce(func.sum(ShipmentReceiptItem.quantity), 0))
-                .where(ShipmentReceiptItem.shipment_id == shipment.shipment_id)
-            ) or 0)
-        applicant = session.get(User, request.requested_by)
-        recipients = self._admin_business_recipient_ids(session)
-        recipients.update(self._shipment_tracker_recipient_ids(session, shipment.shipment_id))
-        for user in self._enabled_admins(session):
-            self._notify_user(
-                session,
-                message=message,
-                user_id=user.user_id,
-                category="SHIPMENT",
-                target_type="shipment",
-                target_id=shipment.shipment_id,
-                title=f"{factory_name}申请撤回发货",
-                summary=f"{factory_name}申请撤回：{product_summary}，总计{total_quantity}件，等待审核",
-                target_path=f"/shipments/{shipment.shipment_id}",
-                channel="feishu" if user.user_id in recipients else None,
-                template_key="admin_void_request",
-                template_data={
-                    "factoryName": factory.factory_name if factory else "工厂",
-                    "shipmentNo": shipment.shipment_no or shipment.shipment_id,
-                    "applicant": applicant.feishu_display_name if applicant else "申请人",
-                    "requestedAt": _wechat_time(request.created_at),
-                    "reason": request.reason,
-                },
-            )
-
-    def _consume_void_result(self, session: Session, message: OutboxMessage) -> None:
-        request = session.get(ShipmentVoidRequest, str(message.payload["requestId"]))
-        shipment = session.get(Shipment, message.aggregate_id)
-        if request is None or shipment is None:
-            return
-        approved = message.event_type == "shipment.void_approved"
-        self._notify_user(
-            session,
-            message=message,
-            user_id=request.requested_by,
-            category="BUSINESS_RESULT",
-            target_type="shipment",
-            target_id=shipment.shipment_id,
-            title="撤回发货申请已通过" if approved else "撤回发货申请已拒绝",
-            summary=f"发货单 {shipment.shipment_no or shipment.shipment_id} 的申请已处理",
-            target_path=(
-                "/pages/factory-shipment-detail/factory-shipment-detail"
-                f"?shipmentId={shipment.shipment_id}"
-            ),
-            channel="wechat",
-            template_key="factory_status",
-            template_data={
-                "thing1": "跟单管理系统",
-                "character_string2": shipment.shipment_no or shipment.shipment_id,
-                "phrase3": "撤回通过" if approved else "撤回拒绝",
-                "time4": _wechat_time(message.locked_at or utc_now()),
-            },
-        )
 
     def _consume_receipt_confirmed(self, session: Session, message: OutboxMessage) -> None:
         shipment = session.get(Shipment, message.aggregate_id)

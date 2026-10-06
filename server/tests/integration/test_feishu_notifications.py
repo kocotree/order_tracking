@@ -271,7 +271,7 @@ def test_admin_business_cards_have_event_fields_and_web_detail_links(
             "查看返修详情",
         ),
         (
-            "admin_void_request",
+            "admin_withdrawn",
             "shipment",
             "/shipments/sh-1",
             {
@@ -283,7 +283,7 @@ def test_admin_business_cards_have_event_fields_and_web_detail_links(
             },
             (),
             [],
-            "查看并处理",
+            "查看发货单",
         ),
     ]
     for key, target_type, path, data, rows, labels, button in cases:

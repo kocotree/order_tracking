@@ -259,7 +259,7 @@ describe("related shipments", () => {
     return mount(OrderDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { props: ["to"], template: '<a :href="typeof to === `string` ? to : to.path" :data-return-to="typeof to === `string` ? `` : to.query.notificationReturnTo"><slot /></a>' } } } });
   }
 
-  it.each(["SHIPPED", "VOID_PENDING", "VOIDED"])("keeps %s records and both detail links in the four-column list", async (status) => {
+  it.each(["SHIPPED", "WITHDRAWN", "VOIDED"])("keeps %s records and both detail links in the four-column list", async (status) => {
     useRoute().fullPath = "/orders/order-1?status=未完成&notificationReturnTo=%2Fnotifications%3Ffilter%3Dunread";
     vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
     vi.mocked(shipmentApi.list).mockResolvedValue({ items: [{ shipmentId: "shipment-1", shipmentNo: "FH20260905-001", businessDate: "2026-09-05", totalQuantity: 23, status } as Shipment], total: 1 });

@@ -62,14 +62,9 @@ class OrderPermissionDenied(OrderError):
 class OrderExecutionGuard(Protocol):
     def has_valid_shipments(self, *, order_id: str) -> bool: ...
 
-    def has_pending_void_requests(self, *, order_id: str) -> bool: ...
-
 
 class EmptyOrderExecutionGuard:
     def has_valid_shipments(self, *, order_id: str) -> bool:
-        return False
-
-    def has_pending_void_requests(self, *, order_id: str) -> bool:
         return False
 
 
@@ -437,7 +432,7 @@ class OrderService:
                 .where(
                     OrderLine.order_id == order_id,
                     OrderAssignment.factory_id == factory_id,
-                    Shipment.status.in_(["SHIPPED", "VOID_PENDING"]),
+                    Shipment.status == "SHIPPED",
                     Shipment.source_shipment_id.is_(None),
                     Shipment.deleted_at.is_(None),
                 )
@@ -1071,10 +1066,6 @@ class OrderService:
                     )
                 if not ready:
                     raise OrderConflict("必须全部明细已派工且逐条交足，才能确认订单完成")
-            if action == "COMPLETE" and self._execution_guard.has_pending_void_requests(
-                order_id=order_id
-            ):
-                raise OrderConflict("order has pending shipment void requests")
             quantity = self._quantity_summary(session, order_id)
             order.lifecycle = target
             order.version += 1
@@ -1308,7 +1299,7 @@ class OrderService:
                     .select_from(Shipment)
                     .where(
                         Shipment.deleted_at.is_(None),
-                        Shipment.status.in_(["SHIPPED", "VOID_PENDING"]),
+                        Shipment.status == "SHIPPED",
                         Shipment.business_date == business_today,
                     )
                 )

@@ -52,7 +52,6 @@ export interface ShipmentLine {
   returnableQuantity: number;
 }
 
-export interface ShipmentVoidRequest { requestId:string; shipmentId:string; status:"PENDING"|"APPROVED"|"REJECTED"; reason:string; requestedBy:string; requestedByName:string; requestedAt:string; reviewedBy:string|null; reviewedAt:string|null; reviewComment:string|null }
 export interface ShipmentReturnLine { shipmentLineId:number; orderNo:string; skuId:string; productName:string; propertiesValue:string; quantity:number; beforeShippedQuantity:number; afterShippedQuantity:number }
 export interface ShipmentReturnEvent { eventId:string; shipmentId:string; returnDate:string; reason:string; returnedBy:string; returnedAt:string; lines:ShipmentReturnLine[] }
 
@@ -90,7 +89,6 @@ export interface Shipment {
   lines: ShipmentLine[];
   boxes: ShipmentBox[];
   files: ShipmentFile[];
-  voidRequest: ShipmentVoidRequest | null;
   returnEvents: ShipmentReturnEvent[];
   createdAt: string;
   submittedAt: string | null;

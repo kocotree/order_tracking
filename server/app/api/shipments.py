@@ -16,7 +16,6 @@ from app.modules.shipments import (
     ShipmentReturnInput,
     ShipmentService,
     ShipmentValidationError,
-    ShipmentVoidRequestSnapshot,
 )
 from app.modules.shipments.service import SHIPMENT_FILE_MAX_BYTES, ReceiptItemInput, ReceiptSnapshot
 
@@ -101,19 +100,6 @@ class DraftCreate(ApiModel):
     preferred_order_id: str | None = None
 
 
-class ShipmentVoidRequestResponse(ApiModel):
-    request_id: str
-    shipment_id: str
-    status: str
-    reason: str
-    requested_by: str
-    requested_by_name: str
-    requested_at: datetime
-    reviewed_by: str | None = None
-    reviewed_at: datetime | None = None
-    review_comment: str | None = None
-
-
 class ShipmentDraftResponse(ApiModel):
     version: int = 1
     shipment_id: str
@@ -132,7 +118,6 @@ class ShipmentDraftResponse(ApiModel):
     lines: list["ShipmentLineResponse"] = []
     boxes: list["ShipmentBoxResponse"] = []
     files: list["ShipmentFileResponse"] = []
-    void_request: ShipmentVoidRequestResponse | None = None
     return_events: list["ShipmentReturnEventResponse"] = []
     receipt: ReceiptResponse | None = None
     receipt_differences: list["ShipmentLineResponse"] = []
@@ -280,12 +265,6 @@ class ShipmentCatalogResponse(ApiModel):
 
 def _draft_response(draft: ShipmentDraftSnapshot) -> ShipmentDraftResponse:
     return ShipmentDraftResponse.model_validate(draft, from_attributes=True)
-
-
-def _void_request_response(
-    request: ShipmentVoidRequestSnapshot,
-) -> ShipmentVoidRequestResponse:
-    return ShipmentVoidRequestResponse.model_validate(request, from_attributes=True)
 
 
 def _return_event_response(

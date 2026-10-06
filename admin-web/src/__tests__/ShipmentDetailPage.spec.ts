@@ -39,7 +39,6 @@ const shipment: Shipment = {
     displayOrder: 0,
     contentUrl: "/api/v1/shipment-files/7/content",
   }],
-  voidRequest: null,
   returnEvents: [],
   createdAt: "2026-09-04T08:00:00Z",
   submittedAt: "2026-09-04T08:30:00Z",

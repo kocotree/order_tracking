@@ -4988,16 +4988,6 @@
             "title": "Version",
             "type": "integer"
           },
-          "voidRequest": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ShipmentVoidRequestResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "withdrawalDraftId": {
             "anyOf": [
               {
@@ -5434,84 +5424,6 @@
           "totalBoxes"
         ],
         "title": "ShipmentSummaryResponse",
-        "type": "object"
-      },
-      "ShipmentVoidRequestResponse": {
-        "properties": {
-          "reason": {
-            "title": "Reason",
-            "type": "string"
-          },
-          "requestId": {
-            "title": "Requestid",
-            "type": "string"
-          },
-          "requestedAt": {
-            "format": "date-time",
-            "title": "Requestedat",
-            "type": "string"
-          },
-          "requestedBy": {
-            "title": "Requestedby",
-            "type": "string"
-          },
-          "requestedByName": {
-            "title": "Requestedbyname",
-            "type": "string"
-          },
-          "reviewComment": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reviewcomment"
-          },
-          "reviewedAt": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reviewedat"
-          },
-          "reviewedBy": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reviewedby"
-          },
-          "shipmentId": {
-            "title": "Shipmentid",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "requestId",
-          "shipmentId",
-          "status",
-          "reason",
-          "requestedBy",
-          "requestedByName",
-          "requestedAt"
-        ],
-        "title": "ShipmentVoidRequestResponse",
         "type": "object"
       },
       "SourceDifferenceResponse": {

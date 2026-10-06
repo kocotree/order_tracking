@@ -913,7 +913,7 @@ def test_web_admin_reexports_persisted_shipment_with_current_workbook_rules(
                 == 404
             )
 
-        for unavailable_status in ("WITHDRAWN", "VOIDED", "VOID_PENDING"):
+        for unavailable_status in ("WITHDRAWN", "VOIDED"):
             with Session(test_database_engine) as session, session.begin():
                 shipment = session.get(Shipment, shipment_id)
                 assert shipment is not None
@@ -1046,13 +1046,13 @@ def test_web_admin_downloads_realtime_factory_day_shipment_summary(
         with Session(test_database_engine) as session, session.begin():
             stored = session.get(Shipment, second["shipmentId"])
             assert stored is not None
-            stored.status = "VOID_PENDING"
+            stored.status = "VOIDED"
         with TestClient(app, base_url="https://testserver") as admin_client:
             admin_client.cookies.set("ot_web_session", admin.access_token)
-            pending = load_workbook(
+            voided = load_workbook(
                 BytesIO(admin_client.get(path, params=params).content), data_only=False
             )
-            assert pending["汇总"]["D3"].value == 20
+            assert voided["汇总"]["D3"].value == 12
 
         with Session(test_database_engine) as session, session.begin():
             stored = session.get(Shipment, second["shipmentId"])
@@ -1441,9 +1441,9 @@ def test_admin_filters_shipments_by_actual_order_lines(
         )
         with Session(test_database_engine) as session, session.begin():
             session.get(Shipment, shipment_ids[0]).status = "VOIDED"
-            session.get(Shipment, shipment_ids[1]).status = "VOID_PENDING"
+            session.get(Shipment, shipment_ids[1]).status = "WITHDRAWN"
         statuses = client.get("/api/v1/admin/shipments", params={"orderId": ORDER_ID}).json()
-        assert {item["status"] for item in statuses["items"]} == {"VOIDED", "VOID_PENDING"}
+        assert {item["status"] for item in statuses["items"]} == {"VOIDED", "WITHDRAWN"}
         unrelated = client.get(
             "/api/v1/admin/shipments", params={"orderId": "unrelated-order"}
         ).json()

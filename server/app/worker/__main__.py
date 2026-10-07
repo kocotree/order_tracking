@@ -59,12 +59,12 @@ ROLE_JOB_TYPES = {
     "sync": frozenset({
         "order_auto_sync", "order_import", "order_import_revalidate",
         "product-sync-initial", "product-sync-incremental", "product-image-cache",
-        "shipment_writeback",
     }),
     "incoming": frozenset({
         "incoming_diff.recognize", CONFIRM_JOB, REGENERATE_JOB,
     }),
     "notification": frozenset({"notification_due_scan"}),
+    "shipment": frozenset({"shipment_writeback"}),
 }
 RoleParts = tuple[
     dict[str, JobHandler], dict[str, TerminalFailureHandler],
@@ -89,6 +89,18 @@ def feishu_config(settings: Settings) -> FeishuNotificationConfig:
         app_secret=settings.feishu_identity_app_secret or settings.feishu_order_app_secret,
         admin_web_base_url=settings.admin_web_base_url,
         ops_alert_recipient_user_id=settings.ops_alert_recipient_user_id,
+    )
+
+
+def order_config(settings: Settings) -> FeishuOrderSourceConfig:
+    return FeishuOrderSourceConfig(
+        app_id=settings.feishu_order_app_id,
+        app_secret=settings.feishu_order_app_secret,
+        app_token=settings.feishu_order_app_token,
+        table_id=settings.feishu_order_table_id,
+        view_id=settings.feishu_order_view_id,
+        field_ids=settings.feishu_order_field_ids,
+        incremental_table_scope_confirmed=settings.feishu_order_incremental_table_scope_confirmed,
     )
 
 
@@ -122,17 +134,7 @@ def sync_role(settings: Settings, sessions: sessionmaker[Session],
     )
     order_source = (
         AppCredentialFeishuOrderSource(
-            FeishuOrderSourceConfig(
-                app_id=settings.feishu_order_app_id,
-                app_secret=settings.feishu_order_app_secret,
-                app_token=settings.feishu_order_app_token,
-                table_id=settings.feishu_order_table_id,
-                view_id=settings.feishu_order_view_id,
-                field_ids=settings.feishu_order_field_ids,
-                incremental_table_scope_confirmed=(
-                    settings.feishu_order_incremental_table_scope_confirmed
-                ),
-            ),
+            order_config(settings),
             product_source if isinstance(product_source, AppCredentialJstProductSource) else None,
         )
         if all((settings.feishu_order_app_id, settings.feishu_order_app_secret,
@@ -144,23 +146,34 @@ def sync_role(settings: Settings, sessions: sessionmaker[Session],
         service=OrderImportService(sessions, product_sync=product_sync), source=order_source
     )
     auto_sync = OrderAutoSync(sessions, source=order_source, product_sync=product_sync)
-    writeback = ShipmentWriteback(
-        sessions, source_scope=order_source.source_scope,
-        target=FeishuShipmentWriter(
-            order_source._config,
-            total_field_id=settings.shipment_writeback_total_field_id,
-            baseline_formula=settings.shipment_writeback_baseline_formula,
-        ) if settings.shipment_writeback_enabled
-        and isinstance(order_source, AppCredentialFeishuOrderSource) else None,
-    )
     handlers = {**product_handlers.handlers(), **order_handlers.handlers(),
-                JOB_TYPE: auto_sync.handle, "shipment_writeback": writeback.handle}
+                JOB_TYPE: auto_sync.handle}
     failures = {**order_handlers.terminal_failure_handlers(), JOB_TYPE: auto_sync.fail}
-    next_writeback_scan: datetime | None = None
 
     def ensure_auto_sync() -> None:
-        nonlocal next_writeback_scan
         auto_sync.ensure_due()
+
+    maintenance = (
+        ensure_auto_sync if not isinstance(order_source, DisabledFeishuOrderSource)
+        else None
+    )
+    return handlers, failures, maintenance, []
+
+
+def shipment_role(settings: Settings, sessions: sessionmaker[Session]) -> RoleParts:
+    config = order_config(settings)
+    writeback = ShipmentWriteback(
+        sessions, source_scope=AppCredentialFeishuOrderSource(config).source_scope,
+        target=FeishuShipmentWriter(
+            config,
+            total_field_id=settings.shipment_writeback_total_field_id,
+            baseline_formula=settings.shipment_writeback_baseline_formula,
+        ) if settings.shipment_writeback_enabled else None,
+    )
+    next_writeback_scan: datetime | None = None
+
+    def ensure_writeback() -> None:
+        nonlocal next_writeback_scan
         current = datetime.now(UTC)
         if settings.shipment_writeback_enabled and (
             next_writeback_scan is None or current >= next_writeback_scan
@@ -168,11 +181,7 @@ def sync_role(settings: Settings, sessions: sessionmaker[Session],
             writeback.ensure_due(now=current)
             next_writeback_scan = current + timedelta(minutes=1)
 
-    maintenance = (
-        ensure_auto_sync if not isinstance(order_source, DisabledFeishuOrderSource)
-        else None
-    )
-    return handlers, failures, maintenance, []
+    return {"shipment_writeback": writeback.handle}, {}, ensure_writeback, []
 
 
 def incoming_role(settings: Settings, sessions: sessionmaker[Session]) -> RoleParts:
@@ -280,6 +289,8 @@ def run_role(role: str) -> None:
             handlers, failures, maintenance, sources = sync_role(settings, sessions, worker_id)
         elif role == "incoming":
             handlers, failures, maintenance, sources = incoming_role(settings, sessions)
+        elif role == "shipment":
+            handlers, failures, maintenance, sources = shipment_role(settings, sessions)
         elif role == "notification":
             handlers, failures, maintenance, sources = notification_role(
                 settings, sessions, store, worker_id, logger

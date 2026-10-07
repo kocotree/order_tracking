@@ -7,7 +7,7 @@ resolve_environment "${environment}"
 
 compose ps
 worker_processes=$(compose top worker)
-for role in sync incoming notification; do
+for role in sync incoming notification shipment; do
   if ! grep -q -- "--role ${role}" <<<"${worker_processes}"; then
     echo "worker role missing: ${role}" >&2
     exit 1

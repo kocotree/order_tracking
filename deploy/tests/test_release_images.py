@@ -31,6 +31,7 @@ if [[ "$*" == *'top worker'* ]]; then
   echo 'python -m app.worker --role sync'
   echo 'python -m app.worker --role incoming'
   if [[ "$FAILURE" != role ]]; then echo 'python -m app.worker --role notification'; fi
+  if [[ "$FAILURE" != shipment ]]; then echo 'python -m app.worker --role shipment'; fi
 fi
 ''',
                 "python3": f'''#!/bin/bash
@@ -96,6 +97,13 @@ fi
         result, calls, config, recorded = self.run_release("role")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("worker role missing: notification", result.stderr)
+        self.assertIn("v1.0.0", config)
+        self.assertFalse(recorded)
+
+    def test_missing_shipment_role_stops_release(self):
+        result, calls, config, recorded = self.run_release("shipment")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("worker role missing: shipment", result.stderr)
         self.assertIn("v1.0.0", config)
         self.assertFalse(recorded)
 

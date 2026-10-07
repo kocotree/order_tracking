@@ -127,9 +127,9 @@ def test_blocked_role_does_not_hold_other_roles(
     assert blocked.exitcode == 0
 
 
-@pytest.mark.parametrize("crash", [False, True])
+@pytest.mark.parametrize("crash_role", [None, "sync", "incoming", "notification", "shipment"])
 def test_supervisor_stops_and_reaps_real_children(
-    test_database_engine: Engine, test_database_url: str, crash: bool,
+    test_database_engine: Engine, test_database_url: str, crash_role: str | None,
 ) -> None:
     env = os.environ.copy()
     env["ORDER_TRACKING_DATABASE_URL"] = test_database_url
@@ -140,7 +140,7 @@ def test_supervisor_stops_and_reaps_real_children(
     child_pids: dict[str, int] = {}
     try:
         assert process.stdout is not None
-        while len(child_pids) < 3:
+        while len(child_pids) < 4:
             readable, _, _ = select.select([process.stdout], [], [], 20)
             assert readable, "worker children did not start"
             line = process.stdout.readline()
@@ -148,12 +148,12 @@ def test_supervisor_stops_and_reaps_real_children(
             event = json.loads(line)
             if event["event"] == "worker.child_started":
                 child_pids[event["role"]] = event["pid"]
-        assert set(child_pids) == {"sync", "incoming", "notification"}
-        if crash:
-            os.kill(child_pids["sync"], signal.SIGKILL)
+        assert set(child_pids) == {"sync", "incoming", "notification", "shipment"}
+        if crash_role:
+            os.kill(child_pids[crash_role], signal.SIGKILL)
         else:
             process.send_signal(signal.SIGTERM)
-        assert process.wait(timeout=20) == (1 if crash else 0)
+        assert process.wait(timeout=20) == (1 if crash_role else 0)
         for pid in child_pids.values():
             with pytest.raises(ProcessLookupError):
                 os.kill(pid, 0)

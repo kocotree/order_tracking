@@ -4,6 +4,7 @@ from pathlib import Path
 from time import sleep
 
 from openpyxl import load_workbook
+from openpyxl.cell.cell import MergedCell
 
 from app.modules.shipments.workbook import (
     DailyShipmentWorkbookLine,
@@ -184,3 +185,20 @@ def test_daily_summary_layout_merges_dates_names_and_keeps_purchase_orders() -> 
     ]
     assert list(sheet.values)[5] == ("汇总", None, None, 15, None, None, None, None)
     assert workbook["发货明细"]["A1"].value.endswith("共计2单 4箱 15件")
+    for row in sheet.iter_rows():
+        for cell in row:
+            if not isinstance(cell, MergedCell):
+                assert cell.alignment.horizontal == "center"
+                assert cell.alignment.vertical == "center"
+            if cell.row == 1:
+                assert all(getattr(cell.border, side).style is None
+                           for side in ("left", "right", "top", "bottom"))
+                continue
+            for side in ("left", "right", "top", "bottom"):
+                border = getattr(cell.border, side)
+                internal = isinstance(cell, MergedCell) and (
+                    side == "top" or (side == "bottom" and cell.coordinate == "A4")
+                )
+                assert border.style == (None if internal else "thin")
+                if not internal:
+                    assert border.color.rgb == "00000000"

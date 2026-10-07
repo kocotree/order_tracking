@@ -6,6 +6,8 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from openpyxl import load_workbook
+from openpyxl.cell.cell import MergedCell
+from openpyxl.styles import Alignment, Border, Side
 from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.writer.excel import ExcelWriter
@@ -267,6 +269,17 @@ class ShipmentWorkbookRenderer:
         if last_row > 3:
             sheet.merge_cells(start_row=3, end_row=last_row, start_column=1, end_column=1)
         sheet.append(["汇总", None, None, total_quantity])
+        alignment = Alignment(horizontal="center", vertical="center")
+        side = Side(style="thin", color="000000")
+        border = Border(left=side, right=side, top=side, bottom=side)
+        for cells in sheet.iter_rows(min_col=1, max_col=8):
+            for cell in cells:
+                if not isinstance(cell, MergedCell):
+                    cell.alignment = alignment
+                    if cell.row >= 2:
+                        cell.border = border
+        for merged in sheet.merged_cells.ranges:
+            merged.format()
 
     @staticmethod
     def _write_summary(sheet: Worksheet, snapshot: ShipmentWorkbookSnapshot) -> None:

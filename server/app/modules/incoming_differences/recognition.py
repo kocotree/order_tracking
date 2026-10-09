@@ -189,7 +189,7 @@ class IncomingDiffRecognitionService:
             reason = "recognition_failed"
         now = self._clock().replace(tzinfo=None)
         with self._sessions() as session, session.begin():
-            batch = session.get(IncomingDiffBatch, batch_id)
+            batch = session.get(IncomingDiffBatch, batch_id, with_for_update=True)
             if batch is None or batch.status != "RECOGNIZING":
                 return
             pending = session.scalars(select(IncomingDiffImage).where(

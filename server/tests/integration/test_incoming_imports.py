@@ -254,6 +254,21 @@ def test_old_generated_confirmation_enters_duplicate_review(import_setup):
         actor_id=ADMIN, order_id=ORDER_ID) == []
 
 
+def test_new_files_supersede_inflight_photo_recognition(import_setup):
+    sessions, files, codec, workflow = import_setup
+    with sessions() as session, session.begin():
+        _seed_batch(session, lines=[], status="RECOGNIZING")
+    receive(workflow, "new-files", chat="chat-1")
+    bot = FeishuBotService(sessions, files=files, media=object(), identity_scope="test",
+        codec=codec, recognition=IncomingDiffRecognitionService(
+            sessions, files=files, recognizer=DisabledIncomingDiffRecognizer()))
+    bot.recognition_job({"batchId": BATCH_ID})
+    bot.recognition_failed({"batchId": BATCH_ID}, ValueError("late failure"))
+    with sessions() as session:
+        assert session.get(IncomingDiffBatch, BATCH_ID).status == "SUPERSEDED"
+        assert session.scalars(select(OutboxMessage)).all() == []
+
+
 def test_two_free_files_confirm_together(test_database_engine: Engine) -> None:
     with Session(test_database_engine) as session, session.begin():
         _seed_masters(session)

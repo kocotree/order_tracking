@@ -576,10 +576,16 @@ class FeishuBotService:
                     buttons=[("确认登记", "confirm", {"version": uploaded.version})])
 
     def recognition_job(self, payload: dict[str, object]) -> None:
-        self._recognition.recognize(payload)
         batch_id = str(payload["batchId"])
-        with self._sessions() as session, session.begin():
+        with self._sessions() as session:
             batch = session.get(IncomingDiffBatch, batch_id)
+            if batch is not None and batch.status == "SUPERSEDED":
+                return
+        self._recognition.recognize(payload)
+        with self._sessions() as session, session.begin():
+            batch = session.get(IncomingDiffBatch, batch_id, with_for_update=True)
+            if batch is not None and batch.status == "SUPERSEDED":
+                return
             assert batch is not None and batch.status == "RECOGNIZING"
             batch.status = "READY"
             actor_id = batch.submitter_id
@@ -709,8 +715,8 @@ class FeishuBotService:
         self._recognition.fail_terminal(payload, error)
         batch_id = str(payload["batchId"])
         with self._sessions() as session, session.begin():
-            batch = session.get(IncomingDiffBatch, batch_id)
-            if batch is None:
+            batch = session.get(IncomingDiffBatch, batch_id, with_for_update=True)
+            if batch is None or batch.status == "SUPERSEDED":
                 return
             batch.status = "FAILED"
             if batch.feishu_open_id:

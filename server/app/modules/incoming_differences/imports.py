@@ -63,7 +63,7 @@ class IncomingImportWorkflow:
             active = session.scalars(select(IncomingDiffBatch).where(
                 IncomingDiffBatch.submitter_id == actor_id,
                 IncomingDiffBatch.feishu_chat_id == chat_id,
-                IncomingDiffBatch.status.not_in(["COLLECTING", "RECOGNIZING"]),
+                IncomingDiffBatch.status != "COLLECTING",
             ).order_by(IncomingDiffBatch.batch_id).with_for_update()).all()
             status = "VALIDATING"
             newest = max((old.source_sent_at or 0 for old in active), default=0)

@@ -1,3 +1,4 @@
+import random
 from datetime import UTC, datetime
 from io import BytesIO
 from zipfile import ZipFile
@@ -91,6 +92,31 @@ def _edit(content: bytes, change) -> bytes:
 
 def _codes(error: pytest.ExceptionInfo[IncomingWorkbookValidationError]) -> list[str]:
     return [str(issue["code"]) for issue in error.value.issues]
+
+
+def test_workbook_over_twenty_mib_can_be_generated_and_read() -> None:
+    image = BytesIO()
+    Image.frombytes("RGB", (2800, 2800), random.Random(242).randbytes(2800 * 2800 * 3)).save(
+        image, format="PNG", compress_level=0,
+    )
+    codec = _codec()
+    content, signature, snapshot = codec.generate(
+        batch_id=BATCH, version=1,
+        lines=[{"imageId": IMAGE, "factoryName": "甲工厂", "productName": "帽子",
+                "spec": "红110", "quantity": -1}],
+        images={IMAGE: image.getvalue()}, generated_at=datetime(2026, 10, 9, tzinfo=UTC),
+    )
+    assert len(content) > 20 * 1024 * 1024
+    parsed = codec.parse(content, batch_id=BATCH, version=1, signature=signature,
+                         previous_lines=snapshot)
+    assert parsed[0]["quantity"] == -1
+
+
+def test_workbook_over_one_hundred_mib_is_rejected() -> None:
+    with pytest.raises(IncomingWorkbookValidationError) as error:
+        _codec().parse(b"x" * (100 * 1024 * 1024 + 1), batch_id=BATCH, version=1,
+                       signature="", previous_lines=[])
+    assert _codes(error) == ["file_too_large"]
 
 
 def test_deployment_rejects_local_fake_signing_key() -> None:

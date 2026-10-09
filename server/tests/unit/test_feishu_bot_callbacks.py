@@ -243,8 +243,10 @@ def test_failed_handler_releases_event_for_feishu_retry() -> None:
     assert client.post("/api/v1/integrations/feishu/events").status_code == 200
 
 
-def test_user_uploaded_workbook_uses_message_resource_endpoint() -> None:
+@pytest.mark.parametrize("size", [21 * 1024 * 1024, 100 * 1024 * 1024])
+def test_user_uploaded_workbook_uses_message_resource_endpoint(size: int) -> None:
     requested: list[str] = []
+    content = b"x" * size
 
     def respond(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("tenant_access_token/internal"):
@@ -253,7 +255,7 @@ def test_user_uploaded_workbook_uses_message_resource_endpoint() -> None:
                                              "expire": 7200})
         requested.append(str(request.url))
         assert request.headers["Authorization"] == "Bearer fake-token"
-        return httpx.Response(200, content=b"workbook-bytes")
+        return httpx.Response(200, content=content)
 
     config = FeishuNotificationConfig(
         app_id="fake-app", app_secret="fake-secret", admin_web_base_url="",
@@ -262,11 +264,30 @@ def test_user_uploaded_workbook_uses_message_resource_endpoint() -> None:
     media = AppCredentialFeishuSender(
         config, sessionmaker(), transport=httpx.MockTransport(respond)
     )
-    assert media.download_resource("msg-1", "file-1", "file") == b"workbook-bytes"
+    assert media.download_resource("msg-1", "file-1", "file") == content
     assert requested == [
         "https://open.feishu.cn/open-apis/im/v1/messages/msg-1/"
         "resources/file-1?type=file"
     ]
+
+
+@pytest.mark.parametrize("resource_type,size", [
+    ("file", 100 * 1024 * 1024 + 1), ("image", 20 * 1024 * 1024 + 1),
+])
+def test_feishu_resource_rejects_oversized_download(resource_type: str, size: int) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("tenant_access_token/internal"):
+            return httpx.Response(200, json={"code": 0, "tenant_access_token": "fake-token",
+                                           "expire": 7200})
+        return httpx.Response(200, content=b"x" * size)
+
+    media = AppCredentialFeishuSender(
+        FeishuNotificationConfig(app_id="fake-app", app_secret="fake-secret",
+                                 admin_web_base_url="", ops_alert_recipient_user_id=""),
+        sessionmaker(), transport=httpx.MockTransport(respond),
+    )
+    with pytest.raises(ValueError, match="Feishu resource too large"):
+        media.download_resource("msg-1", "file-1", resource_type)
 
 
 @pytest.mark.parametrize("sender,chat,valid", [

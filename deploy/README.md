@@ -117,13 +117,17 @@ Required repository/environment Secrets: `PROD_SSH_HOST`, `PROD_SSH_PORT`,
 `PROD_SSH_USER`, `PROD_SSH_PRIVATE_KEY`, `PROD_SSH_KNOWN_HOSTS`, `PROD_DEPLOY_DIR`.
 Use a dedicated deployment SSH key and verified host keys. The workflow uses its
 short-lived `GITHUB_TOKEN` to pull GHCR images; it removes the temporary Docker
-login configuration when finished. No personal registry token is required.
+login configuration after image pull (also on normal task failure). No personal
+registry token is required.
 
 Provision the protected configuration at `DEPLOY_DIR/deploy/.env.production`.
 Set `ORDER_TRACKING_MYSQL_BACKUP_DIR` and `ORDER_TRACKING_OSS_BACKUP_DIR` to existing
 protected absolute directories. The server needs Docker Compose with `--wait`,
-Python 3.8+, mysqldump, flock, and ossutil 2.x. Release artifacts are retained at
-`DEPLOY_DIR/releases/<commit>/`; no source checkout is needed on the server.
+Python 3.8+, mysqldump, flock, and ossutil 2.x. Use a local Linux filesystem that
+supports flock for the deployment root. Release artifacts are retained at
+`DEPLOY_DIR/releases/<commit>/<run-id>-<attempt>/`; each Actions attempt uploads
+to its own directory, leaving an active task's scripts intact. No source checkout
+is needed on the server. Older releases keep their original directory layout.
 
 The deployment checks both image revision labels, backs up MySQL and OSS, runs
 migrations, waits for container health, and records the version only on success.
@@ -135,6 +139,57 @@ deployment backups share one retention pool.
 Backup completion checks are not a substitute for periodic restore rehearsals.
 On failure, inspect the actual container and schema state before retrying; DDL
 and a partial container replacement cannot automatically be rolled back safely.
+
+### Detached task and reconnect
+
+`deploy-task.py start` registers one task per immutable version, bound to its exact
+revision, then starts a new server process session with independent standard streams.
+The server continues after SSH disconnects or the Actions job is cancelled.
+`release-images.sh` still owns `production-deploy.lock` across image verification,
+backup, migration, container update, health/four-worker checks and version recording.
+Concurrent versions and scheduled backups use the same lock.
+
+Task files are private at `DEPLOY_DIR/runtime/deployments/<version>/`:
+
+- `state.json`: version, revision, original release directory, start time, worker PID,
+  final exit code and finish time; terminal results are atomically replaced and synced.
+- `stage`: current or last attempted stage.
+- `events.log`: timestamped stage transitions and final exit code. External command
+  stdout/stderr is suppressed to prevent credentials entering durable logs.
+- `lease`: inherited file lock used to check whether the task or its release child
+  still owns execution. PID alone is never used as proof of liveness.
+
+Actions queries every 10 seconds, with SSH keepalive and a 60-second query timeout.
+It tolerates up to 12 consecutive communication failures and waits at most 3 hours.
+Exhaustion reports **deployment result unconfirmed**, without stopping the server.
+Rerunning the failed deploy job queries the registered task; running and successful
+tasks do not repeat login, backup, migration or container replacement. A lost start
+reply can safely repeat registration. The same version with another revision is rejected.
+Upload failures occur before this attempt starts a task; reconnect to check any
+task from an earlier attempt.
+
+Read the result over a new verified SSH connection, using the retained script and
+the exact version/revision (registry user is the non-secret GitHub login):
+
+```bash
+python3 <release-dir>/deploy/scripts/deploy-task.py status <DEPLOY_DIR> <version> <40-character-commit> <registry-user>
+cat <DEPLOY_DIR>/runtime/deployments/<version>/events.log
+```
+
+`running` requires a held lease; `succeeded` requires a completed zero-exit result;
+`failed` retains the stage and nonzero exit code. Missing/corrupt state, released
+leases without a terminal result, forced process termination or server reboot yield
+`unknown`. `absent` means no task directory; identity conflicts are reported separately.
+A successful task result is historical evidence for that version; use the normal
+runtime checks to confirm the currently running version and external HTTPS.
+
+Failed/unknown tasks never restart automatically. Preserve the task directory and
+inspect its last stage, backup artefacts, actual schema, images and containers before
+an explicitly authorized recovery. Do not delete state or rerun the release script
+to force a retry. After forced termination during login/pull/backup, protected
+temporary credential files may remain in the task directory; inspect and clean those
+only after confirming no process still uses them and obtaining cleanup authorization.
+No automatic rollback, migration replay, archive policy or data cleanup is introduced.
 
 For application rollback, use the retained previous release directory and exact
 previous image version, export `ORDER_TRACKING_DEPLOY_VERSION`, and run Compose

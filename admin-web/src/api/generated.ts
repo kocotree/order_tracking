@@ -756,6 +756,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/orders/{order_id}/shipments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Order Shipments */
+        get: operations["order_shipments_api_v1_admin_orders__order_id__shipments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/orders/{order_id}/source-refresh/confirm": {
         parameters: {
             query?: never;
@@ -3138,6 +3155,24 @@ export interface components {
             validationIssues: string[];
             /** Version */
             version: number;
+        };
+        /** OrderShipmentListResponse */
+        OrderShipmentListResponse: {
+            /** Items */
+            items: components["schemas"]["OrderShipmentSummary"][];
+            /** Total */
+            total: number;
+        };
+        /** OrderShipmentSummary */
+        OrderShipmentSummary: {
+            /** Businessdate */
+            businessDate: string | null;
+            /** Shipmentid */
+            shipmentId: string;
+            /** Shipmentno */
+            shipmentNo: string | null;
+            /** Totalquantity */
+            totalQuantity: number;
         };
         /** ProductListItemResponse */
         ProductListItemResponse: {
@@ -5750,6 +5785,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    order_shipments_api_v1_admin_orders__order_id__shipments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                order_id: string;
+            };
+            cookie?: {
+                ot_web_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderShipmentListResponse"];
                 };
             };
             /** @description Validation Error */

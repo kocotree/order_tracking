@@ -710,10 +710,15 @@ class OrderService:
 
     def get(self, *, order_id: str, today: date | None = None) -> OrderSnapshot:
         with self._session_factory() as session:
+            order = self._require_order(session, order_id)
             return self._snapshot(
                 session,
-                self._require_order(session, order_id),
+                order,
                 today or self._business_today(),
+                preloaded=(
+                    self._page_snapshot_data(session, [order])
+                    if not order.detail_mode else None
+                ),
             )
 
     def get_visible(
@@ -723,7 +728,13 @@ class OrderService:
             user = self._require_enabled_user(session, actor_id)
             order = self._require_order(session, order_id)
             if user.role == "admin":
-                return self._snapshot(session, order, today or self._business_today())
+                return self._snapshot(
+                    session, order, today or self._business_today(),
+                    preloaded=(
+                        self._page_snapshot_data(session, [order])
+                        if not order.detail_mode else None
+                    ),
+                )
             if user.role != "factory" or user.factory_id is None:
                 raise OrderPermissionDenied("order access is not available")
             visible = session.scalar(
@@ -743,6 +754,7 @@ class OrderService:
                 order,
                 today or self._business_today(),
                 factory_id=user.factory_id,
+                preloaded=self._page_snapshot_data(session, [order], user.factory_id),
             )
 
     def list_visible(
@@ -955,14 +967,14 @@ class OrderService:
                         AuditLog.target_id == candidate_id,
                     )
                 )
-            entries = session.scalars(
-                select(AuditLog)
+            entries = session.execute(
+                select(AuditLog, User)
+                .outerjoin(User, User.user_id == AuditLog.actor_id)
                 .where(or_(*targets))
                 .order_by(AuditLog.id.desc())
             )
             snapshots: list[OrderAuditSnapshot] = []
-            for item in entries:
-                actor = session.get(User, item.actor_id) if item.actor_id else None
+            for item, actor in entries:
                 snapshots.append(
                     OrderAuditSnapshot(
                         action=item.action,

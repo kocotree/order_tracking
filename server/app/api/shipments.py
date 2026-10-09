@@ -246,6 +246,18 @@ class ShipmentListResponse(ApiModel):
     total: int
 
 
+class OrderShipmentSummary(ApiModel):
+    shipment_id: str
+    shipment_no: str | None
+    business_date: date | None
+    total_quantity: int
+
+
+class OrderShipmentListResponse(ApiModel):
+    items: list[OrderShipmentSummary]
+    total: int
+
+
 class ShipmentCatalogItemResponse(ApiModel):
     assignment_id: int
     order_id: str
@@ -681,6 +693,24 @@ def create_shipment_router(
         if actor.role != "admin":
             raise PermissionDenied("administrator role required")
         return ShipmentFactoryOptionsResponse(items=service.admin_shipment_factories())
+
+    @router.get(
+        "/admin/orders/{order_id}/shipments",
+        response_model=OrderShipmentListResponse,
+        tags=["shipment-admin"],
+    )
+    def order_shipments(
+        order_id: str,
+        ot_web_session: str | None = Cookie(default=None),
+        authorization: str | None = Header(default=None),
+    ) -> OrderShipmentListResponse:
+        actor, _terminal = query_user(ot_web_session, authorization)
+        if actor.role != "admin":
+            raise PermissionDenied("administrator role required")
+        items = service.order_shipments(order_id=order_id)
+        return OrderShipmentListResponse(
+            items=[OrderShipmentSummary.model_validate(item) for item in items], total=len(items),
+        )
 
     @router.get("/admin/shipments", response_model=ShipmentListResponse, tags=["shipment-admin"])
     def admin_shipments(

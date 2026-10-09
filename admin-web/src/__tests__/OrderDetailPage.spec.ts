@@ -1,11 +1,12 @@
 import { useRoute } from "vue-router";
-import { flushPromises, mount } from "@vue/test-utils";
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, shipmentApi, type Shipment, type Order } from "@/api/client";
+import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, shipmentApi, type Order } from "@/api/client";
 import OrderDetailPage from "@/pages/OrderDetailPage.vue";
 
 const routerPush = vi.hoisted(() => vi.fn());
+enableAutoUnmount(afterEach);
 
 vi.mock("vue-router", async () => {
   const { reactive } = await import("vue");
@@ -33,7 +34,8 @@ beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
 
-  vi.spyOn(shipmentApi, "list").mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(shipmentApi, "listForOrder").mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(contractApi, "list").mockResolvedValue({ items: [], requestId: "contracts" });
   vi.spyOn(identityApi, "listFactoryOptions").mockResolvedValue({ items: [{ factoryId: "factory-1", factoryName: "测试工厂", supplierNumber: "SUP-001" }], total: 1 });
   vi.spyOn(orderApi, "auditLogs").mockResolvedValue({
     items: [{ action: "order.imported_from_feishu", changes: {}, actorId: "admin-1", operatorName: "松子", content: "从飞书导入订单：订单数量 400，初始已发数量 100，未发数量 300。", sourceTerminal: "web", createdAt: "2026-08-25T01:00:00Z" }],
@@ -85,6 +87,21 @@ describe("incoming differences on order detail", () => {
     const toggle = wrapper.get(".incoming-diff-card .order-audit-toggle");
     expect(toggle.attributes("disabled")).toBeDefined();
     expect(wrapper.text()).toContain("来货出入（0）");
+  });
+
+  it("keeps the refreshed audit after saving while an earlier audit request is pending", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    vi.mocked(orderApi.incomingDifferences).mockResolvedValue({ items: [incoming], total: 1, requestId: "incoming" });
+    vi.spyOn(orderApi, "updateIncomingDifference").mockResolvedValue({ ...incoming, quantity: -3, version: 4, requestId: "saved" });
+    let resolveOld!: (value: Awaited<ReturnType<typeof orderApi.auditLogs>>) => void;
+    vi.mocked(orderApi.auditLogs).mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }));
+    const wrapper = mountPage(); await flushPromises();
+    await wrapper.get(".incoming-diff-card .order-audit-toggle").trigger("click");
+    await wrapper.get(".incoming-diff-input").setValue("-3");
+    await wrapper.get(".incoming-diff-input").trigger("change"); await flushPromises();
+    expect(wrapper.text()).toContain("操作记录（1）");
+    resolveOld({ items: [], total: 0, requestId: "old" }); await flushPromises();
+    expect(wrapper.text()).toContain("操作记录（1）");
   });
 });
 
@@ -190,7 +207,7 @@ describe("order detail prototype alignment", () => {
     const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { props: ["title"], template: '<div :data-title="title"><slot /></div>' }, RouterLink: { props: ["to"], template: "<a><slot /></a>" } } } });
     await flushPromises();
 
-    expect(listSpy).toHaveBeenCalledWith("order-1");
+    expect(listSpy).toHaveBeenCalledWith("order-1", expect.any(AbortSignal));
     const button = wrapper.get('[data-testid="contract-export-open"]');
     expect(button.attributes("disabled")).toBeUndefined();
     await button.trigger("click");
@@ -259,13 +276,13 @@ describe("related shipments", () => {
     return mount(OrderDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { props: ["to"], template: '<a :href="typeof to === `string` ? to : to.path" :data-return-to="typeof to === `string` ? `` : to.query.notificationReturnTo"><slot /></a>' } } } });
   }
 
-  it.each(["SHIPPED", "WITHDRAWN", "VOIDED"])("keeps %s records and both detail links in the four-column list", async (status) => {
+  it("shows summary records and both detail links in the four-column list", async () => {
     useRoute().fullPath = "/orders/order-1?status=未完成&notificationReturnTo=%2Fnotifications%3Ffilter%3Dunread";
     vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
-    vi.mocked(shipmentApi.list).mockResolvedValue({ items: [{ shipmentId: "shipment-1", shipmentNo: "FH20260905-001", businessDate: "2026-09-05", totalQuantity: 23, status } as Shipment], total: 1 });
+    vi.mocked(shipmentApi.listForOrder).mockResolvedValue({ items: [{ shipmentId: "shipment-1", shipmentNo: "FH20260905-001", businessDate: "2026-09-05", totalQuantity: 23 }], total: 1 });
     const wrapper = mountPage();
     await flushPromises();
-    expect(shipmentApi.list).toHaveBeenCalledWith("order-1");
+    expect(shipmentApi.listForOrder).toHaveBeenCalledWith("order-1", expect.any(AbortSignal));
     const table = wrapper.get(".related-shipment-table");
     expect(table.findAll("th").map((cell) => cell.text())).toEqual(["发货单号", "发货日期", "发货数量", "操作"]);
     expect(table.findAll("tbody td").map((cell) => cell.text())).toEqual(["FH20260905-001", "2026-09-05", "23", "详情"]);
@@ -275,7 +292,7 @@ describe("related shipments", () => {
 
   it.each([false, true])("spans all four columns for empty/error feedback (%s)", async (failed) => {
     vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
-    if (failed) vi.mocked(shipmentApi.list).mockRejectedValue(new Error("offline"));
+    if (failed) vi.mocked(shipmentApi.listForOrder).mockRejectedValue(new Error("offline"));
     const wrapper = mountPage();
     await flushPromises();
     const cell = wrapper.get(".related-shipment-table tbody td");
@@ -284,19 +301,95 @@ describe("related shipments", () => {
     if (failed) expect(cell.attributes("role")).toBe("alert");
   });
 
-  it("keeps the page loading until related shipments resolve, then shows the four-column empty state", async () => {
+  it("shows the order while related shipments are loading, then shows the empty state", async () => {
     vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
-    let resolveList!: (value: Awaited<ReturnType<typeof shipmentApi.list>>) => void;
-    vi.mocked(shipmentApi.list).mockReturnValue(new Promise((resolve) => { resolveList = resolve; }));
+    let resolveList!: (value: Awaited<ReturnType<typeof shipmentApi.listForOrder>>) => void;
+    vi.mocked(shipmentApi.listForOrder).mockReturnValue(new Promise((resolve) => { resolveList = resolve; }));
     const wrapper = mountPage();
     await flushPromises();
-    expect(wrapper.get(".page-state").text()).toBe("正在加载订单详情…");
-    expect(wrapper.find(".related-shipment-table").exists()).toBe(false);
+    expect(wrapper.find(".page-state").exists()).toBe(false);
+    expect(wrapper.get(".product-detail-table").text()).toContain("轻量防风马甲");
+    expect(wrapper.get(".related-shipment-table").text()).toContain("正在加载关联发货单…");
     resolveList({ items: [], total: 0 });
     await flushPromises();
     expect(wrapper.find(".page-state").exists()).toBe(false);
     expect(wrapper.get(".related-shipment-table tbody td").attributes("colspan")).toBe("4");
     expect(wrapper.get(".related-shipment-table tbody").text()).toBe("当前订单暂无关联发货单");
+  });
+});
+
+describe("independent detail loading", () => {
+  const mountPage = () => mount(OrderDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: true } } });
+
+  it("shows pending sections without false empty counts and disables contract export", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    vi.mocked(orderApi.auditLogs).mockReturnValue(new Promise(() => {}));
+    vi.mocked(orderApi.incomingDifferences).mockReturnValue(new Promise(() => {}));
+    vi.spyOn(contractApi, "list").mockReturnValue(new Promise(() => {}));
+    const wrapper = mountPage(); await flushPromises();
+    expect(wrapper.get(".product-detail-table").text()).toContain("轻量防风马甲");
+    for (const card of wrapper.findAll(".order-audit-card")) {
+      expect(card.text()).toContain("正在加载");
+      expect(card.text()).not.toContain("暂无记录");
+      expect(card.text()).not.toContain("（0）");
+    }
+    expect(wrapper.get('[data-testid="contract-export-open"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.get('[data-testid="contract-export-open"]').text()).toBe("合同状态加载中…");
+  });
+
+  it("keeps the order visible and reports each failed section with refresh guidance", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    vi.mocked(orderApi.auditLogs).mockRejectedValue(new Error("offline"));
+    vi.mocked(orderApi.incomingDifferences).mockRejectedValue(new Error("offline"));
+    vi.mocked(identityApi.listFactoryOptions).mockRejectedValue(new Error("offline"));
+    vi.spyOn(contractApi, "list").mockRejectedValue(new Error("offline"));
+    const wrapper = mountPage(); await flushPromises();
+    expect(wrapper.find(".product-detail-table").exists()).toBe(true);
+    for (const section of ["操作记录", "来货出入", "合同状态", "工厂选项"]) {
+      expect(wrapper.text()).toContain(`${section}加载失败，请刷新页面重试`);
+    }
+    expect(wrapper.get('[data-testid="contract-export-open"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.findAll("button").some((button) => button.text() === "重试")).toBe(false);
+  });
+
+  it("aborts old reads on navigation and unmount, including a return to the same order", async () => {
+    const pending: { signal: AbortSignal; resolve: (order: Order) => void }[] = [];
+    vi.spyOn(orderApi, "get").mockImplementation((_id, signal) => new Promise((resolve) => {
+      pending.push({ signal: signal!, resolve });
+    }));
+    const wrapper = mountPage(); await flushPromises();
+    useRoute().params.orderId = "order-2"; await flushPromises();
+    expect(pending[0]!.signal.aborted).toBe(true);
+    useRoute().params.orderId = "order-1"; await flushPromises();
+    pending[2]!.resolve({ ...sampleOrder, orderNo: "当前订单" }); await flushPromises();
+    pending[0]!.resolve({ ...sampleOrder, lines: [] }); await flushPromises();
+    expect(wrapper.get(".product-detail-table").text()).toContain("轻量防风马甲");
+    wrapper.unmount();
+    expect(pending[2]!.signal.aborted).toBe(true);
+  });
+
+  it("ignores late auxiliary failures from a previous visit to the same order", async () => {
+    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+    vi.spyOn(contractApi, "list").mockResolvedValue({ items: [], requestId: "contracts" });
+    let rejectOld!: (error: Error) => void;
+    vi.mocked(orderApi.auditLogs).mockReturnValueOnce(new Promise((_resolve, reject) => { rejectOld = reject; }));
+    const wrapper = mountPage(); await flushPromises();
+    useRoute().params.orderId = "order-2"; await flushPromises();
+    useRoute().params.orderId = "order-1"; await flushPromises();
+    rejectOld(new Error("offline")); await flushPromises();
+    expect(wrapper.text()).not.toContain("操作记录加载失败");
+    expect(wrapper.text()).toContain("操作记录（1）");
+  });
+
+  it("reports a main request failure and fetches again when the page is reopened", async () => {
+    const get = vi.spyOn(orderApi, "get").mockRejectedValueOnce(new ApiError(404, "not_found", "订单不存在")).mockResolvedValue(sampleOrder);
+    const first = mountPage(); await flushPromises();
+    expect(first.get(".notification-target-error").text()).toContain("订单不存在");
+    expect(orderApi.auditLogs).not.toHaveBeenCalled();
+    first.unmount();
+    const second = mountPage(); await flushPromises();
+    expect(second.get(".product-detail-table").text()).toContain("轻量防风马甲");
+    expect(get).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -339,6 +432,19 @@ const mountSource = () => mount(OrderDetailPage, { global: { stubs: {
 } } });
 const updateButton = (wrapper: ReturnType<typeof mountSource>) => wrapper.findAll('button').find(b => b.text() === '更新未派工明细')!;
 const dispatchButton = (wrapper: ReturnType<typeof mountSource>) => wrapper.findAll('button').find(b => b.text().startsWith('派工（'))!;
+
+it("enables factory editing only after factory options are ready", async () => {
+  vi.spyOn(orderApi, "get").mockResolvedValue(sourceOrder);
+  let resolveOptions!: (value: Awaited<ReturnType<typeof identityApi.listFactoryOptions>>) => void;
+  vi.mocked(identityApi.listFactoryOptions).mockReturnValue(new Promise((resolve) => { resolveOptions = resolve; }));
+  const wrapper = mountSource(); await flushPromises();
+  const input = wrapper.get('input[aria-label="第1条工厂"]');
+  expect(input.attributes("disabled")).toBeDefined();
+  resolveOptions({ items: [{ factoryId: "factory-1", factoryName: "测试工厂", supplierNumber: "SUP" }], total: 1 });
+  await flushPromises();
+  expect(input.attributes("disabled")).toBeUndefined();
+  expect(wrapper.get("#order-factory-options option").attributes("value")).toBe("测试工厂");
+});
 
 it("shows a dispatch preview failure on the page before any dialog opens", async () => {
   vi.spyOn(orderApi, "get").mockResolvedValue(sourceOrder);

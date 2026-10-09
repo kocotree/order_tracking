@@ -10,7 +10,7 @@
             <div class="detail-title-row order-detail-actions">
               <span class="status-badge" :class="statusTone(order)"><i aria-hidden="true"></i>{{ order.displayStatus }}</span>
               <button v-if="order.lifecycle === 'DRAFT' && !order.detailMode" class="detail-primary-button" type="button" @click="openAction('publish')">发布订单</button>
-              <button class="detail-outline-button" type="button" data-testid="contract-export-open" :disabled="!contractButtonEnabled" :title="contractButtonTitle" @click="openContractExport">导出加工合同</button>
+              <button class="detail-outline-button" type="button" data-testid="contract-export-open" :disabled="!contractButtonEnabled" :title="contractButtonTitle" @click="openContractExport">{{ loadingContracts ? '合同状态加载中…' : '导出加工合同' }}</button>
               <button class="detail-outline-button" type="button" data-testid="box-label-open" @click="openBoxLabels">导出箱贴</button>
               <button v-if="order.lifecycle !== 'DRAFT'" class="detail-outline-button" type="button" :disabled="interactionBusy || hasUnsavedDetails" @click="openWithdrawal">撤回派工</button>
               <button v-if="order.lifecycle === 'PUBLISHED'" class="detail-primary-button" type="button" :disabled="!canComplete || interactionBusy" @click="openAction('complete')">确认订单完成</button>
@@ -27,6 +27,7 @@
               <div><dt>未发数量</dt><dd class="detail-summary-number">{{ number(order.pendingQuantity) }}</dd></div>
             </dl>
             <p v-if="order.validationIssues.length" class="validation-callout">{{ order.validationIssues.join('；') }}</p>
+            <p v-if="contractLoadError" class="page-error" role="alert">{{ contractLoadError }}</p>
           </div>
         </section>
 
@@ -42,6 +43,7 @@
           </header>
           <p v-if="sourceError" class="page-error" role="alert">{{ sourceError }}</p>
           <p v-if="dispatchError" class="page-error" role="alert">{{ dispatchError }}</p>
+          <p v-if="factoryOptionsError" class="page-error" role="alert">{{ factoryOptionsError }}</p>
           <div class="detail-table-scroll">
             <table class="data-grid-table product-detail-table dispatch-table" :class="{ 'has-selection': hasUnassigned }">
               <colgroup>
@@ -71,7 +73,7 @@
                 <td class="dispatch-code">{{ row.itemNumber }}</td>
                 <td class="dispatch-name" :title="row.productName">{{ row.productName }}</td>
                 <td>{{ row.propertiesValue }}</td>
-                <td :title="row.factoryName"><input v-if="isEditable(row.key)" v-model="detailDraft(row.key).factoryName" list="order-factory-options" :aria-label="`第${index + 1}条工厂`" :disabled="interactionBusy"><template v-else>{{ row.factoryName }}</template></td>
+                <td :title="row.factoryName"><input v-if="isEditable(row.key)" v-model="detailDraft(row.key).factoryName" list="order-factory-options" :aria-label="`第${index + 1}条工厂`" :disabled="interactionBusy || loadingFactoryOptions || !!factoryOptionsError"><template v-else>{{ row.factoryName }}</template></td>
                 <td><span class="status-badge" :class="row.dispatched ? 'is-info' : 'is-draft'">{{ row.dispatched ? '已派工' : '未派工' }}</span></td>
                 <td><input v-if="isEditable(row.key)" v-model="detailDraft(row.key).contractShipDate" class="source-contract-date" type="date" :aria-label="`第${index + 1}条合同出货时间`" :disabled="interactionBusy || sourcePreview !== null || dispatchSourcePreview !== null"><template v-else>{{ row.contractShipDate || "—" }}</template></td>
                 <td class="detail-number">{{ number(row.orderQuantity) }}</td>
@@ -85,10 +87,11 @@
         </section>
 
         <section class="section-card detail-section-card order-audit-card incoming-diff-card" :class="{ 'is-expanded': incomingExpanded }">
-          <button class="order-audit-toggle" type="button" :aria-expanded="incomingExpanded" aria-controls="incoming-diff-table" :disabled="!incomingDifferences.length" @click="incomingExpanded = !incomingExpanded">
-            <span class="order-audit-toggle-title">来货出入<em>（{{ incomingDifferences.length }}）</em></span>
-            <span class="order-audit-toggle-action">{{ incomingDifferences.length ? (incomingExpanded ? '收起' : '展开') : '暂无记录' }}<svg v-if="incomingDifferences.length" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg></span>
+          <button class="order-audit-toggle" type="button" :aria-expanded="incomingExpanded" aria-controls="incoming-diff-table" :disabled="loadingIncoming || !!incomingLoadError || !incomingDifferences.length" @click="incomingExpanded = !incomingExpanded">
+            <span class="order-audit-toggle-title">来货出入<em v-if="!loadingIncoming && !incomingLoadError">（{{ incomingDifferences.length }}）</em></span>
+            <span class="order-audit-toggle-action">{{ loadingIncoming ? '正在加载…' : incomingLoadError ? '加载失败' : incomingDifferences.length ? (incomingExpanded ? '收起' : '展开') : '暂无记录' }}<svg v-if="incomingDifferences.length" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg></span>
           </button>
+          <p v-if="incomingLoadError" class="page-error" role="alert">{{ incomingLoadError }}</p>
           <p v-if="incomingError" class="page-error" role="alert">{{ incomingError }}</p>
           <p v-if="incomingSuccess" class="incoming-save-feedback" role="status">{{ incomingSuccess }}</p>
           <div v-if="incomingExpanded" id="incoming-diff-table" class="detail-table-scroll incoming-diff-body">
@@ -120,10 +123,11 @@
         </section>
 
         <section class="section-card detail-section-card order-audit-card" :class="{ 'is-expanded': auditExpanded }">
-          <button class="order-audit-toggle" type="button" :aria-expanded="auditExpanded" aria-controls="order-audit-list" :disabled="!auditLogs.length" @click="auditExpanded = !auditExpanded">
-            <span class="order-audit-toggle-title">操作记录<em>（{{ auditLogs.length }}）</em></span>
-            <span class="order-audit-toggle-action">{{ auditLogs.length ? (auditExpanded ? '收起' : '展开') : '暂无记录' }}<svg v-if="auditLogs.length" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg></span>
+          <button class="order-audit-toggle" type="button" :aria-expanded="auditExpanded" aria-controls="order-audit-list" :disabled="loadingAudit || !!auditError || !auditLogs.length" @click="auditExpanded = !auditExpanded">
+            <span class="order-audit-toggle-title">操作记录<em v-if="!loadingAudit && !auditError">（{{ auditLogs.length }}）</em></span>
+            <span class="order-audit-toggle-action">{{ loadingAudit ? '正在加载…' : auditError ? '加载失败' : auditLogs.length ? (auditExpanded ? '收起' : '展开') : '暂无记录' }}<svg v-if="auditLogs.length" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg></span>
           </button>
+          <p v-if="auditError" class="page-error" role="alert">{{ auditError }}</p>
           <ol v-if="auditExpanded && auditLogs.length" id="order-audit-list" class="order-audit-list shipment-log-list">
             <li v-for="(log, index) in auditLogs" :key="`${log.createdAt}-${index}`" class="shipment-log-item">
               <span class="shipment-log-dot" :class="{ 'is-warning': isQuantityRollback(log.action) }" aria-hidden="true"></span>
@@ -214,17 +218,17 @@
 import { sortedCategories } from "@/productCategories";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, shipmentApi, type Shipment, type AuditLogList, type BoxLabelRow, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview, type IncomingDifference } from "@/api/client";
+import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, shipmentApi, type OrderShipmentSummary, type AuditLogList, type BoxLabelRow, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview, type IncomingDifference } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 
-const relatedShipments = ref<Shipment[]>([]);
+const relatedShipments = ref<OrderShipmentSummary[]>([]);
 const shipmentsLoading = ref(false);
 const shipmentsError = ref("");
 async function loadShipments() {
-  const target = orderId; shipmentsLoading.value = true; shipmentsError.value = "";
-  try { const result = await shipmentApi.list(target); if (target === orderId) relatedShipments.value = result.items; }
-  catch { if (target === orderId) shipmentsError.value = "关联发货单加载失败，请刷新重试"; }
-  finally { if (target === orderId) shipmentsLoading.value = false; }
+  const signal = readController.signal; shipmentsLoading.value = true; shipmentsError.value = "";
+  try { const result = await shipmentApi.listForOrder(orderId, signal); if (!signal.aborted) relatedShipments.value = result.items; }
+  catch { if (!signal.aborted) shipmentsError.value = "关联发货单加载失败，请刷新页面重试"; }
+  finally { if (!signal.aborted) shipmentsLoading.value = false; }
 }
 
 type Action = "publish" | "delete" | "complete" | "reopen";
@@ -233,8 +237,11 @@ type DetailRow = { key: string; itemNumber: string; productName: string; propert
 type DetailDraft = { factoryName: string; contractShipDate: string; shippedQuantity: string; pendingQuantity: string };
 const detailColumns: { key: DetailSortKey; label: string }[] = [{ key: "itemNumber", label: "货号" }, { key: "productName", label: "产品名称" }, { key: "propertiesValue", label: "颜色/规格" }, { key: "factoryName", label: "工厂" }, { key: "dispatched", label: "派工状态" }, { key: "contractShipDate", label: "合同出货时间" }, { key: "orderQuantity", label: "下单数量" }, { key: "shippedQuantity", label: "已发数量" }, { key: "pendingQuantity", label: "未发数量" }, { key: "progressPercent", label: "发货进度" }];
 const route = useRoute(); const router = useRouter(); let orderId = String(route.params.orderId);
+let readController = new AbortController();
 const order = ref<Order | null>(null); const loading = ref(true); const errorMessage = ref(""); const pendingAction = ref<Action | null>(null); const reopenReason = ref(""); const actionError = ref(""); const acting = ref(false); const detailSortKey = ref<DetailSortKey | null>(null); const detailSortOrder = ref<"asc" | "desc">("asc");
 const factories = ref<Awaited<ReturnType<typeof identityApi.listFactoryOptions>>["items"]>([]);
+const loadingFactoryOptions = ref(true);
+const factoryOptionsError = ref("");
 
 const withdrawalDialog = ref<HTMLDialogElement | null>(null);
 const withdrawalFactories = ref<Awaited<ReturnType<typeof orderApi.withdrawalFactories>>>([]);
@@ -522,7 +529,7 @@ async function confirmDispatchAction() {
   } finally { if (currentDispatch(epoch, target)) dispatchBusy.value = false; }
 }
 
-onUnmounted(() => { sourceEpoch++; dispatchEpoch++; });
+onUnmounted(() => { sourceEpoch++; dispatchEpoch++; readController.abort(); });
 watch(() => route.params.orderId, () => {
   sourceEpoch++; dispatchEpoch++;
   orderId = String(route.params.orderId); sourceBusy.value = false; dispatchBusy.value = false;
@@ -536,8 +543,13 @@ watch(() => route.params.orderId, () => {
   void load();
 });
 const auditLogs = ref<AuditLogList["items"]>([]);
+const loadingAudit = ref(false);
+const auditError = ref("");
+let auditRequest = 0;
 const auditExpanded = ref(false);
 const incomingDifferences = ref<IncomingDifference[]>([]);
+const loadingIncoming = ref(false);
+const incomingLoadError = ref("");
 const incomingExpanded = ref(false);
 const incomingDrafts = ref<Record<string, string>>({});
 const incomingSaving = ref<string | null>(null);
@@ -547,9 +559,10 @@ const signedQuantity = (value: number) => value > 0 ? `+${value}` : String(value
 const registeredTime = (value: string) => new Date(value).toLocaleString("sv-SE", { timeZone: "Asia/Shanghai", hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 function changeIncomingDraft(recordId: string | null | undefined, event: Event) { if (recordId) incomingDrafts.value[recordId] = (event.target as HTMLInputElement).value; }
 async function loadIncoming() {
-  const target = orderId;
-  try { const result = await orderApi.incomingDifferences(target); if (target === orderId) { incomingDifferences.value = result.items; incomingError.value = ""; } }
-  catch (error) { if (target === orderId) incomingError.value = error instanceof ApiError ? error.message : "来货出入读取失败"; }
+  const signal = readController.signal; loadingIncoming.value = true; incomingLoadError.value = "";
+  try { const result = await orderApi.incomingDifferences(orderId, signal); if (!signal.aborted) { incomingDifferences.value = result.items; incomingError.value = ""; } }
+  catch { if (!signal.aborted) incomingLoadError.value = "来货出入加载失败，请刷新页面重试"; }
+  finally { if (!signal.aborted) loadingIncoming.value = false; }
 }
 async function saveIncoming(item: IncomingDifference) {
   const recordId = item.recordId, version = item.version;
@@ -576,12 +589,14 @@ async function saveIncoming(item: IncomingDifference) {
   } finally { if (target === orderId) incomingSaving.value = null; }
 }
 const contractFactories = ref<ContractFactoryStatus[]>([]); const loadingContracts = ref(false); const contractDialogOpen = ref(false); const selectedContractFactory = ref<ContractFactoryStatus | null>(null); const contractSigningDate = ref(""); const contractError = ref(""); const exportingContract = ref(false);
+const contractLoadError = ref("");
+let contractRequest = 0;
 const boxLabelDialogOpen = ref(false); const boxLabels = ref<BoxLabelRow[]>([]); const loadingBoxLabels = ref(false); const boxLabelError = ref(""); const exportingBoxLabel = ref<string | null>(null);
 const number = (value: number | null) => value == null ? "—" : value.toLocaleString("zh-CN");
 const dateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
 const pageTitle = computed(() => order.value ? `订单详情 · ${order.value.orderNo}` : "订单详情");
-const contractButtonEnabled = computed(() => contractFactories.value.length > 0 && !loadingContracts.value);
-const contractButtonTitle = computed(() => contractFactories.value.length === 0 ? "订单暂无匹配工厂，不能导出加工合同" : "导出加工合同");
+const contractButtonEnabled = computed(() => contractFactories.value.length > 0 && !loadingContracts.value && !contractLoadError.value);
+const contractButtonTitle = computed(() => loadingContracts.value ? "合同状态加载中…" : contractLoadError.value || (contractFactories.value.length === 0 ? "订单暂无匹配工厂，不能导出加工合同" : "导出加工合同"));
 const categories = computed(() => { const values = sortedCategories((order.value?.detailMode ? order.value.details : order.value?.lines)?.map((line) => line.category) ?? []); return values.length ? values : ["未分类"]; });
 const detailRows = computed(() => {
   const rows: DetailRow[] = order.value?.detailMode
@@ -603,32 +618,40 @@ function openAction(action: Action) { pendingAction.value = action; reopenReason
 function localDate() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`; }
 function contractReadyLabel(factory: ContractFactoryStatus) { const labels: Record<string, string> = { factoryCode: "工厂代码", legalName: "单位全称", address: "单位地址", legalRepresentative: "法定代表人" }; return factory.contractReady ? "完整" : `缺少：${factory.missingContractFields.map((field) => labels[field] || field).join("、")}`; }
 async function loadAudit() {
-  const target = orderId;
-  try { const result = await orderApi.auditLogs(target); if (target === orderId) auditLogs.value = result.items; }
-  catch { /* Order writes have already succeeded; log reload does not change their result. */ }
+  const request = ++auditRequest;
+  const signal = readController.signal; loadingAudit.value = true; auditError.value = "";
+  try { const result = await orderApi.auditLogs(orderId, signal); if (!signal.aborted && request === auditRequest) auditLogs.value = result.items; }
+  catch { if (!signal.aborted && request === auditRequest) auditError.value = "操作记录加载失败，请刷新页面重试"; }
+  finally { if (!signal.aborted && request === auditRequest) loadingAudit.value = false; }
 }
 async function loadContracts() {
   if (!order.value) { contractFactories.value = []; return; }
-  const target = orderId; loadingContracts.value = true;
-  try { const result = await contractApi.list(target); if (target === orderId) contractFactories.value = result.items; }
-  catch (error) { if (target === orderId) contractError.value = error instanceof ApiError ? error.message : "合同状态加载失败"; }
-  finally { if (target === orderId) loadingContracts.value = false; }
+  const request = ++contractRequest;
+  const signal = readController.signal; loadingContracts.value = true; contractLoadError.value = "";
+  try { const result = await contractApi.list(orderId, signal); if (!signal.aborted && request === contractRequest) contractFactories.value = result.items; }
+  catch { if (!signal.aborted && request === contractRequest) contractLoadError.value = "合同状态加载失败，请刷新页面重试"; }
+  finally { if (!signal.aborted && request === contractRequest) loadingContracts.value = false; }
 }
 async function load() {
-  const target = orderId; loading.value = true; errorMessage.value = "";
+  readController.abort(); readController = new AbortController();
+  const signal = readController.signal; loading.value = true; errorMessage.value = ""; order.value = null;
+  void loadFactoryOptions();
   try {
-    const result = await orderApi.get(target);
-    if (target !== orderId) return;
+    const result = await orderApi.get(orderId, signal);
+    if (signal.aborted) return;
     order.value = result;
     resetDetailDrafts();
-    await Promise.all([loadShipments(), loadAudit(), loadContracts(), loadIncoming()]);
+    void Promise.all([loadShipments(), loadAudit(), loadContracts(), loadIncoming()]);
   } catch (error) {
-    if (target === orderId) errorMessage.value = error instanceof ApiError && error.status === 404 && route.query?.notificationReturnTo ? "内容已不可查看" : error instanceof ApiError ? error.message : "订单详情加载失败";
-  } finally { if (target === orderId) loading.value = false; }
+    if (!signal.aborted) errorMessage.value = error instanceof ApiError && error.status === 404 && route.query?.notificationReturnTo ? "内容已不可查看" : error instanceof ApiError ? error.message : "订单详情加载失败，请刷新页面重试";
+  } finally { if (!signal.aborted) loading.value = false; }
 }
 async function loadFactoryOptions() {
-  try { factories.value = (await identityApi.listFactoryOptions()).items; }
-  catch { factories.value = []; }
+  const signal = readController.signal;
+  loadingFactoryOptions.value = true; factoryOptionsError.value = "";
+  try { const result = await identityApi.listFactoryOptions(signal); if (!signal.aborted) factories.value = result.items; }
+  catch { if (!signal.aborted) factoryOptionsError.value = "工厂选项加载失败，请刷新页面重试"; }
+  finally { if (!signal.aborted) loadingFactoryOptions.value = false; }
 }
 function listRoute() { return { path: "/orders", query: route.query }; }
 function goBack() { return router.push(typeof route.query.notificationReturnTo === "string" ? route.query.notificationReturnTo : listRoute()); }
@@ -651,7 +674,7 @@ async function exportBoxLabel(item: BoxLabelRow) {
   finally { exportingBoxLabel.value = null; }
 }
 async function confirmAction() { if (!order.value || !pendingAction.value) return; acting.value = true; actionError.value = ""; try { const action = pendingAction.value; if (action === "delete") { await orderApi.delete(orderId); await router.replace(listRoute()); return; } if (action === "publish") await orderApi.publish(orderId, order.value.version); if (action === "complete") await orderApi.complete(orderId); if (action === "reopen") await orderApi.reopen(orderId, reopenReason.value); pendingAction.value = null; await load(); } catch (error) { actionError.value = error instanceof ApiError ? error.message : "订单操作失败"; } finally { acting.value = false; } }
-onMounted(() => { void Promise.all([load(), loadFactoryOptions()]); });
+onMounted(() => { void load(); });
 </script>
 
 <style scoped>

@@ -24,7 +24,7 @@ class IncomingWorkbookLimits:
     max_source_bytes: int = 20 * 1024 * 1024
     max_zip_entries: int = 20_000
     max_uncompressed_bytes: int = 100 * 1024 * 1024
-    max_worksheets: int = 10
+    max_worksheets: int = 31
     max_data_rows: int = 5_000
 
 

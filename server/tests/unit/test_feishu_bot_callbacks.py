@@ -269,6 +269,31 @@ def test_user_uploaded_workbook_uses_message_resource_endpoint() -> None:
     ]
 
 
+@pytest.mark.parametrize("sender,chat,valid", [
+    ("fake-app", "chat", True), ("user", "chat", False), ("fake-app", "other", False),
+])
+def test_decision_reference_must_belong_to_bot_and_chat(sender, chat, valid) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("tenant_access_token/internal"):
+            return httpx.Response(200, json={"code": 0, "tenant_access_token": "fake",
+                                            "expire": 7200})
+        assert request.url.path.endswith("/messages/parent")
+        return httpx.Response(200, json={"code": 0, "data": {"items": [{
+            "message_id": "parent", "chat_id": chat,
+            "sender": {"id": sender, "sender_type": "app"},
+            "body": {"content": json.dumps({"text": "审核清单"})},
+        }]}})
+
+    media = AppCredentialFeishuSender(FeishuNotificationConfig(
+        app_id="fake-app", app_secret="fake-secret", admin_web_base_url="",
+        ops_alert_recipient_user_id=""), sessionmaker(), transport=httpx.MockTransport(respond))
+    if valid:
+        assert "审核清单" in media.read_own_message("parent", "chat")
+    else:
+        with pytest.raises(ValueError):
+            media.read_own_message("parent", "chat")
+
+
 def test_bot_card_uses_v2_callback_button_structure() -> None:
     sent: list[dict[str, object]] = []
 

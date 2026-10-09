@@ -15,10 +15,12 @@ from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.adapters.incoming_decisions import IncomingDecisionParser
 from app.adapters.private_files import PrivateFileStore
 from app.db.models import (
     ExternalIdentity,
     Factory,
+    IdempotencyRecord,
     IncomingDiffBatch,
     IncomingDiffImage,
     IncomingDiffWorkbook,
@@ -27,6 +29,7 @@ from app.db.models import (
     StoredFile,
     User,
 )
+from app.modules.incoming_differences.imports import IncomingImportWorkflow
 from app.modules.incoming_differences.recognition import IncomingDiffRecognitionService
 from app.modules.incoming_differences.service import (
     IncomingDifferenceError,
@@ -42,6 +45,7 @@ from app.modules.infrastructure import InfrastructureStore, utc_now
 
 CONFIRM_JOB = "incoming_diff.confirm"
 REGENERATE_JOB = "incoming_diff.regenerate"
+DECISION_JOB = "incoming_diff.decision"
 MAX_MEDIA_BYTES = 20 * 1024 * 1024
 DENIED = "当前账号无权提交或确认来货出入，请联系管理员。"
 
@@ -49,6 +53,8 @@ DENIED = "当前账号无权提交或确认来货出入，请联系管理员。"
 class FeishuBotMedia(Protocol):
     def download_resource(self, message_id: str, file_key: str,
                           resource_type: str) -> bytes: ...
+
+    def read_own_message(self, message_id: str, chat_id: str) -> str: ...
 
 
 class FeishuCallbackVerifier:
@@ -128,6 +134,7 @@ class FeishuBotService:
         self, sessions: sessionmaker[Session], *, files: PrivateFileStore,
         media: FeishuBotMedia, identity_scope: str, codec: IncomingWorkbookCodec,
         recognition: IncomingDiffRecognitionService,
+        decision_parser: IncomingDecisionParser | None = None,
     ) -> None:
         self._sessions = sessions
         self._files = files
@@ -137,6 +144,8 @@ class FeishuBotService:
         self._workbooks = IncomingWorkbookWorkflow(sessions, file_store=files, codec=codec)
         self._registration = IncomingDifferenceService(sessions)
         self._store = InfrastructureStore(sessions)
+        self._imports = IncomingImportWorkflow(sessions, files=files, codec=codec)
+        self._decision_parser = decision_parser
 
     def event(self, payload: dict[str, object]) -> dict[str, object]:
         header = payload.get("header")
@@ -157,13 +166,54 @@ class FeishuBotService:
         if (not isinstance(open_id, str) or not open_id or
                 not isinstance(chat_id, str) or not chat_id or
                 not isinstance(message_id, str) or not message_id or
-                message.get("chat_type") != "p2p" or kind not in {"image", "file", "post"}):
+                message.get("chat_type") != "p2p" or kind not in {"image", "file", "post", "text"}):
             return {}
         try:
             content = json.loads(str(message.get("content", "")))
         except ValueError:
             return {}
         if not isinstance(content, dict):
+            return {}
+        if kind == "text":
+            actor_id = self._actor(open_id, header.get("tenant_key"))
+            if actor_id is None:
+                self._reply(None, open_id, message_id, DENIED)
+                return {}
+            text = content.get("text")
+            parent_id = message.get("parent_id")
+            if not isinstance(text, str) or not text.strip():
+                return {}
+            if not isinstance(parent_id, str) or not parent_id:
+                self._reply(actor_id, open_id, message_id,
+                            "请使用回复功能回复本次审核清单，说明重复编号及处理意见。")
+                return {}
+            self._store.enqueue_job(job_type=DECISION_JOB, dedupe_key=message_id,
+                payload={"actorId": actor_id, "openId": open_id, "chatId": chat_id,
+                         "messageId": message_id, "parentId": parent_id, "text": text},
+                available_at=utc_now())
+            return {}
+        attachments = (content.get("files") if kind == "post"
+                       else [content] if kind == "file" else None)
+        if attachments:
+            actor_id = self._actor(open_id, header.get("tenant_key"))
+            if actor_id is None:
+                self._reply(None, open_id, message_id, DENIED)
+                return {}
+            sent_at = message.get("create_time")
+            if (not isinstance(attachments, list)
+                    or not all(isinstance(item, dict) for item in attachments)
+                    or not isinstance(sent_at, str) or not sent_at.isdecimal()):
+                self._reply(actor_id, open_id, message_id, "文件消息缺少完整附件信息，未登记。")
+                return {}
+            batch_id = self._imports.receive(
+                actor_id=actor_id, chat_id=chat_id, open_id=open_id,
+                message_id=message_id, sent_at=int(sent_at), attachments=attachments)
+            with self._sessions() as session:
+                batch = session.get(IncomingDiffBatch, batch_id)
+                if batch and batch.status == "VALIDATING":
+                    self._reply(actor_id, open_id, f"received:{message_id}",
+                        f"导入 {batch.batch_no} 已收到 {len(attachments)} 份文件，正在统一核对。"
+                        "本次完整集合替换此前待登记文件，旧确认已失效。", batch_id=batch_id)
             return {}
         if kind == "post":
             blocks = content.get("content")
@@ -202,6 +252,53 @@ class FeishuBotService:
             self._uploaded(actor_id, open_id, chat_id, message_id, file_key, filename)
         return {}
 
+    def decision_job(self, payload: dict[str, object]) -> None:
+        actor_id, open_id = str(payload["actorId"]), str(payload["openId"])
+        message_id, chat_id = str(payload["messageId"]), str(payload["chatId"])
+        with self._sessions() as session:
+            previous = session.scalar(select(IdempotencyRecord).where(
+                IdempotencyRecord.scope == "incoming_diff_decision",
+                IdempotencyRecord.idempotency_key == message_id))
+            if previous and previous.result:
+                self._import_summary(str(previous.result["batchId"]))
+                return
+        try:
+            content = self._media.read_own_message(str(payload["parentId"]), chat_id)
+            with self._sessions() as session:
+                batches = session.scalars(select(IncomingDiffBatch).where(
+                    IncomingDiffBatch.submitter_id == actor_id,
+                    IncomingDiffBatch.feishu_chat_id == chat_id,
+                    IncomingDiffBatch.status.in_(["NEEDS_DECISION", "READY"]),
+                )).all()
+                matches = [batch for batch in batches if self._review_marker(batch) in content]
+                if len(matches) != 1:
+                    raise ValueError("引用的审核清单已失效，请回复最新清单")
+                batch = matches[0]
+                workbook = session.get(IncomingDiffWorkbook, batch.current_workbook_id)
+                assert workbook is not None
+                numbers = [line["number"] for line in workbook.line_snapshot
+                           if line.get("duplicates")]
+                batch_id, revision = batch.batch_id, batch.review_revision
+            if self._decision_parser is None:
+                raise ValueError("文字处理服务未配置，本次未应用决定")
+            decisions = self._decision_parser.parse(text=str(payload["text"]), numbers=numbers)
+            self._imports.decide(batch_id=batch_id, actor_id=actor_id, revision=revision,
+                                 message_id=message_id, decisions=decisions,
+                                 text=str(payload["text"]))
+        except (ValueError, IncomingDifferenceError) as error:
+            self._reply(actor_id, open_id, f"decision:{message_id}", str(error)[:400])
+            return
+        self._import_summary(batch_id)
+
+    def decision_failed(self, payload: dict[str, object], error: Exception) -> None:
+        self._reply(str(payload["actorId"]), str(payload["openId"]),
+                    f"decision:{payload['messageId']}",
+                    "文字处理暂时失败，本次未应用决定，请重新回复最新清单。")
+
+    @staticmethod
+    def _review_marker(batch: IncomingDiffBatch) -> str:
+        return f"审核清单 {batch.batch_no} / {batch.review_revision}。"
+
     def release_failed_event(self, payload: dict[str, object]) -> None:
         header = payload.get("header", payload)
         if isinstance(header, dict) and isinstance(header.get("event_id"), str):
@@ -222,7 +319,7 @@ class FeishuBotService:
             return {}
         operation = value.get("action")
         batch_id = value.get("batchId")
-        if (operation not in {"generate", "confirm", "regenerate", "continue"}
+        if (operation not in {"generate", "confirm", "regenerate", "continue", "select_import"}
                 or not isinstance(batch_id, str)):
             return {}
         event_id = header.get("event_id")
@@ -246,7 +343,12 @@ class FeishuBotService:
                             f"批次 {batch.batch_no} 由 {owner_name} 提交，只能由提交人确认。")
                 return self._toast("只能操作本人批次")
             batch_no = batch.batch_no
-        if operation == "generate":
+        if operation == "select_import":
+            try:
+                self._imports.select_import(batch_id=batch_id, actor_id=actor_id)
+            except IncomingDifferenceError as error:
+                return self._toast(str(error))
+        elif operation == "generate":
             try:
                 self._recognition.freeze_and_enqueue(batch_id=batch_id, actor_id=actor_id)
             except ValueError:
@@ -272,12 +374,19 @@ class FeishuBotService:
             version = value.get("version")
             if not isinstance(version, int) or isinstance(version, bool):
                 return self._toast("核对表版本无效")
+            revision = value.get("reviewRevision")
+            if batch.source_kind == "FILE" and type(revision) is not int:
+                return self._toast("审核版本无效，请使用最新清单")
             with self._sessions() as session:
                 current_batch = session.get(IncomingDiffBatch, batch_id)
                 assert current_batch is not None
                 if current_batch.status == "CONFIRMED":
-                    result = self._registration.confirm(batch_id=batch_id,
-                                                        workbook_version=version, actor_id=actor_id)
+                    try:
+                        result = self._registration.confirm(batch_id=batch_id,
+                            workbook_version=version, actor_id=actor_id,
+                            review_revision=revision if type(revision) is int else None)
+                    except IncomingDifferenceError as error:
+                        return self._toast(str(error))
                     operator = session.get(User, result.confirmed_by)
                     operator_name = operator.feishu_display_name if operator else "提交人"
                     self._reply(
@@ -286,8 +395,10 @@ class FeishuBotService:
                         f"由 {operator_name} 确认登记，本次不重复生效。",
                     )
                     return self._toast("已登记")
-            self._store.enqueue_job(job_type=CONFIRM_JOB, dedupe_key=f"{batch_id}:{version}",
+            self._store.enqueue_job(job_type=CONFIRM_JOB,
+                                    dedupe_key=f"{batch_id}:{version}:{revision}:{event_id}",
                                     payload={"batchId": batch_id, "version": version,
+                                             "reviewRevision": revision,
                                              "actorId": actor_id, "openId": open_id},
                                     available_at=utc_now())
         return self._toast("正在处理")
@@ -474,6 +585,111 @@ class FeishuBotService:
             actor_id = batch.submitter_id
         self._generate(batch_id, actor_id)
 
+    def import_job(self, payload: dict[str, object]) -> None:
+        batch_id = str(payload["batchId"])
+        with self._sessions() as session:
+            batch = session.get(IncomingDiffBatch, batch_id)
+            if batch is None or batch.status == "SUPERSEDED":
+                return
+            attachments = batch.attachments or []
+            message_id = batch.source_message_id
+            status = batch.status
+        if status == "VALIDATING":
+            if (not 1 <= len(attachments) <= 30 or not message_id
+                    or any(not isinstance(item.get("file_key"), str)
+                           or not item.get("file_key") or item.get("is_folder")
+                           or not str(item.get("file_name", "")).lower().endswith(".xlsx")
+                           for item in attachments)
+                    or len({item["file_key"] for item in attachments}) != len(attachments)):
+                self.import_failed(payload, ValueError("附件须为1至30份不同的Excel文件"))
+                return
+            contents = []
+            for item in attachments:
+                content = self._media.download_resource(message_id, item["file_key"], "file")
+                if not content or len(content) > MAX_MEDIA_BYTES:
+                    self.import_failed(payload, ValueError(f"{item['file_name']}：文件大小无效"))
+                    return
+                contents.append(content)
+                if sum(map(len, contents)) > 100 * 1024 * 1024:
+                    self.import_failed(payload, ValueError("本次文件总大小超过100MiB"))
+                    return
+            self._imports.prepare(batch_id=batch_id, contents=contents)
+        self._import_summary(batch_id)
+
+    def import_failed(self, payload: dict[str, object], error: Exception) -> None:
+        batch_id = str(payload["batchId"])
+        with self._sessions() as session, session.begin():
+            batch = session.get(IncomingDiffBatch, batch_id, with_for_update=True)
+            if batch is None or batch.status != "VALIDATING":
+                return
+            batch.status = "FAILED"
+            batch.recognition_error_summary = (
+                str(error)[:400] if type(error) is ValueError
+                else "附件读取失败，请重新发送完整文件集合")
+        self._import_summary(batch_id)
+
+    def _import_summary(self, batch_id: str) -> None:
+        with self._sessions() as session:
+            batch = session.get(IncomingDiffBatch, batch_id)
+            if batch is None or batch.status in {"SUPERSEDED", "CONFIRMED", "VALIDATING"}:
+                return
+            workbook = session.get(IncomingDiffWorkbook, batch.current_workbook_id) \
+                if batch.current_workbook_id else None
+            lines = workbook.line_snapshot if workbook else []
+            issues = workbook.validation_issues if workbook else []
+            names = [str(item.get("file_name", "")) for item in batch.attachments or []]
+            if batch.source_kind == "PHOTO":
+                names = [f"{batch.batch_no}_核对表.xlsx"]
+            summary = [self._review_marker(batch), f"共{len(names)}份文件：",
+                       *names, "本次使用以上完整文件集合；此前待登记文件的确认已失效。"]
+            buttons: list[tuple[str, str, dict[str, object]]] = []
+            if batch.status == "NEEDS_SELECTION":
+                summary.append("上传顺序无法确定，请选择本次保留的完整文件集合：")
+                candidates = session.scalars(select(IncomingDiffBatch).where(
+                    IncomingDiffBatch.submitter_id == batch.submitter_id,
+                    IncomingDiffBatch.feishu_chat_id == batch.feishu_chat_id,
+                    IncomingDiffBatch.status == "NEEDS_SELECTION")).all()
+                for candidate in candidates:
+                    summary.append(f"{candidate.batch_no}：" + "、".join(
+                        item["file_name"] for item in candidate.attachments or []))
+                    buttons.append((f"保留 {candidate.batch_no}", "select_import",
+                                    {"batchId": candidate.batch_id}))
+            elif batch.status == "FAILED":
+                summary.extend(f"{item.get('fileName', '')} / {item.get('sheetName', '')} / "
+                               f"第{item.get('rowNumber', '')}行：{item['reason']}"
+                               for item in issues or [])
+                summary.append(batch.recognition_error_summary
+                               or "本次全部未登记，请修正后重传全部文件。")
+            else:
+                for line in lines:
+                    if line.get("duplicates"):
+                        summary.append(
+                            f"第{line['number']}条：{line['fileName']} / {line['sheetName']} / "
+                            f"第{line['rowNumber']}行，{line['productName']} {line['spec']} "
+                            f"数量{line['quantity']} 采购单{line['purchaseOrderId']}；"
+                            f"疑似重复：{json.dumps(line['duplicates'], ensure_ascii=False)}；"
+                            f"决定：{line.get('decision', '待决定')}"
+                        )
+                selected = [line for line in lines if line.get("decision") != "skip"]
+                surplus = sum(int(x["quantity"]) for x in selected if x["quantity"] > 0)
+                shortage = -sum(int(x["quantity"]) for x in selected if x["quantity"] < 0)
+                summary.append(f"待登记{len(selected)}条，跳过{len(lines) - len(selected)}条；"
+                               f"多货{surplus}件，少货{shortage}件。")
+                for factory in sorted({str(line["factoryName"]) for line in selected}):
+                    count = sum(x["factoryName"] == factory for x in selected)
+                    summary.append(f"{factory}：{count}条")
+                if batch.status == "NEEDS_DECISION":
+                    summary.append("请回复本条清单：第1条跳过，第2条作为新记录登记；"
+                                   "或疑似重复的全部跳过／全部作为新记录登记。")
+                else:
+                    assert workbook is not None
+                    buttons = [("确认登记", "confirm", {"version": workbook.version,
+                                                       "reviewRevision": batch.review_revision})]
+            assert batch.feishu_open_id is not None
+            self._reply(batch.submitter_id, batch.feishu_open_id,
+                        f"import:{batch_id}:{batch.review_revision}:{batch.status}",
+                        "\n".join(summary), batch_id=batch_id, buttons=buttons)
+
     def recognition_failed(self, payload: dict[str, object], error: Exception) -> None:
         self._recognition.fail_terminal(payload, error)
         batch_id = str(payload["batchId"])
@@ -528,9 +744,9 @@ class FeishuBotService:
         self._reply(
             actor_id, open_id, f"generated:{workbook.workbook_id}",
             f"批次 {batch_no} 核对表已生成：共 {len(lines)} 条明细，{pending} 条待确认。"
-            "核对无误可直接确认；需要修改请下载后重新发送本表。",
+            "核对无误请点击核对登记；需要修改请下载整理后发送完整文件集合。",
             batch_id=batch_id,
-            buttons=[("确认登记", "confirm", {"version": workbook.version}),
+            buttons=[("核对登记", "confirm", {"version": workbook.version}),
                      ("重新生成", "regenerate", {})], file_id=workbook.file_id,
         )
         unknown_factory = sum(not line.get("factoryName") for line in lines)
@@ -565,20 +781,36 @@ class FeishuBotService:
         version = raw_version
         actor_id = str(payload["actorId"])
         open_id = str(payload["openId"])
+        revision = payload.get("reviewRevision")
+        reply_key = f"{batch_id}:{version}:{revision}"
         try:
+            with self._sessions() as session:
+                batch = session.get(IncomingDiffBatch, batch_id)
+                assert batch is not None
+                needs_review = batch.source_kind == "PHOTO" and revision is None
+            if needs_review:
+                self._imports.review_generated(batch_id=batch_id, actor_id=actor_id,
+                                               version=version)
+                self._import_summary(batch_id)
+                return
             result = self._registration.confirm(batch_id=batch_id, workbook_version=version,
-                                                actor_id=actor_id)
+                                                actor_id=actor_id,
+                                                review_revision=revision if type(revision) is int
+                                                else None)
         except IncomingDifferenceValidationError as error:
             with self._sessions() as session:
                 batch = session.get(IncomingDiffBatch, batch_id)
                 current = (session.get(IncomingDiffWorkbook, batch.current_workbook_id)
                            if batch and batch.current_workbook_id else None)
                 lines = current.line_snapshot if current else []
-            self._reply(actor_id, open_id, f"confirm-error:{batch_id}:{version}",
+            self._reply(actor_id, open_id, f"confirm-error:{reply_key}",
                         self._registration_errors(error.issues, lines), batch_id=batch_id)
             return
         except IncomingDifferenceError as error:
-            self._reply(actor_id, open_id, f"confirm-error:{batch_id}:{version}",
+            if self._imports.refresh_duplicates(batch_id):
+                self._import_summary(batch_id)
+                return
+            self._reply(actor_id, open_id, f"confirm-error:{reply_key}",
                         str(error)[:400], batch_id=batch_id)
             return
         if result.replayed:
@@ -587,7 +819,7 @@ class FeishuBotService:
         else:
             message = (f"批次 {result.batch_no} 已正式登记 {result.record_count} 条来货出入，"
                        f"涉及 {result.factory_count} 个工厂。")
-        self._reply(actor_id, open_id, f"confirmed:{batch_id}:{version}", message,
+        self._reply(actor_id, open_id, f"confirmed:{reply_key}", message,
                     batch_id=batch_id)
 
     def regenerate_job(self, payload: dict[str, object]) -> None:
@@ -623,6 +855,11 @@ class FeishuBotService:
     def _registration_errors(
         self, issues: list[dict[str, object]], lines: list[dict[str, object]]
     ) -> str:
+        if any(line.get("importFileId") for line in lines):
+            return "\n".join(
+                f"{issue.get('fileName', '')} / {issue.get('sheetName', '')} / "
+                f"第{issue.get('rowNumber', '')}行：{issue['reason']}"
+                for issue in issues) + "\n本次全部未登记，请修正后重传完整文件集合。"
         messages: list[str] = []
         for issue in issues[:10]:
             sheet = issue.get("sheetName", "核对表")
@@ -677,6 +914,22 @@ class FeishuBotService:
                batch_id: str = "", buttons: list[tuple[str, str, dict[str, object]]] | None = None,
                file_id: int | None = None) -> None:
         with self._sessions() as session, session.begin():
+            if len(message.encode("utf-8")) > 12000:
+                digest = hashlib.sha256(message.encode()).hexdigest()
+                object_key = f"incoming-differences/{batch_id}/reports/{digest}.txt"
+                stored = session.scalar(select(StoredFile).where(
+                    StoredFile.bucket == self._files.bucket, StoredFile.object_key == object_key))
+                if stored is None:
+                    content = message.encode("utf-8")
+                    self._files.put(object_key=object_key, content=content,
+                                    content_type="text/plain")
+                    stored = StoredFile(bucket=self._files.bucket, object_key=object_key,
+                        original_filename="来货出入完整审核清单.txt", mime_type="text/plain",
+                        size_bytes=len(content), content_sha256=digest, uploaded_by=actor_id)
+                    session.add(stored)
+                    session.flush()
+                file_id = stored.file_id
+                message = (message[:1000] + "\n……完整明细请查看随附审核清单。\n" + message[-1000:])
             self._queue(session, actor_id, open_id, key, message, batch_id=batch_id,
                         buttons=buttons, file_id=file_id)
 

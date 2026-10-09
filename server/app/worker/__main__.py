@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.adapters.incoming_decisions import QwenDecisionParser
 from app.adapters.notifications import (
     AppCredentialFeishuBusinessNotifier,
     AppCredentialFeishuSender,
@@ -37,7 +38,13 @@ from app.adapters.shipment_writeback import FeishuShipmentWriter
 from app.adapters.vision import DisabledIncomingDiffRecognizer, QwenIncomingDiffRecognizer
 from app.db.session import create_database_engine
 from app.logging import StructuredLogger
-from app.modules.incoming_differences.bot import CONFIRM_JOB, REGENERATE_JOB, FeishuBotService
+from app.modules.incoming_differences.bot import (
+    CONFIRM_JOB,
+    DECISION_JOB,
+    REGENERATE_JOB,
+    FeishuBotService,
+)
+from app.modules.incoming_differences.imports import IMPORT_JOB
 from app.modules.incoming_differences.recognition import (
     IncomingDiffRecognitionService,
     IncomingDiffRecognitionWorkerHandlers,
@@ -61,7 +68,7 @@ ROLE_JOB_TYPES = {
         "product-sync-initial", "product-sync-incremental", "product-image-cache",
     }),
     "incoming": frozenset({
-        "incoming_diff.recognize", CONFIRM_JOB, REGENERATE_JOB,
+        "incoming_diff.recognize", CONFIRM_JOB, REGENERATE_JOB, IMPORT_JOB, DECISION_JOB,
     }),
     "notification": frozenset({"notification_due_scan"}),
     "shipment": frozenset({"shipment_writeback"}),
@@ -204,10 +211,16 @@ def incoming_role(settings: Settings, sessions: sessionmaker[Session]) -> RolePa
             sessions, files=files, media=AppCredentialFeishuSender(config, sessions),
             identity_scope=config.resolved_identity_scope,
             codec=IncomingWorkbookCodec(settings), recognition=recognition,
+            decision_parser=QwenDecisionParser(
+                api_key=settings.incoming_diff_vision_api_key,
+                base_url=settings.incoming_diff_vision_base_url,
+            ) if settings.incoming_diff_vision_api_key else None,
         )
         handlers = {"incoming_diff.recognize": bot.recognition_job,
-                    CONFIRM_JOB: bot.confirm_job, REGENERATE_JOB: bot.regenerate_job}
-        failures = {"incoming_diff.recognize": bot.recognition_failed}
+                    CONFIRM_JOB: bot.confirm_job, REGENERATE_JOB: bot.regenerate_job,
+                    IMPORT_JOB: bot.import_job, DECISION_JOB: bot.decision_job}
+        failures = {"incoming_diff.recognize": bot.recognition_failed,
+                    IMPORT_JOB: bot.import_failed, DECISION_JOB: bot.decision_failed}
     else:
         def bot_disabled(_payload: dict[str, object]) -> None:
             raise RuntimeError("feishu_bot_disabled")
@@ -215,6 +228,8 @@ def incoming_role(settings: Settings, sessions: sessionmaker[Session]) -> RolePa
         handlers = dict(incoming_handlers.handlers())
         handlers[CONFIRM_JOB] = bot_disabled
         handlers[REGENERATE_JOB] = bot_disabled
+        handlers[IMPORT_JOB] = bot_disabled
+        handlers[DECISION_JOB] = bot_disabled
         failures = dict(incoming_handlers.terminal_failure_handlers())
     return handlers, failures, None, []
 

@@ -138,6 +138,7 @@ class AppCredentialFeishuSender:
     def download_resource(self, message_id: str, file_key: str, resource_type: str) -> bytes:
         if resource_type not in {"image", "file"}:
             raise ValueError("invalid Feishu resource type")
+        max_bytes = (100 if resource_type == "file" else 20) * 1024 * 1024
         with httpx.Client(base_url=self._config.base_url, timeout=2,
                           transport=self._transport) as client:
             token = self._tenant_access_token(client)
@@ -150,7 +151,7 @@ class AppCredentialFeishuSender:
                 content = bytearray()
                 for chunk in response.iter_bytes():
                     content.extend(chunk)
-                    if len(content) > 20 * 1024 * 1024:
+                    if len(content) > max_bytes:
                         raise ValueError("Feishu resource too large")
                 return bytes(content)
 

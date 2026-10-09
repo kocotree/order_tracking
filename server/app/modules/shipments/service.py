@@ -9,7 +9,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from PIL import Image, UnidentifiedImageError
-from sqlalchemy import Select, case, delete, func, select
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.private_files import PrivateFileStore
@@ -40,6 +40,7 @@ from app.db.models import (
     User,
 )
 from app.modules.shipment_writeback.facts import capture, lock_facts
+from app.modules.shipments.list_query import order_shipment_ids, order_shipments
 from app.modules.shipments.workbook import (
     DailyShipmentWorkbookLine,
     DailyShipmentWorkbookSnapshot,
@@ -1212,6 +1213,10 @@ class ShipmentService:
         with self._sessions() as session:
             return shipment_factories(session)
 
+    def order_shipments(self, *, order_id: str) -> list[dict[str, Any]]:
+        with self._sessions() as session:
+            return order_shipments(session, order_id)
+
     def list_shipments(
         self, *, factory_id: str | None = None, order_id: str | None = None
     ) -> list[ShipmentDraftSnapshot]:
@@ -1223,44 +1228,7 @@ class ShipmentService:
             if factory_id is not None:
                 query = query.where(Shipment.factory_id == factory_id)
             if order_id is not None:
-                related_ids = (
-                    select(ShipmentBox.shipment_id)
-                    .join(ShipmentBoxItem, ShipmentBoxItem.box_id == ShipmentBox.box_id)
-                    .outerjoin(
-                        ShipmentReceiptItem,
-                        ShipmentReceiptItem.box_item_id == ShipmentBoxItem.item_id,
-                    )
-                    .outerjoin(
-                        ShipmentReceipt, ShipmentReceipt.shipment_id == ShipmentBox.shipment_id
-                    )
-                    .join(
-                        OrderAssignment,
-                        OrderAssignment.order_assignment_id == case(
-                            (
-                                ShipmentReceipt.status == "CONFIRMED",
-                                func.coalesce(
-                                    ShipmentReceiptItem.order_assignment_id,
-                                    ShipmentBoxItem.order_assignment_id,
-                                ),
-                            ),
-                            else_=ShipmentBoxItem.order_assignment_id,
-                        ),
-                    )
-                    .join(OrderLine, OrderLine.order_line_id == OrderAssignment.order_line_id)
-                    .where(
-                        OrderLine.order_id == order_id,
-                        case(
-                            (
-                                ShipmentReceipt.status == "CONFIRMED",
-                                func.coalesce(
-                                    ShipmentReceiptItem.quantity, ShipmentBoxItem.quantity
-                                ),
-                            ),
-                            else_=ShipmentBoxItem.quantity,
-                        ) > 0,
-                    )
-                )
-                query = query.where(Shipment.shipment_id.in_(related_ids))
+                query = query.where(Shipment.shipment_id.in_(order_shipment_ids(order_id)))
             shipments = list(
                 session.scalars(query.order_by(Shipment.submitted_at.desc(), Shipment.shipment_id))
             )

@@ -234,7 +234,7 @@ export const identityApi = {
       `/v1/admin/users/${encodeURIComponent(userId)}/${enabled ? "enable" : "disable"}`,
       { method: "POST", body: JSON.stringify({ version }) },
     ),
-  listFactoryOptions: () => request<components["schemas"]["FactoryOptionListResponse"]>("/v1/admin/factories/options"),
+  listFactoryOptions: (signal?: AbortSignal) => request<components["schemas"]["FactoryOptionListResponse"]>("/v1/admin/factories/options", { signal }),
   listFactoryPage: (params: { keyword?: string; contractStatus?: string; accessStatus?: string; page?: number; pageSize?: number; sortBy?: string; sortOrder?: "asc" | "desc" } = {}) => {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) if (value !== undefined) query.set(key, String(value));
@@ -329,7 +329,7 @@ export const orderApi = {
     if (params.shipDateTo) query.set("shipDateTo", params.shipDateTo);
     return request<OrderList>(`/v1/orders?${query.toString()}`);
   },
-  get: (orderId: string) => request<Order>(`/v1/orders/${encodeURIComponent(orderId)}`),
+  get: (orderId: string, signal?: AbortSignal) => request<Order>(`/v1/orders/${encodeURIComponent(orderId)}`, { signal }),
   saveDetailDate: (orderId: string, detailId: string, version: number, detailVersion: number, contractShipDate: string | null) =>
     request<Order>(`/v1/admin/orders/${encodeURIComponent(orderId)}/details/${encodeURIComponent(detailId)}/contract-date`, {
       method: "PATCH", body: JSON.stringify({ version, detailVersion, contractShipDate }),
@@ -362,10 +362,10 @@ export const orderApi = {
     const query = new URLSearchParams({ keyword: params.keyword ?? "", sortBy: params.sortBy ?? "updatedDesc" });
     return request<DashboardOrders>(`/v1/admin/dashboard/orders?${query}`);
   },
-  auditLogs: (orderId: string) =>
-    request<AuditLogList>(`/v1/admin/orders/${encodeURIComponent(orderId)}/audit-logs`),
-  incomingDifferences: (orderId: string) =>
-    request<IncomingDifferenceList>(`/v1/orders/${encodeURIComponent(orderId)}/incoming-differences`),
+  auditLogs: (orderId: string, signal?: AbortSignal) =>
+    request<AuditLogList>(`/v1/admin/orders/${encodeURIComponent(orderId)}/audit-logs`, { signal }),
+  incomingDifferences: (orderId: string, signal?: AbortSignal) =>
+    request<IncomingDifferenceList>(`/v1/orders/${encodeURIComponent(orderId)}/incoming-differences`, { signal }),
   updateIncomingDifference: (orderId: string, recordId: string, quantity: number, version: number) =>
     request<components["schemas"]["IncomingDifferenceUpdateResponse"]>(`/v1/admin/orders/${encodeURIComponent(orderId)}/incoming-differences/${encodeURIComponent(recordId)}`, {
       method: "PATCH", body: JSON.stringify({ quantity, version }),
@@ -409,9 +409,10 @@ export const orderApi = {
 };
 
 export const contractApi = {
-  list: (orderId: string) =>
+  list: (orderId: string, signal?: AbortSignal) =>
     request<ContractFactoryStatusList>(
       `/v1/admin/orders/${encodeURIComponent(orderId)}/contracts`,
+      { signal },
     ),
   export: (orderId: string, factoryId: string, signingDate: string) =>
     request<ContractExport>(
@@ -437,6 +438,7 @@ export const boxLabelApi = {
 };
 
 export type ShipmentSummary = components["schemas"]["ShipmentSummaryResponse"];
+export type OrderShipmentSummary = components["schemas"]["OrderShipmentSummary"];
 export interface ShipmentSummaryQuery {
   keyword?: string; factory?: string; factories?: string[]; receiptStatus?: "RECEIVED" | "UNRECEIVED" | "RETURNED" | ""; dateFrom?: string; dateTo?: string;
   sortBy?: string; sortOrder?: "asc" | "desc"; page?: number; pageSize?: number;
@@ -454,6 +456,7 @@ export const shipmentApi = {
   saveReceipt: (id: string, version: number, items: { boxItemId: number; quantity: number; assignmentId: number }[]) => request<ShipmentReceipt>(`/v1/admin/shipments/${encodeURIComponent(id)}/receipt`, { method: "PUT", body: JSON.stringify({ version, items }) }),
   confirmReceipt: (id: string, version: number) => request<Shipment>(`/v1/admin/shipments/${encodeURIComponent(id)}/receipt/confirm`, { method: "POST", headers: idempotencyHeaders(), body: JSON.stringify({ version }) }),
   list: (orderId?: string) => request<ShipmentList>(`/v1/admin/shipments${orderId ? `?orderId=${encodeURIComponent(orderId)}` : ""}`),
+  listForOrder: (orderId: string, signal?: AbortSignal) => request<components["schemas"]["OrderShipmentListResponse"]>(`/v1/admin/orders/${encodeURIComponent(orderId)}/shipments`, { signal }),
   get: (shipmentId: string) =>
     request<Shipment>(`/v1/admin/shipments/${encodeURIComponent(shipmentId)}`),
   download: (shipment: Shipment) => download(

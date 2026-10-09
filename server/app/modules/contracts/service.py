@@ -125,28 +125,27 @@ class ContractService:
                 if order.lifecycle != "DRAFT":
                     assignment_query = assignment_query.where(OrderAssignment.is_active.is_(True))
                 factory_ids = set(session.scalars(assignment_query))
-            factory_ids.update(session.scalars(
-                select(ProcessingContract.factory_id).where(ProcessingContract.order_id == order_id)
-            ))
+            contracts = {item.factory_id: item for item in session.scalars(
+                select(ProcessingContract).where(ProcessingContract.order_id == order_id)
+            )}
+            factory_ids.update(contracts)
+            factories = {item.factory_id: item for item in session.scalars(
+                select(Factory).where(Factory.factory_id.in_(factory_ids))
+            )} if factory_ids else {}
+            detail_issues = self._detail_issues(
+                session, order_id=order_id, factory_ids=factory_ids - contracts.keys(),
+            ) if order.detail_mode else {}
             result: list[ContractFactoryStatus] = []
             for factory_id in sorted(factory_ids):
-                factory = session.get(Factory, factory_id)
+                factory = factories.get(factory_id)
                 if factory is None:
                     continue
                 missing = self._missing_contract_fields(factory)
-                contract = session.scalar(
-                    select(ProcessingContract).where(
-                        ProcessingContract.order_id == order_id,
-                        ProcessingContract.factory_id == factory_id,
-                    )
-                )
+                contract = contracts.get(factory_id)
                 # Existing contracts use their immutable factory snapshot.
                 if contract is not None:
                     missing = []
-                detail_issue = (
-                    self._detail_issue(session, order_id=order_id, factory_id=factory_id)
-                    if order.detail_mode and contract is None else None
-                )
+                detail_issue = detail_issues.get(factory_id)
                 reason = (
                     "factory_contract_incomplete" if missing else
                     "contract_details_incomplete" if detail_issue else None
@@ -451,8 +450,18 @@ class ContractService:
         assignment_id = session.scalar(assignment_query)
         return assignment_id is not None
 
+    @classmethod
+    def _detail_issue(cls, session: Session, *, order_id: str, factory_id: str) -> str | None:
+        return cls._detail_issues(
+            session, order_id=order_id, factory_ids={factory_id},
+        ).get(factory_id)
+
     @staticmethod
-    def _detail_issue(session: Session, *, order_id: str, factory_id: str) -> str | None:
+    def _detail_issues(
+        session: Session, *, order_id: str, factory_ids: set[str],
+    ) -> dict[str, str]:
+        if not factory_ids:
+            return {}
         rows = session.execute(
             select(OrderDetail, OrderAssignment, ProductVariant, Product)
             .outerjoin(
@@ -462,19 +471,24 @@ class ContractService:
             .outerjoin(Product, Product.product_id == ProductVariant.product_id)
             .where(
                 OrderDetail.order_id == order_id,
-                OrderDetail.matched_factory_id == factory_id,
+                OrderDetail.matched_factory_id.in_(factory_ids),
             )
         )
+        issues: dict[str, str] = {}
         for detail, assignment, variant, product in rows:
+            factory_id = detail.matched_factory_id
+            if factory_id in issues:
+                continue
             if variant is None or product is None:
-                return "product"
+                issues[factory_id] = "product"
+                continue
             quantity = (
                 assignment.assigned_quantity if assignment and assignment.is_active
                 else detail.order_quantity
             )
             if type(quantity) is not int or quantity <= 0:
-                return "quantity"
-        return None
+                issues[factory_id] = "quantity"
+        return issues
 
     @staticmethod
     def _allocate_sequence(

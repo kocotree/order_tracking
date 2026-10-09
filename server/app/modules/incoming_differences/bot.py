@@ -38,6 +38,7 @@ from app.modules.incoming_differences.service import (
 )
 from app.modules.incoming_differences.workbook import (
     IncomingWorkbookCodec,
+    IncomingWorkbookLimits,
     IncomingWorkbookValidationError,
 )
 from app.modules.incoming_differences.workbook_workflow import IncomingWorkbookWorkflow
@@ -47,6 +48,7 @@ CONFIRM_JOB = "incoming_diff.confirm"
 REGENERATE_JOB = "incoming_diff.regenerate"
 DECISION_JOB = "incoming_diff.decision"
 MAX_MEDIA_BYTES = 20 * 1024 * 1024
+MAX_WORKBOOK_BYTES = IncomingWorkbookLimits().max_source_bytes
 DENIED = "当前账号无权提交或确认来货出入，请联系管理员。"
 
 
@@ -552,7 +554,7 @@ class FeishuBotService:
             version = workbook.version
         try:
             content = self._media.download_resource(message_id, file_key, "file")
-            if not content or len(content) > MAX_MEDIA_BYTES:
+            if not content or len(content) > MAX_WORKBOOK_BYTES:
                 raise ValueError("workbook_size_invalid")
             uploaded = self._workbooks.upload(batch_id=batch.batch_id, version=version,
                                               actor_id=actor_id, content=content)
@@ -612,7 +614,7 @@ class FeishuBotService:
             contents = []
             for item in attachments:
                 content = self._media.download_resource(message_id, item["file_key"], "file")
-                if not content or len(content) > MAX_MEDIA_BYTES:
+                if not content or len(content) > MAX_WORKBOOK_BYTES:
                     self.import_failed(payload, ValueError(f"{item['file_name']}：文件大小无效"))
                     return
                 contents.append(content)

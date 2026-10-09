@@ -32,6 +32,7 @@ from app.modules.incoming_differences.service import (
 from app.modules.incoming_differences.workbook import (
     XLSX_MIME,
     IncomingWorkbookCodec,
+    IncomingWorkbookLimits,
     IncomingWorkbookValidationError,
 )
 from app.modules.infrastructure import utc_now
@@ -150,7 +151,7 @@ class IncomingImportWorkflow:
                     filename = str(attachment.get("file_name") or "")
                     if (not filename.lower().endswith(".xlsx") or len(filename) > 255
                             or attachment.get("is_folder") or not content
-                            or len(content) > 20 * 1024 * 1024):
+                            or len(content) > IncomingWorkbookLimits().max_source_bytes):
                         issues.append({"fileName": filename, "reason": "文件格式或大小无效"})
                         continue
                     file_id = str(uuid4())

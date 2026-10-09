@@ -1816,10 +1816,12 @@ class IncomingDiffBatch(Base):
     __table_args__ = (
         UniqueConstraint("batch_no", name="uq_incoming_diff_batches_no"),
         CheckConstraint(
-            "status IN ('COLLECTING', 'RECOGNIZING', 'READY', 'CONFIRMED', 'FAILED')",
+            "status IN ('COLLECTING', 'RECOGNIZING', 'READY', 'CONFIRMED', 'FAILED', "
+            "'VALIDATING', 'NEEDS_DECISION', 'NEEDS_SELECTION', 'SUPERSEDED')",
             name="ck_incoming_diff_batches_status",
         ),
         Index("ix_incoming_diff_batches_status", "status", "created_at"),
+        UniqueConstraint("source_message_id", name="uq_incoming_diff_batches_message"),
     )
 
     batch_id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -1829,6 +1831,11 @@ class IncomingDiffBatch(Base):
     )
     feishu_chat_id: Mapped[str | None] = mapped_column(String(64))
     feishu_open_id: Mapped[str | None] = mapped_column(String(64))
+    source_kind: Mapped[str] = mapped_column(String(8), nullable=False, server_default="PHOTO")
+    source_message_id: Mapped[str | None] = mapped_column(String(191))
+    source_sent_at: Mapped[int | None] = mapped_column(BigInteger)
+    attachments: Mapped[list[Any] | None] = mapped_column(JSON)
+    review_revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     recognition_error_code: Mapped[str | None] = mapped_column(String(64))
     recognition_error_summary: Mapped[str | None] = mapped_column(String(500))
@@ -1895,7 +1902,7 @@ class IncomingDiffWorkbook(Base):
     __table_args__ = (
         UniqueConstraint("batch_id", "version", name="uq_incoming_diff_workbooks_version"),
         CheckConstraint(
-            "direction IN ('GENERATED', 'UPLOADED')",
+            "direction IN ('GENERATED', 'UPLOADED', 'IMPORTED')",
             name="ck_incoming_diff_workbooks_direction",
         ),
     )
@@ -1906,8 +1913,8 @@ class IncomingDiffWorkbook(Base):
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     direction: Mapped[str] = mapped_column(String(16), nullable=False)
-    file_id: Mapped[int] = mapped_column(
-        ForeignKey("stored_files.file_id", ondelete="RESTRICT"), nullable=False
+    file_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stored_files.file_id", ondelete="RESTRICT")
     )
     content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     signature: Mapped[str | None] = mapped_column(String(128))
@@ -1919,12 +1926,34 @@ class IncomingDiffWorkbook(Base):
     submitted_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
 
 
+class IncomingDiffImportFile(Base):
+    __tablename__ = "incoming_diff_import_files"
+    __table_args__ = (
+        UniqueConstraint("workbook_id", "position", name="uq_incoming_diff_import_file_position"),
+    )
+
+    import_file_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workbook_id: Mapped[str] = mapped_column(
+        ForeignKey("incoming_diff_workbooks.workbook_id", ondelete="RESTRICT"), nullable=False
+    )
+    file_id: Mapped[int] = mapped_column(
+        ForeignKey("stored_files.file_id", ondelete="RESTRICT"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class IncomingDiffRecord(Base):
     """Confirmed incoming difference; pairs one-to-one with an INCOMING_DIFF ledger row."""
 
     __tablename__ = "incoming_diff_records"
     __table_args__ = (
         CheckConstraint("quantity <> 0", name="ck_incoming_diff_records_quantity_nonzero"),
+        CheckConstraint(
+            "image_id IS NOT NULL OR (import_file_id IS NOT NULL "
+            "AND source_sheet_name IS NOT NULL AND source_row_number IS NOT NULL "
+            "AND source_row_number >= 2)",
+            name="ck_incoming_diff_records_source",
+        ),
         Index("ix_incoming_diff_records_order", "order_id", "registered_at", "record_id"),
         Index("ix_incoming_diff_records_assignment", "order_assignment_id"),
         Index("ix_incoming_diff_records_batch", "batch_id"),
@@ -1937,9 +1966,14 @@ class IncomingDiffRecord(Base):
     workbook_id: Mapped[str] = mapped_column(
         ForeignKey("incoming_diff_workbooks.workbook_id", ondelete="RESTRICT"), nullable=False
     )
-    image_id: Mapped[str] = mapped_column(
-        ForeignKey("incoming_diff_images.image_id", ondelete="RESTRICT"), nullable=False
+    image_id: Mapped[str | None] = mapped_column(
+        ForeignKey("incoming_diff_images.image_id", ondelete="RESTRICT")
     )
+    import_file_id: Mapped[str | None] = mapped_column(
+        ForeignKey("incoming_diff_import_files.import_file_id", ondelete="RESTRICT")
+    )
+    source_sheet_name: Mapped[str | None] = mapped_column(String(31))
+    source_row_number: Mapped[int | None] = mapped_column(Integer)
     order_id: Mapped[str] = mapped_column(
         ForeignKey("orders.order_id", ondelete="RESTRICT"), nullable=False
     )

@@ -154,6 +154,31 @@ class AppCredentialFeishuSender:
                         raise ValueError("Feishu resource too large")
                 return bytes(content)
 
+    def read_own_message(self, message_id: str, chat_id: str) -> str:
+        with httpx.Client(base_url=self._config.base_url, timeout=10,
+                          transport=self._transport) as client:
+            token = self._tenant_access_token(client)
+            response = client.get(
+                f"/open-apis/im/v1/messages/{quote(message_id, safe='')}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            response.raise_for_status()
+        data = response.json()
+        if data.get("code") != 0:
+            raise ValueError("无法读取引用的清单")
+        items = data.get("data", {}).get("items", [])
+        if len(items) != 1:
+            raise ValueError("引用的清单不存在")
+        message = items[0]
+        if (message.get("message_id") != message_id or message.get("chat_id") != chat_id
+                or message.get("sender", {}).get("id") != self._config.app_id
+                or message.get("sender", {}).get("sender_type") != "app"):
+            raise ValueError("请回复当前机器人发送的审核清单")
+        content = message.get("body", {}).get("content")
+        if not isinstance(content, str):
+            raise ValueError("引用的清单内容无效")
+        return json.dumps(json.loads(content), ensure_ascii=False)
+
     def send_file(self, *, recipient_id: str, content: bytes, filename: str,
                   recipient_open_id: str | None = None) -> None:
         stage = "token_exchange"

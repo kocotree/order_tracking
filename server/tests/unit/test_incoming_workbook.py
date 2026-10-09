@@ -100,6 +100,38 @@ def test_generated_workbook_respects_return_upload_uncompressed_limit() -> None:
         )
 
 
+def test_thirty_factories_round_trip_and_thirty_one_are_rejected() -> None:
+    lines = [{
+        "imageId": IMAGE, "factoryName": f"工厂{index}", "productName": "帽子",
+        "spec": "红 / 110", "quantity": -1,
+    } for index in range(30)]
+    codec = _codec()
+    content, signature, snapshot = codec.generate(
+        batch_id=BATCH, version=1, lines=lines, images={IMAGE: _image()},
+        generated_at=datetime(2026, 10, 9, tzinfo=UTC),
+    )
+    workbook = load_workbook(BytesIO(content))
+    assert len(workbook.sheetnames) == 31
+    assert workbook["_核对标识"].sheet_state == "hidden"
+    parsed = codec.parse(
+        content, batch_id=BATCH, version=1, signature=signature, previous_lines=snapshot,
+    )
+    assert [line["factoryName"] for line in parsed] == [line["factoryName"] for line in lines]
+
+    lines.append({**lines[0], "factoryName": "工厂30"})
+    with pytest.raises(ValueError, match="工厂工作表数量超过上限"):
+        codec.generate(
+            batch_id=BATCH, version=1, lines=lines, images={IMAGE: _image()},
+            generated_at=datetime(2026, 10, 9, tzinfo=UTC),
+        )
+    uploaded = _edit(content, lambda book: book.create_sheet("工厂30"))
+    with pytest.raises(IncomingWorkbookValidationError) as caught:
+        codec.parse(
+            uploaded, batch_id=BATCH, version=1, signature=signature, previous_lines=snapshot,
+        )
+    assert _codes(caught) == ["too_many_worksheets"]
+
+
 def test_generate_structure_and_ac07_edits() -> None:
     content, signature, original = _source()
     workbook = load_workbook(BytesIO(content))

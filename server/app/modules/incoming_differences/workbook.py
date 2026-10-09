@@ -232,6 +232,59 @@ class IncomingWorkbookCodec:
             raise IncomingWorkbookValidationError(issues)
         return parsed
 
+    def parse_import(self, content: bytes) -> list[dict[str, object]]:
+        workbook = self._open(content)
+        issues: list[dict[str, str | int]] = []
+        lines: list[dict[str, object]] = []
+        row_total = 0
+        if len([sheet for sheet in workbook.worksheets if sheet.title != "_核对标识"]) > 30:
+            self._fail("too_many_worksheets", "业务工作表不能超过30个")
+        for sheet in workbook.worksheets:
+            if sheet.title == "_核对标识":
+                continue
+            row_total += max(0, sheet.max_row - 1)
+            if row_total > self._limits.max_data_rows:
+                self._fail("too_many_data_rows", "核对表数据行数超过上限", sheet.title)
+            if tuple(sheet.cell(1, column).value for column in range(1, 9)) != HEADERS:
+                issues.append(self._issue("invalid_header", sheet.title, 1, "列名或顺序无效"))
+                continue
+            for row in range(2, sheet.max_row + 1):
+                cells = [sheet.cell(row, column) for column in (1, 2, 3, 6)]
+                name, spec, quantity, purchase = [cell.value for cell in cells]
+                if all(sheet.cell(row, column).value is None for column in range(1, 9)):
+                    continue
+                reason = None
+                if any(cell.data_type in {"f", "e"} for cell in cells):
+                    reason = "登记字段不能使用公式或错误值"
+                elif not all(isinstance(value, str) and value.strip() for value in (name, spec)):
+                    reason = "名称和规格不能为空"
+                elif (not isinstance(quantity, int) or isinstance(quantity, bool)
+                      or quantity == 0 or not -2147483648 <= quantity <= 2147483647):
+                    reason = "数量必须是范围内的非零整数"
+                elif purchase is not None and not (
+                    isinstance(purchase, str) or
+                    isinstance(purchase, int) and not isinstance(purchase, bool)
+                    and 0 <= purchase < 10**15
+                ):
+                    reason = "采购单号必须为文本或不超过15位的非负整数"
+                elif isinstance(purchase, int) and "E" in cells[3].number_format.upper():
+                    reason = "采购单号不能使用科学计数格式，请改为文本"
+                if reason:
+                    issues.append(self._issue("invalid_row", sheet.title, row, reason))
+                    continue
+                lines.append({
+                    "sheetName": sheet.title, "rowNumber": row,
+                    "factoryName": sheet.title, "productName": name, "spec": spec,
+                    "quantity": quantity,
+                    "purchaseOrderId": str(purchase).strip() if purchase is not None else None,
+                })
+        workbook.close()
+        if issues:
+            raise IncomingWorkbookValidationError(issues)
+        if not lines:
+            self._fail("empty_workbook", "核对表没有可登记的数据行")
+        return lines
+
     def advance(
         self, content: bytes, *, batch_id: str, version: int,
         lines: list[dict[str, object]], generated_at: datetime,

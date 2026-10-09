@@ -3,7 +3,7 @@ from io import BytesIO
 from zipfile import ZipFile
 
 import pytest
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from PIL import Image
 
 from app.modules.incoming_differences.workbook import (
@@ -16,6 +16,36 @@ from app.settings.config import Settings
 
 BATCH = "batch-A"
 IMAGE = "image-A"
+
+
+def test_free_import_uses_final_values_without_source_tokens() -> None:
+    book = Workbook()
+    sheet = book.active
+    assert sheet is not None
+    sheet.title = "乙工厂"
+    sheet.append(HEADERS)
+    sheet.append(["新帽子", "蓝120", -3, None, "=C2*D2", "000123", None, None])
+    output = BytesIO()
+    book.save(output)
+    lines = _codec().parse_import(output.getvalue())
+    assert lines == [{"sheetName": "乙工厂", "rowNumber": 2, "factoryName": "乙工厂",
+                      "productName": "新帽子", "spec": "蓝120", "quantity": -3,
+                      "purchaseOrderId": "000123"}]
+
+
+@pytest.mark.parametrize("column,value", [(1, None), (2, ""), (3, True), (3, 0),
+                                         (3, 1.5), (3, "=1+1"), (6, 10**16)])
+def test_free_import_rejects_invalid_final_fields(column, value) -> None:
+    book = Workbook()
+    sheet = book.active
+    sheet.append(HEADERS)
+    sheet.append(["帽子", "蓝120", 2, None, None, "000123"])
+    sheet.cell(2, column).value = value
+    output = BytesIO()
+    book.save(output)
+    with pytest.raises(IncomingWorkbookValidationError) as error:
+        _codec().parse_import(output.getvalue())
+    assert error.value.issues[0]["row"] == 2
 
 
 def _codec(*, limits: IncomingWorkbookLimits | None = None) -> IncomingWorkbookCodec:

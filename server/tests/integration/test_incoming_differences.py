@@ -30,6 +30,7 @@ from app.db.models import (
     IncomingDiffAdjustment,
     IncomingDiffBatch,
     IncomingDiffImage,
+    IncomingDiffImportFile,
     IncomingDiffRecord,
     IncomingDiffWorkbook,
     Notification,
@@ -52,6 +53,7 @@ from app.modules.incoming_differences import (
     IncomingDifferenceValidationError,
 )
 from app.modules.incoming_differences.bot import CONFIRM_JOB, FeishuBotService
+from app.modules.incoming_differences.imports import IMPORT_JOB
 from app.modules.incoming_differences.recognition import IncomingDiffRecognitionService
 from app.modules.incoming_differences.workbook import IncomingWorkbookCodec
 from app.modules.infrastructure import InfrastructureStore, utc_now
@@ -127,6 +129,7 @@ def _clean(engine: Engine) -> None:
             IncomingDiffBatch.__table__.update().values(current_workbook_id=None)
         )
         session.execute(delete(IncomingDiffImage))
+        session.execute(delete(IncomingDiffImportFile))
         session.execute(delete(IncomingDiffWorkbook))
         session.execute(delete(IncomingDiffBatch))
         session.execute(
@@ -1494,16 +1497,19 @@ def _bot_event(event_id: str, *, kind: str = "image", open_id: str = "open-1",
                                     "tenant_key": "tenant-test"},
         "event": {"sender": {"sender_id": {"open_id": open_id}},
                   "message": {"message_id": f"msg-{event_id}", "chat_id": "chat-1",
-                              "chat_type": "p2p", "message_type": kind,
+                              "chat_type": "p2p", "message_type": kind, "create_time": "1000",
                               "content": json.dumps(content)}},
     }
 
 
 def _bot_action(event_id: str, batch_id: str, action: str,
-                *, version: int | None = None, open_id: str = "open-1") -> dict[str, object]:
+                *, version: int | None = None, open_id: str = "open-1",
+                revision: int | None = None) -> dict[str, object]:
     value: dict[str, object] = {"batchId": batch_id, "action": action}
     if version is not None:
         value["version"] = version
+    if revision is not None:
+        value["reviewRevision"] = revision
     return {"schema": "2.0", "header": {"event_id": event_id,
                                         "event_type": "card.action.trigger",
                                         "tenant_key": "tenant-test"},
@@ -1777,7 +1783,7 @@ def test_feishu_bot_photo_workbook_upload_confirm_and_replay(
     worker = Worker(
         store=InfrastructureStore(sessions), worker_id="bot-test",
         handlers={"incoming_diff.recognize": bot.recognition_job,
-                  CONFIRM_JOB: bot.confirm_job},
+                  CONFIRM_JOB: bot.confirm_job, IMPORT_JOB: bot.import_job},
     )
     assert worker.run_once()
     with Session(test_database_engine) as session:
@@ -1798,18 +1804,24 @@ def test_feishu_bot_photo_workbook_upload_confirm_and_replay(
         media.workbook = output.getvalue()
         assert workbook.line_snapshot[0]["orderAssignmentId"] == assignment_id
     bot.event(_bot_event("upload", kind="file", filename=f"{batch_no}_核对表_v1.xlsx"))
+    assert worker.run_once()
     assert media.downloads == ["image", "file"]
     with Session(test_database_engine) as session:
-        batch = session.get(IncomingDiffBatch, batch_id)
+        assert session.get(IncomingDiffBatch, batch_id).status == "SUPERSEDED"
+        batch = session.scalar(select(IncomingDiffBatch).where(
+            IncomingDiffBatch.source_message_id == "msg-upload"))
+        batch_id = batch.batch_id
         uploaded = session.get(IncomingDiffWorkbook, batch.current_workbook_id)
-        assert uploaded is not None and uploaded.version == 2
+        assert uploaded is not None and uploaded.version == 1
         assert uploaded.line_snapshot[0]["purchaseOrderId"] == "PO-1"
-        returned = session.get(StoredFile, uploaded.file_id)
+        imported = session.scalar(select(IncomingDiffImportFile).where(
+            IncomingDiffImportFile.workbook_id == uploaded.workbook_id))
+        returned = session.get(StoredFile, imported.file_id)
         assert load_workbook(BytesIO(files.get(object_key=returned.object_key)))[
-            "来货测试工厂1"]["F2"].value == "PO-1"
-    bot.card_action(_bot_action("confirm", batch_id, "confirm", version=2))
+            "来货测试工厂1"]["F2"].value is None
+    bot.card_action(_bot_action("confirm", batch_id, "confirm", version=1, revision=0))
     assert worker.run_once()
-    bot.card_action(_bot_action("confirm-again", batch_id, "confirm", version=2))
+    bot.card_action(_bot_action("confirm-again", batch_id, "confirm", version=1, revision=0))
     with Session(test_database_engine) as session:
         assert session.get(IncomingDiffBatch, batch_id).status == "CONFIRMED"
         assert session.scalar(select(func.count()).select_from(IncomingDiffRecord)) == 1

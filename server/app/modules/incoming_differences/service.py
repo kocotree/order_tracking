@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import (
     AuditLog,
+    Factory,
     IdempotencyRecord,
     IncomingDiffAdjustment,
     IncomingDiffBatch,
     IncomingDiffImage,
+    IncomingDiffImportFile,
     IncomingDiffRecord,
     IncomingDiffWorkbook,
     Order,
@@ -27,6 +29,7 @@ from app.db.models import (
     QuantityLedger,
     User,
 )
+from app.modules.incoming_differences.duplicates import duplicate_evidence
 from app.modules.orders.quantities import active_assignment, detail_shipped, pending_totals
 
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
@@ -97,7 +100,7 @@ class _ParsedLine:
     quantity: int
     purchase_order_id: str
     purchase_order_item_id: str
-    image_id: str
+    image_id: str | None
 
 
 @dataclass(frozen=True)
@@ -269,15 +272,24 @@ class IncomingDifferenceService:
             detail = session.get(OrderDetail, detail_id) if detail_id else None
             return detail.assignment_id if detail else None
 
-    def confirm(self, *, batch_id: str, workbook_version: int, actor_id: str) -> ConfirmResult:
+    def confirm(self, *, batch_id: str, workbook_version: int, actor_id: str,
+                review_revision: int | None = None) -> ConfirmResult:
         current, _business_date = self._now()
         idempotency_key = f"{batch_id}:{workbook_version}"
         with self._session_factory() as session, session.begin():
+            actor = session.get(User, actor_id, with_for_update=True)
+            if actor is None or not actor.is_enabled or actor.role != "admin":
+                raise IncomingDifferencePermissionDenied("只有已启用的管理员可以确认来货出入")
+            owned = session.get(IncomingDiffBatch, batch_id, with_for_update=True)
+            if owned is None or owned.submitter_id != actor_id:
+                raise IncomingDifferencePermissionDenied("只能确认自己提交的批次")
+            if owned.source_kind == "FILE" or owned.review_revision:
+                idempotency_key += f":{review_revision}"
             replay = session.scalar(
                 select(IdempotencyRecord).where(
                     IdempotencyRecord.scope == CONFIRM_SCOPE,
                     IdempotencyRecord.idempotency_key == idempotency_key,
-                )
+                ).with_for_update()
             )
             if replay is not None and replay.result:
                 return _replayed_result(replay.result)
@@ -294,6 +306,9 @@ class IncomingDifferenceService:
                 raise IncomingDifferencePermissionDenied("只有已启用的管理员可以确认来货出入")
             if batch.submitter_id != actor_id:
                 raise IncomingDifferencePermissionDenied("只能确认自己提交的批次")
+            if ((batch.source_kind == "FILE" or batch.review_revision)
+                    and batch.review_revision != review_revision):
+                raise IncomingDifferenceConflict("导入汇总已过期，请使用最新确认")
             if batch.status != "READY":
                 raise IncomingDifferenceConflict("批次当前状态不允许确认")
             workbook = session.scalars(
@@ -317,7 +332,13 @@ class IncomingDifferenceService:
             issues: list[dict[str, Any]] = []
             parsed: list[tuple[dict[str, Any], _ParsedLine]] = []
             for raw in workbook.line_snapshot or []:
-                reason = _line_reason(raw, image_ids)
+                if raw.get("decision") == "skip":
+                    continue
+                reason = _line_reason(raw, image_ids, imported=batch.source_kind == "FILE")
+                if batch.source_kind == "FILE":
+                    source_file = session.get(IncomingDiffImportFile, raw.get("importFileId"))
+                    if source_file is None or source_file.workbook_id != workbook.workbook_id:
+                        reason = "文件行来源无效"
                 if reason is not None:
                     issues.append(_issue(raw, reason))
                     continue
@@ -336,11 +357,11 @@ class IncomingDifferenceService:
                             quantity=int(raw["quantity"]),
                             purchase_order_id=str(raw["purchaseOrderId"]),
                             purchase_order_item_id=str(raw["purchaseOrderItemId"]),
-                            image_id=str(raw["imageId"]),
+                            image_id=str(raw["imageId"]) if raw.get("imageId") else None,
                         ),
                     )
                 )
-            if not issues and not parsed:
+            if not issues and not parsed and not workbook.line_snapshot:
                 raise IncomingDifferenceValidationError("核对表没有可登记的数据行", [])
 
             detail_ids = sorted({line.detail_id for _raw, line in parsed})
@@ -370,10 +391,26 @@ class IncomingDifferenceService:
                       or (raw.get("variantId") and raw["variantId"] != detail.matched_variant_id)
                       or (raw.get("factoryId") and raw["factoryId"] != detail.matched_factory_id)):
                     issues.append(_issue(raw, "采购、工厂或 SKU 归属已变化"))
+                elif batch.source_kind == "FILE":
+                    context = contexts[line.detail_id]
+                    factory = session.get(Factory, context.factory_id, with_for_update=True)
+                    if (factory is None or not factory.is_enabled
+                            or factory.factory_name != raw.get("factoryName")
+                            or context.product_name != raw.get("productName")
+                            or context.spec != raw.get("spec")):
+                        issues.append(_issue(raw, "工厂、名称或规格已变化，请重新上传核对"))
 
             # 统一已发下限没有数据库约束，锁行之后重算再判断
             if issues:
                 raise IncomingDifferenceValidationError(_issue_message(issues), issues)
+            if batch.source_kind == "FILE" or batch.review_revision:
+                evidence = duplicate_evidence(session, workbook.line_snapshot)
+                if any(evidence.get(raw["number"], []) != raw.get("duplicates", [])
+                       for raw, _line in parsed):
+                    raise IncomingDifferenceConflict("出现新的疑似重复，请重新核对导入")
+                if any(raw.get("duplicates") and raw.get("decision") != "register_new"
+                       for raw, _line in parsed):
+                    raise IncomingDifferenceConflict("疑似重复尚未处理完成")
             before: dict[str, int] = {}
             for detail_id, detail in details.items():
                 shipped = detail_shipped(session, detail)
@@ -410,6 +447,11 @@ class IncomingDifferenceService:
                         batch_id=batch_id,
                         workbook_id=workbook.workbook_id,
                         image_id=line.image_id,
+                        import_file_id=_raw.get("importFileId"),
+                        source_sheet_name=(
+                            _raw.get("sheetName") if _raw.get("importFileId") else None),
+                        source_row_number=(
+                            _raw.get("rowNumber") if _raw.get("importFileId") else None),
                         order_id=context.order_id,
                         detail_id=context.detail_id,
                         order_assignment_id=assignment_id,
@@ -705,7 +747,7 @@ class IncomingDifferenceService:
         )
 
 
-def _line_reason(raw: dict[str, Any], image_ids: set[str]) -> str | None:
+def _line_reason(raw: dict[str, Any], image_ids: set[str], *, imported: bool = False) -> str | None:
     if not isinstance(raw, dict):
         return "数据行格式不正确"
     if not (raw.get("orderAssignmentId") or raw.get("detailId")):
@@ -716,7 +758,7 @@ def _line_reason(raw: dict[str, Any], image_ids: set[str]) -> str | None:
         return "缺少采购主单号"
     if not raw.get("purchaseOrderItemId"):
         return "缺少采购子单号"
-    if str(raw.get("imageId") or "") not in image_ids:
+    if not imported and str(raw.get("imageId") or "") not in image_ids:
         return "数据行不属于本批次图片"
     return None
 
@@ -744,6 +786,7 @@ def _issue(raw: dict[str, Any], reason: str) -> dict[str, Any]:
     sheet_name = str(raw.get("sheetName") or "") if isinstance(raw, dict) else ""
     row_number = raw.get("rowNumber") if isinstance(raw, dict) else None
     return {
+        **({"fileName": raw["fileName"]} if raw.get("fileName") else {}),
         "sheetName": sheet_name,
         "rowNumber": int(row_number) if row_number else 0,
         "reason": reason,

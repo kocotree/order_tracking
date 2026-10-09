@@ -8,6 +8,7 @@ from zipfile import BadZipFile, ZipFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.adapters.incoming_decisions import PROMPT_VERSION
 from app.adapters.private_files import PrivateFileStore
 from app.db.models import (
     AuditLog,
@@ -316,7 +317,7 @@ class IncomingImportWorkflow:
                 target_type="incoming_diff_batch", target_id=batch_id, actor_id=actor_id,
                 source_terminal="feishu-bot",
                 changes={"revision": revision, "decisions": decisions, "text": text,
-                         "model": "qwen3.5-flash", "promptVersion": "incoming-decisions-v1"},
+                         "model": "qwen3.5-flash", "promptVersion": PROMPT_VERSION},
             ))
             session.add(IdempotencyRecord(
                 scope="incoming_diff_decision", idempotency_key=message_id,

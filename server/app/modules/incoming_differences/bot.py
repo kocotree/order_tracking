@@ -661,14 +661,29 @@ class FeishuBotService:
                 summary.append(batch.recognition_error_summary
                                or "本次全部未登记，请修正后重传全部文件。")
             else:
+                numbered = {line["number"]: line for line in lines}
                 for line in lines:
                     if line.get("duplicates"):
+                        evidence = []
+                        for candidate in line["duplicates"]:
+                            if "number" in candidate:
+                                other = numbered[candidate["number"]]
+                                evidence.append(
+                                    f"本次第{other['number']}条（{other['fileName']} / "
+                                    f"{other['sheetName']} / 第{other['rowNumber']}行）")
+                            else:
+                                evidence.append(
+                                    f"历史记录 {candidate['recordId']}，"
+                                    f"登记于{candidate['registeredAt']} UTC，"
+                                    f"初始数量{candidate['initialQuantity']}，"
+                                    f"当前数量{candidate['quantity']}")
+                        decision = {"skip": "跳过", "register_new": "作为新记录登记"}.get(
+                            line.get("decision"), "待决定")
                         summary.append(
                             f"第{line['number']}条：{line['fileName']} / {line['sheetName']} / "
                             f"第{line['rowNumber']}行，{line['productName']} {line['spec']} "
                             f"数量{line['quantity']} 采购单{line['purchaseOrderId']}；"
-                            f"疑似重复：{json.dumps(line['duplicates'], ensure_ascii=False)}；"
-                            f"决定：{line.get('decision', '待决定')}"
+                            f"疑似重复：{'；'.join(evidence)}；决定：{decision}"
                         )
                 selected = [line for line in lines if line.get("decision") != "skip"]
                 surplus = sum(int(x["quantity"]) for x in selected if x["quantity"] > 0)

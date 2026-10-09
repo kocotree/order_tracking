@@ -166,6 +166,10 @@ def test_text_reply_binds_review_and_never_confirms(import_setup):
     with sessions() as session:
         current = session.get(IncomingDiffBatch, batch)
         assert current.review_revision == 1 and current.status == "READY"
+        summary = session.scalar(select(OutboxMessage).where(
+            OutboxMessage.dedupe_key == f"incoming-diff-bot:import:{batch}:1:READY"))
+        assert "本次第2条" in summary.payload["summary"]
+        assert "决定：跳过" in summary.payload["summary"]
         stale = session.scalar(select(OutboxMessage).where(
             OutboxMessage.dedupe_key == "incoming-diff-bot:decision:stale-text"))
         assert "已失效" in stale.payload["summary"]

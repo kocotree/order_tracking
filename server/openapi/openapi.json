@@ -3507,6 +3507,70 @@
         "title": "OrderResponse",
         "type": "object"
       },
+      "OrderShipmentListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderShipmentSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "OrderShipmentListResponse",
+        "type": "object"
+      },
+      "OrderShipmentSummary": {
+        "properties": {
+          "businessDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Businessdate"
+          },
+          "shipmentId": {
+            "title": "Shipmentid",
+            "type": "string"
+          },
+          "shipmentNo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipmentno"
+          },
+          "totalQuantity": {
+            "title": "Totalquantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shipmentId",
+          "shipmentNo",
+          "businessDate",
+          "totalQuantity"
+        ],
+        "title": "OrderShipmentSummary",
+        "type": "object"
+      },
       "ProductListItemResponse": {
         "properties": {
           "category": {
@@ -9809,6 +9873,80 @@
         "summary": "Reopen",
         "tags": [
           "order-admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/shipments": {
+      "get": {
+        "operationId": "order_shipments_api_v1_admin_orders__order_id__shipments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "ot_web_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ot Web Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderShipmentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Order Shipments",
+        "tags": [
+          "shipment-admin"
         ]
       }
     },

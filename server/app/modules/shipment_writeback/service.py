@@ -136,7 +136,7 @@ class ShipmentWriteback:
                     report["field_count"] = len(structure["fields"])
                     if stage is not None:
                         for record_id, row in self.results(stage).items():
-                            if row["verified"]:
+                            if row["verified"] or row["skipped"]:
                                 continue
                             field_id = structure["fields"][stage.key]
 
@@ -151,15 +151,19 @@ class ShipmentWriteback:
                                         raise ValueError("shipment_writeback_snapshot_missing")
                                     if saved.before_value is None:
                                         saved.before_value = {"value": value}
+                                    saved.before_value = {
+                                        **saved.before_value, "observed_value": value,
+                                    }
                                     saved.field_id = field_id
 
-                            self.target.write_row(stage, field_id, record_id, row,
-                                                  row["quantity"], save_before)
+                            outcome = self.target.write_row(stage, field_id, record_id, row,
+                                                            row["quantity"], save_before)
                             with self.sessions() as session, session.begin():
                                 saved = session.get(ShipmentWritebackRow, (stage.key, record_id))
-                                if saved is None:
+                                if saved is None or saved.before_value is None:
                                     raise ValueError("shipment_writeback_snapshot_missing")
-                                saved.verified = True
+                                saved.before_value = {**saved.before_value, "outcome": outcome}
+                                saved.verified = outcome == "WRITTEN"
                     report["status"] = "SUCCEEDED"
                 finally:
                     guard.execute(text("SELECT RELEASE_LOCK('shipment_writeback_run')"))
@@ -173,6 +177,9 @@ class ShipmentWriteback:
             if stage is not None:
                 rows = self.results(stage)
                 report.update(rows=len(rows), verified=sum(r["verified"] for r in rows.values()),
+                              skipped=sum(r["skipped"] for r in rows.values()),
+                              verified_quantity=sum(r["quantity"] for r in rows.values()
+                                                    if r["verified"]),
                               quantity=sum(r["quantity"] for r in rows.values()))
                 with self.sessions() as session:
                     frozen = session.get(ShipmentWritebackStage, stage.key)
@@ -252,7 +259,9 @@ class ShipmentWriteback:
     def results(self, stage: Stage) -> dict[str, dict[str, Any]]:
         with self.sessions() as session:
             return {row.record_id: {**row.identity, "quantity": row.quantity,
-                                    "verified": row.verified, "field_id": row.field_id}
+                                    "verified": row.verified, "field_id": row.field_id,
+                                    "skipped": (row.before_value or {}).get("outcome")
+                                    == "SKIPPED_EXISTING"}
                     for row in session.scalars(select(ShipmentWritebackRow)
                                                .where(ShipmentWritebackRow.stage_key == stage.key))}
 

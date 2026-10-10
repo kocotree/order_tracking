@@ -16,8 +16,21 @@
     };
   }
 
-  function mount(app) {
+  function mount(app, record) {
     state = createInitialState();
+    if (record) {
+      state.record = record;
+      state.note = record.note;
+      state.containers = record.boxes.map(function (box) {
+        return { id: "box-" + box.boxNo, type: "single", boxNumbers: [box.boxNo], items: box.lines.map(function (line) {
+          var task = window.FactoryPrototypeData.tasks.find(function (task) { return task.orderNo === line.orderNo; });
+          return { key: makeSpecKey(line.productName, line.spec), orderId: task.id, qty: line.quantity };
+        }) };
+      });
+      state.boxCountInput = String(state.containers.length);
+      state.currentContainerId = state.containers[0].id;
+      state.step = 2;
+    }
     render(app);
   }
 
@@ -28,7 +41,7 @@
       '<div class="detail-page ship-page">' +
         '<header class="detail-titlebar">' +
           '<button type="button" class="back-button" id="ship-back" aria-label="返回">' + icons.back + '</button>' +
-          '<h1>创建发货单</h1>' +
+          '<h1>' + (state.record ? '修改发货单' : '创建发货单') + '</h1>' +
           '<div class="wechat-capsule" aria-hidden="true"><b>•••</b><i></i><span></span></div>' +
         '</header>' +
         renderStepIndicator() +
@@ -304,7 +317,7 @@
         '<header><h2>装箱明细</h2><span>' + state.containers.length + ' 项</span></header>' +
         '<div class="preview-container-list">' + packingHtml + '</div>' +
       '</section>' +
-      '<div class="submit-notice">提交后立即计入订单已发数量，不能直接编辑或删除；如需撤销，请从发货记录使用“撤回发货”。</div>' +
+      '<div class="submit-notice">提交后自动收货并计入订单已发数量。首次正式提交未满7天且没有退回记录时，可从发货记录撤回；重新提交不延长撤回期限。</div>' +
       renderBottomBar(true, "提交发货单", "submit-shipment", false)
     );
   }
@@ -491,11 +504,29 @@
 
   function bindStep4Events(app) {
     document.querySelector("#submit-shipment")?.addEventListener("click", function () {
-      showToast("发货单已提交");
-      setTimeout(function () {
-        var page = window.FactoryPages["task-list"];
-        if (page && page.mount) page.mount(app);
-      }, 1200);
+      var data = window.FactoryPrototypeData;
+      var catalog = getCatalog();
+      var boxes = state.containers.map(function (container) {
+        return { boxNo: container.boxNumbers[0], lines: container.items.map(function (item) {
+          var entry = getCatalogEntry(item.key, catalog);
+          return { orderNo: getSource(entry, item.orderId).orderNo, productName: entry.productName, spec: entry.spec, quantity: item.qty };
+        }) };
+      });
+      var lines = boxes.flatMap(function (box) { return box.lines; });
+      if (!lines.length || lines.some(function (line) { return !Number.isInteger(line.quantity) || line.quantity <= 0; })) return showToast("请填写有效装箱数量");
+      var record = state.record;
+      if (record && record.status !== "withdrawn") return;
+      if (!record) {
+        var suffix = String(data.shipmentRecords.length + 1).padStart(3, "0");
+        record = { id: "shipment-demo-" + suffix, shipmentNo: "FH20260819-" + suffix, operator: "王师傅", proofs: [], logs: [] };
+        data.shipmentRecords.unshift(record);
+      }
+      data.applyShipmentQuantity(lines, 1);
+      record.firstSubmittedAt ??= record.submittedAt || "2026-08-19 11:20";
+      Object.assign(record, { status: "shipped", submittedAt: "2026-08-19 11:20", shipDate: "2026-08-19", boxes: boxes, lines: lines, totalBoxes: boxes.length, totalQuantity: getShipmentTotal(), orderNos: [...new Set(lines.map(function (line) { return line.orderNo; }))], productNames: [...new Set(lines.map(function (line) { return line.productName; }))], note: state.note });
+      record.logs ??= [];
+      record.logs.unshift({ action: state.record ? "重新提交发货单，自动收货" : "提交发货单，自动收货", time: data.now });
+      window.FactoryPages["shipment-detail"].mount(app, record.id);
     });
   }
 

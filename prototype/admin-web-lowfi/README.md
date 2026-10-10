@@ -6,6 +6,10 @@
 
 ## 本地查看
 
+Issue #240（2026-10-10）：发货详情删除人工确认及旧撤回审批，已收货可继续修改箱内数量和同厂同产品订单/规格；保存立即更新模拟订单数量，退回后只读。原报快照保留，下载仍为演示提示。打开 `#/shipments/FH20260812-006` 可演示连续保存，`#/shipments/FH20260814-003` 可演示混装箱。原型不发送通知、不连接生产；三端各自使用独立模拟数据。页面范围已授权，本轮更新后的视觉待用户查看。
+
+非浏览器交互自检：在仓库根目录执行 `node prototype/check-auto-receipt.mjs`，复用 `admin-web` 已安装的 jsdom。
+
 ```bash
 cd prototype/admin-web-lowfi
 python3 -m http.server 4173

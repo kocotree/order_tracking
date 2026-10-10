@@ -35,6 +35,11 @@
     var modalStep = "";
     var reason = "";
 
+    function canWithdraw() {
+      return record.status !== "withdrawn" && record.status !== "voided" && !record.returnRecords?.length &&
+        new Date(data.now) - new Date((record.firstSubmittedAt || record.submittedAt).replace(" ", "T") + ":00+08:00") < 7 * 86400000;
+    }
+
     function renderWithdrawSheet() {
       if (!modalStep) return "";
       var isConfirm = modalStep === "confirm";
@@ -43,7 +48,7 @@
           '<div class="sheet-handle" aria-hidden="true"></div>' +
           '<header><div><small>发货单 ' + escapeHtml(record.shipmentNo) + '</small><h2 id="withdraw-title">' + (isConfirm ? '确认撤回发货' : '撤回发货') + '</h2></div><button type="button" data-close-withdraw aria-label="关闭">' + icons.close + '</button></header>' +
           (isConfirm
-            ? '<div class="withdraw-confirm"><p>提交后将进入管理员审核，审核通过前不会扣减订单已发数量。</p><dl><div><dt>发货日期</dt><dd>' + escapeHtml(record.shipDate) + '</dd></div><div><dt>发货数量</dt><dd>' + formatNumber(record.totalQuantity) + '</dd></div><div><dt>撤回原因</dt><dd>' + escapeHtml(reason) + '</dd></div></dl></div>'
+            ? '<div class="withdraw-confirm"><p>撤回立即扣回本单当前生效数量，保留单号，可修改后重新提交。首次提交满7天禁止撤回，重新提交不延长期限。</p><dl><div><dt>发货日期</dt><dd>' + escapeHtml(record.shipDate) + '</dd></div><div><dt>发货数量</dt><dd>' + formatNumber(record.totalQuantity) + '</dd></div><div><dt>撤回原因</dt><dd>' + escapeHtml(reason) + '</dd></div></dl></div>'
             : '<div class="withdraw-form"><div class="withdraw-summary"><span><small>发货日期</small><strong>' + escapeHtml(record.shipDate) + '</strong></span><span><small>发货数量</small><strong>' + formatNumber(record.totalQuantity) + '</strong></span></div><label><span>撤回原因</span><textarea id="withdraw-reason" rows="4" maxlength="200" placeholder="请填写撤回原因">' + escapeHtml(reason) + '</textarea><small><b id="withdraw-count">' + reason.length + '</b>/200</small></label><p id="withdraw-error" role="alert"></p></div>') +
           '<footer><button type="button" class="secondary-button" id="withdraw-cancel">取消</button><button type="button" class="withdraw-submit" id="' + (isConfirm ? 'withdraw-confirm-submit' : 'withdraw-next') + '">' + (isConfirm ? '确认提交' : '提交撤回') + '</button></footer>' +
         '</section></div>';
@@ -51,12 +56,12 @@
 
     function renderPage() {
       var orderGroups = groupByOrder(record.lines);
-      var withdrawing = record.withdrawal && record.withdrawal.status === "processing";
-      var operationCount = withdrawing ? 2 : 1;
+      var withdrawing = record.status === "withdrawn";
+      var operationCount = 1 + (record.logs?.length || 0);
       app.innerHTML = '<div class="detail-page shipment-detail-page">' +
         '<header class="detail-titlebar"><button type="button" class="back-button" id="shipment-detail-back" aria-label="返回">' + icons.back + '</button><h1>发货单详情</h1><div class="wechat-capsule" aria-hidden="true"><b>•••</b><i></i><span></span></div></header>' +
         '<main class="shipment-detail-content">' +
-          '<section class="shipment-overview"><div class="shipment-overview__title"><h2>' + escapeHtml(record.shipmentNo) + '</h2>' + (withdrawing ? '<em>撤回处理中</em>' : '') + '</div><p><span>' + icons.calendar + '</span><small>发货日期</small><strong>' + escapeHtml(record.shipDate) + '</strong></p><div><span><small>发货数量</small><b>' + formatNumber(record.totalQuantity) + '</b></span><span><small>总箱数</small><b>' + formatNumber(record.totalBoxes) + '</b></span></div><footer><small>关联订单</small><b>' + escapeHtml(record.orderNos.join("、")) + '</b></footer></section>' +
+          '<section class="shipment-overview"><div class="shipment-overview__title"><h2>' + escapeHtml(record.shipmentNo) + '</h2><em>' + (withdrawing ? '已撤回' : record.status === 'voided' ? '已作废' : record.returnRecords?.length ? '退回' : '已收货') + '</em></div><p><span>' + icons.calendar + '</span><small>发货日期</small><strong>' + escapeHtml(record.shipDate) + '</strong></p><div><span><small>发货数量</small><b>' + formatNumber(record.totalQuantity) + '</b></span><span><small>总箱数</small><b>' + formatNumber(record.totalBoxes) + '</b></span></div><footer><small>关联订单</small><b>' + escapeHtml(record.orderNos.join("、")) + '</b></footer></section>' +
           '<section class="shipment-detail-section"><header><h2>发货明细</h2><span>' + record.orderNos.length + ' 个订单</span></header><div>' +
             Object.keys(orderGroups).map(function (orderNo) { var lines = orderGroups[orderNo]; return '<details class="shipment-detail-group"><summary><span><strong>' + escapeHtml(orderNo) + '</strong><small>' + lines.length + ' 个产品规格</small></span><b>合计 ' + formatNumber(total(lines)) + '</b><i>' + icons.chevron + '</i></summary>' + renderLineTable(lines, false) + '</details>'; }).join("") + '</div></section>' +
           '<section class="shipment-detail-section"><header><h2>装箱明细</h2><span>' + record.boxes.length + ' 箱</span></header><div>' +
@@ -65,10 +70,10 @@
             (record.proofs.length ? record.proofs.map(function (proof, index) { return '<button type="button" data-proof="' + escapeHtml(proof) + '"><span>' + icons.camera + '</span><small>' + escapeHtml(proof) + '</small><b>' + (index + 1) + '</b></button>'; }).join("") : '<p class="shipment-empty-value">发货凭证　无</p>') +
             '<p class="shipment-note"><span>工厂备注</span><strong>' + escapeHtml(record.note || "无") + '</strong></p></div></section>' +
           '<section class="shipment-detail-section"><header><h2>操作记录</h2><span>' + operationCount + ' 条</span></header><div class="shipment-operation-list">' +
-            (withdrawing ? '<div class="shipment-operation shipment-operation--withdraw"><i></i><div><strong>提交撤回发货</strong><p>' + escapeHtml(record.operator) + ' · ' + escapeHtml(record.withdrawal.submittedAt) + '</p><span>原因：' + escapeHtml(record.withdrawal.reason) + '</span></div></div>' : '') +
-            '<div class="shipment-operation"><i></i><div><strong>提交发货单</strong><p>' + escapeHtml(record.operator) + ' · ' + escapeHtml(record.submittedAt) + '</p></div></div></div></section>' +
+            (record.logs || []).map(function (log) { return '<div class="shipment-operation"><i></i><div><strong>' + escapeHtml(log.action) + '</strong><p>' + escapeHtml(log.time) + '</p></div></div>'; }).join('') +
+            '<div class="shipment-operation"><i></i><div><strong>提交发货单</strong><p>' + escapeHtml(record.operator) + ' · ' + escapeHtml(record.firstSubmittedAt || record.submittedAt) + '</p></div></div></div></section>' +
         '</main>' +
-        '<div class="shipment-withdraw-bar"><button type="button" id="withdraw-shipment"' + (withdrawing ? ' disabled' : '') + '>' + (withdrawing ? '撤回处理中' : '撤回发货') + '</button></div>' +
+        '<div class="shipment-withdraw-bar"><button type="button" id="withdraw-shipment"' + (!withdrawing && !canWithdraw() ? ' disabled' : '') + '>' + (withdrawing ? '继续修改' : record.returnRecords?.length ? '已有退回，不能撤回' : canWithdraw() ? '撤回发货' : '不能撤回') + '</button></div>' +
         renderWithdrawSheet() + '<div class="prototype-toast" role="status"></div>' +
       '</div>';
       bindEvents();
@@ -92,7 +97,11 @@
         window.FactoryPages["shipment-records"].mount(app);
       });
       document.querySelectorAll("[data-proof]").forEach(function (button) { button.addEventListener("click", function () { showToast(button.dataset.proof + " 大图预览"); }); });
-      document.querySelector("#withdraw-shipment")?.addEventListener("click", function () { modalStep = "form"; renderPage(); });
+      document.querySelector("#withdraw-shipment")?.addEventListener("click", function () {
+        if (record.status === "withdrawn") { window.FactoryPages["create-shipment"].mount(app, record); return; }
+        if (!canWithdraw()) return;
+        modalStep = "form"; renderPage();
+      });
       document.querySelector("#withdraw-reason")?.addEventListener("input", function (event) { reason = event.target.value; document.querySelector("#withdraw-count").textContent = reason.length; document.querySelector("#withdraw-error").textContent = ""; });
       document.querySelector(".shipment-withdraw-layer")?.addEventListener("click", function (event) {
         if (event.target !== event.currentTarget) return;
@@ -107,10 +116,15 @@
         modalStep = "confirm"; renderPage();
       });
       document.querySelector("#withdraw-confirm-submit")?.addEventListener("click", function () {
-        record.withdrawal = { status: "processing", reason: reason, submittedAt: "2026-08-19 11:20" };
+        if (!canWithdraw()) return;
+        data.applyShipmentQuantity(record.lines, -1);
+        record.firstSubmittedAt ??= record.submittedAt;
+        record.status = "withdrawn";
+        record.logs ??= [];
+        record.logs.unshift({ action: "撤回发货；原因：" + reason, time: data.now });
         modalStep = "";
         renderPage();
-        showToast("撤回申请已提交，等待管理员审核");
+        showToast("已撤回，订单数量已扣回，可继续修改后重新提交");
       });
     }
 

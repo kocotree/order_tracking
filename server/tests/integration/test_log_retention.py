@@ -220,6 +220,27 @@ def test_expiry_failure_retries_without_touching_unexpired_archive(
     assert store.object_count == 1
 
 
+def test_expiry_covers_each_source_and_resumed_pending_batch(test_database_engine: Engine) -> None:
+    sessions = create_session_factory(test_database_engine)
+    store = FakePrivateFileStore(bucket="archive")
+    service = LogRetention(sessions, store)
+    expired = NOW - timedelta(days=180)
+    with sessions.begin() as session:
+        pending = audit(created=expired)
+        session.add_all([pending, audit(created=expired), BackgroundJob(
+            job_type="shipment_writeback", dedupe_key="expired", status="completed",
+            payload={"month": "2026-04"}, available_at=expired, created_at=expired,
+        )])
+    assert service.prepare("audit_logs", pending.id, NOW)
+    counts = service.run(now=NOW, limit=1)
+    assert counts["audit_logs"] == 2
+    assert counts["background_jobs"] == 1
+    assert counts["expired"] == 3
+    assert store.object_count == 0
+    with sessions() as session:
+        assert session.scalar(select(func.count()).select_from(LogArchiveEntry)) == 0
+
+
 def test_display_cutoff_count_permissions_and_redaction(
     test_database_engine: Engine, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

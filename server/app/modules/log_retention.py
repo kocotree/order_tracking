@@ -131,7 +131,7 @@ class LogRetention:
                 for source_id in ids:
                     if self.prepare(name, source_id, current):
                         counts[name] += int(self.finish(name, str(source_id), current))
-            counts["expired"] = self.expire(current, limit)
+            counts["expired"] = self.expire(current, limit * (len(TABLES) + 1))
         return counts
 
     def prepare(self, name: str, source_id: Any, now: datetime) -> bool:

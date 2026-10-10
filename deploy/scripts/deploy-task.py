@@ -59,7 +59,7 @@ def status(task, version, revision):
             return result
         stage = (task / "stage").read_text().strip()
         if stage not in ("registry-login", "deployment-lock", "compose-config", "image-pull",
-                         "image-revision", "backup", "migration", "containers", "health", "record-version"):
+                         "image-revision", "migration-check", "backup", "migration", "containers", "health", "record-version"):
             return result
         if record["status"] == "succeeded" and stage != "record-version":
             return result

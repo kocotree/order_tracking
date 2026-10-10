@@ -32,7 +32,7 @@ class DeployTaskTest(unittest.TestCase):
         self.env = {
             **os.environ, "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
             "CALLS": str(self.calls), "GATE": str(self.gate), "REVISION": REVISION,
-            "FAILURE": "", "PYTHON": sys.executable,
+            "FAILURE": "", "PYTHON": sys.executable, "PAUSE_MIGRATION_CHECK": "",
         }
         self.executable("docker", '''#!/bin/bash
 if [[ "$1" == login ]]; then
@@ -43,7 +43,13 @@ if [[ "$1" == login ]]; then
 fi
 printf '%s\\n' "$*" >> "$CALLS"
 if [[ "$1 $2" == 'image inspect' ]]; then echo "$REVISION"; fi
-if [[ "$*" == *scripts.check_migrations* ]]; then echo pending; fi
+if [[ "$*" == *scripts.check_migrations* ]]; then
+  if [[ "$PAUSE_MIGRATION_CHECK" == 1 ]]; then
+    while [[ ! -f "$GATE" ]]; do sleep 0.05; done
+  fi
+  [[ "$FAILURE" != migration-check ]] || exit 26
+  echo pending
+fi
 if [[ "$*" == *'run --rm migrate'* && "$FAILURE" == migration ]]; then exit 23; fi
 if [[ "$*" == *'up -d'* && "$FAILURE" == containers ]]; then exit 24; fi
 if [[ "$*" == *'top worker'* ]]; then
@@ -100,7 +106,7 @@ fi
 
     def test_failures_keep_phase_and_never_replay(self):
         self.gate.touch()
-        for failure, code in (("registry-login", 21), ("backup", 22), ("migration", 23), ("containers", 24), ("health", 25)):
+        for failure, code in (("registry-login", 21), ("migration-check", 26), ("backup", 22), ("migration", 23), ("containers", 24), ("health", 25)):
             with self.subTest(failure=failure):
                 self.env["FAILURE"] = failure
                 version = f"v1.0.{code}"
@@ -116,6 +122,19 @@ fi
                 self.assertFalse((task / "registry/config.json").exists())
                 self.assertNotIn("test-registry-secret", (task / "events.log").read_text())
         self.assertEqual(self.calls.read_text().count("backup\n"), 4)
+
+    def test_running_migration_check_reports_progress_without_restarting(self):
+        self.env["PAUSE_MIGRATION_CHECK"] = "1"
+        self.invoke("start")
+        self.wait_for(lambda: self.calls.exists() and "scripts.check_migrations" in self.calls.read_text())
+        for action in ("status", "start"):
+            result = self.invoke(action)
+            self.assertEqual(result["status"], "running")
+            self.assertEqual(result["stage"], "migration-check")
+        self.assertEqual(self.finish()["status"], "succeeded")
+        calls = self.calls.read_text()
+        self.assertEqual(calls.count("scripts.check_migrations"), 1)
+        self.assertEqual(calls.count("backup\n"), 1)
 
     def test_other_version_obeys_existing_deployment_lock(self):
         self.invoke("start")

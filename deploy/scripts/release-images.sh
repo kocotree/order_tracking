@@ -32,11 +32,18 @@ for service in server admin-web; do
   actual=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")
   [[ "$actual" == "$revision" ]] || { echo 'Image revision mismatch'; exit 1; }
 done
-stage backup
-python3 "$deploy_root/scripts/backup-production.py" "$environment_file"
-# Migration errors stop deployment. Never downgrade a database automatically.
-stage migration
-compose --profile operations run --rm migrate
+stage migration-check
+migration_state=$(compose --profile operations run --rm --no-deps migrate uv run --no-sync python -m scripts.check_migrations)
+case "$migration_state" in
+  pending)
+    stage backup
+    python3 "$deploy_root/scripts/backup-production.py" "$environment_file" mysql
+    stage migration
+    compose --profile operations run --rm migrate
+    ;;
+  current) ;;
+  *) echo 'Invalid migration check result'; exit 1 ;;
+esac
 stage containers
 compose up -d --no-build --wait --wait-timeout 180 api worker admin-web
 stage health

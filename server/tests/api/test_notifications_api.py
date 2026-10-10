@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -13,7 +14,9 @@ from app.modules.notifications_audit import NotificationsAuditService
 def test_notification_and_audit_http_contract_enforces_terminal_owner_csrf_and_redaction(
     test_database_engine: Engine,
     test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("app.modules.log_retention.utc_now", lambda: datetime(2026, 8, 27, 12))
     sessions = sessionmaker(test_database_engine, class_=Session, expire_on_commit=False)
     with sessions() as session, session.begin():
         session.add(

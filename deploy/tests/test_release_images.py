@@ -25,6 +25,11 @@ printf '%s\\n' "$*" >> "$CALLS"
 if [[ "$1 $2" == 'image inspect' ]]; then
   if [[ "$FAILURE" == label ]]; then echo wrong; else echo "$REVISION"; fi
 fi
+if [[ "$*" == *scripts.check_migrations* ]]; then
+  if [[ "$FAILURE" == check ]]; then exit 1; fi
+  if [[ "$FAILURE" == invalid-check ]]; then echo unexpected; exit 0; fi
+  if [[ "$FAILURE" == current ]]; then echo current; else echo pending; fi
+fi
 if [[ "$*" == *'run --rm migrate'* && "$FAILURE" == migration ]]; then exit 1; fi
 if [[ "$*" == *'up -d'* && "$FAILURE" == health ]]; then exit 1; fi
 if [[ "$*" == *'top worker'* ]]; then
@@ -71,6 +76,27 @@ fi
         self.assertNotIn("run --rm migrate", calls)
         self.assertIn("v1.0.0", config)
         self.assertFalse(recorded)
+
+    def test_failed_check_stops_before_backup(self):
+        result, calls, _, recorded = self.run_release("check")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("backup\n", calls)
+        self.assertNotIn("up -d", calls)
+        self.assertFalse(recorded)
+
+    def test_invalid_check_output_stops_deployment(self):
+        result, calls, _, recorded = self.run_release("invalid-check")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("backup\n", calls)
+        self.assertNotIn("up -d", calls)
+        self.assertFalse(recorded)
+
+    def test_current_schema_skips_backup_and_upgrade(self):
+        result, calls, _, recorded = self.run_release("current")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("backup\n", calls)
+        self.assertNotIn("run --rm migrate\n", calls)
+        self.assertTrue(recorded)
 
     def test_failed_migration_stops_container_replacement(self):
         result, calls, config, recorded = self.run_release("migration")

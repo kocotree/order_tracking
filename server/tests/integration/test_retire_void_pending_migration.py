@@ -20,6 +20,7 @@ def test_retirement_blocks_pending_data_and_preserves_archive(
     _seed(test_database_engine)
     command.downgrade(config, "20260930_0049")
     shipments = Table("shipments", MetaData(), autoload_with=test_database_engine)
+    outbox = Table("outbox_messages", MetaData(), autoload_with=test_database_engine)
     try:
         with Session(test_database_engine) as session, session.begin():
             session.execute(shipments.insert().values(
@@ -35,7 +36,7 @@ def test_retirement_blocks_pending_data_and_preserves_archive(
                 created_at=datetime(2026, 9, 1),
             ))
             if legacy_state == "event":
-                session.add(OutboxMessage(
+                session.execute(outbox.insert().values(
                     event_type="shipment.void_approved", aggregate_type="shipment",
                     aggregate_id="legacy-approval", dedupe_key="legacy-approval-event",
                     payload={}, status="pending", available_at=datetime(2026, 9, 1),
@@ -58,12 +59,13 @@ def test_retirement_blocks_pending_data_and_preserves_archive(
                 shipments.c.shipment_id == "legacy-approval",
             ).values(status="SHIPPED"))
             request.status = "REJECTED"
-            event = session.query(OutboxMessage).filter_by(
-                dedupe_key="legacy-approval-event"
-            ).one_or_none()
+            event = session.execute(select(outbox).where(
+                outbox.c.dedupe_key == "legacy-approval-event"
+            )).mappings().one_or_none()
             if legacy_state == "event":
                 assert event is not None and event.status == "pending"
-                event.status = "completed"
+                session.execute(update(outbox).where(outbox.c.id == event.id)
+                                .values(status="completed"))
         command.upgrade(config, "head")
         with Session(test_database_engine) as session:
             assert session.get(ShipmentVoidRequest, "legacy-request").reason == "历史原因"

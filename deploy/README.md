@@ -129,9 +129,12 @@ supports flock for the deployment root. Release artifacts are retained at
 to its own directory, leaving an active task's scripts intact. No source checkout
 is needed on the server. Older releases keep their original directory layout.
 
-The deployment checks both image revision labels, backs up MySQL and OSS, runs
-migrations, waits for container health, and records the version only on success.
-After each successful backup the script keeps the newest 30 MySQL dumps and 3 OSS
+The deployment checks image revisions and the target Alembic graph. Pending
+migrations require a successful MySQL backup before upgrade; current schemas skip
+both. Failed checks, unknown/incompatible revisions, multiple heads and unversioned
+nonempty databases stop deployment. Deployment does not copy OSS. Container health
+must pass before recording the version.
+After each successful backup the script keeps the newest 7 MySQL dumps and 3 OSS
 snapshots and deletes the rest; it only matches its own `production-<stamp>` names,
 so manual artefacts in the same directories are left alone. A daily 00:00 cron on
 the server runs the same script under the deployment lock, so scheduled and
@@ -189,7 +192,46 @@ an explicitly authorized recovery. Do not delete state or rerun the release scri
 to force a retry. After forced termination during login/pull/backup, protected
 temporary credential files may remain in the task directory; inspect and clean those
 only after confirming no process still uses them and obtaining cleanup authorization.
-No automatic rollback, migration replay, archive policy or data cleanup is introduced.
+No automatic rollback or migration replay is introduced. Archival is independent.
+
+### Independent backup and log archival
+
+Daily backup invokes `backup-production.py <protected-production-env>` under the
+existing deployment lock; deployment adds the `mysql` argument. Only managed
+successful names with checksums count toward retention. Incomplete snapshots,
+symlinks and manual files are preserved. Seven dumps may cover fewer than seven days.
+
+Copy `archive.env.example` into a protected file outside Git with separate archive
+database/RAM credentials. Use the retained release directory and approved image:
+
+```bash
+bash deploy/scripts/archive-logs.sh <version> <archive-env> inventory
+bash deploy/scripts/archive-logs.sh <version> <archive-env> run --limit 1000 --confirm archive-and-expire
+bash deploy/scripts/archive-logs.sh <version> <read-only-env> search --table audit_logs --from-utc 2026-09-01T00:00:00 --to-utc 2026-09-02T00:00:00 --limit 1000
+```
+
+Search uses naive UTC boundaries and optional `--id`, returning verified redacted
+records that have not expired. Run handles up to the limit per source table and
+expiry sweep. After separate authorization, configure an independent hourly cron
+with the exact approved run command; retain the independent daily backup schedule.
+Deployment installs neither task. Capture exit status and investigate failures.
+
+The script takes the deployment flock and archival takes a MySQL named lock.
+`log_archive_entries` tracks pending/completed transfers and original-time expiry.
+One private gzip JSON object per record under `log-archives/v1/` permits exact expiry.
+Source details are removed only after GET, SHA-256 and identity verification in a
+locked transaction. Interrupted runs resume pending entries; never delete manifests
+to force progress. Completed job/outbox dedupe rows and referenced import rows remain
+with `archived_at`; protected business audit, cursor and unfinished/failed records
+remain intact. Log archives do not use snapshot retention; old backups may still
+contain expired records.
+
+Archive DB permissions: source/dependency SELECT, manifest INSERT/UPDATE/DELETE,
+eligible audit/product row DELETE, eligible import/job/outbox detail UPDATE. RAM:
+GetBucketAcl and Get/Put/DeleteObject limited to the archive prefix. Search only
+needs manifest SELECT, GetBucketAcl and prefix GetObject. Keep the bucket private;
+do not grant archive deletion to API credentials. Validate database restore and
+archive retrieval in isolation before enablement. Capacity snapshots do not prove age.
 
 For application rollback, use the retained previous release directory and exact
 previous image version, export `ORDER_TRACKING_DEPLOY_VERSION`, and run Compose

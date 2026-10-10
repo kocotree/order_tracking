@@ -43,6 +43,7 @@ if [[ "$1" == login ]]; then
 fi
 printf '%s\\n' "$*" >> "$CALLS"
 if [[ "$1 $2" == 'image inspect' ]]; then echo "$REVISION"; fi
+if [[ "$*" == *scripts.check_migrations* ]]; then echo pending; fi
 if [[ "$*" == *'run --rm migrate'* && "$FAILURE" == migration ]]; then exit 23; fi
 if [[ "$*" == *'up -d'* && "$FAILURE" == containers ]]; then exit 24; fi
 if [[ "$*" == *'top worker'* ]]; then

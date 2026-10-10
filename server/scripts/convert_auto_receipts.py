@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Engine, inspect, select
+from sqlalchemy import Engine, MetaData, Table, inspect, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -41,7 +41,7 @@ def digest(value: Any) -> str:
 
 
 def rows(session: Session, model: Any, *, old_schema: bool = False) -> list[dict[str, Any]]:
-    table = model.__table__
+    table = Table(model.__tablename__, MetaData(), autoload_with=session.connection())
     columns = [column for column in table.columns
                if not (old_schema and column.name == "first_submitted_at")]
     return [dict(row) for row in session.execute(

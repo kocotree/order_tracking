@@ -7,9 +7,9 @@
 ## 阅读入口
 
 - 使用与交付：[文档目录](docs/README.md)、[交付清单](docs/shared/delivery/交付清单.md)、[操作手册](docs/README.md#操作手册)。
-- 开发与维护：[AGENTS.md](AGENTS.md)、[领域术语](CONTEXT.md)、[维护与交接说明](docs/shared/delivery/维护与交接说明.md)。
+- 开发与维护：[AGENTS.md](AGENTS.md)、[领域术语](CONTEXT.md)、[飞书交接文档](https://kocotree.feishu.cn/docx/F8VqdJGk8oTjMIxZzfOcwmAXnhb)。
 - 业务依据：[一期需求及增量](docs/一期/requirements/一期需求文档.md)、[二期建设范围](docs/二期/project/二期需求建设计划.md)。
-- 发布与运行：[部署说明](deploy/README.md)、[运维手册](docs/shared/delivery/部署与运维手册.md)、[验收记录](docs/shared/delivery/验收记录.md)。
+- 发布与运行：[部署说明](deploy/README.md)、[验收记录](docs/shared/delivery/验收记录.md)。
 
 ## 工程入口
 
@@ -37,6 +37,6 @@ docker compose up -d --wait mysql-dev mysql-test
 
 ## CI、发布与安全
 
-PR 和 main 推送运行 [CI](.github/workflows/ci.yml)，全部任务成功才称为通过。明确授权后推送 `v*` 标签触发 [Release](.github/workflows/release.yml)，核验同一提交的 main CI 后发布两个镜像并自动备份、迁移和部署生产。普通 main 推送不触发发布；小程序发布与真实通知须各自授权。
+PR 和 main 推送运行 [CI](.github/workflows/ci.yml)，全部任务成功才称为通过。明确授权后推送 `v*` 标签触发 [Release](.github/workflows/release.yml)，核验同一提交的 main CI 后发布两个镜像并部署生产；存在待执行迁移时先备份 MySQL 再升级，无迁移时跳过备份和迁移。普通 main 推送不触发发布；小程序发布与真实通知须各自授权。
 
 开发、测试和生产环境及数据必须隔离；本地自动化不得访问生产资源。密钥、真实 AppID、Token、数据库密码和生产数据不得提交。生产固定不可变版本标签；运行版本、客户端兼容及业务签收以[交付清单](docs/shared/delivery/交付清单.md)的实际核验记录为准。

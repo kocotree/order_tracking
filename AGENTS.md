@@ -37,7 +37,7 @@
 
 ## 开发与验证
 
-- 遵循现有工具链和锁文件；安装、启动与检查命令见 [README](README.md)及 [维护与交接说明](docs/shared/delivery/维护与交接说明.md)，不擅自迁移工具链。
+- 遵循现有工具链和锁文件；安装、启动与检查命令见 [README](README.md)及各工程 README，不擅自迁移工具链。
 - 后端常用检查：`uv run ruff check .`、`uv run mypy app`、隔离测试库下的 `uv run pytest`、`uv run python -m scripts.export_openapi --check`。
 - 两客户端按改动运行 `pnpm lint`、`pnpm typecheck`、`pnpm test --run`、`pnpm build`；接口变更后同步 OpenAPI 并分别执行 `pnpm generate:api`。纯文档修改检查链接、路径、内容和空白。
 - 服务器 API、MySQL 事务、权限、状态、数量及 Excel 导出优先采用 TDD；验证覆盖当前改动风险，测试失败说明原因和影响，不删除测试或降低断言掩盖问题。
@@ -48,7 +48,7 @@
 - [ci.yml](.github/workflows/ci.yml) 是 CI 基线：PR 与 main 推送执行全部任务，功能分支普通推送不重复执行；全部成功才称为远程 CI 通过。失败须说明任务、原因和影响，不得称为可发布版本。
 - [release.yml](.github/workflows/release.yml) 仅由 `v*` 标签触发；先确认同一提交的 main push 完整 CI 成功，不重复运行 CI，缺失、未结束或失败时不得发布镜像。
 - 普通 main 推送不发布镜像或部署生产。用户主动推送已确认标签即授权两个 GHCR 镜像发布及其后自动备份、迁移和生产部署；Agent 创建或推送标签须明确授权。
-- 合并或 CI 通过不授予发布权限；标签授权不包含共享测试部署、真实通知、小程序上传或发布。生产固定不可变版本，禁止 `latest`，保留版本恢复路径；操作细节见 [部署与运维手册](docs/shared/delivery/部署与运维手册.md)。
+- 合并或 CI 通过不授予发布权限；标签授权不包含共享测试部署、真实通知、小程序上传或发布。生产固定不可变版本，禁止 `latest`，保留版本恢复路径；操作细节见 [部署说明](deploy/README.md)。
 
 ## 协作、安全与交接
 

@@ -1,7 +1,9 @@
-# S12 deployment entrypoint
+# Deployment entrypoint
 
 Shared test uses the company SSH + Git + Docker Compose path. Production uses
 the tag-triggered image CD described below. This directory never stores real credentials.
+
+开发、发布、日常巡检及排障的中文入口：[飞书交接文档](https://kocotree.feishu.cn/docx/F8VqdJGk8oTjMIxZzfOcwmAXnhb)。小程序审核账号在该文档填写，详细上传步骤见[miniprogram README](../miniprogram/README.md)。本文维护部署脚本、配置及恢复参数。
 
 ## Environment separation
 
@@ -98,15 +100,9 @@ independent of the Mini Program version. Subsequent patches use new tags such as
 `v1.0.1`; never move or overwrite a published tag. Publish one version at a time
 and wait for deployment completion before starting another.
 
-```bash
-git switch main
-git pull --ff-only origin main
-# Confirm this commit's main CI and shared-test acceptance have passed first.
-git tag v1.0.0
-git push origin v1.0.0
-# Observe publication and deployment in the same run.
-gh run list --workflow release.yml --limit 5
-```
+Choose a new unused version for the approved commit; `v1.0.0` and other published
+tags must not be reused. Observe publication and deployment with
+`gh run list --workflow release.yml --limit 5`.
 
 If CI was still running when the tag was pushed, wait for main CI success and
 rerun the failed Release jobs on the same immutable tag. Do not recreate the tag.
@@ -136,9 +132,10 @@ nonempty databases stop deployment. Deployment does not copy OSS. Container heal
 must pass before recording the version.
 After each successful backup the script keeps the newest 7 MySQL dumps and 3 OSS
 snapshots and deletes the rest; it only matches its own `production-<stamp>` names,
-so manual artefacts in the same directories are left alone. A daily 00:00 cron on
-the server runs the same script under the deployment lock, so scheduled and
-deployment backups share one retention pool.
+so manual artefacts in the same directories are left alone. The independent daily
+00:00 backup schedule uses the same script and deployment lock, so scheduled and
+deployment backups share one retention pool. Verify the actual cron installation,
+host timezone and recent successful runs on the server.
 Backup completion checks are not a substitute for periodic restore rehearsals.
 On failure, inspect the actual container and schema state before retrying; DDL
 and a partial container replacement cannot automatically be rolled back safely.
@@ -239,3 +236,70 @@ previous image version, export `ORDER_TRACKING_DEPLOY_VERSION`, and run Compose
 production`. Do not run migrations or Alembic downgrade during rollback. Verify
 schema compatibility first, and update the protected version and release record
 after the rollback is healthy. Keep previous images; do not run broad image prune.
+
+## 配置与巡检
+
+完整配置名及校验见[Settings](../server/app/settings/config.py)。以下名称均带 `ORDER_TRACKING_` 前缀；实际值只保存在受控环境文件中。
+
+| 配置组 | 关键名称及检查 |
+|---|---|
+| 基础 | `APP_ENV`、`DATABASE_URL`、`ADMIN_WEB_BASE_URL`、`WEB_COOKIE_SECURE`；环境隔离、非root数据库账号、HTTPS与安全Cookie |
+| 身份保护 | `IDENTITY_TOKEN_SECRET`、`PHONE_ENCRYPTION_SECRET`、`PHONE_DIGEST_SECRET`；更换前评估既有会话、手机号密文与匹配 |
+| 飞书登录 | `FEISHU_IDENTITY_*`、`FEISHU_SUPER_ADMIN_SUBJECTS`；回调、手机号权限、应用版本与最高管理员白名单 |
+| 来源与采购 | `FEISHU_ORDER_*`、`JST_*`；来源范围、字段映射、权限、Token续期；聚水潭Token缓存使用持久路径 |
+| 微信 | `WECHAT_*`、`WECHAT_NOTIFICATION_MINIPROGRAM_STATE`；AppID、模板、合法域名，测试trial／生产formal |
+| OSS | `OSS_*`；私有Bucket、最小RAM权限、Region与Endpoint一致 |
+| MCP | `MCP_PUBLIC_URL`、`MCP_CLIENT_ID`、`MCP_FILE_HOSTS`；前两项成对，公开HTTPS `/mcp` 与精确文件主机白名单 |
+| 来货出入 | `FEISHU_BOT_ENABLED`、`FEISHU_BOT_VERIFICATION_TOKEN`、`FEISHU_BOT_ENCRYPT_KEY`、`INCOMING_DIFF_VISION_API_KEY`、`INCOMING_DIFF_VISION_BASE_URL`、`INCOMING_DIFF_WORKBOOK_SIGNING_SECRET`；回调验签、模型额度、历史核对表签名兼容 |
+| 外发 | `WECHAT_NOTIFICATIONS_ENABLED`、`FEISHU_NOTIFICATIONS_ENABLED`、`OPS_ALERTS_ENABLED`、`OPS_ALERT_RECIPIENT_USER_ID`；核对开关、模板和接收人，首次真实发送须单独验收 |
+
+飞书机器人复用订单来源应用，扩充消息、卡片和资源权限后须发布应用版本；回调成功与下载、识别、投递、正式登记分别检查。
+
+在当前release的`deploy/`目录，确认`.env.production`指向受控生产文件，再执行：
+
+```bash
+docker compose --env-file .env.production -f compose.production.yaml ps
+docker compose --env-file .env.production -f compose.production.yaml top worker
+docker compose --env-file .env.production -f compose.production.yaml logs --since 30m api worker
+bash scripts/health-check.sh production
+```
+
+预期三容器健康、四个worker角色齐全、内部健康通过；再核对外部HTTPS、登录和关键业务。使用requestId、role、jobId、jobType、deliveryId定位错误，避免复制包含私人数据的整段日志。定向产品与图片维护沿用[server README](../server/README.md#产品同步内部任务)的预览及digest确认命令。
+
+## 隔离恢复与升级边界
+
+恢复配置与数据保存在Git外。获得恢复演练授权后，在独立空库和独立Bucket运行：
+
+```bash
+export ORDER_TRACKING_RESTORE_CONFIRMED=restore-test-only
+bash deploy/scripts/restore-mysql.sh <备份SQL.gz> <受控恢复环境文件>
+bash deploy/scripts/restore-oss.sh <OSS备份目录> <隔离Bucket-restore>
+```
+
+以上命令从release根目录执行。MySQL环境文件使用`ORDER_TRACKING_RESTORE_DATABASE_URL`且库名以`_restore`结尾；OSS通过受控shell设置独立`OSS_REGION`、`OSS_ENDPOINT`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`。先核对备份摘要，恢复后核对schema、代表性数量、数据库文件索引与对象、附件和隔离应用可用，记录耗时和错误。MySQL与OSS恢复须选取一致备份批次。
+
+从旧schema升级时，0050遇旧待审核发货／申请／审批通知会停止，须先处理存量；0053的自动收货历史转换按[专题设计第7节](../docs/一期/project/发货自动收货技术设计.md#7-历史转换与切换)在授权维护窗口执行。应用恢复旧版本先查当前schema兼容性；0049、0051、0052、0053等迁移保护既有业务事实，禁止自动降级或删记录绕过保护。
+
+## 出货阶段回填运维
+
+回填由`shipment`进程处理，每分钟扫描到期任务；阶段末日北京时间22点截止。关闭开关时仍保存提交事实，进程保持存活；已排队任务保留既有有限失败重试行为。首次启用按以下顺序执行，真实写入及启用取得明确授权：
+
+1. 保持`ORDER_TRACKING_SHIPMENT_WRITEBACK_ENABLED=false`，确认迁移完成、全部API使用新版本且旧事务退出，再准备历史。
+2. 核验订单来源应用对批准目标表的字段读／建／更新、记录读／更新及文档编辑权限，核对字段容量。
+3. 在`server/`执行`uv run python -m scripts.shipment_writeback inspect`，取得总数字段及原生公式；结果只留受控配置。核对批准的历史`ROUND(SUM(IFBLANK(...,0),...),0)`基线，填写`ORDER_TRACKING_SHIPMENT_WRITEBACK_TOTAL_FIELD_ID`和`ORDER_TRACKING_SHIPMENT_WRITEBACK_BASELINE_FORMULA`。
+4. 执行`uv run python -m scripts.shipment_writeback history`，核对并登记10月6日起存量事实；该步骤不写飞书、不改订单数量、不发通知。证据缺失或状态冲突时停止并处理。
+5. 在授权环境验证建列、公式及代表性行写入回读；配置与历史核验通过后，设开关为`true`并按发布流程重启worker，核对`shipment`启动及执行结果。
+
+日志、补排与原任务重试（`server/`工作目录）：
+
+```bash
+uv run python -m scripts.shipment_writeback logs
+uv run python -m scripts.shipment_writeback schedule
+uv run python -m scripts.shipment_writeback retry --job-id <失败任务ID>
+```
+
+容器内使用`/app/.venv/bin/python -m scripts.shipment_writeback`；先确认目标环境。`schedule`与`retry`要求启用开关，后者只重置本功能失败任务，保留任务ID、字段绑定、冻结数量和成功行。沿用最多3次尝试、30秒间隔；持续失败先处理权限、关联、公式或网络错误，再显式重试。
+
+阶段单元格仅缺失或null视为空白，已有值含0均保留并记跳过；已验证和已跳过行均为终态，之后清空也不自动补写。日志`verified`为写入回读行数、`skipped`为已有值跳过行数、`verified_quantity`为实际验证的冻结数量；`quantity`为全部冻结统计量。远端成功而本地确认中断后，已有值仍按跳过记录，不推测填写来源。
+
+飞书缺少远端原子条件更新保证，写前复查仍有并发人工编辑窗口，处理期间避免同时编辑目标阶段单元格与总数公式。冻结阶段不因后续补录／撤回重算；后续阶段在前序未冻结时停止。不得删除冻结归属、猜测来源或覆盖漂移公式。关闭开关不撤销已执行的飞书修改。业务定义及并发边界见[技术设计](../docs/二期/project/出货阶段汇总回填技术设计.md)。

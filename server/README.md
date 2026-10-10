@@ -1,6 +1,6 @@
 # 服务器后端
 
-当前包含身份、工厂、产品／SKU图片、自动订单同步与派工、合同和箱贴、发货收货、返修、通知审计、Codex MCP和来货出入机器人。完整交付入口见[交付清单](../docs/shared/delivery/交付清单.md)，接口与运维见[接口说明](../docs/shared/delivery/接口与外部集成说明.md)及[运维手册](../docs/shared/delivery/部署与运维手册.md)。
+当前包含身份、工厂、产品／SKU图片、自动订单同步与派工、合同和箱贴、发货收货、返修、通知审计、Codex MCP和来货出入机器人。完整交付入口见[交付清单](../docs/shared/delivery/交付清单.md)，接口与运维见[接口说明](../docs/shared/delivery/接口与外部集成说明.md)及[部署说明](../deploy/README.md)。
 未显式启用本地演示模式时，未配置的外部适配器保持禁用并明确失败。管理员飞书登录使用已验证手机号自动授予普通管理员角色。
 
 ## 本地检查
@@ -38,7 +38,7 @@ uv run uvicorn app.main:create_app --factory --reload
 uv run python -m app.worker
 ```
 
-API 存活和就绪入口为 `/health/live` 和 `/health/ready`。外部身份、文件与产品适配器的启用取决于当前环境受控配置；本地演示使用独立假适配器，真实联调按运维手册配置并单独验收。
+API 存活和就绪入口为 `/health/live` 和 `/health/ready`。外部身份、文件与产品适配器的启用取决于当前环境受控配置；本地演示使用独立假适配器，真实联调按部署说明配置并单独验收。
 
 ## 本地身份演示
 

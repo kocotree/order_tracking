@@ -6,7 +6,7 @@ describe("mini program API environment", () => {
   it("selects an explicit API base URL for each WeChat environment", () => {
     expect(apiBaseUrlFor("develop")).toBe("http://127.0.0.1:8000/api/v1");
     expect(apiBaseUrlFor("trial")).toBe(
-      "https://order-tracking-test.kktree.cn/api/v1",
+      "https://order-tracking.kktree.cn/api/v1",
     );
     expect(apiBaseUrlFor("release")).toBe(
       "https://order-tracking.kktree.cn/api/v1",

@@ -2,7 +2,7 @@ export type WeChatEnvironment = "develop" | "trial" | "release";
 
 const API_BASE_URLS: Record<WeChatEnvironment, string> = {
   develop: "http://127.0.0.1:8000/api/v1",
-  trial: "https://order-tracking-test.kktree.cn/api/v1",
+  trial: "https://order-tracking.kktree.cn/api/v1",
   release: "https://order-tracking.kktree.cn/api/v1",
 };
 

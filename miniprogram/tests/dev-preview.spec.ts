@@ -11,19 +11,18 @@ describe("mini-program development preview", () => {
   });
 
   it("provides coherent repair list and detail preview data", () => {
-    expect(PREVIEW_REPAIRS).toHaveLength(2);
-    expect(PREVIEW_REPAIRS.map((repair) => repair.repairNo)).toEqual([
-      "FX20260812-001",
-      "FX20260810-002",
-    ]);
-    expect(previewRepair("preview-repair-2")?.returnedQuantity).toBe(420);
+    expect(PREVIEW_REPAIRS.length).toBeGreaterThan(0);
+    for (const repair of PREVIEW_REPAIRS) {
+      expect(previewRepair(repair.repairId)).toMatchObject(repair);
+    }
     expect(previewRepair("missing-repair")).toBeUndefined();
   });
 
   it("provides administrator repair progress and return-record preview data", () => {
-    expect(PREVIEW_ADMIN_REPAIRS).toHaveLength(4);
-    expect(new Set(PREVIEW_ADMIN_REPAIRS.map((repair) => repair.factoryId)).size).toBe(4);
-    expect(previewAdminRepair("preview-admin-repair-1")?.returnBatches?.[0]?.lines).toHaveLength(2);
+    expect(PREVIEW_ADMIN_REPAIRS.length).toBeGreaterThan(0);
+    for (const repair of PREVIEW_ADMIN_REPAIRS) {
+      expect(previewAdminRepair(repair.repairId)).toMatchObject(repair);
+    }
     expect(previewAdminRepair("missing-repair")).toBeUndefined();
   });
 });

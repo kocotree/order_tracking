@@ -2,7 +2,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.avatar import FakeAvatarStore
@@ -12,29 +12,10 @@ from app.main import create_app
 from app.modules.identity_access import FeishuProfile, IdentityAccessService
 
 
-def clean_identity_tables(engine: Engine) -> None:
-    with engine.begin() as connection:
-        connection.execute(text("UPDATE users SET mini_avatar_file_id = NULL"))
-        connection.execute(text("DELETE FROM stored_files"))
-        connection.execute(text("DELETE FROM mini_login_attempts"))
-        connection.execute(text("UPDATE factory_applications SET previous_application_id = NULL"))
-        connection.execute(text("DELETE FROM factory_applications"))
-        connection.execute(text("UPDATE admin_applications SET previous_application_id = NULL"))
-        connection.execute(text("DELETE FROM admin_applications"))
-        connection.execute(text("DELETE FROM sms_challenges"))
-        connection.execute(text("DELETE FROM user_sessions"))
-        connection.execute(text("DELETE FROM oauth_states"))
-        connection.execute(text("DELETE FROM external_identities"))
-        connection.execute(text("DELETE FROM users"))
-        connection.execute(text("DELETE FROM factory_contacts"))
-        connection.execute(text("DELETE FROM factories"))
-
-
 def test_feishu_callback_auto_grants_ordinary_admin(
     test_database_engine: Engine,
     test_database_url: str,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     feishu = FakeFeishuIdentity(
         profiles={
             "new-admin-code": FeishuProfile(
@@ -75,7 +56,6 @@ def test_configured_super_admin_enters_through_the_same_feishu_oauth(
     test_database_engine: Engine,
     test_database_url: str,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     feishu = FakeFeishuIdentity(
         profiles={
             "super-code": FeishuProfile(
@@ -117,7 +97,6 @@ def test_feishu_callback_without_verified_phone_does_not_create_session(
     test_database_engine: Engine,
     test_database_url: str,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     feishu = FakeFeishuIdentity(
         profiles={
             "missing-phone-code": FeishuProfile(
@@ -155,7 +134,6 @@ def test_admin_application_http_capability_is_removed(
     test_database_engine: Engine,
     test_database_url: str,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     app = create_app(database_url=test_database_url)
     removed_paths = {
         "/api/v1/admin-applications",
@@ -193,7 +171,6 @@ def test_web_identity_api_uses_secure_cookie_csrf_and_rotating_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ORDER_TRACKING_WEB_COOKIE_SECURE", "true")
-    clean_identity_tables(test_database_engine)
     feishu = FakeFeishuIdentity(
         profiles={
             "applicant-code": FeishuProfile(
@@ -267,7 +244,6 @@ def test_mini_identity_api_binds_refreshes_uploads_avatar_and_logs_out(
     test_database_engine: Engine,
     test_database_url: str,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     wechat = FakeWechatIdentity(
         scope="test-appid",
         login_profiles={

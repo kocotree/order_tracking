@@ -2,7 +2,7 @@ from contextvars import Context
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.avatar import FakeAvatarStore
@@ -20,28 +20,9 @@ from app.modules.identity_access import (
 )
 
 
-def clean_identity_tables(engine: Engine) -> None:
-    with engine.begin() as connection:
-        connection.execute(text("UPDATE users SET mini_avatar_file_id = NULL"))
-        connection.execute(text("DELETE FROM stored_files"))
-        connection.execute(text("DELETE FROM mini_login_attempts"))
-        connection.execute(text("UPDATE factory_applications SET previous_application_id = NULL"))
-        connection.execute(text("DELETE FROM factory_applications"))
-        connection.execute(text("UPDATE admin_applications SET previous_application_id = NULL"))
-        connection.execute(text("DELETE FROM admin_applications"))
-        connection.execute(text("DELETE FROM sms_challenges"))
-        connection.execute(text("DELETE FROM user_sessions"))
-        connection.execute(text("DELETE FROM oauth_states"))
-        connection.execute(text("DELETE FROM external_identities"))
-        connection.execute(text("DELETE FROM users"))
-        connection.execute(text("DELETE FROM factory_contacts"))
-        connection.execute(text("DELETE FROM factories"))
-
-
 def test_feishu_identity_is_reused_inside_scope_and_isolated_between_scopes(
     test_database_engine: Engine,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     service = IdentityAccessService(sessionmaker(test_database_engine, class_=Session))
     profile = FeishuProfile(
         subject="ou_same_external_subject",
@@ -74,7 +55,6 @@ def test_feishu_identity_is_reused_inside_scope_and_isolated_between_scopes(
 def test_oauth_state_is_short_lived_single_use_and_callback_creates_web_session(
     test_database_engine: Engine,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     now = datetime(2026, 8, 20, 8, 0, tzinfo=UTC)
     feishu = FakeFeishuIdentity(
         profiles={
@@ -150,7 +130,6 @@ def test_oauth_state_is_short_lived_single_use_and_callback_creates_web_session(
 def test_disabled_admin_cannot_reenter_through_feishu_oauth(
     test_database_engine: Engine,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     feishu = FakeFeishuIdentity(
         profiles={
             "super-code": FeishuProfile(
@@ -212,7 +191,6 @@ def test_disabled_admin_cannot_reenter_through_feishu_oauth(
 def test_auto_granted_admin_cannot_read_application_history_and_super_identity_is_stable(
     test_database_engine: Engine,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     factory = sessionmaker(test_database_engine, class_=Session)
     service = IdentityAccessService(
         factory,
@@ -260,7 +238,6 @@ def test_auto_granted_admin_cannot_read_application_history_and_super_identity_i
 def test_disabling_admin_revokes_all_sessions_and_enable_does_not_revive_them(
     test_database_engine: Engine,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     service = IdentityAccessService(
         sessionmaker(test_database_engine, class_=Session),
         super_admin_subjects={"ou_super"},
@@ -344,7 +321,6 @@ def test_disabling_admin_revokes_all_sessions_and_enable_does_not_revive_them(
 def test_wechat_phone_binding_reuses_internal_user_and_scopes_external_identity(
     test_database_engine: Engine,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     wechat = FakeWechatIdentity(
         scope="test-appid",
         login_profiles={
@@ -433,7 +409,6 @@ def test_wechat_phone_binding_reuses_internal_user_and_scopes_external_identity(
 def test_wechat_phone_binding_ignores_historical_admin_application_states(
     test_database_engine: Engine,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     wechat = FakeWechatIdentity(
         scope="test-appid",
         login_profiles={
@@ -526,7 +501,6 @@ def test_wechat_phone_binding_ignores_historical_admin_application_states(
 def test_mini_avatar_is_private_idempotent_and_does_not_replace_feishu_avatar(
     test_database_engine: Engine,
 ) -> None:
-    clean_identity_tables(test_database_engine)
     avatar_store = FakeAvatarStore(bucket="test-private-avatar-bucket")
     service = IdentityAccessService(
         sessionmaker(test_database_engine, class_=Session),

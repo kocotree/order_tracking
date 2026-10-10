@@ -4,17 +4,36 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, inspect, text
+from sqlalchemy.engine import make_url
 
 from app.db.session import create_database_engine
 
 
+def _validate_test_database_url(database_url: str) -> str:
+    url = make_url(database_url)
+    if (
+        os.getenv("ORDER_TRACKING_APP_ENV") == "production"
+        or url.drivername != "mysql+pymysql"
+        or url.host not in {"localhost", "127.0.0.1", "::1"}
+        or not (url.database or "").startswith("order_tracking_")
+        or not (url.database or "").endswith("_test")
+        or set(url.query) - {"charset"}
+    ):
+        raise ValueError(
+            "Tests require an isolated local MySQL test database named order_tracking_*_test; "
+            "only the charset URL option is allowed"
+        )
+    return database_url
+
+
 @pytest.fixture(scope="session")
 def test_database_url() -> str:
-    return os.environ["ORDER_TRACKING_TEST_DATABASE_URL"]
+    return _validate_test_database_url(os.environ["ORDER_TRACKING_TEST_DATABASE_URL"])
 
 
 @pytest.fixture(scope="session")
 def test_database_engine(test_database_url: str) -> Engine:
+    _validate_test_database_url(test_database_url)
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", test_database_url)
     command.upgrade(config, "head")

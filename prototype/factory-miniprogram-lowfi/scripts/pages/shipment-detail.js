@@ -57,11 +57,12 @@
     function renderPage() {
       var orderGroups = groupByOrder(record.lines);
       var withdrawing = record.status === "withdrawn";
+      var statusText = withdrawing ? "已撤回" : record.status === "voided" ? "已作废" : record.returnRecords?.length ? "退回" : "";
       var operationCount = 1 + (record.logs?.length || 0);
       app.innerHTML = '<div class="detail-page shipment-detail-page">' +
         '<header class="detail-titlebar"><button type="button" class="back-button" id="shipment-detail-back" aria-label="返回">' + icons.back + '</button><h1>发货单详情</h1><div class="wechat-capsule" aria-hidden="true"><b>•••</b><i></i><span></span></div></header>' +
         '<main class="shipment-detail-content">' +
-          '<section class="shipment-overview"><div class="shipment-overview__title"><h2>' + escapeHtml(record.shipmentNo) + '</h2><em>' + (withdrawing ? '已撤回' : record.status === 'voided' ? '已作废' : record.returnRecords?.length ? '退回' : '已收货') + '</em></div><p><span>' + icons.calendar + '</span><small>发货日期</small><strong>' + escapeHtml(record.shipDate) + '</strong></p><div><span><small>发货数量</small><b>' + formatNumber(record.totalQuantity) + '</b></span><span><small>总箱数</small><b>' + formatNumber(record.totalBoxes) + '</b></span></div><footer><small>关联订单</small><b>' + escapeHtml(record.orderNos.join("、")) + '</b></footer></section>' +
+          '<section class="shipment-overview"><div class="shipment-overview__title"><h2>' + escapeHtml(record.shipmentNo) + '</h2>' + (statusText ? '<em>' + statusText + '</em>' : '') + '</div><p><span>' + icons.calendar + '</span><small>发货日期</small><strong>' + escapeHtml(record.shipDate) + '</strong></p><div><span><small>发货数量</small><b>' + formatNumber(record.totalQuantity) + '</b></span><span><small>总箱数</small><b>' + formatNumber(record.totalBoxes) + '</b></span></div><footer><small>关联订单</small><b>' + escapeHtml(record.orderNos.join("、")) + '</b></footer></section>' +
           '<section class="shipment-detail-section"><header><h2>发货明细</h2><span>' + record.orderNos.length + ' 个订单</span></header><div>' +
             Object.keys(orderGroups).map(function (orderNo) { var lines = orderGroups[orderNo]; return '<details class="shipment-detail-group"><summary><span><strong>' + escapeHtml(orderNo) + '</strong><small>' + lines.length + ' 个产品规格</small></span><b>合计 ' + formatNumber(total(lines)) + '</b><i>' + icons.chevron + '</i></summary>' + renderLineTable(lines, false) + '</details>'; }).join("") + '</div></section>' +
           '<section class="shipment-detail-section"><header><h2>装箱明细</h2><span>' + record.boxes.length + ' 箱</span></header><div>' +

@@ -317,7 +317,7 @@
         '<header><h2>装箱明细</h2><span>' + state.containers.length + ' 项</span></header>' +
         '<div class="preview-container-list">' + packingHtml + '</div>' +
       '</section>' +
-      '<div class="submit-notice">提交后自动收货并计入订单已发数量。首次正式提交未满7天且没有退回记录时，可从发货记录撤回；重新提交不延长撤回期限。</div>' +
+      '<div class="submit-notice">提交后计入订单已发数量。首次正式提交未满7天且没有退回记录时，可从发货记录撤回；重新提交不延长撤回期限。</div>' +
       renderBottomBar(true, "提交发货单", "submit-shipment", false)
     );
   }
@@ -525,7 +525,7 @@
       record.firstSubmittedAt ??= record.submittedAt || "2026-08-19 11:20";
       Object.assign(record, { status: "shipped", submittedAt: "2026-08-19 11:20", shipDate: "2026-08-19", boxes: boxes, lines: lines, totalBoxes: boxes.length, totalQuantity: getShipmentTotal(), orderNos: [...new Set(lines.map(function (line) { return line.orderNo; }))], productNames: [...new Set(lines.map(function (line) { return line.productName; }))], note: state.note });
       record.logs ??= [];
-      record.logs.unshift({ action: state.record ? "重新提交发货单，自动收货" : "提交发货单，自动收货", time: data.now });
+      record.logs.unshift({ action: state.record ? "重新提交发货单" : "提交发货单", time: data.now });
       window.FactoryPages["shipment-detail"].mount(app, record.id);
     });
   }

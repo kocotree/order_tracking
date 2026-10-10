@@ -30,6 +30,7 @@ from app.db.models import (
     ShipmentLine,
     User,
 )
+from app.modules.log_retention import display_cutoff
 from app.modules.orders.admin_query import dispatch_status as order_dispatch_status
 from app.modules.orders.admin_query import display_status, page_orders
 from app.modules.orders.quantities import pending_totals
@@ -970,7 +971,7 @@ class OrderService:
             entries = session.execute(
                 select(AuditLog, User)
                 .outerjoin(User, User.user_id == AuditLog.actor_id)
-                .where(or_(*targets))
+                .where(or_(*targets), AuditLog.created_at >= display_cutoff())
                 .order_by(AuditLog.id.desc())
             )
             snapshots: list[OrderAuditSnapshot] = []

@@ -107,6 +107,7 @@
         </section>
 
         <section class="section-card detail-section-card order-audit-card" :class="{ 'is-expanded': auditExpanded }">
+          <p>仅展示最近 30 天的操作记录</p>
           <button class="order-audit-toggle" type="button" :aria-expanded="auditExpanded" aria-controls="order-audit-list" :disabled="loadingAudit || !!auditError || !auditLogs.length" @click="auditExpanded = !auditExpanded">
             <span class="order-audit-toggle-title">操作记录<em v-if="!loadingAudit && !auditError">（{{ auditLogs.length }}）</em></span>
             <span class="order-audit-toggle-action">{{ loadingAudit ? '正在加载…' : auditError ? '加载失败' : auditLogs.length ? (auditExpanded ? '收起' : '展开') : '暂无记录' }}<svg v-if="auditLogs.length" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg></span>

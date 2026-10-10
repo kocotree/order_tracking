@@ -16,6 +16,7 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 COPY app ./app
 COPY scripts/enqueue_product_sync.py ./scripts/enqueue_product_sync.py
+COPY scripts/check_migrations.py scripts/log_archives.py ./scripts/
 
 EXPOSE 8000
 CMD ["uv", "run", "--no-sync", "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

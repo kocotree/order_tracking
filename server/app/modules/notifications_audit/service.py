@@ -43,6 +43,7 @@ from app.db.models import (
 )
 from app.logging import StructuredLogger
 from app.modules.infrastructure import utc_now
+from app.modules.log_retention import display_cutoff
 
 logger = logging.getLogger(__name__)
 
@@ -931,7 +932,7 @@ class NotificationsAuditService:
             actor = session.get(User, actor_user_id)
             if actor is None or actor.role != "admin" or not actor.is_enabled:
                 raise PermissionError("enabled administrator required")
-            filters = []
+            filters = [AuditLog.created_at >= display_cutoff()]
             if target_type:
                 filters.append(AuditLog.target_type == target_type)
             if target_id:

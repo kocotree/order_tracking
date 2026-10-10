@@ -17,12 +17,13 @@ function buildLineGroups(lines: ShipmentLine[]): LineGroup[] {
 Page({
   shipmentId: "",
   onShow() { if (this.shipmentId) void this.load(this.shipmentId); },
-  data: { shipment: null as Shipment | null, lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], proofs: [] as ProofView[], loading: true, notificationId:null as number|null },
+  data: { shipment: null as Shipment | null, recentReturnEvents: [] as NonNullable<Shipment["returnEvents"]>, lineGroups: [] as LineGroup[], boxGroups: [] as BoxGroup[], proofs: [] as ProofView[], loading: true, notificationId:null as number|null },
   onLoad(options: Record<string, string | undefined>) {
     if (isDevPreview(options)) { this.showShipment(PREVIEW_SHIPMENT); return; }
     this.setData({notificationId:notificationIdFrom(options)}); if (options.shipmentId) this.shipmentId = options.shipmentId;
   },
   showShipment(shipment: Shipment) {
+    this.setData({ recentReturnEvents: (shipment.returnEvents || []).filter(event => Date.parse(/(Z|[+-]\d{2}:\d{2})$/.test(event.returnedAt) ? event.returnedAt : `${event.returnedAt}Z`) >= Date.now() - 30 * 86400000) });
     this.setData({ shipment, lineGroups: buildLineGroups(shipment.lines), boxGroups: shipment.boxes.map((box) => ({ ...box, total: box.items.reduce((sum, item) => sum + item.quantity, 0), expanded: false })), proofs: shipment.files.map(file => ({ ...file, localPath: "", status: "loading" })), loading: false });
     if (shipment.files.length) void this.loadProofs(shipment.files);
   },

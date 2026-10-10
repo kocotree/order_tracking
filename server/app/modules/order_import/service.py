@@ -27,6 +27,7 @@ from app.db.models import (
     ProductVariant,
     User,
 )
+from app.modules.log_retention import display_cutoff
 from app.modules.orders.service import TRACKERS, OrderAuditSnapshot, OrderService
 from app.modules.product_sync.categories import PRODUCT_CATEGORY_ALLOWLIST, category_summary
 from app.modules.product_sync.service import ProductSyncService
@@ -583,21 +584,24 @@ class OrderImportService:
         with self._session_factory() as session:
             self._require_admin(session, actor_id)
             run = session.get(OrderImportRun, run_id)
-            if run is None:
+            if run is None or run.created_at < display_cutoff(self._clock().replace(tzinfo=None)):
                 raise ValueError("import run not found")
             return self._snapshot(run)
 
     def latest_run(self, *, actor_id: str) -> ImportRunSnapshot | None:
+        cutoff = display_cutoff(self._clock().replace(tzinfo=None))
         with self._session_factory() as session:
             self._require_admin(session, actor_id)
             run = session.scalar(
                 select(OrderImportRun)
-                .where(OrderImportRun.active_key == ACTIVE_KEY)
+                .where(OrderImportRun.active_key == ACTIVE_KEY,
+                       OrderImportRun.created_at >= cutoff)
                 .order_by(OrderImportRun.started_at.desc(), OrderImportRun.run_id.desc())
             )
             if run is None:
                 run = session.scalar(
                     select(OrderImportRun)
+                    .where(OrderImportRun.created_at >= cutoff)
                     .order_by(OrderImportRun.started_at.desc(), OrderImportRun.run_id.desc())
                 )
             return self._snapshot(run) if run else None
@@ -791,6 +795,7 @@ class OrderImportService:
                 select(AuditLog).where(
                     AuditLog.target_type == "order_import_candidate",
                     AuditLog.target_id == candidate_id,
+                    AuditLog.created_at >= display_cutoff(self._clock().replace(tzinfo=None)),
                 ).order_by(AuditLog.id.desc())
             )
             result = []

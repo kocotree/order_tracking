@@ -1,7 +1,7 @@
 import { orderDetailData, orderListData } from "../mock-data.js";
 import { escapeHTML, showToast } from "../components/app-shell.js";
 import { getNextSortState, renderSortableHeader, sortRows, updateSortHeaders } from "../components/table-sort.js";
-import { buildRouteWithReturn, getCurrentLocation, getReturnRoute } from "../router.js";
+import { getReturnRoute } from "../router.js";
 
 const backIcon = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 18-6-6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
@@ -120,34 +120,9 @@ function renderProductRows(rows) {
     .join("");
 }
 
-function renderShipmentRows(shipments) {
-  if (!shipments.length) return '<tr><td colspan="6" class="detail-empty-row">当前订单暂无关联发货单</td></tr>';
-  return shipments.map(item => `<tr><td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(item.no)}">${escapeHTML(item.no)}</button></td><td>${escapeHTML(item.shipDate)}</td><td>${formatNumber(item.declared)}</td><td>—</td><td>${escapeHTML(item.statusLabel)}</td><td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(item.no)}">详情</button></td></tr>`).join("");
-  if (shipments.length === 0) {
-    return `<tr><td colspan="4"><div class="detail-empty-row">当前订单暂无关联发货单</div></td></tr>`;
-  }
-
-  return shipments
-    .map(
-      (shipment) => `
-        <tr>
-          <td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(shipment.no)}">${escapeHTML(shipment.no)}</button></td>
-          <td>${escapeHTML(shipment.shipDate)}</td>
-          <td class="detail-number">${escapeHTML(formatNumber(shipment.declared))}</td>
-          <td><button class="row-link" type="button" data-shipment-detail="${escapeHTML(shipment.no)}">详情</button></td>
-        </tr>
-      `,
-    )
-    .join("");
-}
-
 function productSortValue(product, key) {
   if (key === "progress") return product.quantity ? product.shippedQuantity / product.quantity : 0;
   return product[key];
-}
-
-function shipmentSortValue(shipment, key) {
-  return shipment[key];
 }
 
 function renderPublishDialog(order) {
@@ -405,25 +380,6 @@ export function renderOrderDetailPage(orderNo) {
         </div>
       </section>
 
-      <section class="section-card detail-section-card">
-        <header class="detail-section-header">
-          <h2>关联发货单</h2>
-        </header>
-        <div class="detail-table-scroll">
-          <table class="detail-data-table related-shipment-table data-grid-table"><thead><tr><th>发货单号</th><th>发货日期</th><th>发货数量</th><th>物流单号</th><th>状态</th><th>操作</th></tr></thead><tbody data-order-shipments-body>${renderShipmentRows(order.shipments)}</tbody>
-          <table class="detail-data-table related-shipment-table data-grid-table">
-            <thead>
-              <tr>
-                <th scope="col">发货单号</th>
-                <th scope="col">发货日期</th>
-                <th scope="col">发货数量</th>
-                <th scope="col">操作</th>
-              </tr>
-            </thead>
-            <tbody data-order-shipments-body>${renderShipmentRows(order.shipments)}</tbody>
-          </table>
-        </div>
-      </section>
       <section class="section-card detail-section-card order-audit-card">
         <button class="order-audit-toggle" type="button" aria-expanded="false" data-order-audit-toggle ${order.logs?.length ? "" : "disabled"}><span class="order-audit-toggle-title">操作记录<em>（${order.logs?.length || 0}）</em></span><span class="order-audit-toggle-action" data-audit-label>${order.logs?.length ? "展开" : "暂无记录"}</span></button>
         <ol class="order-audit-list shipment-log-list" hidden data-order-audit-list>${(order.logs || []).map(log => `<li class="shipment-log-item"><span class="shipment-log-dot"></span><div><strong>${escapeHTML(log.action)}</strong><span>${escapeHTML(log.time)} · ${escapeHTML(log.operator)} · ${escapeHTML(log.source || "系统")}</span></div></li>`).join("")}</ol>
@@ -453,7 +409,6 @@ export function bindOrderDetailPage(orderNo) {
   const productRows = buildProductFactoryRows(order);
   const sortStates = {
     "order-products": { key: null, direction: "asc" },
-    "order-shipments": { key: null, direction: "asc" },
   };
 
   const closePublishDialog = () => {
@@ -765,18 +720,10 @@ export function bindOrderDetailPage(orderNo) {
       const nextSortState = getNextSortState(event, sortStates[sortScope]);
       sortStates[sortScope] = nextSortState;
       updateSortHeaders(sortTable, nextSortState);
-      if (sortScope === "order-products") {
-        const body = page.querySelector("[data-order-products-body]");
-        if (body) body.innerHTML = renderProductRows(sortRows(productRows, nextSortState, productSortValue));
-      } else {
-        const body = page.querySelector("[data-order-shipments-body]");
-        if (body) body.innerHTML = renderShipmentRows(sortRows(order.shipments, nextSortState, shipmentSortValue));
-      }
+      const body = page.querySelector("[data-order-products-body]");
+      if (body) body.innerHTML = renderProductRows(sortRows(productRows, nextSortState, productSortValue));
       return;
     }
-
-    const shipmentNo = event.target.closest("[data-shipment-detail]")?.dataset.shipmentDetail;
-    if (shipmentNo) window.location.hash = buildRouteWithReturn(`/shipments/${encodeURIComponent(shipmentNo)}`, getCurrentLocation());
   });
 
   page?.addEventListener("keydown", (event) => {

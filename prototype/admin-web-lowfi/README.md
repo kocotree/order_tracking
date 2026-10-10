@@ -10,6 +10,8 @@ Issue #240（2026-10-10）：发货详情删除人工确认及旧撤回审批，
 
 非浏览器交互自检：在仓库根目录执行 `node prototype/check-auto-receipt.mjs`，复用 `admin-web` 已安装的 jsdom。
 
+Issue #240 追加：订单详情删除“关联发货单”区块及专用渲染、排序、跳转和样式；来货出入后直接接操作记录。底层模拟关联数据及已有发货不可撤回订单的校验保留。打开 `#/orders/078%23` 查看；发货单继续从 `#/shipments` 进入。
+
 ```bash
 cd prototype/admin-web-lowfi
 python3 -m http.server 4173

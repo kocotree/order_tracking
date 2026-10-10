@@ -17,6 +17,7 @@ from app.db.models import (
     OutboxMessage,
     ShipmentWritebackControl,
     ShipmentWritebackFact,
+    ShipmentWritebackRow,
 )
 from app.modules.infrastructure import InfrastructureStore
 from app.modules.notifications_audit import NotificationsAuditService
@@ -162,8 +163,9 @@ def test_worker_schedules_only_due_work_and_recovery_does_not_duplicate_jobs(
     assert [entry["status"] for entry in writer.executions()] == ["SUCCEEDED", "SUCCEEDED"]
 
 
+@pytest.mark.parametrize("manual_value", [None, 0, 200])
 def test_failed_write_retries_frozen_snapshot_and_records_each_attempt(
-    test_database_engine: Engine,
+    test_database_engine: Engine, manual_value: int | None,
 ):
     assignment = seed_source(test_database_engine)
     sessions = sessionmaker(test_database_engine, expire_on_commit=False)
@@ -179,14 +181,56 @@ def test_failed_write_retries_frozen_snapshot_and_records_each_attempt(
     remote.fail_record = True
     with pytest.raises(httpx.ReadTimeout, match="simulated lost response"):
         writer.run(payload, now=datetime(2026, 10, 11, 14, tzinfo=UTC))
+    stage = month_stages(2026, 10)[0]
+    if manual_value is not None:
+        remote.records["record-a"][stage.name] = manual_value
     submit(shipments, assignment, datetime(2026, 10, 12, tzinfo=UTC), 7)
     writer.run(payload, now=datetime(2026, 10, 12, tzinfo=UTC))
     stage = month_stages(2026, 10)[0]
-    assert remote.records["record-a"][stage.name] == 13
-    assert writer.results(stage)["record-a"]["verified"] is True
+    assert remote.records["record-a"][stage.name] == (
+        13 if manual_value is None else manual_value
+    )
+    assert writer.results(stage)["record-a"]["verified"] is False
+    assert writer.results(stage)["record-a"]["skipped"] is True
+    assert writer.executions()[-1]["skipped"] == 1
+    assert writer.executions()[-1]["verified_quantity"] == 0
+    assert len(remote.record_writes) == 1
     assert [entry["status"] for entry in writer.executions()] == ["FAILED", "SUCCEEDED"]
     writer.prepare_history()
     assert writer.freeze(stage, now=stage.until)["record-a"]["quantity"] == 13
+
+
+@pytest.mark.parametrize("existing", [0, 13, 200])
+def test_existing_values_are_terminal_skips_and_not_verified_writes(
+    test_database_engine: Engine, existing: int,
+):
+    assignment = seed_source(test_database_engine)
+    sessions = sessionmaker(test_database_engine, expire_on_commit=False)
+    submit(ShipmentService(sessions), assignment, datetime(2026, 10, 8, tzinfo=UTC), 13)
+    remote = RemoteBase()
+    remote.fields.extend([
+        {"field_id": "order", "field_name": "订单编号", "type": 1},
+        {"field_id": "detail", "field_name": "下单明细ID", "type": 1005},
+    ])
+    stage = month_stages(2026, 10)[0]
+    remote.records["record-a"][stage.name] = existing
+    writer = ShipmentWriteback(sessions, source_scope="test-source", target=remote.writer())
+    payload = {"month": "2026-10", "stage": stage.key}
+    writer.run(payload, now=stage.until)
+    assert remote.records["record-a"][stage.name] == existing
+    assert remote.record_writes == []
+    assert writer.results(stage)["record-a"]["skipped"] is True
+    assert writer.results(stage)["record-a"]["verified"] is False
+    log = writer.executions()[-1]
+    assert (log["status"], log["verified"], log["skipped"], log["verified_quantity"]) == (
+        "SUCCEEDED", 0, 1, 0,
+    )
+    remote.records["record-a"].pop(stage.name)
+    ShipmentWriteback(sessions, source_scope="test-source", target=remote.writer()).run(
+        payload, now=stage.until,
+    )
+    assert stage.name not in remote.records["record-a"]
+    assert remote.record_writes == []
 
 
 def test_later_stage_cannot_claim_before_preceding_snapshot(test_database_engine: Engine):
@@ -195,6 +239,47 @@ def test_later_stage_cannot_claim_before_preceding_snapshot(test_database_engine
     second = month_stages(2026, 10)[1]
     with pytest.raises(ValueError, match="previous_stage_not_frozen"):
         writer.freeze(second, now=second.until)
+
+
+def test_partial_write_preserves_verified_row_and_manual_edit_on_retry(
+    test_database_engine: Engine,
+):
+    assignment = seed_source(test_database_engine)
+    sessions = sessionmaker(test_database_engine, expire_on_commit=False)
+    submit(ShipmentService(sessions), assignment, datetime(2026, 10, 8, tzinfo=UTC), 13)
+    remote = RemoteBase()
+    remote.fields.extend([
+        {"field_id": "order", "field_name": "订单编号", "type": 1},
+        {"field_id": "detail", "field_name": "下单明细ID", "type": 1005},
+    ])
+    writer = ShipmentWriteback(sessions, source_scope="test-source", target=remote.writer())
+    stage = month_stages(2026, 10)[0]
+    payload = {"month": "2026-10", "stage": stage.key}
+    writer.run(payload, now=stage.until)
+    assert writer.results(stage)["record-a"]["verified"] is True
+    # 补入尚未处理的冻结行，复现同阶段部分行已确认、剩余行中断后的恢复。
+    with sessions.begin() as session:
+        session.add(ShipmentWritebackRow(
+            stage_key=stage.key, record_id="record-b",
+            identity={"order_no": "S07-ORDER-A", "detail_id": "detail-b"},
+            quantity=7, verified=False,
+        ))
+    remote.records["record-b"] = {"订单编号": "S07-ORDER-A", "下单明细ID": "detail-b"}
+    remote.fail_record = True
+    with pytest.raises(httpx.ReadTimeout):
+        writer.run(payload, now=stage.until)
+    remote.records["record-a"][stage.name] = 100
+    remote.records["record-b"][stage.name] = 200
+    remote.records["untouched"] = {stage.name: 300}
+    writer.run(payload, now=stage.until)
+    assert [remote.records[key][stage.name] for key in (
+        "record-a", "record-b", "untouched",
+    )] == [100, 200, 300]
+    assert len(remote.record_writes) == 2
+    log = writer.executions()[-1]
+    assert (log["verified"], log["skipped"], log["quantity"], log["verified_quantity"]) == (
+        1, 1, 20, 13,
+    )
 
 
 def test_historical_assignment_keeps_source_when_detail_is_redispatched(

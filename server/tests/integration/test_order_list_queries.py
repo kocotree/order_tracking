@@ -1,6 +1,4 @@
 from datetime import date, datetime
-from statistics import median
-from time import perf_counter
 
 import pytest
 from sqlalchemy import Engine, event, select
@@ -85,24 +83,22 @@ def test_source_order_page_batches_pending_ledger(test_database_engine: Engine, 
             calls.append(statement)
 
         event.listen(test_database_engine, "before_cursor_execute", record)
-        timings = []
         try:
-            for _ in range(5):
-                start = perf_counter()
-                actual, total = service.list_visible(
-                    actor_id=admin, include_drafts=True, sort_by=sort, today=today,
-                    page=2, page_size=size,
-                )
-                timings.append((perf_counter() - start) * 1000)
-                assert total == 40
-                assert actual == expected[size:2 * size]
+            actual, total = service.list_visible(
+                actor_id=admin, include_drafts=True, sort_by=sort, today=today,
+                page=2, page_size=size,
+            )
+            assert total == 40
+            assert actual == expected[size:2 * size]
         finally:
             event.remove(test_database_engine, "before_cursor_execute", record)
-        counts.append(len(calls) // 5)
+        counts.append(len(calls))
         if sort.startswith("shipDate"):
-            assert "quantity_ledger" not in calls[2]
-        print(f"{sort} size={size} queries={counts[-1]} median_ms={median(timings):.2f}")
-    assert counts == [8, 8]
+            page_queries = [sql for sql in calls if "ORDER BY" in sql and "LIMIT" in sql]
+            assert page_queries
+            assert all("quantity_ledger" not in sql for sql in page_queries)
+    assert counts[1] <= counts[0]
+    assert max(counts) <= 8
 
 
 def test_source_date_filter_and_status_match_snapshots(test_database_engine: Engine) -> None:

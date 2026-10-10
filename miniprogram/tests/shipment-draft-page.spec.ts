@@ -63,7 +63,7 @@ beforeEach(async () => {
   });
   await import("../pages/factory-create-shipment/factory-create-shipment");
 });
-afterEach(() => {page?.onUnload?.();vi.unstubAllGlobals();});
+afterEach(() => {page?.onUnload?.();vi.clearAllTimers();vi.useRealTimers();vi.unstubAllGlobals();});
 
 it("saves empty boxes on entering packing and restores them after reopening", async () => {
   page.onLoad({});
@@ -119,8 +119,12 @@ it("automatically saves note edits without requiring navigation", async () => {
   page.setData({boxCount:"1"});
   await page.generateBoxes();
   await page.next();
+  vi.useFakeTimers();
   page.noteChanged({detail:{value:"下次继续"}});
-  await vi.waitFor(() => expect(stored?.note).toBe("下次继续"),{timeout:1500});
+  await vi.advanceTimersByTimeAsync(499);
+  expect(stored?.note).not.toBe("下次继续");
+  await vi.advanceTimersByTimeAsync(1);
+  expect(stored?.note).toBe("下次继续");
   expect(page.data.saveMessage).toBe("草稿已保存");
 });
 
@@ -130,9 +134,12 @@ it("flushes pending edits when leaving before the autosave delay", async () => {
   page.setData({boxCount:"1"});
   await page.generateBoxes();
   await page.next();
+  vi.useFakeTimers();
   page.noteChanged({detail:{value:"刚填完就返回"}});
   page.onUnload();
-  await vi.waitFor(() => expect(stored?.note).toBe("刚填完就返回"));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(stored?.note).toBe("刚填完就返回");
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 
@@ -147,14 +154,17 @@ it("copies 33 boxes, saves and restores the group, and detaches only the edited 
   page.setData({boxes});
   page.openBatchPacking();
   page.batchCountChanged({detail:{value:"32"}});
+  vi.useFakeTimers();
   page.applyBatchPacking();
-  await vi.waitFor(() => expect(stored?.boxes[32].items).toEqual([{assignmentId:7,quantity:10}]),{timeout:1500});
+  await vi.advanceTimersByTimeAsync(500);
+  expect(stored?.boxes[32].items).toEqual([{assignmentId:7,quantity:10}]);
   // A second attempt must not overwrite the already filled targets.
   page.openBatchPacking();
   page.batchCountChanged({detail:{value:"32"}});
   page.applyBatchPacking();
   expect(page.data.boxes[32].items).toEqual([{assignmentId:7,quantity:10}]);
   page.closeBatchPacking();
+  vi.useRealTimers();
   const group = stored!.boxes[0].groupKey;
   expect(group).toBeTruthy();
   await page.previous();

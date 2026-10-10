@@ -133,9 +133,10 @@ def test_supervisor_stops_and_reaps_real_children(
 ) -> None:
     env = os.environ.copy()
     env["ORDER_TRACKING_DATABASE_URL"] = test_database_url
+    # 无缓冲二进制管道避免文本层预读，使 select 与实际待读日志一致。
     process = subprocess.Popen(
         [sys.executable, "-m", "app.worker"], env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0,
     )
     child_pids: dict[str, int] = {}
     try:

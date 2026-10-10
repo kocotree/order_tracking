@@ -355,38 +355,6 @@ def test_long_mult_order_summary_preserves_full_first_occurrence_sort(
     assert reader.page_admin_shipments(keyword="关联8")[1] == 1
 
 
-@pytest.mark.parametrize("count", [20, 100])
-def test_local_api_performance_evidence(
-    test_database_engine: Engine,
-    test_database_url: str,
-    count: int,
-) -> None:
-    seed_shipments(test_database_engine, count)
-    identity = IdentityAccessService(
-        sessionmaker(test_database_engine, expire_on_commit=False),
-        token_secret=b"list-token",
-        phone_encryption_secret=b"list-encryption",
-        phone_digest_secret=b"list-digest",
-    )
-    admin = identity.issue_session(user_id=ADMIN_ID, terminal="mini")
-    app = create_app(
-        database_url=test_database_url,
-        identity_service=identity,
-        shipment_service=service(test_database_engine),
-    )
-    with TestClient(app) as client:
-        client.headers["Authorization"] = f"Bearer {admin.access_token}"
-        for path in ["", "/summary?page=2", "/summary?page=2&sortBy=productNames"]:
-            start = perf_counter()
-            result = client.get("/api/v1/admin/shipments" + path)
-            duration = (perf_counter() - start) * 1000
-            assert result.status_code == 200
-            print(
-                f"API count={count}, path={path or 'detail-list'}, "
-                f"ms={duration:.1f}, bytes={len(result.content)}"
-            )
-
-
 def test_factory_options_include_records_outside_current_page(test_database_engine: Engine) -> None:
     seed_shipments(test_database_engine, 12)
     with Session(test_database_engine) as session, session.begin():

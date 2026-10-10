@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.wechat import FakeWechatIdentity, WechatProfile
@@ -8,29 +8,10 @@ from app.modules.factory_access import FactoryAccessService
 from app.modules.identity_access import FeishuProfile, IdentityAccessService
 
 
-def clean_factory_tables(engine: Engine) -> None:
-    with engine.begin() as connection:
-        connection.execute(text("UPDATE users SET mini_avatar_file_id = NULL"))
-        connection.execute(text("DELETE FROM stored_files"))
-        connection.execute(text("DELETE FROM mini_login_attempts"))
-        connection.execute(text("UPDATE factory_applications SET previous_application_id = NULL"))
-        connection.execute(text("DELETE FROM factory_applications"))
-        connection.execute(text("UPDATE admin_applications SET previous_application_id = NULL"))
-        connection.execute(text("DELETE FROM admin_applications"))
-        connection.execute(text("DELETE FROM sms_challenges"))
-        connection.execute(text("DELETE FROM user_sessions"))
-        connection.execute(text("DELETE FROM oauth_states"))
-        connection.execute(text("DELETE FROM external_identities"))
-        connection.execute(text("DELETE FROM users"))
-        connection.execute(text("DELETE FROM factory_contacts"))
-        connection.execute(text("DELETE FROM factories"))
-
-
 def test_factory_api_creates_reviews_and_disables_factory_user(
     test_database_engine: Engine,
     test_database_url: str,
 ) -> None:
-    clean_factory_tables(test_database_engine)
     sessions = sessionmaker(test_database_engine, class_=Session)
     wechat = FakeWechatIdentity(
         scope="test-appid",

@@ -3507,70 +3507,6 @@
         "title": "OrderResponse",
         "type": "object"
       },
-      "OrderShipmentListResponse": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/OrderShipmentSummary"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total"
-        ],
-        "title": "OrderShipmentListResponse",
-        "type": "object"
-      },
-      "OrderShipmentSummary": {
-        "properties": {
-          "businessDate": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Businessdate"
-          },
-          "shipmentId": {
-            "title": "Shipmentid",
-            "type": "string"
-          },
-          "shipmentNo": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Shipmentno"
-          },
-          "totalQuantity": {
-            "title": "Totalquantity",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "shipmentId",
-          "shipmentNo",
-          "businessDate",
-          "totalQuantity"
-        ],
-        "title": "OrderShipmentSummary",
-        "type": "object"
-      },
       "ProductListItemResponse": {
         "properties": {
           "category": {
@@ -3690,20 +3626,6 @@
           "propertiesValue"
         ],
         "title": "ReceiptAssignmentOption",
-        "type": "object"
-      },
-      "ReceiptConfirm": {
-        "properties": {
-          "version": {
-            "minimum": 0.0,
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "version"
-        ],
-        "title": "ReceiptConfirm",
         "type": "object"
       },
       "ReceiptItemOptions": {
@@ -4917,6 +4839,11 @@
           "canEditWithdrawal": {
             "default": false,
             "title": "Caneditwithdrawal",
+            "type": "boolean"
+          },
+          "canWithdraw": {
+            "default": false,
+            "title": "Canwithdraw",
             "type": "boolean"
           },
           "createdAt": {
@@ -9876,80 +9803,6 @@
         ]
       }
     },
-    "/api/v1/admin/orders/{order_id}/shipments": {
-      "get": {
-        "operationId": "order_shipments_api_v1_admin_orders__order_id__shipments_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "order_id",
-            "required": true,
-            "schema": {
-              "title": "Order Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "ot_web_session",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Ot Web Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrderShipmentListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Order Shipments",
-        "tags": [
-          "shipment-admin"
-        ]
-      }
-    },
     "/api/v1/admin/orders/{order_id}/source-refresh/confirm": {
       "post": {
         "operationId": "confirm_source_api_v1_admin_orders__order_id__source_refresh_confirm_post",
@@ -11900,6 +11753,15 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
             "name": "x-csrf-token",
             "required": false,
             "schema": {
@@ -11964,106 +11826,6 @@
           }
         },
         "summary": "Save Receipt",
-        "tags": [
-          "shipment-admin"
-        ]
-      }
-    },
-    "/api/v1/admin/shipments/{shipment_id}/receipt/confirm": {
-      "post": {
-        "operationId": "confirm_receipt_api_v1_admin_shipments__shipment_id__receipt_confirm_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "shipment_id",
-            "required": true,
-            "schema": {
-              "title": "Shipment Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-csrf-token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Csrf-Token"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "ot_web_session",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Ot Web Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReceiptConfirm"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ShipmentDraftResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Confirm Receipt",
         "tags": [
           "shipment-admin"
         ]

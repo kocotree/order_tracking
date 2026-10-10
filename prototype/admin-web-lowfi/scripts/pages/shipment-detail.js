@@ -38,7 +38,7 @@ function getShipment(shipmentNo) {
 function getShipmentDetail(shipment) {
   if (!shipmentDetailData[shipment.shipmentNo]) shipmentDetailData[shipment.shipmentNo] = buildFallbackDetail(shipment);
   const detail = shipmentDetailData[shipment.shipmentNo];
-  if (shipment.statusKey === "void-pending" && !detail.voidRequest) detail.voidRequest = { status: "pending", name: "示例工厂用户", time: `${shipment.shipDate} 12:00`, reason: "装箱数量填写有误，申请撤回后重新提交" };
+  if (shipment.statusKey === "shipped") detail.receipt ??= { name: "系统自动收货", time: detail.logs.find(log => log.action.includes("提交发货单"))?.time || shipment.shipDate };
   return detail;
 }
 
@@ -55,7 +55,19 @@ function renderShipmentLines(lines) {
   `).join("");
 }
 
-function renderPackingGroups(boxes, editable = false) {
+function receiptOptions(shipment, detail) {
+  const options = [...(detail.originalLines || detail.lines)];
+  for (const [orderNo, order] of Object.entries(orderDetailData)) {
+    if (order.statusKey === "draft") continue;
+    const factory = order.factories.find(item => item.name === shipment.factory);
+    for (const product of order.products) {
+      if (factory?.lines.some(line => (!line.code || line.code === product.code) && line.colorSpec === product.colorSpec)) options.push({ ...product, orderNo });
+    }
+  }
+  return options.filter((item, index) => options.findIndex(other => other.orderNo === item.orderNo && other.code === item.code && other.colorSpec === item.colorSpec) === index);
+}
+
+function renderPackingGroups(boxes, editable = false, options = []) {
   return boxes.map((box, boxIndex) => {
     const subtotal = box.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
     return `
@@ -66,7 +78,7 @@ function renderPackingGroups(boxes, editable = false) {
             <td>${escapeHTML(item.orderNo)}</td>
             <td class="detail-code">${escapeHTML(item.code)}</td>
             <td>${escapeHTML(item.name)}</td>
-            <td>${escapeHTML(item.colorSpec)}</td>
+            <td>${editable ? `<select data-receipt-assignment="${boxIndex}:${index}" aria-label="箱号 ${box.boxNo} 订单和颜色/规格">${options.map((option, optionIndex) => option.code === item.code ? `<option value="${optionIndex}" ${option.orderNo === item.orderNo && option.colorSpec === item.colorSpec ? "selected" : ""}>${escapeHTML(option.orderNo)} · ${escapeHTML(option.colorSpec)}</option>` : "").join("")}</select>` : escapeHTML(item.colorSpec)}</td>
             <td class="detail-number">${editable ? `<input class="return-quantity-input" type="number" min="0" max="2147483647" step="1" value="${item.quantity}" data-receipt-quantity="${boxIndex}:${index}" aria-label="箱号 ${box.boxNo} ${escapeHTML(item.code)} 核对数量" />` : formatNumber(item.quantity)}</td>
             <td class="packing-total-cell">${index === box.items.length - 1 ? escapeHTML(formatNumber(subtotal)) : ""}</td>
           </tr>
@@ -206,19 +218,16 @@ function updateOrderAfterReturn(shipment, returnedLines, reason, time, operation
 }
 
 function canVerify(shipment, detail) {
-  return shipment.statusKey === "shipped" && !detail.receipt && !detail.returnRecords?.length;
-}
-function receiptBoxes(detail) {
-  return detail.receiptDraft || detail.boxes;
+  return shipment.statusKey === "shipped" && !detail.returnRecords?.length;
 }
 function receiptLines(detail, boxes) {
-  return detail.lines.map(line => ({ ...line, shippedQuantity: boxes.flatMap(box => box.items).filter(item => item.orderNo === line.orderNo && item.code === line.code && item.colorSpec === line.colorSpec).reduce((sum,item) => sum + Number(item.quantity || 0), 0) }));
-}
-function renderVoidRequest(shipment, detail) {
-  const request = detail.voidRequest;
-  if (!request) return "";
-  const pending = request.status === "pending";
-  return `<section class="section-card shipment-void-card"><header class="detail-section-header"><h2>撤回申请</h2><span class="status-badge is-${pending ? "warning" : request.status === "approved" ? "success" : "danger"}">${{ pending: "待审核", approved: "已通过", rejected: "已拒绝" }[request.status]}</span></header><div class="shipment-void-content"><dl><div><dt>申请人</dt><dd>${escapeHTML(request.name)}</dd></div><div><dt>申请时间</dt><dd>${escapeHTML(request.time)}</dd></div><div class="is-wide"><dt>撤回原因</dt><dd>${escapeHTML(request.reason)}</dd></div>${request.reviewedAt ? `<div><dt>审核时间</dt><dd>${escapeHTML(request.reviewedAt)}</dd></div>` : ""}${request.comment ? `<div class="is-wide"><dt>审核意见</dt><dd>${escapeHTML(request.comment)}</dd></div>` : ""}</dl>${pending ? `<div class="shipment-void-actions"><button class="detail-outline-button" type="button" data-void-review="reject">拒绝</button><button class="detail-primary-button" type="button" data-void-review="approve" ${detail.returnRecords?.length ? 'disabled title="该发货单已有退回记录，只能拒绝"' : ""}>通过</button></div>` : ""}</div></section><div data-void-modal></div>`;
+  const lines = [];
+  for (const item of boxes.flatMap(box => box.items)) {
+    let line = lines.find(line => line.orderNo === item.orderNo && line.code === item.code && line.colorSpec === item.colorSpec);
+    if (!line) { line = { ...item, shippedQuantity: 0 }; lines.push(line); }
+    line.shippedQuantity += Number(item.quantity || 0);
+  }
+  return lines;
 }
 
 export function renderShipmentDetailPage(shipmentNo) {
@@ -227,7 +236,7 @@ export function renderShipmentDetailPage(shipmentNo) {
   const detail = getShipmentDetail(shipment);
   const isEffective = shipment.statusKey === "shipped";
   const editable = canVerify(shipment, detail);
-  const boxes = editable ? receiptBoxes(detail) : detail.boxes;
+  const boxes = detail.boxes;
   const lines = editable ? receiptLines(detail, boxes) : detail.lines;
   const displayTotal = lines.reduce((sum, line) => sum + line.shippedQuantity, 0);
   const shipmentTime = detail.logs.find((item) => item.action.includes("提交发货单"))?.time ?? shipment.shipDate;
@@ -237,8 +246,8 @@ export function renderShipmentDetailPage(shipmentNo) {
         <header class="detail-page-header">
           <button class="detail-back-button" type="button" data-shipment-back>${backIcon}<span>返回</span></button>
           <div class="detail-title-row shipment-detail-actions">
-            ${editable ? '<button class="detail-primary-button" type="button" data-confirm-receipt>确认收货</button>' : `<span class="status-badge is-${escapeHTML(shipment.tone)}">${detail.receipt && shipment.statusKey === "shipped" ? "已收货" : escapeHTML(shipment.statusLabel)}</span>`}
-            ${detail.receipt ? `<span class="receipt-confirmation">已收货 · ${escapeHTML(detail.receipt.name)} · ${escapeHTML(detail.receipt.time)}</span>` : ""}
+            <span class="status-badge is-${detail.returnRecords?.length ? "warning" : isEffective ? "success" : escapeHTML(shipment.tone)}">${detail.returnRecords?.length ? "退回" : isEffective ? "已收货" : escapeHTML(shipment.statusLabel)}</span>
+            ${detail.receipt ? `<span class="receipt-confirmation">${escapeHTML(detail.receipt.name)} · ${escapeHTML(detail.receipt.time)}</span>` : ""}
             ${shipment.statusKey !== "voided" ? '<button class="detail-outline-button" type="button" data-download-shipment>下载发货清单</button>' : ""}
           </div>
         </header>
@@ -253,7 +262,6 @@ export function renderShipmentDetailPage(shipmentNo) {
       </section>
 
       <p class="page-error" hidden data-receipt-error></p><p class="page-state" hidden data-receipt-message></p>
-      ${renderVoidRequest(shipment, detail)}
       <section class="section-card detail-section-card">
         <header class="detail-section-header"><h2>发货明细</h2>${isEffective && detail.lines.some(line => getAvailableReturnQuantity(line) > 0) ? `<button class="detail-outline-button" type="button" data-return-open>退回</button>` : ""}</header>
         <div class="detail-table-scroll">
@@ -269,7 +277,7 @@ export function renderShipmentDetailPage(shipmentNo) {
         <div class="detail-table-scroll">
           <table class="detail-data-table packing-detail-table data-grid-table" data-sort-table="packing-lines">
             <thead><tr><th>箱号</th><th>关联订单</th><th>产品编码</th><th>产品名称</th><th>颜色/规格</th><th>装箱数量</th><th>合计</th></tr></thead>
-            ${renderPackingGroups(boxes, editable)}
+            ${renderPackingGroups(boxes, editable, receiptOptions(shipment, detail))}
           </table>
         </div>
       </section>
@@ -299,7 +307,8 @@ export function bindShipmentDetailPage(shipmentNo) {
   const returnOpenButton = page?.querySelector("[data-return-open]");
   const shipment = getShipment(shipmentNo);
   const detail = getShipmentDetail(shipment);
-  const draft = structuredClone(receiptBoxes(detail));
+  const draft = structuredClone(detail.boxes);
+  const options = receiptOptions(shipment, detail);
   const refresh = () => { document.body.classList.remove("has-dialog-open"); page.outerHTML = renderShipmentDetailPage(shipmentNo); bindShipmentDetailPage(shipmentNo); };
   const feedback = (text, isError = false) => { const error = page.querySelector("[data-receipt-error]"); const message = page.querySelector("[data-receipt-message]"); error.hidden = !isError; message.hidden = isError; (isError ? error : message).textContent = text; };
   page?.addEventListener("input", event => {
@@ -313,18 +322,16 @@ export function bindShipmentDetailPage(shipmentNo) {
     group.querySelector("tr:last-child .packing-total-cell").textContent = formatNumber(draft[boxIndex].items.reduce((sum,item) => sum + Number(item.quantity || 0), 0));
   });
   page?.querySelector("[data-save-receipt]")?.addEventListener("click", () => {
+    if (!canVerify(shipment, detail)) return;
     if (draft.some(box => box.items.some(item => !Number.isInteger(item.quantity) || item.quantity < 0 || item.quantity > 2147483647))) { feedback("核对数量必须为非负整数", true); return; }
-    detail.receiptDraft = structuredClone(draft);
-    feedback("核对草稿已保存，确认收货后生效");
-  });
-  page?.querySelector("[data-confirm-receipt]")?.addEventListener("click", () => {
-    if (JSON.stringify(draft) !== JSON.stringify(receiptBoxes(detail))) { feedback("有未保存的核对数量，请先保存再确认收货", true); return; }
+    if (JSON.stringify(draft) === JSON.stringify(detail.boxes)) { feedback("没有修改，无需保存"); return; }
     const newLines = receiptLines(detail, draft);
     detail.originalBoxes ??= structuredClone(detail.boxes);
     detail.originalLines ??= structuredClone(detail.lines);
     const time = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
-    // Reuse the existing quantity rollback path for net shortages; over-receipt must not reopen a completed order.
-    const deltas = newLines.map((line,index) => ({ line: detail.lines[index], quantity: detail.lines[index].shippedQuantity - line.shippedQuantity }));
+    // 按上次生效归属计算差额，支持多次保存及跨订单规格纠错。
+    const keys = [...detail.lines, ...newLines].filter((line, index, all) => all.findIndex(other => other.orderNo === line.orderNo && other.code === line.code && other.colorSpec === line.colorSpec) === index);
+    const deltas = keys.map(line => ({ line, quantity: (detail.lines.find(old => old.orderNo === line.orderNo && old.code === line.code && old.colorSpec === line.colorSpec)?.shippedQuantity || 0) - (newLines.find(next => next.orderNo === line.orderNo && next.code === line.code && next.colorSpec === line.colorSpec)?.shippedQuantity || 0) }));
     const completed = new Set(deltas.map(item => item.line.orderNo).filter(no => orderDetailData[no]?.statusKey === "completed"));
     updateOrderAfterReturn(shipment, deltas, "收货核对差额", time, "收货核对调整");
     for (const no of completed) {
@@ -333,28 +340,28 @@ export function bindShipmentDetailPage(shipmentNo) {
         const item = orderListData.orders.find(item => item.orderNo === no); if (item) Object.assign(item, { statusKey: "completed", statusLabel: "已完成", tone: "success" });
       }
     }
-    detail.boxes = structuredClone(draft); detail.lines = newLines; detail.receipt = { name: "煎饼", time }; delete detail.receiptDraft;
+    detail.boxes = structuredClone(draft); detail.lines = newLines;
+    detail.logs.unshift({ time, operator: "煎饼", action: "修改装箱明细并保存，订单数量已同步", source: "管理员网页端" });
+    shipment.orderNos = [...new Set(newLines.map(line => line.orderNo))];
     shipment.shippedQuantity = newLines.reduce((sum,line) => sum + line.shippedQuantity, 0);
+    for (const [orderNo, order] of Object.entries(orderDetailData)) {
+      const summary = order.shipments?.find(item => item.no === shipment.shipmentNo);
+      const quantity = newLines.filter(line => line.orderNo === orderNo).reduce((sum, line) => sum + line.shippedQuantity, 0);
+      if (summary) summary.declared = quantity;
+      else if (shipment.orderNos.includes(orderNo)) order.shipments.push({ no: shipment.shipmentNo, factory: shipment.factory, shipDate: shipment.shipDate, declared: quantity, statusLabel: "已收货", tone: "success" });
+    }
     refresh();
+    showToast("保存成功", "装箱修改已生效，订单发货数量已同步。");
   });
-  let reviewMode = "";
-  page?.addEventListener("click", event => {
-    const choice = event.target.closest("[data-void-review]");
-    if (choice && !choice.disabled) {
-      reviewMode = choice.dataset.voidReview;
-      page.querySelector("[data-void-modal]").innerHTML = `<div class="modal-backdrop"><section class="modal action-modal" role="dialog" aria-modal="true"><header><h2>${reviewMode === "approve" ? "确认通过撤回申请" : "拒绝撤回申请"}</h2><button type="button" data-void-cancel>×</button></header><div class="modal-body">${reviewMode === "approve" ? `<p>审核通过后将作废整张发货单，并回退发货数量 ${formatNumber(shipment.shippedQuantity)}。</p>` : '<label class="reopen-field">审核意见<textarea maxlength="500" data-void-reason placeholder="请填写拒绝原因"></textarea></label>'}<p class="page-error" hidden data-void-error>请填写拒绝原因</p></div><footer><button class="detail-outline-button" type="button" data-void-cancel>取消</button><button class="detail-primary-button" type="button" data-void-confirm>确认</button></footer></section></div>`;
-    }
-    if (event.target.closest("[data-void-cancel]")) page.querySelector("[data-void-modal]").innerHTML = "";
-    if (event.target.closest("[data-void-confirm]")) {
-      const comment = page.querySelector("[data-void-reason]")?.value.trim() || "";
-      if (reviewMode === "reject" && !comment) { page.querySelector("[data-void-error]").hidden = false; return; }
-      if (reviewMode === "approve" && detail.returnRecords?.length) return;
-      detail.voidRequest.status = reviewMode === "approve" ? "approved" : "rejected";
-      detail.voidRequest.comment = comment; detail.voidRequest.reviewedAt = new Date().toLocaleString("zh-CN");
-      if (reviewMode === "approve") updateOrderAfterReturn(shipment, detail.lines.map(line => ({ line, quantity: line.shippedQuantity })), "撤回发货", detail.voidRequest.reviewedAt, "作废");
-      Object.assign(shipment, reviewMode === "approve" ? { statusKey: "voided", statusLabel: "已作废", tone: "danger" } : { statusKey: "shipped", statusLabel: "已发货", tone: "success" });
-      refresh();
-    }
+  page?.addEventListener("change", event => {
+    if (!event.target.matches("[data-receipt-assignment]")) return;
+    const [boxIndex, itemIndex] = event.target.dataset.receiptAssignment.split(":").map(Number);
+    const item = draft[boxIndex].items[itemIndex];
+    const option = options[Number(event.target.value)];
+    if (!option || option.code !== item.code) return;
+    Object.assign(item, { orderNo: option.orderNo, colorSpec: option.colorSpec });
+    event.target.closest("tr").querySelectorAll("td")[itemIndex === 0 ? 1 : 0].textContent = item.orderNo;
+    page.querySelector("[data-shipment-lines-body]").innerHTML = renderShipmentLines(receiptLines(detail, draft));
   });
   const sortStates = {
     "shipment-lines": { key: null, direction: "asc" },

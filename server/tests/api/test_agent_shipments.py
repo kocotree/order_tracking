@@ -64,6 +64,14 @@ def test_mcp_shipment_receipt_return_matches_web_and_original_daily_export(
     with _client(test_database_engine, test_database_url, monkeypatch) as client:
         _login(client)
         access = _exchange(client, _code(client)).json()["access_token"]
+        catalog = client.post("/mcp", headers={
+            "Authorization": f"Bearer {access}",
+            "Accept": "application/json, text/event-stream",
+        }, json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+        assert catalog.status_code == 200, catalog.text
+        names = {tool["name"] for tool in catalog.json()["result"]["tools"]}
+        assert {"save_receipt", "confirm_receipt"}.isdisjoint(names)
+        assert {"get_receipt", "return_shipment"} <= names
         listed = _call(client, access, "list_shipments", {"page_size": 1})
         assert listed["structuredContent"]["total"] == 1
         assert listed["structuredContent"]["items"][0]["shipmentId"] == shipment_id
@@ -109,25 +117,24 @@ def test_mcp_shipment_receipt_return_matches_web_and_original_daily_export(
         items = receipt["structuredContent"]["items"]
         items[0]["quantity"] = 0
         items[1]["quantity"] = 28
-        save_args = {"shipment_id": shipment_id, "version": 0, "items": items}
-        saved = _call(client, access, "save_receipt", save_args)
-        assert saved["structuredContent"]["version"] == 1
-        assert admin.get(f"/api/v1/admin/shipments/{shipment_id}").json()["totalQuantity"] == 30
-        assert _call(client, access, "save_receipt", save_args)["isError"]
-        confirm_args = {"shipment_id": shipment_id, "version": 1,
-                        "idempotency_key": "agent-receipt-once"}
-        confirmed = _call(client, access, "confirm_receipt", confirm_args)
-        assert confirmed["structuredContent"]["totalQuantity"] == 28
-        assert _call(client, access, "confirm_receipt", confirm_args)["structuredContent"][
-            "totalQuantity"
-        ] == 28
+        assert _call(client, access, "save_receipt", {"shipment_id": shipment_id})["isError"]
+        assert _call(client, access, "confirm_receipt", {"shipment_id": shipment_id})["isError"]
+        saved = admin.put(
+            f"/api/v1/admin/shipments/{shipment_id}/receipt",
+            json={"version": receipt["structuredContent"]["version"], "items": items},
+            headers={"Idempotency-Key": "web-packing-save"},
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["version"] == 2
+        confirmed = admin.get(f"/api/v1/admin/shipments/{shipment_id}").json()
+        assert confirmed["totalQuantity"] == 28
         after_daily = _call(client, access, "get_daily_shipment_summary", daily_args)[
             "structuredContent"
         ]
         assert after_daily["totalOriginalQuantity"] == 30
         assert [item["confirmedQuantity"] for item in after_daily["items"]] == [0, 28]
         assert admin.get(f"/api/v1/admin/shipments/{shipment_id}").json()["totalQuantity"] == 28
-        line_id = confirmed["structuredContent"]["lines"][0]["lineId"]
+        line_id = confirmed["lines"][0]["lineId"]
         return_args = {
             "shipment_id": shipment_id,
             "reason": "仓库退回",

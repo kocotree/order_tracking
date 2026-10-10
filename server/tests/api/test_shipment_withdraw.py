@@ -220,9 +220,8 @@ def test_repeated_withdraw_resubmit_and_stale_pages_do_not_duplicate_quantities(
     service = ShipmentService(sessionmaker(test_database_engine, class_=Session))
     original = factory.get(f"/api/v1/factory/shipments/{sid}").json()
     receipt_url = f"/api/v1/admin/shipments/{sid}/receipt"
-    receipt = admin.get(receipt_url).json()
-    assert admin.put(receipt_url, json={"version": 0, "items": receipt["items"]}).status_code == 200
     for round_no in (1, 2):
+        receipt = admin.get(receipt_url).json()
         result = withdraw(colleague, sid, f"withdraw-{round_no}")
         assert result.status_code == 200
         assert not service.has_valid_shipments(order_id=ORDER_ID)
@@ -232,7 +231,10 @@ def test_repeated_withdraw_resubmit_and_stale_pages_do_not_duplicate_quantities(
             == 5
         )
         assert (
-            admin.put(receipt_url, json={"version": 1, "items": receipt["items"]}).status_code
+            admin.put(
+                receipt_url, json={"version": receipt["version"], "items": receipt["items"]},
+                headers={"Idempotency-Key": f"withdrawn-save-{round_no}"},
+            ).status_code
             == 409
         )
         edit = factory.get(f"/api/v1/factory/shipments/{sid}/withdraw-draft").json()
@@ -252,12 +254,12 @@ def test_repeated_withdraw_resubmit_and_stale_pages_do_not_duplicate_quantities(
             factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"]
             == 17
         )
-        assert admin.post(receipt_url + "/confirm", json={"version": 1}).status_code == 409
+        assert admin.get(receipt_url).json()["status"] == "CONFIRMED"
     assert factory.get("/api/v1/factory/shipments").json()["total"] == 1
     assert len(admin.get(f"/api/v1/admin/shipments/{sid}").json()["operations"]) == 5
 
 
-def test_resubmitted_shipment_confirmation_keeps_list_quantity(withdrawal_clients):
+def test_resubmission_automatically_receives_and_keeps_list_quantity(withdrawal_clients):
     admin, factory, colleague, _, _, sid = withdrawal_clients
     assert withdraw(colleague, sid).status_code == 200
     edit = factory.get(f"/api/v1/factory/shipments/{sid}/withdraw-draft").json()
@@ -269,9 +271,8 @@ def test_resubmitted_shipment_confirmation_keeps_list_quantity(withdrawal_client
     assert submitted.status_code == 200, submitted.text
 
     receipt_url = f"/api/v1/admin/shipments/{sid}/receipt"
-    receipt = admin.get(receipt_url).json()
-    confirmed = admin.post(receipt_url + "/confirm", json={"version": receipt["version"]})
-    assert confirmed.status_code == 200, confirmed.text
+    assert admin.get(receipt_url).json()["status"] == "CONFIRMED"
+    confirmed = admin.get(f"/api/v1/admin/shipments/{sid}")
     assert confirmed.json()["totalQuantity"] == 12
     assert confirmed.json()["lines"][0]["returnableQuantity"] == 12
 
@@ -417,13 +418,19 @@ def test_concurrent_saves_have_one_winner(withdrawal_clients):
     )
 
 
-def test_receipt_confirmation_and_withdrawal_cannot_both_succeed(withdrawal_clients):
+def test_packing_save_and_withdrawal_cannot_both_succeed(withdrawal_clients):
     admin, factory, _, _, _, sid = withdrawal_clients
     version = factory.get(f"/api/v1/factory/shipments/{sid}").json()["version"]
+    receipt_url = f"/api/v1/admin/shipments/{sid}/receipt"
+    receipt = admin.get(receipt_url).json()
+    receipt["items"][0]["quantity"] -= 1
 
     def act(kind):
         if kind == "receipt":
-            return admin.post(f"/api/v1/admin/shipments/{sid}/receipt/confirm", json={"version": 0})
+            return admin.put(
+                receipt_url, json={"version": receipt["version"], "items": receipt["items"]},
+                headers={"Idempotency-Key": "race-save"},
+            )
         return factory.post(
             f"/api/v1/factory/shipments/{sid}/withdraw",
             json={"version": version, "reason": "concurrent"},
@@ -434,7 +441,7 @@ def test_receipt_confirmation_and_withdrawal_cannot_both_succeed(withdrawal_clie
     assert sorted(r.status_code for r in responses) == [200, 409]
     result = admin.get(f"/api/v1/admin/shipments/{sid}").json()
     quantity = factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"]
-    assert quantity == (5 if result["status"] == "WITHDRAWN" else 17)
+    assert quantity == (5 if result["status"] == "WITHDRAWN" else 16)
 
 
 def test_transaction_failure_keeps_original_quantity_and_no_draft(withdrawal_clients):

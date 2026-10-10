@@ -31,7 +31,7 @@ def receipt_clients(
         factory.headers["Authorization"] = f"Bearer {factory_session.access_token}"
         admin.cookies.set("ot_web_session", admin_session.access_token)
         admin.headers["X-CSRF-Token"] = admin_session.csrf_token
-        admin.headers["Idempotency-Key"] = "receipt-confirm-test"
+        admin.headers["Idempotency-Key"] = "receipt-save-test"
         shipment_id = factory.post(
             "/api/v1/factory/shipments/drafts", json={"preferredOrderId": ORDER_ID}
         ).json()["shipmentId"]
@@ -52,7 +52,21 @@ def receipt_clients(
         yield admin, factory, shipment_id
 
 
-def test_saved_receipt_reopens_without_changing_published_quantities(
+def test_submission_automatically_receives_without_counting_twice(
+    receipt_clients: tuple[TestClient, TestClient, str],
+) -> None:
+    admin, factory, shipment_id = receipt_clients
+    detail = admin.get(f"/api/v1/admin/shipments/{shipment_id}").json()
+    assert detail["receipt"]["status"] == "CONFIRMED"
+    assert detail["receipt"]["version"] == 1
+    assert detail["receipt"]["confirmedByName"] is None
+    assert detail["totalQuantity"] == 30
+    assert factory.get("/api/v1/factory/shipment-catalog").json()["items"][0][
+        "shippedQuantity"
+    ] == 35
+
+
+def test_saves_apply_only_the_latest_delta_and_retry_does_not_overwrite(
     receipt_clients: tuple[TestClient, TestClient, str],
 ) -> None:
     admin, factory, shipment_id = receipt_clients
@@ -60,18 +74,99 @@ def test_saved_receipt_reopens_without_changing_published_quantities(
     response = admin.get(url)
     assert response.status_code == 200, response.text
     draft = response.json()
-    assert draft["version"] == 0
-    draft["items"][0]["quantity"] = 0
-    saved = admin.put(url, json={"version": 0, "items": draft["items"]})
+    assert draft["version"] == 1
+    draft["items"][0]["quantity"] = 5
+    first_payload = {"version": 1, "items": [dict(i) for i in draft["items"]]}
+    saved = admin.put(url, json=first_payload, headers={"Idempotency-Key": "save-first"})
     assert saved.status_code == 200, saved.text
-    assert saved.json()["version"] == 1
-    assert admin.get(url).json()["items"][0]["quantity"] == 0
-    assert admin.get(f"/api/v1/admin/shipments/{shipment_id}").json()["totalQuantity"] == 30
-    assert factory.get(f"/api/v1/factory/shipments/{shipment_id}").json()["totalQuantity"] == 30
+    assert saved.json()["version"] == 2
+    assert admin.get(f"/api/v1/admin/shipments/{shipment_id}").json()["totalQuantity"] == 25
+    draft["items"][0]["quantity"] = 8
+    saved = admin.put(url, json={"version": 2, "items": draft["items"]},
+                      headers={"Idempotency-Key": "save-second"})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["version"] == 3
+    retry = admin.put(url, json=first_payload, headers={"Idempotency-Key": "save-first"})
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["version"] == 2
+    assert admin.get(url).json()["items"][0]["quantity"] == 8
+    assert factory.get(f"/api/v1/factory/shipments/{shipment_id}").json()["totalQuantity"] == 28
     assert (
-        factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"] == 35
+        factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"] == 33
     )
-    assert admin.put(url, json={"version": 0, "items": draft["items"]}).status_code == 409
+    assert admin.put(url, json={"version": 1, "items": draft["items"]}).status_code == 409
+
+
+def test_manual_confirmation_and_related_table_routes_are_retired(
+    receipt_clients: tuple[TestClient, TestClient, str],
+) -> None:
+    admin, _, shipment_id = receipt_clients
+    assert admin.post(f"/api/v1/admin/shipments/{shipment_id}/receipt/confirm",
+                      json={"version": 1}).status_code == 404
+    assert admin.get(f"/api/v1/admin/orders/{ORDER_ID}/shipments").status_code == 404
+
+
+@pytest.mark.parametrize("quantity", [0, 28, 35])
+def test_withdraw_reverses_current_receipt_and_resubmission_restores_original_boxes(
+    receipt_clients: tuple[TestClient, TestClient, str], quantity: int,
+) -> None:
+    admin, factory, shipment_id = receipt_clients
+    admin_url = f"/api/v1/admin/shipments/{shipment_id}"
+    factory_url = f"/api/v1/factory/shipments/{shipment_id}"
+    receipt = admin.get(admin_url + "/receipt").json()
+    receipt["items"][0]["quantity"] = 0
+    receipt["items"][1]["quantity"] = quantity
+    saved = admin.put(admin_url + "/receipt", json={"version": 1, "items": receipt["items"]})
+    assert saved.status_code == 200, saved.text
+    detail = factory.get(factory_url).json()
+    assert detail["canWithdraw"] is True
+    withdrawn = factory.post(factory_url + "/withdraw", json={
+        "version": detail["version"], "reason": "装箱填错",
+    }, headers={"Idempotency-Key": "withdraw-current"})
+    assert withdrawn.status_code == 200, withdrawn.text
+    assert factory.get("/api/v1/factory/shipment-catalog").json()["items"][0][
+        "shippedQuantity"
+    ] == 5
+    draft_id = factory.get(factory_url).json()["withdrawalDraftId"]
+    draft = factory.get(factory_url + "/withdraw-draft").json()
+    resubmitted = factory.post(f"/api/v1/factory/shipments/drafts/{draft_id}/submit", params={
+        "version": draft["version"],
+    }, headers={"Idempotency-Key": "resubmit-current"})
+    assert resubmitted.status_code == 200, resubmitted.text
+    assert resubmitted.json()["shipmentNo"] == detail["shipmentNo"]
+    assert resubmitted.json()["receipt"]["version"] == 4
+    assert factory.get("/api/v1/factory/shipment-catalog").json()["items"][0][
+        "shippedQuantity"
+    ] == 35
+    replay = admin.put(admin_url + "/receipt", json={"version": 1, "items": receipt["items"]})
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == saved.json()
+
+
+@pytest.mark.parametrize("seconds, allowed", [(-1, True), (0, False), (1, False)])
+def test_first_submission_seven_day_boundary_uses_utc(
+    receipt_clients: tuple[TestClient, TestClient, str], test_database_engine: Engine,
+    seconds: int, allowed: bool,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from app.modules.shipments import ShipmentConflict, ShipmentService
+    from tests.api.test_shipment_api import FACTORY_IDS
+
+    admin, _, shipment_id = receipt_clients
+    detail = admin.get(f"/api/v1/admin/shipments/{shipment_id}").json()
+    first = datetime.fromisoformat(detail["submittedAt"]).replace(tzinfo=UTC)
+    service = ShipmentService(sessionmaker(test_database_engine, expire_on_commit=False))
+    arguments = dict(actor_id=USER_IDS[0], factory_id=FACTORY_IDS[0], shipment_id=shipment_id,
+                     reason="边界测试", expected_version=detail["version"],
+                     idempotency_key="boundary", now=(first + timedelta(days=7, seconds=seconds))
+                     .astimezone(ZoneInfo("Asia/Shanghai")))
+    if allowed:
+        assert service.withdraw(**arguments).status == "WITHDRAWN"
+    else:
+        with pytest.raises(ShipmentConflict, match="7天"):
+            service.withdraw(**arguments)
 
 
 @pytest.mark.parametrize("move_all", [False, True])
@@ -134,18 +229,16 @@ def test_receipt_reassigns_box_item_to_same_factory_product_in_another_order(
     )
     invalid_items = [dict(item) for item in draft["items"]]
     invalid_items[0]["assignmentId"] = other_factory_id
-    invalid = admin.put(url + "/receipt", json={"version": 0, "items": invalid_items})
+    invalid = admin.put(url + "/receipt", json={"version": 1, "items": invalid_items})
     assert invalid.status_code == 404
     draft["items"][0]["assignmentId"] = target_id
     if move_all:
         draft["items"][1]["assignmentId"] = target_id
-    saved = admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]})
+    saved = admin.put(url + "/receipt", json={"version": 1, "items": draft["items"]})
     assert saved.status_code == 200, saved.text
     assert admin.get(url + "/receipt").json()["items"][0]["assignmentId"] == target_id
     assert factory.get(url.replace("/admin/", "/factory/")).json()["totalQuantity"] == 30
-    confirmed = admin.post(url + "/receipt/confirm", json={"version": 1})
-    assert confirmed.status_code == 200, confirmed.text
-    detail = confirmed.json()
+    detail = admin.get(url).json()
     assert [(item["orderNo"], item["propertiesValue"], item["quantity"])
             for item in detail["boxes"][0]["items"]] == [("RECEIPT-B", "奶白 / 120", 10)]
     expected_lines = {("RECEIPT-B", 30)} if move_all else {
@@ -174,7 +267,7 @@ def test_receipt_reassigns_box_item_to_same_factory_product_in_another_order(
     assert admin.get(url).json()["returnEvents"][-1]["lines"][0]["orderNo"] == "RECEIPT-B"
 
 
-def test_confirm_applies_delta_once_and_preserves_original_exports(
+def test_save_applies_delta_once_and_preserves_original_exports(
     receipt_clients: tuple[TestClient, TestClient, str],
 ) -> None:
     from io import BytesIO
@@ -195,16 +288,19 @@ def test_confirm_applies_delta_once_and_preserves_original_exports(
     draft = admin.get(url + "/receipt").json()
     draft["items"][0]["quantity"] = 0
     draft["items"][1]["quantity"] = 28
-    saved = admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]}).json()
-    result = admin.post(url + "/receipt/confirm", json={"version": saved["version"]})
+    saved = admin.put(url + "/receipt", json={"version": 1, "items": draft["items"]})
+    assert saved.status_code == 200, saved.text
+    result = admin.get(url)
     assert result.status_code == 200, result.text
     assert result.json()["receipt"]["status"] == "CONFIRMED"
     assert result.json()["totalQuantity"] == 28
     assert result.json()["totalBoxes"] == 2
     assert result.json()["receiptDifferences"][0]["quantity"] == -2
     audit = admin.get(f"/api/v1/admin/orders/{ORDER_ID}/audit-logs").json()
-    assert any("确认收货，少收 2 件" in item["content"] for item in audit["items"])
-    assert admin.post(url + "/receipt/confirm", json={"version": 1}).status_code == 200
+    assert any("装箱修改，减少 2 件" in item["content"] for item in audit["items"])
+    assert admin.put(
+        url + "/receipt", json={"version": 1, "items": draft["items"]},
+    ).status_code == 200
     assert (
         factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"] == 33
     )
@@ -216,7 +312,8 @@ def test_confirm_applies_delta_once_and_preserves_original_exports(
         == 28
     )
     assert (
-        admin.put(url + "/receipt", json={"version": 1, "items": draft["items"]}).status_code == 409
+        admin.put(url + "/receipt", json={"version": 1, "items": draft["items"]},
+                  headers={"Idempotency-Key": "stale-save"}).status_code == 409
     )
     before = load_workbook(BytesIO(original_export))
     after = load_workbook(BytesIO(admin.get(url + "/export").content))
@@ -234,14 +331,16 @@ def test_confirm_applies_delta_once_and_preserves_original_exports(
     ]
 
 
-def test_receipt_confirmation_key_cannot_confirm_another_shipment(
+def test_receipt_save_key_cannot_save_another_shipment(
     receipt_clients: tuple[TestClient, TestClient, str],
 ) -> None:
     admin, factory, first_id = receipt_clients
-    first = admin.post(
-        f"/api/v1/admin/shipments/{first_id}/receipt/confirm", json={"version": 0}
-    )
+    first = admin.get(f"/api/v1/admin/shipments/{first_id}")
     assert first.status_code == 200, first.text
+    first_receipt = admin.get(f"/api/v1/admin/shipments/{first_id}/receipt").json()
+    assert admin.put(f"/api/v1/admin/shipments/{first_id}/receipt", json={
+        "version": 1, "items": first_receipt["items"],
+    }).status_code == 200
     assignment_id = first.json()["lines"][0]["assignmentId"]
     second_id = factory.post(
         "/api/v1/factory/shipments/drafts", json={"preferredOrderId": ORDER_ID}
@@ -258,42 +357,14 @@ def test_receipt_confirmation_key_cannot_confirm_another_shipment(
         headers={"Idempotency-Key": "second-receipt-submit"},
     )
     assert submitted.status_code == 200, submitted.text
-    reused = admin.post(
-        f"/api/v1/admin/shipments/{second_id}/receipt/confirm", json={"version": 0}
-    )
+    second = admin.get(f"/api/v1/admin/shipments/{second_id}/receipt").json()
+    reused = admin.put(f"/api/v1/admin/shipments/{second_id}/receipt", json={
+        "version": 1, "items": second["items"],
+    })
     assert reused.status_code == 409
     assert admin.get(f"/api/v1/admin/shipments/{second_id}/receipt").json()[
         "status"
-    ] == "DRAFT"
-
-
-@pytest.mark.parametrize("quantity", [0, 28, 35])
-def test_confirmed_quantity_cannot_be_autonomously_withdrawn(
-    receipt_clients: tuple[TestClient, TestClient, str], quantity: int
-) -> None:
-    admin, factory, shipment_id = receipt_clients
-    url = f"/api/v1/admin/shipments/{shipment_id}"
-    draft = admin.get(url + "/receipt").json()
-    draft["items"][0]["quantity"] = 0
-    draft["items"][1]["quantity"] = quantity
-    assert (
-        admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]}).status_code == 200
-    )
-    assert admin.post(url + "/receipt/confirm", json={"version": 1}).status_code == 200
-    version = admin.get(url).json()["version"]
-    result = factory.post(
-        f"/api/v1/factory/shipments/{shipment_id}/withdraw",
-        json={"reason": "test", "version": version},
-        headers={"Idempotency-Key": "blocked-confirmed"},
-    )
-    assert result.status_code == 409
-    items = factory.get("/api/v1/factory/shipment-catalog").json()["items"]
-    if quantity == 35:
-        assert len(items) == 1
-        assert items[0]["shippedQuantity"] == 40
-        assert items[0]["pendingQuantity"] == 0
-    else:
-        assert items[0]["shippedQuantity"] == quantity + 5
+    ] == "CONFIRMED"
 
 
 def test_return_uses_confirmed_base_and_keeps_receipt_difference(
@@ -303,8 +374,9 @@ def test_return_uses_confirmed_base_and_keeps_receipt_difference(
     url = f"/api/v1/admin/shipments/{shipment_id}"
     draft = admin.get(url + "/receipt").json()
     draft["items"][1]["quantity"] = 18
-    admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]})
-    result = admin.post(url + "/receipt/confirm", json={"version": 1}).json()
+    saved = admin.put(url + "/receipt", json={"version": 1, "items": draft["items"]})
+    assert saved.status_code == 200, saved.text
+    result = admin.get(url).json()
     line_id = result["lines"][0]["lineId"]
     assert (
         admin.post(
@@ -329,7 +401,7 @@ def test_return_uses_confirmed_base_and_keeps_receipt_difference(
 
 
 @pytest.mark.parametrize("changed", [False, True])
-def test_receipt_notifies_same_factory_once_using_existing_template(
+def test_only_actual_packing_changes_notify_factory_using_existing_template(
     receipt_clients: tuple[TestClient, TestClient, str], test_database_engine: Engine, changed: bool
 ) -> None:
     from app.adapters.notifications import FakeWechatNotifier
@@ -345,25 +417,25 @@ def test_receipt_notifies_same_factory_once_using_existing_template(
     draft = admin.get(url + "/receipt").json()
     if changed:
         draft["items"][0]["quantity"] = 12
-    admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]})
+    saved = admin.put(url + "/receipt", json={"version": 1, "items": draft["items"]})
+    assert saved.status_code == 200, saved.text
+    assert admin.put(
+        url + "/receipt", json={"version": 1, "items": draft["items"]},
+    ).status_code == 200
     while service.consume_next_business_event(worker_id="receipt-test"):
         pass
     assert (
         service.list_notifications(
             user_id=USER_IDS[0], unread_only=False, page=1, page_size=10
         ).total
-        == 0
+        == int(changed)
     )
-    confirmed = admin.post(url + "/receipt/confirm", json={"version": 1})
-    assert confirmed.status_code == 200
-    assert admin.post(url + "/receipt/confirm", json={"version": 1}).status_code == 200
-    while service.consume_next_business_event(worker_id="receipt-test"):
-        pass
     for user in [USER_IDS[0], SAME_FACTORY_USER_ID]:
         page = service.list_notifications(user_id=user, unread_only=False, page=1, page_size=10)
-        assert page.total == 1
-        assert page.items[0].title == "发货单已确认收货"
-        assert page.items[0].target_id == shipment_id
+        assert page.total == int(changed)
+        if changed:
+            assert page.items[0].title == "发货单装箱明细已修改"
+            assert page.items[0].target_id == shipment_id
     assert (
         service.list_notifications(
             user_id=USER_IDS[1], unread_only=False, page=1, page_size=10
@@ -373,10 +445,11 @@ def test_receipt_notifies_same_factory_once_using_existing_template(
     notifier = FakeWechatNotifier()
     while service.deliver_next(worker_id="receipt-test", wechat_notifier=notifier):
         pass
-    assert len(notifier.sent) == 1
-    assert notifier.sent[0].template_key == "factory_status"
-    assert notifier.sent[0].template_data["phrase3"] == "已收货"
-    assert notifier.sent[0].target_path.endswith("shipmentId=" + shipment_id)
+    assert len(notifier.sent) == int(changed)
+    if changed:
+        assert notifier.sent[0].template_key == "factory_status"
+        assert notifier.sent[0].template_data["phrase3"] == "装箱修改"
+        assert notifier.sent[0].target_path.endswith("shipmentId=" + shipment_id)
 
 
 @pytest.mark.parametrize("invalid", [-1, 1.5, "2", True, 2147483648])
@@ -387,8 +460,8 @@ def test_invalid_receipt_quantities_are_rejected(
     url = f"/api/v1/admin/shipments/{shipment_id}/receipt"
     draft = admin.get(url).json()
     draft["items"][0]["quantity"] = invalid
-    assert admin.put(url, json={"version": 0, "items": draft["items"]}).status_code == 422
-    assert admin.get(url).json()["version"] == 0
+    assert admin.put(url, json={"version": 1, "items": draft["items"]}).status_code == 422
+    assert admin.get(url).json()["version"] == 1
 
 
 @pytest.mark.parametrize("blocked", ["return", "withdrawn", "voided"])
@@ -417,20 +490,20 @@ def test_inverse_state_blocks_receipt_writes(
             assert stored is not None
             stored.status = "VOIDED" if blocked == "voided" else "WITHDRAWN"
     assert (
-        admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]}).status_code == 409
+        admin.put(url + "/receipt", json={"version": 1, "items": draft["items"]}).status_code == 409
     )
-    assert admin.post(url + "/receipt/confirm", json={"version": 0}).status_code == 409
 
 
-def test_original_can_be_confirmed_without_draft_and_stale_version_cannot_confirm(
+def test_same_value_save_preserves_version_and_quantities(
     receipt_clients: tuple[TestClient, TestClient, str],
 ) -> None:
     admin, factory, shipment_id = receipt_clients
     url = f"/api/v1/admin/shipments/{shipment_id}"
-    result = admin.post(url + "/receipt/confirm", json={"version": 0})
+    receipt = admin.get(url + "/receipt").json()
+    result = admin.put(url + "/receipt", json={"version": 1, "items": receipt["items"]})
     assert result.status_code == 200, result.text
-    assert result.json()["receiptDifferences"] == []
-    assert admin.post(url + "/receipt/confirm", json={"version": 0}).status_code == 200
+    assert result.json() == receipt
+    assert admin.get(url).json()["receiptDifferences"] == []
     assert (
         factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"] == 35
     )
@@ -443,23 +516,24 @@ def test_receipt_requires_web_admin_and_csrf(
     url = f"/api/v1/admin/shipments/{shipment_id}/receipt"
     draft = admin.get(url).json()
     assert factory.get(url).status_code == 401
-    assert factory.put(url, json={"version": 0, "items": draft["items"]}).status_code == 401
-    assert factory.post(url + "/confirm", json={"version": 0}).status_code == 401
+    assert factory.put(url, json={"version": 1, "items": draft["items"]},
+                       headers={"Idempotency-Key": "denied"}).status_code == 401
     del admin.headers["X-CSRF-Token"]
-    assert admin.put(url, json={"version": 0, "items": draft["items"]}).status_code == 403
-    assert admin.post(url + "/confirm", json={"version": 0}).status_code == 403
+    assert admin.put(url, json={"version": 1, "items": draft["items"]}).status_code == 403
 
 
-def test_receipt_rejects_changed_item_set_and_stale_confirmation(
+def test_receipt_rejects_changed_item_set_and_stale_save(
     receipt_clients: tuple[TestClient, TestClient, str],
 ) -> None:
     admin, _, shipment_id = receipt_clients
     url = f"/api/v1/admin/shipments/{shipment_id}/receipt"
     items = admin.get(url).json()["items"]
-    assert admin.put(url, json={"version": 0, "items": [items[0], items[0]]}).status_code == 422
-    assert admin.put(url, json={"version": 0, "items": items[:1]}).status_code == 422
-    assert admin.put(url, json={"version": 0, "items": items}).status_code == 200
-    assert admin.post(url + "/confirm", json={"version": 0}).status_code == 409
+    assert admin.put(url, json={"version": 1, "items": [items[0], items[0]]}).status_code == 422
+    assert admin.put(url, json={"version": 1, "items": items[:1]}).status_code == 422
+    items[0]["quantity"] = 9
+    assert admin.put(url, json={"version": 1, "items": items}).status_code == 200
+    assert admin.put(url, json={"version": 1, "items": items},
+                     headers={"Idempotency-Key": "stale-items"}).status_code == 409
 
 
 def test_short_receipt_reopens_completed_order_and_preserves_initial_baseline(
@@ -470,7 +544,7 @@ def test_short_receipt_reopens_completed_order_and_preserves_initial_baseline(
 
     from app.db.models import OrderAssignment, OrderLine
 
-    # 5 initial + 30 system shipped: complete only after every line is fulfilled.
+    # 初始5件加系统发货30件，完成后保存减少2件应恢复为未完成。
     with Session(test_database_engine) as session, session.begin():
         session.scalar(select(OrderLine).where(OrderLine.order_id == ORDER_ID)).order_quantity = 35
         session.scalar(select(OrderAssignment)).assigned_quantity = 35
@@ -480,9 +554,8 @@ def test_short_receipt_reopens_completed_order_and_preserves_initial_baseline(
     draft = admin.get(url + "/receipt").json()
     draft["items"][1]["quantity"] = 18
     assert (
-        admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]}).status_code == 200
+        admin.put(url + "/receipt", json={"version": 1, "items": draft["items"]}).status_code == 200
     )
-    assert admin.post(url + "/receipt/confirm", json={"version": 1}).status_code == 200
     order = admin.get(f"/api/v1/orders/{ORDER_ID}").json()
     assert order["lifecycle"] == "PUBLISHED"
     assert (
@@ -490,7 +563,7 @@ def test_short_receipt_reopens_completed_order_and_preserves_initial_baseline(
     )
 
 
-def test_concurrent_confirmations_count_once(
+def test_concurrent_same_key_saves_count_once(
     receipt_clients: tuple[TestClient, TestClient, str],
 ) -> None:
     from concurrent.futures import ThreadPoolExecutor
@@ -499,10 +572,11 @@ def test_concurrent_confirmations_count_once(
     url = f"/api/v1/admin/shipments/{shipment_id}/receipt"
     draft = admin.get(url).json()
     draft["items"][0]["quantity"] = 0
-    admin.put(url, json={"version": 0, "items": draft["items"]})
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(
-            pool.map(lambda _: admin.post(url + "/confirm", json={"version": 1}), range(2))
+            pool.map(
+                lambda _: admin.put(url, json={"version": 1, "items": draft["items"]}), range(2),
+            )
         )
     assert [result.status_code for result in results] == [200, 200]
     assert (
@@ -510,7 +584,7 @@ def test_concurrent_confirmations_count_once(
     )
 
 
-def test_concurrent_draft_saves_conflict_instead_of_overwriting(
+def test_concurrent_different_key_saves_conflict_instead_of_overwriting(
     receipt_clients: tuple[TestClient, TestClient, str],
 ) -> None:
     from concurrent.futures import ThreadPoolExecutor
@@ -518,15 +592,17 @@ def test_concurrent_draft_saves_conflict_instead_of_overwriting(
     admin, _, shipment_id = receipt_clients
     url = f"/api/v1/admin/shipments/{shipment_id}/receipt"
     items = admin.get(url).json()["items"]
+    items[0]["quantity"] = 9
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(
-            pool.map(lambda _: admin.put(url, json={"version": 0, "items": items}), range(2))
+            pool.map(lambda n: admin.put(url, json={"version": 1, "items": items},
+                                        headers={"Idempotency-Key": f"concurrent-{n}"}), range(2))
         )
     assert sorted(result.status_code for result in results) == [200, 409]
-    assert admin.get(url).json()["version"] == 1
+    assert admin.get(url).json()["version"] == 2
 
 
-def test_confirmation_database_failure_rolls_back_every_business_effect(
+def test_save_database_failure_rolls_back_every_business_effect(
     receipt_clients: tuple[TestClient, TestClient, str], test_database_engine: Engine
 ) -> None:
     from sqlalchemy import event
@@ -535,25 +611,26 @@ def test_confirmation_database_failure_rolls_back_every_business_effect(
     url = f"/api/v1/admin/shipments/{shipment_id}"
     draft = admin.get(url + "/receipt").json()
     draft["items"][0]["quantity"] = 0
-    admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]})
 
     def fail_outbox(connection, cursor, statement, parameters, context, executemany):
         if statement.startswith("INSERT INTO outbox_messages"):
             raise RuntimeError("simulated transaction failure")
 
-    # Engine class listener reaches the API's independent pool, at the database boundary.
+    # Engine监听覆盖API独立连接池，在数据库边界模拟事务失败。
     event.listen(Engine, "before_cursor_execute", fail_outbox)
     try:
         with pytest.raises(RuntimeError, match="simulated transaction failure"):
-            admin.post(url + "/receipt/confirm", json={"version": 1})
+            admin.put(url + "/receipt", json={"version": 1, "items": draft["items"]})
     finally:
         event.remove(Engine, "before_cursor_execute", fail_outbox)
-    assert admin.get(url + "/receipt").json()["status"] == "DRAFT"
+    assert admin.get(url + "/receipt").json()["version"] == 1
     assert admin.get(url).json()["totalQuantity"] == 30
     assert (
         factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"] == 35
     )
-    assert admin.post(url + "/receipt/confirm", json={"version": 1}).status_code == 200
+    assert admin.put(
+        url + "/receipt", json={"version": 1, "items": draft["items"]},
+    ).status_code == 200
     assert (
         factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"] == 25
     )
@@ -568,19 +645,20 @@ def test_receipt_and_return_race_serializes_quantity_and_guard(
     url = f"/api/v1/admin/shipments/{shipment_id}"
     draft = admin.get(url + "/receipt").json()
     draft["items"][0]["quantity"] = 0
-    admin.put(url + "/receipt", json={"version": 0, "items": draft["items"]})
     line_id = admin.get(url).json()["lines"][0]["lineId"]
     with ThreadPoolExecutor(max_workers=2) as pool:
-        confirm = pool.submit(admin.post, url + "/receipt/confirm", json={"version": 1})
+        save = pool.submit(
+            admin.put, url + "/receipt", json={"version": 1, "items": draft["items"]},
+        )
         returned = pool.submit(
             admin.post,
             url + "/returns",
             json={"reason": "测试竞争", "lines": [{"shipmentLineId": line_id, "quantity": 3}]},
         )
-        confirmation_status = confirm.result().status_code
+        save_status = save.result().status_code
         assert returned.result().status_code == 201
-    assert confirmation_status in (200, 409)
-    expected = 22 if confirmation_status == 200 else 32
+    assert save_status in (200, 409)
+    expected = 22 if save_status == 200 else 32
     assert (
         factory.get("/api/v1/factory/shipment-catalog").json()["items"][0]["shippedQuantity"]
         == expected
@@ -655,8 +733,9 @@ def test_mixed_box_same_sku_keeps_each_orders_difference(
     draft = admin.get(url).json()
     draft["items"][0]["quantity"] = 0
     draft["items"][1]["quantity"] = 25
-    admin.put(url, json={"version": 0, "items": draft["items"]})
-    result = admin.post(url + "/confirm", json={"version": 1})
+    saved = admin.put(url, json={"version": 1, "items": draft["items"]})
+    assert saved.status_code == 200, saved.text
+    result = admin.get(f"/api/v1/admin/shipments/{shipment_id}")
     assert result.status_code == 200, result.text
     assert result.json()["totalQuantity"] == 25
     assert {item["orderNo"]: item["quantity"] for item in result.json()["receiptDifferences"]} == {
@@ -684,9 +763,14 @@ def test_receipt_delivery_rechecks_factory_membership(
     )
     service.record_authorizations(user_id=USER_IDS[0], results={"factory_status": "accepted"})
     assert (
-        admin.post(
-            f"/api/v1/admin/shipments/{shipment_id}/receipt/confirm", json={"version": 0}
-        ).status_code
+        admin.put(f"/api/v1/admin/shipments/{shipment_id}/receipt", json={
+            "version": 1, "items": [
+                {**item, "quantity": item["quantity"] + 1}
+                for item in admin.get(
+                    f"/api/v1/admin/shipments/{shipment_id}/receipt",
+                ).json()["items"]
+            ],
+        }).status_code
         == 200
     )
     while service.consume_next_business_event(worker_id="receipt-test"):

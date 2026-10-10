@@ -41,10 +41,6 @@ class ReceiptItemResponse(ApiModel):
     assignment_id: int
 
 
-class ReceiptConfirm(ApiModel):
-    version: StrictInt = Field(ge=0)
-
-
 class ReceiptSave(ApiModel):
     version: StrictInt = Field(ge=0)
     items: list[ReceiptItemWrite] = Field(min_length=1)
@@ -123,6 +119,7 @@ class ShipmentDraftResponse(ApiModel):
     receipt_differences: list["ShipmentLineResponse"] = []
     withdrawal_draft_id: str | None = None
     can_edit_withdrawal: bool = False
+    can_withdraw: bool = False
     operations: list[dict[str, str]] = []
 
 
@@ -243,18 +240,6 @@ class ShipmentFactoryOptionsResponse(ApiModel):
 
 class ShipmentListResponse(ApiModel):
     items: list[ShipmentDraftResponse]
-    total: int
-
-
-class OrderShipmentSummary(ApiModel):
-    shipment_id: str
-    shipment_no: str | None
-    business_date: date | None
-    total_quantity: int
-
-
-class OrderShipmentListResponse(ApiModel):
-    items: list[OrderShipmentSummary]
     total: int
 
 
@@ -694,24 +679,6 @@ def create_shipment_router(
             raise PermissionDenied("administrator role required")
         return ShipmentFactoryOptionsResponse(items=service.admin_shipment_factories())
 
-    @router.get(
-        "/admin/orders/{order_id}/shipments",
-        response_model=OrderShipmentListResponse,
-        tags=["shipment-admin"],
-    )
-    def order_shipments(
-        order_id: str,
-        ot_web_session: str | None = Cookie(default=None),
-        authorization: str | None = Header(default=None),
-    ) -> OrderShipmentListResponse:
-        actor, _terminal = query_user(ot_web_session, authorization)
-        if actor.role != "admin":
-            raise PermissionDenied("administrator role required")
-        items = service.order_shipments(order_id=order_id)
-        return OrderShipmentListResponse(
-            items=[OrderShipmentSummary.model_validate(item) for item in items], total=len(items),
-        )
-
     @router.get("/admin/shipments", response_model=ShipmentListResponse, tags=["shipment-admin"])
     def admin_shipments(
         order_id: Annotated[str | None, Query(alias="orderId", min_length=1)] = None,
@@ -792,30 +759,6 @@ def create_shipment_router(
             raise PermissionDenied("administrator role required")
         return _draft_response(service.get_shipment(shipment_id=shipment_id))
 
-    @router.post(
-        "/admin/shipments/{shipment_id}/receipt/confirm",
-        response_model=ShipmentDraftResponse,
-        tags=["shipment-admin"],
-    )
-    def confirm_receipt(
-        shipment_id: str,
-        payload: ReceiptConfirm,
-        ot_web_session: str | None = Cookie(default=None),
-        x_csrf_token: str | None = Header(default=None),
-        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    ) -> ShipmentDraftResponse:
-        actor = web_admin(ot_web_session, x_csrf_token, require_csrf=True)
-        if not idempotency_key:
-            raise ShipmentValidationError("Idempotency-Key is required")
-        return _draft_response(
-            service.confirm_receipt(
-                shipment_id=shipment_id,
-                actor_id=actor.user_id,
-                expected_version=payload.version,
-                idempotency_key=idempotency_key,
-            )
-        )
-
     @router.get(
         "/admin/shipments/{shipment_id}/receipt",
         response_model=ReceiptResponse,
@@ -848,6 +791,7 @@ def create_shipment_router(
     def save_receipt(
         shipment_id: str,
         payload: ReceiptSave,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
         ot_web_session: str | None = Cookie(default=None),
         x_csrf_token: str | None = Header(default=None),
     ) -> ReceiptResponse:
@@ -857,6 +801,7 @@ def create_shipment_router(
                 shipment_id=shipment_id,
                 actor_id=actor.user_id,
                 expected_version=payload.version,
+                idempotency_key=idempotency_key,
                 items=[
                     ReceiptItemInput(i.box_item_id, i.quantity, i.assignment_id)
                     for i in payload.items

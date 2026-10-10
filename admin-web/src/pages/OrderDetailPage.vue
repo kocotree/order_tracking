@@ -106,22 +106,6 @@
           </div>
         </section>
 
-        <section class="section-card detail-section-card">
-          <header class="detail-section-header"><h2>关联发货单</h2></header>
-          <div class="detail-table-scroll"><table class="data-grid-table detail-data-table related-shipment-table"><thead><tr><th>发货单号</th><th>发货日期</th><th>发货数量</th><th>操作</th></tr></thead><tbody>
-            <tr v-if="shipmentsLoading"><td colspan="4" class="detail-empty-row">正在加载关联发货单…</td></tr>
-            <tr v-else-if="shipmentsError"><td colspan="4" class="detail-empty-row" role="alert">{{ shipmentsError }}</td></tr>
-            <template v-else>
-              <tr v-for="shipment in relatedShipments" :key="shipment.shipmentId">
-                <td><RouterLink class="row-link" :to="{ path: `/shipments/${shipment.shipmentId}`, query: { notificationReturnTo: route.fullPath } }">{{ shipment.shipmentNo }}</RouterLink></td>
-                <td>{{ shipment.businessDate || "—" }}</td><td>{{ shipment.totalQuantity.toLocaleString() }}</td>
-                <td><RouterLink class="row-link" :to="{ path: `/shipments/${shipment.shipmentId}`, query: { notificationReturnTo: route.fullPath } }">详情</RouterLink></td>
-              </tr>
-              <tr v-if="!relatedShipments.length"><td class="detail-empty-row" colspan="4">当前订单暂无关联发货单</td></tr>
-            </template>
-          </tbody></table></div>
-        </section>
-
         <section class="section-card detail-section-card order-audit-card" :class="{ 'is-expanded': auditExpanded }">
           <button class="order-audit-toggle" type="button" :aria-expanded="auditExpanded" aria-controls="order-audit-list" :disabled="loadingAudit || !!auditError || !auditLogs.length" @click="auditExpanded = !auditExpanded">
             <span class="order-audit-toggle-title">操作记录<em v-if="!loadingAudit && !auditError">（{{ auditLogs.length }}）</em></span>
@@ -218,18 +202,8 @@
 import { sortedCategories } from "@/productCategories";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, shipmentApi, type OrderShipmentSummary, type AuditLogList, type BoxLabelRow, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview, type IncomingDifference } from "@/api/client";
+import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, type AuditLogList, type BoxLabelRow, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview, type IncomingDifference } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
-
-const relatedShipments = ref<OrderShipmentSummary[]>([]);
-const shipmentsLoading = ref(false);
-const shipmentsError = ref("");
-async function loadShipments() {
-  const signal = readController.signal; shipmentsLoading.value = true; shipmentsError.value = "";
-  try { const result = await shipmentApi.listForOrder(orderId, signal); if (!signal.aborted) relatedShipments.value = result.items; }
-  catch { if (!signal.aborted) shipmentsError.value = "关联发货单加载失败，请刷新页面重试"; }
-  finally { if (!signal.aborted) shipmentsLoading.value = false; }
-}
 
 type Action = "publish" | "delete" | "complete" | "reopen";
 type DetailSortKey = "itemNumber" | "productName" | "propertiesValue" | "factoryName" | "dispatched" | "contractShipDate" | "orderQuantity" | "shippedQuantity" | "pendingQuantity" | "progressPercent";
@@ -536,7 +510,7 @@ watch(() => route.params.orderId, () => {
   sourcePreview.value = null; sourceDialog.value?.close(); sourceError.value = "";
   dispatchPreview.value = null; dispatchDialog.value?.close(); dispatchError.value = "";
   dispatchSourcePreview.value = null; selectedDetails.value.clear();
-  detailDrafts.value = {}; order.value = null; relatedShipments.value = []; auditLogs.value = []; incomingDifferences.value = []; incomingExpanded.value = false; incomingDrafts.value = {}; incomingError.value = ""; incomingSuccess.value = ""; incomingSaving.value = null;
+  detailDrafts.value = {}; order.value = null; auditLogs.value = []; incomingDifferences.value = []; incomingExpanded.value = false; incomingDrafts.value = {}; incomingError.value = ""; incomingSuccess.value = ""; incomingSaving.value = null;
   withdrawalDialog.value?.close(); withdrawalBusy.value = false;
   contractFactories.value = []; pendingAction.value = null; contractDialogOpen.value = false;
   boxLabelDialogOpen.value = false; boxLabels.value = []; boxLabelError.value = "";
@@ -641,7 +615,7 @@ async function load() {
     if (signal.aborted) return;
     order.value = result;
     resetDetailDrafts();
-    void Promise.all([loadShipments(), loadAudit(), loadContracts(), loadIncoming()]);
+    void Promise.all([loadAudit(), loadContracts(), loadIncoming()]);
   } catch (error) {
     if (!signal.aborted) errorMessage.value = error instanceof ApiError && error.status === 404 && route.query?.notificationReturnTo ? "内容已不可查看" : error instanceof ApiError ? error.message : "订单详情加载失败，请刷新页面重试";
   } finally { if (!signal.aborted) loading.value = false; }

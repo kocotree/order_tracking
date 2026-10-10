@@ -3,7 +3,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from datetime import date
 from time import monotonic
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -166,7 +166,7 @@ class FeishuShipmentWriter:
     def write_row(
         self, stage: Stage, field_id: str, record_id: str, identity: dict[str, Any],
         quantity: int, save_before: Callable[[Any], None],
-    ) -> None:
+    ) -> Literal["WRITTEN", "SKIPPED_EXISTING"]:
         if type(quantity) is not int or quantity < 0:
             raise ValueError("shipment_writeback_invalid_quantity")
         fields = self.fields()
@@ -190,8 +190,15 @@ class FeishuShipmentWriter:
 
         current = read().get(field["field_name"])
         save_before(current)
-        if current != quantity or isinstance(current, bool):
-            self._request("PUT", path, json={"fields": {field["field_name"]: quantity}})
+        if current is not None:
+            return "SKIPPED_EXISTING"
+        # shortcut: 复查后仍有并发窗口，飞书提供条件更新接口时改用原子写入。
+        current = read().get(field["field_name"])
+        if current is not None:
+            save_before(current)
+            return "SKIPPED_EXISTING"
+        self._request("PUT", path, json={"fields": {field["field_name"]: quantity}})
         readback = read().get(field["field_name"])
         if readback != quantity or isinstance(readback, bool):
             raise ValueError("shipment_writeback_record_readback_mismatch")
+        return "WRITTEN"

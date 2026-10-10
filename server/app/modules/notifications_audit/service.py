@@ -38,7 +38,6 @@ from app.db.models import (
     ShipmentBox,
     ShipmentBoxItem,
     ShipmentLine,
-    ShipmentReceipt,
     ShipmentReturnLine,
     User,
 )
@@ -189,7 +188,10 @@ class NotificationsAuditService:
             elif message.event_type == "shipment.withdrawn":
                 self._consume_withdrawn(session, message)
             elif message.event_type == "shipment.receipt_confirmed":
-                self._consume_receipt_confirmed(session, message)
+                message.last_error_code = "receipt_notification_retired"
+                message.last_error_summary = "收货通知已删除，终结旧事件"
+            elif message.event_type == "shipment.receipt_adjusted":
+                self._consume_receipt_adjusted(session, message)
             elif message.event_type == "shipment.returned":
                 self._consume_shipment_returned(session, message)
             elif message.event_type == "repair.created":
@@ -232,6 +234,19 @@ class NotificationsAuditService:
             )
             if message is None:
                 return False
+            source = (
+                session.get(OutboxMessage, message.source_event_id)
+                if message.source_event_id else None
+            )
+            if message.event_type == "shipment.receipt_confirmed" or (
+                source is not None and source.event_type == "shipment.receipt_confirmed"
+            ):
+                message.status = "completed"
+                message.completed_at = current
+                message.locked_by = message.locked_at = None
+                message.last_error_code = "receipt_notification_retired"
+                message.last_error_summary = "收货通知已删除，终结旧投递"
+                return True
             recipient = session.get(User, message.recipient_id) if message.recipient_id else None
             bot_open_id = (
                 message.payload.get("recipientOpenId")
@@ -243,7 +258,7 @@ class NotificationsAuditService:
                 message.last_error_code = "recipient_disabled"
                 message.last_error_summary = "接收账号不存在或已停用，已跳过外部通知"
                 return True
-            if message.event_type == "shipment.receipt_confirmed":
+            if message.event_type == "shipment.receipt_adjusted":
                 assert recipient is not None
                 shipment = session.get(Shipment, message.aggregate_id)
                 if (
@@ -254,7 +269,7 @@ class NotificationsAuditService:
                     message.status = "completed"
                     message.completed_at = current
                     message.last_error_code = "recipient_factory_changed"
-                    message.last_error_summary = "接收账号工厂归属已变化，已跳过收货通知"
+                    message.last_error_summary = "接收账号工厂归属已变化，已跳过装箱修改通知"
                     return True
             if message.event_type in {
                 "order.due_reminder",
@@ -1210,11 +1225,16 @@ class NotificationsAuditService:
                     "reason": str(message.payload["reason"]),
                 })
 
-    def _consume_receipt_confirmed(self, session: Session, message: OutboxMessage) -> None:
+    def _consume_receipt_adjusted(self, session: Session, message: OutboxMessage) -> None:
         shipment = session.get(Shipment, message.aggregate_id)
-        receipt = session.get(ShipmentReceipt, message.aggregate_id)
-        if shipment is None or receipt is None or receipt.confirmed_at is None:
+        if shipment is None:
             return
+        differences = "；".join(
+            f"{item['orderNo']} · {item['productName']} · {item['propertiesValue']}："
+            f"{'增加' if item['quantity'] > 0 else '减少'}{abs(item['quantity'])}件"
+            for item in message.payload["differences"]
+        )
+        summary = differences or "箱内数量或规格归属已调整"
         for user in self._enabled_factory_users(session, shipment.factory_id):
             self._notify_user(
                 session,
@@ -1223,16 +1243,16 @@ class NotificationsAuditService:
                 category="BUSINESS_RESULT",
                 target_type="shipment",
                 target_id=shipment.shipment_id,
-                title="发货单已确认收货",
-                summary=f"发货单 {shipment.shipment_no} 已收货，请查看详情",
+                title="发货单装箱明细已修改",
+                summary=f"发货单 {message.payload['shipmentNo']}：{summary}",
                 target_path=f"/pages/factory-shipment-detail/factory-shipment-detail?shipmentId={shipment.shipment_id}",
                 channel="wechat",
                 template_key="factory_status",
                 template_data={
                     "thing1": "跟单管理系统",
-                    "character_string2": shipment.shipment_no or shipment.shipment_id,
-                    "phrase3": "已收货",
-                    "time4": _wechat_time(receipt.confirmed_at),
+                    "character_string2": message.payload["shipmentNo"] or shipment.shipment_id,
+                    "phrase3": "装箱修改",
+                    "time4": _wechat_time(datetime.fromisoformat(message.payload["occurredAt"])),
                 },
             )
 

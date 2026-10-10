@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     OrderAssignment,
     OrderLine,
-    Shipment,
     ShipmentBox,
     ShipmentBoxItem,
     ShipmentReceipt,
@@ -49,29 +48,6 @@ def order_shipment_ids(order_id: str) -> Select[tuple[str]]:
         ) > 0)
     )
 
-
-def order_shipments(session: Session, order_id: str) -> list[dict[str, Any]]:
-    # 关联按有效订单明细判断，展示数量仍取整张发货单，包含其他订单的箱内数量。
-    quantity = case(
-        (ShipmentReceipt.status == "CONFIRMED", func.coalesce(
-            ShipmentReceiptItem.quantity, ShipmentBoxItem.quantity,
-        )), else_=ShipmentBoxItem.quantity,
-    )
-    query = (
-        select(Shipment.shipment_id, Shipment.shipment_no, Shipment.business_date,
-               func.sum(quantity).label("total_quantity"))
-        .join(ShipmentBox, ShipmentBox.shipment_id == Shipment.shipment_id)
-        .join(ShipmentBoxItem, ShipmentBoxItem.box_id == ShipmentBox.box_id)
-        .outerjoin(ShipmentReceipt, ShipmentReceipt.shipment_id == Shipment.shipment_id)
-        .outerjoin(ShipmentReceiptItem, ShipmentReceiptItem.box_item_id == ShipmentBoxItem.item_id)
-        .where(Shipment.status != "DRAFT", Shipment.deleted_at.is_(None),
-               Shipment.source_shipment_id.is_(None),
-               Shipment.shipment_id.in_(order_shipment_ids(order_id)))
-        .group_by(Shipment.shipment_id)
-        .order_by(Shipment.submitted_at.desc(), Shipment.shipment_id)
-    )
-    return [{**row, "total_quantity": int(row["total_quantity"])}
-            for row in session.execute(query).mappings()]
 
 # Ordering follows _box_inputs: first occurrence in box number / item id order.
 # Binary grouping preserves JavaScript Set semantics for case and accents.

@@ -8,7 +8,6 @@ from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
 from app.api.shipments import (
-    ReceiptItemWrite,
     ShipmentReturnLineWrite,
     ShipmentSummaryResponse,
     _draft_response,
@@ -17,7 +16,6 @@ from app.api.shipments import (
 )
 from app.mcp.files import download_descriptor
 from app.modules.shipments import ShipmentReturnInput, ShipmentService, ShipmentValidationError
-from app.modules.shipments.service import ReceiptItemInput
 
 
 def register_shipment_tools(
@@ -137,39 +135,9 @@ def register_shipment_tools(
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     def get_receipt(shipment_id: str) -> dict[str, Any]:
-        """读取发货单逐箱收货核对草稿及版本，箱内项使用 boxItemId 定位。"""
+        """读取发货单当前生效的逐箱核对结果及版本，箱内项使用 boxItemId 定位。"""
         return execute("get_receipt", lambda _user, _request: _receipt_response(
             shipments.get_receipt(shipment_id=shipment_id)
-        ))
-
-    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False))
-    def save_receipt(
-        shipment_id: str, version: int, items: list[ReceiptItemWrite]
-    ) -> dict[str, Any]:
-        """保存完整逐箱核对草稿；版本必须匹配，保存不会改变正式已发数量。"""
-        return execute("save_receipt", lambda user_id, _request: _receipt_response(
-            shipments.save_receipt(
-                shipment_id=shipment_id, actor_id=user_id, expected_version=version,
-                items=[
-                    ReceiptItemInput(item.box_item_id, item.quantity, item.assignment_id)
-                    for item in items
-                ],
-                source_terminal="agent",
-            )
-        ))
-
-    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False))
-    def confirm_receipt(
-        shipment_id: str, version: int, idempotency_key: str
-    ) -> dict[str, Any]:
-        """整单确认收货并一次计入数量差额；需已读取的版本和本动作固定幂等键。"""
-        if not idempotency_key or len(idempotency_key) > 191:
-            raise ShipmentValidationError("invalid idempotency_key")
-        return execute("confirm_receipt", lambda user_id, _request: _draft_response(
-            shipments.confirm_receipt(
-                shipment_id=shipment_id, actor_id=user_id, expected_version=version,
-                idempotency_key=idempotency_key, source_terminal="agent",
-            )
         ))
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))

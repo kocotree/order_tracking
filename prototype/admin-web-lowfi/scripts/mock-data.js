@@ -418,7 +418,7 @@ export const shipmentListData = {
     { shipmentNo: "FH20260814-002", orderNos: ["088#", "090#"], factory: "启宏", shipDate: "2026-08-14", shippedQuantity: 520, statusKey: "shipped", statusLabel: "已发货", tone: "info" },
     { shipmentNo: "FH20260813-008", orderNos: ["085#"], factory: "盛泰", shipDate: "2026-08-13", shippedQuantity: 480, statusKey: "shipped", statusLabel: "已发货", tone: "info" },
     { shipmentNo: "FH20260813-006", orderNos: ["369#"], factory: "宇情", shipDate: "2026-08-13", shippedQuantity: 360, statusKey: "shipped", statusLabel: "已发货", tone: "info" },
-    { shipmentNo: "FH20260812-006", orderNos: ["078#", "369#"], factory: "宇情", shipDate: "2026-08-12", shippedQuantity: 100, statusKey: "shipped", statusLabel: "已发货", tone: "info" },
+    { shipmentNo: "FH20260812-006", orderNos: ["078#"], factory: "宇情", shipDate: "2026-08-12", shippedQuantity: 100, statusKey: "shipped", statusLabel: "已发货", tone: "info" },
     { shipmentNo: "FH20260812-004", orderNos: ["369#"], factory: "宇情", shipDate: "2026-08-12", shippedQuantity: 420, statusKey: "shipped", statusLabel: "已发货", tone: "info" },
     { shipmentNo: "FH20260811-005", orderNos: ["090#"], factory: "启宏", shipDate: "2026-08-11", shippedQuantity: 500, statusKey: "shipped", statusLabel: "已发货", tone: "info" },
     { shipmentNo: "FH20260810-004", orderNos: ["085#"], factory: "盛泰", shipDate: "2026-08-10", shippedQuantity: 480, statusKey: "shipped", statusLabel: "已发货", tone: "info" },
@@ -430,6 +430,14 @@ export const shipmentListData = {
 };
 
 export const shipmentDetailData = {
+  "FH20260812-006": {
+    totalBoxes: 1,
+    lines: [{ orderNo: "078#", code: "KQ26143", name: "乐园游会吊带包屁衣", colorSpec: "雾松灰 / 80", shippedQuantity: 100 }],
+    boxes: [{ boxNo: 1, items: [{ orderNo: "078#", code: "KQ26143", name: "乐园游会吊带包屁衣", colorSpec: "雾松灰 / 80", quantity: 100 }] }],
+    proofCount: 0,
+    factoryRemark: "—",
+    logs: [{ time: "2026-08-12 10:18", operator: "宇情工厂", action: "提交发货单，自动收货", source: "工厂小程序" }],
+  },
   "FH20260814-003": {
     totalBoxes: 4,
     lines: [

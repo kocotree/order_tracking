@@ -944,6 +944,7 @@ class Shipment(Base):
         ForeignKey("users.user_id", ondelete="RESTRICT")
     )
     submitted_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
+    first_submitted_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
     deleted_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
@@ -1001,7 +1002,7 @@ class ShipmentReceipt(Base):
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
-    saved_by: Mapped[str] = mapped_column(ForeignKey("users.user_id"), nullable=False)
+    saved_by: Mapped[str | None] = mapped_column(ForeignKey("users.user_id"))
     saved_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
     confirmed_by: Mapped[str | None] = mapped_column(ForeignKey("users.user_id"))
     confirmed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6))

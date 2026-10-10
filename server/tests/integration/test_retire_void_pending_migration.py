@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine, delete
+from sqlalchemy import Engine, MetaData, Table, delete, select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -19,9 +19,10 @@ def test_retirement_blocks_pending_data_and_preserves_archive(
     config.set_main_option("sqlalchemy.url", test_database_url)
     _seed(test_database_engine)
     command.downgrade(config, "20260930_0049")
+    shipments = Table("shipments", MetaData(), autoload_with=test_database_engine)
     try:
         with Session(test_database_engine) as session, session.begin():
-            session.add(Shipment(
+            session.execute(shipments.insert().values(
                 shipment_id="legacy-approval", factory_id=FACTORY_IDS[0],
                 created_by=USER_IDS[0],
                 status="VOID_PENDING" if legacy_state == "shipment" else "SHIPPED",
@@ -42,14 +43,20 @@ def test_retirement_blocks_pending_data_and_preserves_archive(
         with pytest.raises(RuntimeError, match="历史待审核"):
             command.upgrade(config, "head")
         with Session(test_database_engine) as session, session.begin():
-            shipment = session.get(Shipment, "legacy-approval")
+            shipment = session.execute(select(shipments).where(
+                shipments.c.shipment_id == "legacy-approval",
+            )).mappings().one()
             request = session.get(ShipmentVoidRequest, "legacy-request")
             assert shipment is not None and request is not None
-            assert shipment.status == ("VOID_PENDING" if legacy_state == "shipment" else "SHIPPED")
+            assert shipment["status"] == (
+                "VOID_PENDING" if legacy_state == "shipment" else "SHIPPED"
+            )
             assert request.status == ("PENDING" if legacy_state == "request" else "REJECTED")
             assert request.reason == "历史原因"
             # 测试模拟人工完成核对，迁移本身不做状态转换。
-            shipment.status = "SHIPPED"
+            session.execute(update(shipments).where(
+                shipments.c.shipment_id == "legacy-approval",
+            ).values(status="SHIPPED"))
             request.status = "REJECTED"
             event = session.query(OutboxMessage).filter_by(
                 dedupe_key="legacy-approval-event"

@@ -640,8 +640,6 @@ h1, h2, p { margin-top: 0; }
 .order-detail-page .detail-progress > span { height: 7px; overflow: hidden; background: #e6ecf0; border-radius: 999px; }
 .order-detail-page .detail-progress i { display: block; height: 100%; background: var(--erp-blue); border-radius: inherit; }
 .order-detail-page .detail-progress em { font-size: 12px; font-style: normal; font-weight: 700; text-align: right; }
-.order-detail-page .related-shipment-table { min-width: 900px; }
-.order-detail-page .related-shipment-table th { width: calc(100% / 6); }
 .order-audit-card { overflow: hidden; }
 .order-audit-toggle { display: flex; width: 100%; min-height: 56px; align-items: center; justify-content: space-between; padding: 0 20px; color: var(--ink-strong); background: #fff; border: 0; cursor: pointer; }
 .order-audit-toggle:hover { background: #fafbfd; }
@@ -1309,15 +1307,7 @@ h1, h2, p { margin-top: 0; }
   .topbar-title { color: var(--ink); font-size: 15px; }
 }
 
-/* S08 发货撤回审核、按原订单退回与清单下载。 */
-.shipment-void-card { overflow: hidden; }
-.shipment-void-content { display: flex; gap: 18px; align-items: flex-end; justify-content: space-between; padding: 16px; }
-.shipment-void-content dl { display: grid; flex: 1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 0; }
-.shipment-void-content dl > div { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 10px; font-size: 13px; }
-.shipment-void-content dl > div.is-wide { grid-column: 1 / -1; }
-.shipment-void-content dt { color: var(--subtle); font-weight: 700; }
-.shipment-void-content dd { margin: 0; color: var(--ink-strong); font-weight: 700; overflow-wrap: anywhere; }
-.shipment-void-actions { display: flex; gap: 12px; flex: 0 0 auto; }
+/* 按原订单退回与清单下载。 */
 .shipment-log-dot.is-warning { background: #f59e0b; border-color: #fff3dc; }
 .status-badge.is-warning { color: #a45d00; background: #fff3dc; }
 .shipment-return-dialog { width: min(1120px, calc(100vw - 40px)); }
@@ -1336,7 +1326,6 @@ h1, h2, p { margin-top: 0; }
 .return-quantity-input { box-sizing: border-box; width: 100%; height: 30px; padding: 0 8px; border: 1px solid #cfd6de; border-radius: 4px; }
 .return-reason-field, .reopen-field { display: grid; gap: 8px; color: var(--ink-strong); font-size: 13px; font-weight: 700; }
 .return-reason-field textarea, .reopen-field textarea { box-sizing: border-box; width: 100%; min-height: 84px; padding: 10px 12px; resize: vertical; border: 1px solid #cfd6de; border-radius: 4px; font: inherit; font-weight: 500; }
-@media (max-width: 760px) { .shipment-void-content { align-items: stretch; flex-direction: column; } .shipment-void-content dl { grid-template-columns: 1fr; } .shipment-void-content dl > div.is-wide { grid-column: auto; } }
 
 /* Issue #15: preserve notification columns even when the read marker is hidden. */
 .notification-unread-dot.is-read { visibility: hidden; }

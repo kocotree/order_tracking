@@ -1,11 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from importlib import import_module
 from threading import Event
 
 import httpx
 import pytest
-from alembic import command
-from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from sqlalchemy import Engine, delete, event
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -302,12 +303,11 @@ def test_receipt_and_return_do_not_reduce_reported_quantity(test_database_engine
     shipments = ShipmentService(sessions)
     original = submit(shipments, assignment, datetime(2026, 10, 8, tzinfo=UTC), 100)
     receipt = shipments.get_receipt(shipment_id=original.shipment_id)
-    saved = shipments.save_receipt(
+    shipments.save_receipt(
         shipment_id=original.shipment_id, actor_id=ADMIN_ID, expected_version=receipt.version,
+        idempotency_key="receipt",
         items=[ReceiptItemInput(box_item_id=original.boxes[0].items[0].box_item_id, quantity=95)],
     )
-    shipments.confirm_receipt(shipment_id=original.shipment_id, actor_id=ADMIN_ID,
-                              expected_version=saved.version, idempotency_key="receipt")
     shipments.return_shipment(
         actor_id=ADMIN_ID, shipment_id=original.shipment_id,
         lines=[ShipmentReturnInput(shipment_line_id=original.lines[0].line_id, quantity=10)],
@@ -403,15 +403,18 @@ def test_history_uses_business_events_and_detects_missing_withdrawal(test_databa
 
 
 def test_migration_refuses_to_erase_captured_facts(
-    test_database_engine: Engine, test_database_url: str,
+    test_database_engine: Engine,
 ):
     assignment = seed_source(test_database_engine)
     sessions = sessionmaker(test_database_engine, expire_on_commit=False)
     submit(ShipmentService(sessions), assignment, datetime(2026, 10, 8, tzinfo=UTC))
-    config = Config("alembic.ini")
-    config.set_main_option("sqlalchemy.url", test_database_url)
-    with pytest.raises(RuntimeError, match="汇总事实"):
-        command.downgrade(config, "20261006_0050")
+    migration = import_module("migrations.versions.20261006_0051_shipment_writeback")
+    with (
+        test_database_engine.connect() as connection,
+        Operations.context(MigrationContext.configure(connection)),
+        pytest.raises(RuntimeError, match="汇总事实"),
+    ):
+        migration.downgrade()
     stage = month_stages(2026, 10)[0]
     assert ShipmentWriteback(sessions, source_scope="test-source").freeze(
         stage, now=stage.until,

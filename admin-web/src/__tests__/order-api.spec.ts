@@ -97,21 +97,20 @@ describe("orderApi", () => {
     );
   });
 
-  it("uses the lightweight order shipment route and passes read cancellation to fetch", async () => {
+  it("passes read cancellation to order and auxiliary fetches", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
       new Response(JSON.stringify({ items: [], total: 0 }), { status: 200 }),
     );
     const controller = new AbortController();
     await Promise.all([
-      shipmentApi.listForOrder("order/a", controller.signal),
       orderApi.get("order/a", controller.signal),
       orderApi.auditLogs("order/a", controller.signal),
       orderApi.incomingDifferences("order/a", controller.signal),
       contractApi.list("order/a", controller.signal),
       identityApi.listFactoryOptions(controller.signal),
     ]);
-    expect(fetchMock.mock.calls[0]![0]).toBe("/api/v1/admin/orders/order%2Fa/shipments");
-    expect(fetchMock.mock.calls).toHaveLength(6);
+    expect(fetchMock.mock.calls[0]![0]).toBe("/api/v1/orders/order%2Fa");
+    expect(fetchMock.mock.calls).toHaveLength(5);
     for (const [, init] of fetchMock.mock.calls) expect(init?.signal).toBe(controller.signal);
     controller.abort();
     expect(fetchMock.mock.calls.every(([, init]) => init?.signal?.aborted)).toBe(true);

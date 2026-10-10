@@ -42,13 +42,14 @@ const shipment: Shipment = {
   returnEvents: [],
   createdAt: "2026-09-04T08:00:00Z",
   submittedAt: "2026-09-04T08:30:00Z",
+  receipt: { status: "CONFIRMED", version: 1, items: [], confirmedByName: null, confirmedAt: "2026-09-04T08:30:00Z" },
 };
 
 const shellStub = { template: "<div><slot /></div>" };
 
 beforeEach(() => {
   routeState.query = {};
-  vi.spyOn(shipmentApi, "getReceipt").mockResolvedValue({ version: 0, status: "DRAFT", items: [], confirmedAt: null, confirmedByName: null });
+  vi.spyOn(shipmentApi, "getReceipt").mockResolvedValue({ version: 1, status: "CONFIRMED", items: [], confirmedAt: null, confirmedByName: null });
   vi.spyOn(shipmentApi, "getReceiptOptions").mockResolvedValue({ items: [{ boxItemId: 7, options: [{ assignmentId: 1, orderNo: "092#", productName: "测试童帽", propertiesValue: "蓝色 / 52" }] }] });
 });
 
@@ -115,15 +116,29 @@ describe("shipment evidence in the administrator detail", () => {
 
 
 describe("receipt verification", () => {
+  it("keeps shipment details and allows retry when packing data initially fails", async () => {
+    vi.spyOn(shipmentApi, "get").mockResolvedValue(shipment);
+    vi.mocked(shipmentApi.getReceipt).mockRejectedValueOnce(new Error("offline"));
+    const wrapper = mount(ShipmentDetailPage, { global: { stubs: { AdminShell: shellStub, TableSortButton: true } } });
+    await flushPromises();
+    expect(wrapper.get(".shipment-product-table").text()).toContain("测试童帽");
+    expect(wrapper.get('[data-action="save-receipt"]').attributes("disabled")).toBeDefined();
+    await wrapper.get('[role="alert"] button').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-action="save-receipt"]').exists()).toBe(true);
+    expect(shipmentApi.getReceipt).toHaveBeenCalledTimes(2);
+  });
+
   it("saves a selected specification from another order of the same product", async () => {
     const value = { ...shipment, boxes: [{ boxNo: 1, groupKey: null, items: [{ ...shipment.lines[0]!, boxItemId: 7 }] }] };
     vi.spyOn(shipmentApi, "get").mockResolvedValue(value);
-    vi.mocked(shipmentApi.getReceipt).mockResolvedValue({ version: 0, status: "DRAFT", items: [{ boxItemId: 7, quantity: 2, assignmentId: 1 }] });
+    vi.mocked(shipmentApi.getReceipt).mockResolvedValueOnce({ version: 1, status: "CONFIRMED", items: [{ boxItemId: 7, quantity: 2, assignmentId: 1 }] })
+      .mockResolvedValue({ version: 2, status: "CONFIRMED", items: [{ boxItemId: 7, quantity: 2, assignmentId: 2 }] });
     vi.mocked(shipmentApi.getReceiptOptions).mockResolvedValue({ items: [{ boxItemId: 7, options: [
       { assignmentId: 1, orderNo: "092#", productName: "测试童帽", propertiesValue: "蓝色 / 52" },
       { assignmentId: 2, orderNo: "093#", productName: "测试童帽", propertiesValue: "白色 / 52" },
     ] }] });
-    const save = vi.spyOn(shipmentApi, "saveReceipt").mockResolvedValue({ version: 1, status: "DRAFT", items: [{ boxItemId: 7, quantity: 2, assignmentId: 2 }] });
+    const save = vi.spyOn(shipmentApi, "saveReceipt").mockResolvedValue({ version: 2, status: "CONFIRMED", items: [{ boxItemId: 7, quantity: 2, assignmentId: 2 }] });
     const wrapper = mount(ShipmentDetailPage, { global: { stubs: { AdminShell: shellStub, TableSortButton: true } } });
     await flushPromises();
     await wrapper.get('select[aria-label="箱号 1 ITEM-SHIPMENT 颜色规格"]').setValue("2");
@@ -132,7 +147,9 @@ describe("receipt verification", () => {
     expect(wrapper.get(".shipment-product-table tbody").text()).toContain("白色 / 52");
     await wrapper.get('[data-action="save-receipt"]').trigger("click");
     await flushPromises();
-    expect(save).toHaveBeenCalledWith("shipment-1", 0, [{ boxItemId: 7, quantity: 2, assignmentId: 2 }]);
+    expect(save).toHaveBeenCalledWith("shipment-1", 1, [{ boxItemId: 7, quantity: 2, assignmentId: 2 }], expect.any(String));
+    expect(wrapper.text()).toContain("订单发货数量已同步");
+    expect(wrapper.find('[data-action="save-receipt"]').exists()).toBe(true);
   });
 
   it("shows the withdrawn history without receipt or approval actions", async () => {
@@ -148,43 +165,47 @@ describe("receipt verification", () => {
     expect(shipmentApi.getReceipt).not.toHaveBeenCalled();
   });
 
-  it("refreshes a stale receipt page to read-only after withdrawal", async () => {
-    vi.spyOn(shipmentApi, "get").mockResolvedValueOnce(shipment)
-      .mockResolvedValue({...shipment,status:"WITHDRAWN"});
+  it("preserves unsaved quantities on conflict until explicitly reloaded", async () => {
+    const value = { ...shipment, boxes: [{ boxNo: 1, groupKey: null, items: [{ ...shipment.lines[0]!, boxItemId: 7 }] }] };
+    vi.spyOn(shipmentApi, "get").mockResolvedValueOnce(value).mockResolvedValue({...shipment,status:"WITHDRAWN"});
+    vi.mocked(shipmentApi.getReceipt).mockResolvedValue({ version: 1, status: "CONFIRMED", items: [{ boxItemId: 7, quantity: 2, assignmentId: 1 }] });
     vi.spyOn(shipmentApi, "saveReceipt").mockRejectedValue(new ApiError(409, "conflict", "发货单已撤回"));
     const wrapper = mount(ShipmentDetailPage, {global:{stubs:{AdminShell:shellStub,TableSortButton:true}}});
     await flushPromises();
+    await wrapper.get('input[type="number"]').setValue("9");
     await wrapper.get('[data-action="save-receipt"]').trigger("click");
     await flushPromises();
     expect(wrapper.text()).toContain("发货单已撤回");
+    expect((wrapper.get('input[type="number"]').element as HTMLInputElement).value).toBe("9");
+    expect(shipmentApi.get).toHaveBeenCalledTimes(1);
+    await wrapper.get('[role="alert"] button').trigger("click");
+    await flushPromises();
     expect(wrapper.find('[data-action="save-receipt"]').exists()).toBe(false);
     expect(wrapper.find('[data-action="confirm-receipt"]').exists()).toBe(false);
   });
 
-  it("saves by box, derives totals, requires save before confirm and locks confirmed values", async () => {
+  it("retries an unknown save with the same key and keeps received packing editable", async () => {
     const value = { ...shipment, boxes: [{ boxNo: 1, groupKey: null, items: [{ ...shipment.lines[0]!, boxItemId: 7 }] }] };
     vi.spyOn(shipmentApi, "get").mockResolvedValue(value);
-    vi.mocked(shipmentApi.getReceipt).mockResolvedValue({ version: 0, status: "DRAFT", items: [{ boxItemId: 7, quantity: 2, assignmentId: 1 }], confirmedAt: null, confirmedByName: null });
-    const save = vi.spyOn(shipmentApi, "saveReceipt").mockResolvedValue({ version: 1, status: "DRAFT", items: [{ boxItemId: 7, quantity: 0, assignmentId: 1 }], confirmedAt: null, confirmedByName: null });
-    const confirm = vi.spyOn(shipmentApi, "confirmReceipt").mockResolvedValue({ ...value, totalQuantity: 0, receipt: { version: 1, status: "CONFIRMED", items: [{ boxItemId: 7, quantity: 0, assignmentId: 1 }], confirmedAt: "2026-09-07T02:00:00", confirmedByName: "核对员" }, lines: [{ ...value.lines[0]!, quantity: 0 }], boxes: [{ ...value.boxes[0]!, items: [{ ...value.boxes[0]!.items[0]!, quantity: 0 }] }] });
+    vi.mocked(shipmentApi.getReceipt).mockResolvedValueOnce({ version: 1, status: "CONFIRMED", items: [{ boxItemId: 7, quantity: 2, assignmentId: 1 }] })
+      .mockResolvedValue({ version: 2, status: "CONFIRMED", items: [{ boxItemId: 7, quantity: 0, assignmentId: 1 }] });
+    const save = vi.spyOn(shipmentApi, "saveReceipt").mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue({ version: 2, status: "CONFIRMED", items: [{ boxItemId: 7, quantity: 0, assignmentId: 1 }] });
     const wrapper = mount(ShipmentDetailPage, { global: { stubs: { AdminShell: shellStub, TableSortButton: true } } });
     await flushPromises();
     await wrapper.get('input[aria-label="箱号 1 ITEM-SHIPMENT 核对数量"]').setValue("0");
     expect(wrapper.get(".shipment-product-table tbody tr td:last-child").text()).toBe("0");
-    await wrapper.get('[data-action="confirm-receipt"]').trigger("click");
-    expect(wrapper.text()).toContain("请先保存");
-    expect(confirm).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-action="confirm-receipt"]').exists()).toBe(false);
     await wrapper.get('[data-action="save-receipt"]').trigger("click");
     await flushPromises();
-    expect(save).toHaveBeenCalledWith("shipment-1", 0, [{ boxItemId: 7, quantity: 0, assignmentId: 1 }]);
-    await wrapper.get('[data-action="confirm-receipt"]').trigger("click");
+    await wrapper.get('[data-action="save-receipt"]').trigger("click");
     await flushPromises();
-    expect(confirm).toHaveBeenCalledWith("shipment-1", 1);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[0]).toEqual(save.mock.calls[1]);
     expect(wrapper.text()).toContain("已收货");
-    expect(wrapper.text()).toContain("核对员");
-    expect(wrapper.text()).not.toContain("收货已确认");
-    expect(wrapper.find('[role="status"]').exists()).toBe(false);
-    expect(wrapper.find('input[type="number"]').exists()).toBe(false);
+    expect(wrapper.find('input[type="number"]').exists()).toBe(true);
+    expect((wrapper.get('input[type="number"]').element as HTMLInputElement).value).toBe("0");
+    expect(wrapper.find('[data-action="confirm-receipt"]').exists()).toBe(false);
   });
 });
 

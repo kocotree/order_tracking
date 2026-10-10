@@ -1,6 +1,5 @@
 from datetime import date, datetime
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -22,25 +21,6 @@ from app.main import create_app
 from app.modules.identity_access import IdentityAccessService
 from tests.api.test_shipment_api import ADMIN_ID, FACTORY_IDS, ORDER_ID, USER_IDS, VARIANT_ID
 from tests.api.test_shipment_summary import seed_shipments, service
-from tests.integration.test_order_detail_queries import measured_queries
-
-
-@pytest.mark.parametrize("count", [1, 30])
-def test_related_summary_matches_details_with_constant_queries(
-    test_database_engine: Engine, count: int,
-) -> None:
-    seed_shipments(test_database_engine, count)
-    reader = service(test_database_engine)
-    with measured_queries(test_database_engine):
-        previous = reader.list_shipments(order_id=ORDER_ID)
-    with measured_queries(test_database_engine) as queries:
-        rows = reader.order_shipments(order_id=ORDER_ID)
-    assert rows == [{
-        "shipment_id": row.shipment_id, "shipment_no": row.shipment_no,
-        "business_date": row.business_date, "total_quantity": row.total_quantity,
-    } for row in previous]
-    assert rows[0]["total_quantity"] == 2 * (count - 1) + 3
-    assert len(queries) == 1
 
 
 def test_related_summary_respects_receipt_remapping_and_keeps_whole_shipment_quantity(
@@ -110,8 +90,6 @@ def test_related_summary_respects_receipt_remapping_and_keeps_whole_shipment_qua
     reader = service(test_database_engine)
     for order_id, expected in [(ORDER_ID, [("list-0007", 17), ("list-0003", 20), ("list-0002", 7)]),
                                ("other", [("list-0003", 20), ("list-0000", 7)]), ("missing", [])]:
-        rows = reader.order_shipments(order_id=order_id)
-        assert [(row["shipment_id"], row["total_quantity"]) for row in rows] == expected
         previous = reader.list_shipments(order_id=order_id)
         assert [(row.shipment_id, row.total_quantity) for row in previous] == expected
 
@@ -123,7 +101,7 @@ def test_related_summary_respects_receipt_remapping_and_keeps_whole_shipment_qua
     admin = identity.issue_session(user_id=ADMIN_ID, terminal="web")
     factory = identity.issue_session(user_id=USER_IDS[0], terminal="mini")
     app = create_app(database_url=test_database_url, identity_service=identity)
-    url = f"/api/v1/admin/orders/{ORDER_ID}/shipments"
+    url = f"/api/v1/admin/shipments?orderId={ORDER_ID}"
     with TestClient(app, base_url="https://testserver") as client:
         assert client.get(url).status_code == 401
         denied = client.get(url, headers={"Authorization": f"Bearer {factory.access_token}"})
@@ -132,7 +110,10 @@ def test_related_summary_respects_receipt_remapping_and_keeps_whole_shipment_qua
         response = client.get(url)
         assert response.status_code == 200
         assert response.json()["total"] == 3
-        assert response.json()["items"][1] == {
+        item = response.json()["items"][1]
+        assert {key: item[key] for key in (
+            "shipmentId", "shipmentNo", "businessDate", "totalQuantity",
+        )} == {
             "shipmentId": "list-0003", "shipmentNo": "发货3",
             "businessDate": date(2026, 9, 1).isoformat(), "totalQuantity": 20,
         }

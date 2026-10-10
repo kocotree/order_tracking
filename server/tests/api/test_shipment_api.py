@@ -28,6 +28,8 @@ from app.db.models import (
     ShipmentBoxItem,
     ShipmentLine,
     ShipmentNumberCounter,
+    ShipmentReceipt,
+    ShipmentReceiptItem,
     ShipmentReturnEvent,
     ShipmentReturnLine,
     ShipmentVoidRequest,
@@ -68,6 +70,10 @@ def _clean(engine: Engine) -> None:
             delete(ShipmentReturnEvent).where(ShipmentReturnEvent.shipment_id.in_(shipment_ids))
         )
         session.execute(delete(QuantityLedger).where(QuantityLedger.source_id.in_(shipment_ids)))
+        session.execute(delete(ShipmentReceiptItem).where(
+            ShipmentReceiptItem.shipment_id.in_(shipment_ids)
+        ))
+        session.execute(delete(ShipmentReceipt).where(ShipmentReceipt.shipment_id.in_(shipment_ids)))
         session.execute(delete(ShipmentLine).where(ShipmentLine.shipment_id.in_(shipment_ids)))
         session.execute(delete(ShipmentBoxItem).where(ShipmentBoxItem.box_id.in_(box_ids)))
         session.execute(delete(ShipmentBox).where(ShipmentBox.shipment_id.in_(shipment_ids)))

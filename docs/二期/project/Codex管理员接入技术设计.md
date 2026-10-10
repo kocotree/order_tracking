@@ -116,7 +116,7 @@ OAuth 标准要求包括资源发现、客户端注册、PKCE、令牌受众验�
 | `list_withdrawable_factories`、`withdraw_factory_dispatch`、`complete_order`、`reopen_order` | 按工厂撤回、完成、带原因撤销完成 |
 | `list_order_contracts`、`export_contract` | 按厂资格、签订日期、生成和重复导出、下载链接 |
 | `list_shipments`、`get_shipment`、`get_daily_shipment_summary`、`export_shipment`、`export_daily_shipments` | 列表与关联查询、单据箱内明细/凭证/操作记录、日汇总、两类 Excel |
-| `get_receipt`、`save_receipt`、`confirm_receipt`、`return_shipment` | 草稿、逐箱保存、整单确认、按发货单规格退回 |
+| `get_receipt`、`return_shipment` | 读取当前有效核对结果、按发货单规格退回；Issue #240 删除保存／确认工具，装箱修改仅管理员网页办理 |
 | `list_repair_periods`、`get_repair`、`upload_repair_workbook`、`get_repair_preview`、`confirm_repair_previews`、`archive_repair_period` | 周期筛选、详情、Excel 原件、上传校验、单/批量创建、整周期归档 |
 | `list_factories`、`get_factory`、`create_factory`、`update_factory`、`list_products` | 工厂筛选、联系人、合同资料、关联人员；产品规格及图片受权链接 |
 | `list_factory_applications`、`get_factory_application`、`approve_factory_application`、`reject_factory_application` | 申请查询、绑定工厂通过、带原因拒绝 |

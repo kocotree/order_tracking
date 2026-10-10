@@ -2,7 +2,7 @@ import { useRoute } from "vue-router";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, shipmentApi, type Order } from "@/api/client";
+import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, type Order } from "@/api/client";
 import OrderDetailPage from "@/pages/OrderDetailPage.vue";
 
 const routerPush = vi.hoisted(() => vi.fn());
@@ -34,7 +34,6 @@ beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
 
-  vi.spyOn(shipmentApi, "listForOrder").mockResolvedValue({ items: [], total: 0 });
   vi.spyOn(contractApi, "list").mockResolvedValue({ items: [], requestId: "contracts" });
   vi.spyOn(identityApi, "listFactoryOptions").mockResolvedValue({ items: [{ factoryId: "factory-1", factoryName: "测试工厂", supplierNumber: "SUP-001" }], total: 1 });
   vi.spyOn(orderApi, "auditLogs").mockResolvedValue({
@@ -271,51 +270,13 @@ describe("order detail prototype alignment", () => {
 });
 
 
-describe("related shipments", () => {
-  function mountPage() {
-    return mount(OrderDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: { props: ["to"], template: '<a :href="typeof to === `string` ? to : to.path" :data-return-to="typeof to === `string` ? `` : to.query.notificationReturnTo"><slot /></a>' } } } });
-  }
-
-  it("shows summary records and both detail links in the four-column list", async () => {
-    useRoute().fullPath = "/orders/order-1?status=未完成&notificationReturnTo=%2Fnotifications%3Ffilter%3Dunread";
-    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
-    vi.mocked(shipmentApi.listForOrder).mockResolvedValue({ items: [{ shipmentId: "shipment-1", shipmentNo: "FH20260905-001", businessDate: "2026-09-05", totalQuantity: 23 }], total: 1 });
-    const wrapper = mountPage();
-    await flushPromises();
-    expect(shipmentApi.listForOrder).toHaveBeenCalledWith("order-1", expect.any(AbortSignal));
-    const table = wrapper.get(".related-shipment-table");
-    expect(table.findAll("th").map((cell) => cell.text())).toEqual(["发货单号", "发货日期", "发货数量", "操作"]);
-    expect(table.findAll("tbody td").map((cell) => cell.text())).toEqual(["FH20260905-001", "2026-09-05", "23", "详情"]);
-    expect(table.findAll('a[href="/shipments/shipment-1"]')).toHaveLength(2);
-    expect(table.findAll('a[data-return-to="/orders/order-1?status=未完成&notificationReturnTo=%2Fnotifications%3Ffilter%3Dunread"]')).toHaveLength(2);
-  });
-
-  it.each([false, true])("spans all four columns for empty/error feedback (%s)", async (failed) => {
-    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
-    if (failed) vi.mocked(shipmentApi.listForOrder).mockRejectedValue(new Error("offline"));
-    const wrapper = mountPage();
-    await flushPromises();
-    const cell = wrapper.get(".related-shipment-table tbody td");
-    expect(cell.attributes("colspan")).toBe("4");
-    expect(cell.text()).toContain(failed ? "关联发货单加载失败" : "当前订单暂无关联发货单");
-    if (failed) expect(cell.attributes("role")).toBe("alert");
-  });
-
-  it("shows the order while related shipments are loading, then shows the empty state", async () => {
-    vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
-    let resolveList!: (value: Awaited<ReturnType<typeof shipmentApi.listForOrder>>) => void;
-    vi.mocked(shipmentApi.listForOrder).mockReturnValue(new Promise((resolve) => { resolveList = resolve; }));
-    const wrapper = mountPage();
-    await flushPromises();
-    expect(wrapper.find(".page-state").exists()).toBe(false);
-    expect(wrapper.get(".product-detail-table").text()).toContain("轻量防风马甲");
-    expect(wrapper.get(".related-shipment-table").text()).toContain("正在加载关联发货单…");
-    resolveList({ items: [], total: 0 });
-    await flushPromises();
-    expect(wrapper.find(".page-state").exists()).toBe(false);
-    expect(wrapper.get(".related-shipment-table tbody td").attributes("colspan")).toBe("4");
-    expect(wrapper.get(".related-shipment-table tbody").text()).toBe("当前订单暂无关联发货单");
-  });
+it("keeps order quantities while removing related shipment links", async () => {
+  vi.spyOn(orderApi, "get").mockResolvedValue(sampleOrder);
+  const wrapper = mount(OrderDetailPage, { global: { stubs: { AdminShell: { template: "<div><slot /></div>" }, RouterLink: true } } });
+  await flushPromises();
+  expect(wrapper.get(".product-detail-table").text()).toContain("轻量防风马甲");
+  expect(wrapper.text()).not.toContain("关联发货单");
+  expect(wrapper.find('a[href^="/shipments/"]').exists()).toBe(false);
 });
 
 describe("independent detail loading", () => {

@@ -1,7 +1,11 @@
 import importlib.util
+import io
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "backup-production.py"
 spec = importlib.util.spec_from_file_location("backup_production", SCRIPT)
@@ -14,6 +18,80 @@ def stamps(count):
 
 
 class PruneTest(unittest.TestCase):
+    def test_failed_dump_does_not_publish_or_prune(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "config"
+            config.write_text("ORDER_TRACKING_APP_ENV=production\n"
+                              "ORDER_TRACKING_DATABASE_URL=mysql+pymysql://user:fake@localhost/db\n"
+                              f"ORDER_TRACKING_MYSQL_BACKUP_DIR={root}\n")
+            process = Mock(stdout=io.BytesIO(b"partial"))
+            process.wait.return_value = 1
+            with patch.object(sys, "argv", ["backup", str(config), "mysql"]), \
+                 patch.object(subprocess, "Popen", return_value=process), \
+                 patch.object(backup, "prune") as prune:
+                with self.assertRaisesRegex(RuntimeError, "MySQL backup failed"):
+                    backup.main()
+                prune.assert_not_called()
+            self.assertEqual(list(root.glob("*.sql.gz")), [])
+
+    def test_mysql_only_success_never_calls_oss(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "config"
+            config.write_text("ORDER_TRACKING_APP_ENV=production\n"
+                              "ORDER_TRACKING_DATABASE_URL=mysql+pymysql://user:fake@localhost/db\n"
+                              f"ORDER_TRACKING_MYSQL_BACKUP_DIR={root}\n")
+            process = Mock(stdout=io.BytesIO(b"CREATE TABLE example (id INT);"))
+            process.wait.return_value = 0
+            with patch.object(sys, "argv", ["backup", str(config), "mysql"]), \
+                 patch.object(subprocess, "Popen", return_value=process), \
+                 patch.object(subprocess, "run") as command:
+                backup.main()
+                command.assert_not_called()
+            self.assertEqual(len(list(root.glob("*.sql.gz.sha256"))), 1)
+
+    def test_failed_oss_copy_does_not_publish_or_prune_snapshots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            mysql = root / "mysql"
+            oss = root / "oss"
+            mysql.mkdir()
+            oss.mkdir()
+            for stamp in stamps(4):
+                (oss / f"production-{stamp}").mkdir()
+                (oss / f"production-{stamp}.sha256").write_text("verified")
+            config = root / "config"
+            config.write_text("ORDER_TRACKING_APP_ENV=production\n"
+                              "ORDER_TRACKING_DATABASE_URL=mysql+pymysql://user:fake@localhost/db\n"
+                              f"ORDER_TRACKING_MYSQL_BACKUP_DIR={mysql}\n"
+                              f"ORDER_TRACKING_OSS_BACKUP_DIR={oss}\n"
+                              + "".join(f"ORDER_TRACKING_OSS_{key}=fake\n" for key in (
+                                  "REGION", "ENDPOINT", "ACCESS_KEY_ID", "ACCESS_KEY_SECRET", "BUCKET")))
+            process = Mock(stdout=io.BytesIO(b"CREATE TABLE example (id INT);"))
+            process.wait.return_value = 0
+            with patch.object(sys, "argv", ["backup", str(config)]), \
+                 patch.object(subprocess, "Popen", return_value=process), \
+                 patch.object(subprocess, "run", side_effect=subprocess.CalledProcessError(1, "oss")):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    backup.main()
+            self.assertEqual(len([p for p in oss.iterdir() if backup.OSS_BACKUPS.fullmatch(p.name)]), 4)
+            self.assertEqual(len(list(oss.glob("*.partial"))), 1)
+
+    def test_incomplete_and_symlink_backups_are_not_pruned(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for stamp in stamps(10):
+                (root / f"production-{stamp}.sql.gz").write_text("incomplete")
+            target = root / "manual"
+            target.write_text("keep")
+            link = root / "production-20260924T093100594950Z.sql.gz"
+            link.symlink_to(target)
+            link.with_name(link.name + ".sha256").write_text("hash")
+            backup.prune(root, backup.MYSQL_BACKUPS, 7)
+            self.assertEqual(len(list(root.glob("*.sql.gz"))), 11)
+            self.assertEqual(target.read_text(), "keep")
+
     def test_keeps_the_newest_mysql_dumps_and_spares_manual_files(self):
         count = backup.MYSQL_RETAINED + 2
         with tempfile.TemporaryDirectory() as directory:

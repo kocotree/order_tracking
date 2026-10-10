@@ -522,7 +522,9 @@ def test_ready_candidate_imports_atomic_feishu_draft(
 
 def test_partial_shipment_threshold_imports_whole_order_and_saves_history_baseline(
     test_database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("app.modules.log_retention.utc_now", lambda: datetime(2026, 8, 25))
     _clean_import_data(test_database_engine)
     _seed_import_dependencies(test_database_engine)
     with Session(test_database_engine) as session, session.begin():

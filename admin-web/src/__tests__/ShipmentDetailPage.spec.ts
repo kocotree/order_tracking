@@ -47,6 +47,29 @@ const shipment: Shipment = {
 
 const shellStub = { template: "<div><slot /></div>" };
 
+it("shows the log window without synthesizing an old submission", async () => {
+  vi.spyOn(shipmentApi, "get").mockResolvedValue({ ...shipment, operations: [] });
+  const wrapper = mount(ShipmentDetailPage, { global: { stubs: { AdminShell: shellStub, TableSortButton: true } } });
+  await flushPromises();
+  expect(wrapper.text()).toContain("仅展示最近 30 天的操作记录");
+  expect(wrapper.get(".shipment-log-list").text()).toBe("暂无操作记录");
+  expect(wrapper.get(".shipment-summary-grid").text()).toContain("发货数量");
+});
+
+it("filters only the return log display at the UTC boundary", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-10T12:00:00Z"));
+  const returns = ["2026-09-10T11:59:59", "2026-09-10T20:00:00+08:00"].map((returnedAt, index) => ({
+    eventId: `return-${index}`, shipmentId: shipment.shipmentId, returnDate: "2026-09-10",
+    reason: `退回原因${index}`, returnedBy: "admin", returnedAt, lines: [],
+  }));
+  vi.spyOn(shipmentApi, "get").mockResolvedValue({ ...shipment, operations: [], returnEvents: returns });
+  const wrapper = mount(ShipmentDetailPage, { global: { stubs: { AdminShell: shellStub, TableSortButton: true } } });
+  await flushPromises();
+  expect(wrapper.get(".shipment-log-list").text()).not.toContain("退回原因0");
+  expect(wrapper.get(".shipment-log-list").text()).toContain("退回原因1");
+  expect(returns).toHaveLength(2);
+});
+
 beforeEach(() => {
   routeState.query = {};
   vi.spyOn(shipmentApi, "getReceipt").mockResolvedValue({ version: 1, status: "CONFIRMED", items: [], confirmedAt: null, confirmedByName: null });

@@ -40,6 +40,7 @@ from app.db.models import (
     StoredFile,
     User,
 )
+from app.modules.log_retention import display_cutoff
 from app.modules.shipment_writeback.facts import capture, lock_facts
 from app.modules.shipments.list_query import order_shipment_ids
 from app.modules.shipments.workbook import (
@@ -2502,6 +2503,7 @@ class ShipmentService:
                     .where(
                         AuditLog.target_type == "shipment",
                         AuditLog.target_id == shipment.shipment_id,
+                        AuditLog.created_at >= display_cutoff(),
                         AuditLog.action.in_(
                             ["shipment_submitted", "shipment_withdrawn", "shipment_resubmitted",
                              "shipment_receipt_saved"]

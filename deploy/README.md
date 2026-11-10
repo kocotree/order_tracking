@@ -282,6 +282,17 @@ bash deploy/scripts/restore-oss.sh <OSS备份目录> <隔离Bucket-restore>
 
 ## 出货阶段回填运维
 
+妙搭副本验收可使用 `GET /api/v1/integrations/shipment-sync/feed`。默认关闭。启用时设置
+`ORDER_TRACKING_SHIPMENT_SYNC_FEED_ENABLED=true`、长度至少 32 字符的专用
+`ORDER_TRACKING_SHIPMENT_SYNC_FEED_TOKEN`，以及首个预览阶段的起始日期
+`ORDER_TRACKING_SHIPMENT_SYNC_MIDNIGHT_FROM`。日期须选在阶段边界，且前一个生产阶段
+须已冻结。调用方使用 `Authorization: Bearer <token>`。默认返回截至最近整点的当前阶段，
+`?final=true` 返回最近已结束的预览阶段。
+
+接口从出货事实只读计算预览。新口径的周日出货归属截至上海时间周一零点，接口开关不参与生产
+worker 的调度、冻结和写入。响应中的表和记录 ID 属于来源表，副本须以订单号和下单明细 ID
+唯一匹配副本记录。
+
 回填由`shipment`进程处理，每分钟扫描到期任务；阶段末日北京时间22点截止。关闭开关时仍保存提交事实，进程保持存活；已排队任务保留既有有限失败重试行为。首次启用按以下顺序执行，真实写入及启用取得明确授权：
 
 1. 保持`ORDER_TRACKING_SHIPMENT_WRITEBACK_ENABLED=false`，确认迁移完成、全部API使用新版本且旧事务退出，再准备历史。

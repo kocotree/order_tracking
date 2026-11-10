@@ -1728,6 +1728,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/shipment-sync/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Feed */
+        get: operations["get_feed_api_v1_integrations_shipment_sync_feed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -3846,6 +3863,30 @@ export interface components {
             totalBoxes: number;
             /** Totalquantity */
             totalQuantity: number;
+        };
+        /** ShipmentSyncFeed */
+        ShipmentSyncFeed: {
+            /** Cutoff */
+            cutoff: string;
+            /** Field */
+            field: string;
+            /** Rows */
+            rows: components["schemas"]["ShipmentSyncFeedRow"][];
+            /** Stage */
+            stage: string;
+            /** Table Id */
+            table_id: string;
+        };
+        /** ShipmentSyncFeedRow */
+        ShipmentSyncFeedRow: {
+            /** Detail Id */
+            detail_id: string;
+            /** Order No */
+            order_no: string;
+            /** Quantity */
+            quantity: number;
+            /** Record Id */
+            record_id: string;
         };
         /** SourceDifferenceResponse */
         SourceDifferenceResponse: {
@@ -7826,6 +7867,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_feed_api_v1_integrations_shipment_sync_feed_get: {
+        parameters: {
+            query?: {
+                final?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentSyncFeed"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

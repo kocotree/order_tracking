@@ -1,9 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.modules.shipment_writeback.periods import SHANGHAI, START, month_stages
 
 
 class Settings(BaseSettings):
@@ -50,6 +52,9 @@ class Settings(BaseSettings):
     feishu_order_field_ids: dict[str, str] = Field(default_factory=dict)
     feishu_order_incremental_table_scope_confirmed: bool = False
     shipment_writeback_enabled: bool = False
+    shipment_sync_feed_enabled: bool = False
+    shipment_sync_feed_token: str = Field(default="", repr=False)
+    shipment_sync_midnight_from: date | None = None
     shipment_writeback_total_field_id: str = ""
     shipment_writeback_baseline_formula: str = Field(default="", repr=False)
     oss_region: str = ""
@@ -81,6 +86,18 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_identity_secrets_outside_local_development(self) -> "Settings":
+        if self.shipment_sync_feed_enabled:
+            start = self.shipment_sync_midnight_from
+            if len(self.shipment_sync_feed_token.strip()) < 32 or start is None or not all((
+                self.feishu_order_app_id, self.feishu_order_app_secret,
+                self.feishu_order_app_token, self.feishu_order_table_id,
+                self.feishu_order_view_id, self.feishu_order_field_ids,
+            )):
+                raise ValueError("shipment sync feed requires a token, start date and source")
+            if start < START.astimezone(SHANGHAI).date() or not any(
+                stage.first == start for stage in month_stages(start.year, start.month)
+            ):
+                raise ValueError("shipment sync feed start must be a stage start")
         if self.shipment_writeback_enabled and not all((
             self.feishu_order_app_id, self.feishu_order_app_secret,
             self.feishu_order_app_token, self.feishu_order_table_id, self.feishu_order_view_id,

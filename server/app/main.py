@@ -56,6 +56,7 @@ from app.api.orders import create_order_router
 from app.api.products import create_product_router
 from app.api.repairs import create_repair_router
 from app.api.router import api_router
+from app.api.shipment_sync_feed import create_shipment_sync_feed_router
 from app.api.shipments import create_shipment_router
 from app.db.session import create_database_engine, create_session_factory
 from app.local_demo import (
@@ -131,6 +132,7 @@ from app.modules.repairs.confirmation import RepairConfirmationService
 from app.modules.repairs.preview import RepairPreviewService
 from app.modules.repairs.returns import RepairReturnService
 from app.modules.repairs.workflow import RepairWorkflowService
+from app.modules.shipment_writeback.service import ShipmentWriteback
 from app.modules.shipments import (
     ShipmentConflict,
     ShipmentError,
@@ -413,6 +415,12 @@ def create_app(
     app.include_router(create_contract_router(contract_service, identity_service))
     app.include_router(create_box_label_router(box_label_service, identity_service))
     app.include_router(create_shipment_router(shipment_service, identity_service))
+    app.include_router(create_shipment_sync_feed_router(
+        ShipmentWriteback(session_factory, source_scope=order_source.source_scope),
+        table_id=settings.feishu_order_table_id,
+        token=settings.shipment_sync_feed_token,
+        start=settings.shipment_sync_midnight_from if settings.shipment_sync_feed_enabled else None,
+    ))
     app.include_router(
         create_notifications_audit_router(notifications_audit_service, identity_service)
     )

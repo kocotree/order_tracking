@@ -5417,6 +5417,70 @@
         "title": "ShipmentSummaryResponse",
         "type": "object"
       },
+      "ShipmentSyncFeed": {
+        "properties": {
+          "cutoff": {
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ShipmentSyncFeedRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "table_id": {
+            "title": "Table Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table_id",
+          "stage",
+          "cutoff",
+          "field",
+          "rows"
+        ],
+        "title": "ShipmentSyncFeed",
+        "type": "object"
+      },
+      "ShipmentSyncFeedRow": {
+        "properties": {
+          "detail_id": {
+            "title": "Detail Id",
+            "type": "string"
+          },
+          "order_no": {
+            "title": "Order No",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "order_no",
+          "detail_id",
+          "quantity"
+        ],
+        "title": "ShipmentSyncFeedRow",
+        "type": "object"
+      },
       "SourceDifferenceResponse": {
         "properties": {
           "after": {
@@ -14344,6 +14408,70 @@
         "tags": [
           "feishu-bot"
         ]
+      }
+    },
+    "/api/v1/integrations/shipment-sync/feed": {
+      "get": {
+        "operationId": "get_feed_api_v1_integrations_shipment_sync_feed_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "final",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Final",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ShipmentSyncFeed"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Feed Api V1 Integrations Shipment Sync Feed Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Feed"
       }
     },
     "/api/v1/me": {

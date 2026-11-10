@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -12,6 +12,7 @@ from app.db.models import (
     OutboxMessage,
     Shipment,
     ShipmentWritebackClaim,
+    ShipmentWritebackControl,
     ShipmentWritebackFact,
     ShipmentWritebackRow,
     ShipmentWritebackStage,
@@ -27,6 +28,49 @@ class ShipmentWriteback:
         self.sessions = sessions
         self.source_scope = source_scope
         self.target = target
+
+    def feed(
+        self, *, start: date, now: datetime | None = None, final: bool = False,
+    ) -> dict[str, Any] | None:
+        current = (now or datetime.now(UTC)).astimezone(SHANGHAI)
+        cutoff = current.replace(minute=0, second=0, microsecond=0)
+        stages: list[Stage] = []
+        year, month = start.year, start.month
+        last_month = max((year, month), (cutoff.year, cutoff.month))
+        while (year, month) <= last_month:
+            stages.extend(stage for stage in month_stages(year, month, midnight_from=start)
+                          if stage.first >= start and stage.since <= cutoff)
+            year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+        if final:
+            stages = [stage for stage in stages if stage.until <= cutoff]
+        if not stages:
+            return None
+
+        with self.sessions() as session, session.begin():
+            control = session.get(ShipmentWritebackControl, 1)
+            if control is None or not control.history_ready:
+                raise ValueError("shipment_writeback_history_not_ready")
+            if control.structure.get("source_scope", self.source_scope) != self.source_scope:
+                raise ValueError("shipment_writeback_source_changed")
+            first = next(stage for stage in month_stages(start.year, start.month)
+                         if stage.first == start)
+            self._verify_previous_stage(session, first)
+            # Preview owns only in-memory claims from the cutover date forward.
+            # The live writer can keep freezing and claiming against its original cutoffs.
+            claimed = set(session.scalars(select(ShipmentWritebackClaim.root_id).where(
+                ShipmentWritebackClaim.stage_key < first.key,
+            )))
+            for stage in stages[:-1]:
+                _, claims, _ = self._snapshot(session, stage, stage.until, claimed=claimed)
+                claimed.update(claim.root_id for claim in claims)
+            stage = stages[-1]
+            stage_cutoff = min(cutoff, stage.until.astimezone(SHANGHAI))
+            rows, _, _ = self._snapshot(session, stage, stage_cutoff, claimed=claimed)
+            return {
+                "stage": stage.key, "cutoff": stage_cutoff.isoformat(), "field": stage.name,
+                "rows": [{"record_id": row.record_id, **row.identity, "quantity": row.quantity}
+                         for row in rows.values()],
+            }
 
     def ensure_due(self, *, now: datetime | None = None) -> list[int]:
         current = now or datetime.now(UTC)
@@ -279,70 +323,83 @@ class ShipmentWriteback:
                 if stored.source_scope != self.source_scope:
                     raise ValueError("shipment_writeback_source_changed")
             else:
-                if stage.key != "2026-10-06":
-                    index = stages.index(stage)
-                    previous_month = stage.first.replace(day=1) - timedelta(days=1)
-                    previous = (stages[index - 1] if index else
-                                month_stages(previous_month.year, previous_month.month)[-1])
-                    prior = session.get(ShipmentWritebackStage, previous.key)
-                    if prior is None or prior.source_scope != self.source_scope:
-                        raise ValueError("shipment_writeback_previous_stage_not_frozen")
-                latest: dict[str, ShipmentWritebackFact] = {}
-                submitted: dict[str, ShipmentWritebackFact] = {}
-                for fact in session.scalars(select(ShipmentWritebackFact).where(
-                    ShipmentWritebackFact.occurred_at >= utc_naive(START),
-                    ShipmentWritebackFact.occurred_at < utc_naive(stage.until),
-                ).order_by(ShipmentWritebackFact.occurred_at, ShipmentWritebackFact.id)):
-                    latest[fact.root_id] = fact
-                    if fact.status == "SHIPPED":
-                        submitted[fact.root_id] = fact
+                self._verify_previous_stage(session, stage)
                 claimed = set(session.scalars(select(ShipmentWritebackClaim.root_id)))
+                rows, claims, excluded = self._snapshot(
+                    session, stage, stage.until, claimed=claimed,
+                )
                 stored = ShipmentWritebackStage(
                     stage_key=stage.key, source_scope=self.source_scope,
                     since=utc_naive(stage.since), until=utc_naive(stage.until), excluded={},
                 )
                 session.add(stored)
                 session.flush()
-                rows: dict[str, ShipmentWritebackRow] = {}
-                excluded: dict[str, Any] = {}
-                for root, fact in latest.items():
-                    if (root not in submitted or
-                            submitted[root].occurred_at < utc_naive(stage.since)):
-                        continue
-                    if root in claimed:
-                        excluded[root] = {"reason": "ALREADY_ASSIGNED", "quantity": sum(
-                            line["quantity"] for line in fact.lines
-                            if line["source_scope"] == self.source_scope
-                        )}
-                        continue
-                    included = False
-                    for line in fact.lines:
-                        if line["source_scope"] not in (None, self.source_scope):
-                            continue
-                        if not line["record_id"] or not line["detail_id"]:
-                            raise ValueError(
-                                f"shipment_writeback_source_missing:{root}:{line['assignment_id']}"
-                            )
-                        record_id = line["record_id"]
-                        identity = {key: line[key] for key in ("order_no", "detail_id")}
-                        if record_id not in rows:
-                            rows[record_id] = ShipmentWritebackRow(
-                                stage_key=stage.key, record_id=record_id, identity=identity,
-                                quantity=0, verified=False,
-                            )
-                        row = rows[record_id]
-                        if row.identity != identity:
-                            raise ValueError("shipment_writeback_source_ambiguous")
-                        if fact.status == "SHIPPED":
-                            row.quantity += line["quantity"]
-                            included = True
-                        else:
-                            excluded.setdefault(root, {"reason": fact.status, "quantity": 0})
-                            excluded[root]["quantity"] += line["quantity"]
-                    if included:
-                        session.add(ShipmentWritebackClaim(
-                            root_id=root, stage_key=stage.key, fact_id=fact.id,
-                        ))
                 stored.excluded = excluded
+                session.add_all(claims)
                 session.add_all(rows.values())
         return self.results(stage)
+
+    def _verify_previous_stage(self, session: Session, stage: Stage) -> None:
+        stages = month_stages(stage.first.year, stage.first.month)
+        if stage.key != "2026-10-06":
+            index = stages.index(stage)
+            previous_month = stage.first.replace(day=1) - timedelta(days=1)
+            previous = (stages[index - 1] if index else
+                        month_stages(previous_month.year, previous_month.month)[-1])
+            prior = session.get(ShipmentWritebackStage, previous.key)
+            if prior is None or prior.source_scope != self.source_scope:
+                raise ValueError("shipment_writeback_previous_stage_not_frozen")
+
+    def _snapshot(
+        self, session: Session, stage: Stage, cutoff: datetime, *, claimed: set[str],
+    ) -> tuple[dict[str, ShipmentWritebackRow], list[ShipmentWritebackClaim], dict[str, Any]]:
+        latest: dict[str, ShipmentWritebackFact] = {}
+        submitted: set[str] = set()
+        for fact in session.scalars(select(ShipmentWritebackFact).where(
+            ShipmentWritebackFact.occurred_at >= utc_naive(stage.since),
+            ShipmentWritebackFact.occurred_at < utc_naive(cutoff),
+        ).order_by(ShipmentWritebackFact.occurred_at, ShipmentWritebackFact.id)):
+            latest[fact.root_id] = fact
+            if fact.status == "SHIPPED":
+                submitted.add(fact.root_id)
+        claims: list[ShipmentWritebackClaim] = []
+        rows: dict[str, ShipmentWritebackRow] = {}
+        excluded: dict[str, Any] = {}
+        for root, fact in latest.items():
+            if root not in submitted:
+                continue
+            if root in claimed:
+                excluded[root] = {"reason": "ALREADY_ASSIGNED", "quantity": sum(
+                    line["quantity"] for line in fact.lines
+                    if line["source_scope"] == self.source_scope
+                )}
+                continue
+            included = False
+            for line in fact.lines:
+                if line["source_scope"] not in (None, self.source_scope):
+                    continue
+                if not line["record_id"] or not line["detail_id"]:
+                    raise ValueError(
+                        f"shipment_writeback_source_missing:{root}:{line['assignment_id']}"
+                    )
+                record_id = line["record_id"]
+                identity = {key: line[key] for key in ("order_no", "detail_id")}
+                if record_id not in rows:
+                    rows[record_id] = ShipmentWritebackRow(
+                        stage_key=stage.key, record_id=record_id, identity=identity,
+                        quantity=0, verified=False,
+                    )
+                row = rows[record_id]
+                if row.identity != identity:
+                    raise ValueError("shipment_writeback_source_ambiguous")
+                if fact.status == "SHIPPED":
+                    row.quantity += line["quantity"]
+                    included = True
+                else:
+                    excluded.setdefault(root, {"reason": fact.status, "quantity": 0})
+                    excluded[root]["quantity"] += line["quantity"]
+            if included:
+                claims.append(ShipmentWritebackClaim(
+                    root_id=root, stage_key=stage.key, fact_id=fact.id,
+                ))
+        return rows, claims, excluded

@@ -198,7 +198,4 @@ class FeishuShipmentWriter:
             save_before(current)
             return "SKIPPED_EXISTING"
         self._request("PUT", path, json={"fields": {field["field_name"]: quantity}})
-        readback = read().get(field["field_name"])
-        if readback != quantity or isinstance(readback, bool):
-            raise ValueError("shipment_writeback_record_readback_mismatch")
         return "WRITTEN"

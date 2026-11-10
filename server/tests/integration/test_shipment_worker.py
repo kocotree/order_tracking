@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.models import OrderImportSourceRecord
 from app.modules.infrastructure import InfrastructureStore
+from app.modules.order_import import auto_sync
 from app.modules.shipment_writeback import service as writeback_service
 from app.modules.shipment_writeback.service import ShipmentWriteback
 from app.modules.shipments.service import ShipmentService
@@ -27,6 +28,7 @@ def shipment_environment(monkeypatch: pytest.MonkeyPatch):
             return datetime(2026, 10, 11, 14, tzinfo=UTC).astimezone(tz)
 
     monkeypatch.setattr(entry, "datetime", Clock)
+    monkeypatch.setattr(auto_sync, "datetime", Clock)
     monkeypatch.setattr(writeback_service, "datetime", Clock)
     remote = RemoteBase()
     http_client = httpx.Client

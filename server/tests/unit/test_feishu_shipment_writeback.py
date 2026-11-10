@@ -26,6 +26,7 @@ class RemoteBase:
         self.fail_formula_before = False
         self.create_tokens = {}
         self.record_writes = []
+        self.record_requests = []
 
     def request(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -54,6 +55,7 @@ class RemoteBase:
             self.fields[1] = {**body, "field_id": "total"}
             return httpx.Response(200, json={"code": 0, "data": {"field": self.fields[1]}})
         if "/records/" in path:
+            self.record_requests.append(request.method)
             record_id = path.rsplit("/", 1)[1]
             if request.method == "PUT":
                 self.record_writes.append((record_id, body["fields"]))
@@ -131,6 +133,7 @@ def test_only_missing_or_null_cell_is_written(explicit_null, quantity):
         quantity, lambda value: None,
     )
     assert result == "WRITTEN"
+    assert remote.record_requests == ["GET", "GET", "PUT"]
     assert remote.record_writes == [("record-a", {stage.name: quantity})]
     assert remote.records["record-a"][stage.name] == quantity
 

@@ -106,21 +106,6 @@
           </div>
         </section>
 
-        <section class="section-card detail-section-card order-audit-card" :class="{ 'is-expanded': auditExpanded }">
-          <p>仅展示最近 30 天的操作记录</p>
-          <button class="order-audit-toggle" type="button" :aria-expanded="auditExpanded" aria-controls="order-audit-list" :disabled="loadingAudit || !!auditError || !auditLogs.length" @click="auditExpanded = !auditExpanded">
-            <span class="order-audit-toggle-title">操作记录<em v-if="!loadingAudit && !auditError">（{{ auditLogs.length }}）</em></span>
-            <span class="order-audit-toggle-action">{{ loadingAudit ? '正在加载…' : auditError ? '加载失败' : auditLogs.length ? (auditExpanded ? '收起' : '展开') : '暂无记录' }}<svg v-if="auditLogs.length" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg></span>
-          </button>
-          <p v-if="auditError" class="page-error" role="alert">{{ auditError }}</p>
-          <ol v-if="auditExpanded && auditLogs.length" id="order-audit-list" class="order-audit-list shipment-log-list">
-            <li v-for="(log, index) in auditLogs" :key="`${log.createdAt}-${index}`" class="shipment-log-item">
-              <span class="shipment-log-dot" :class="{ 'is-warning': isQuantityRollback(log.action) }" aria-hidden="true"></span>
-              <div><strong>{{ log.content }}</strong><span>{{ dateTime(log.createdAt) }} · {{ log.operatorName }} · {{ sourceTerminalLabel(log.sourceTerminal) }}</span></div>
-            </li>
-          </ol>
-        </section>
-
       </template>
 
       <dialog ref="sourceDialog" class="modal source-update-modal" aria-labelledby="source-update-title" @cancel="cancelSource" @close="onSourceClosed">
@@ -203,7 +188,7 @@
 import { sortedCategories } from "@/productCategories";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, type AuditLogList, type BoxLabelRow, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview, type IncomingDifference } from "@/api/client";
+import { ApiError, boxLabelApi, contractApi, identityApi, orderApi, type BoxLabelRow, type ContractFactoryStatus, type Order, type SourcePreview, type DispatchPreview, type IncomingDifference } from "@/api/client";
 import AdminShell from "@/components/AdminShell.vue";
 
 type Action = "publish" | "delete" | "complete" | "reopen";
@@ -248,7 +233,7 @@ async function confirmWithdrawal() {
     if (target !== orderId) return;
     order.value = saved; selectedDetails.value.clear(); resetDetailDrafts();
     withdrawalDialog.value?.close();
-    await Promise.all([loadAudit(), loadContracts()]);
+    await loadContracts();
   } catch (error) { if (target === orderId) withdrawalError.value = error instanceof ApiError ? error.message : "撤回失败，请重试"; }
   finally { if (target === orderId) withdrawalBusy.value = false; }
 }
@@ -388,7 +373,6 @@ async function saveDetailLines() {
   try {
     order.value = await orderApi.saveDetailLines(orderId, { version: order.value.version, lines });
     resetDetailDrafts();
-    await loadAudit();
   } catch (error) {
     sourceError.value = error instanceof ApiError && error.status === 409 ? "资料已更新，请刷新页面后重新填写" : error instanceof Error ? error.message : "订单明细保存失败";
   } finally { savingDetails.value = false; }
@@ -422,7 +406,6 @@ async function confirmSource() {
     const saved = await orderApi.confirmSource(target, preview.version, preview.previewId, sourceKey);
     if (!currentSource(epoch, target)) return;
     order.value = saved; resetDetailDrafts(); sourcePreview.value = null; sourceDialog.value?.close();
-    void loadAudit();
   } catch (error) {
     if (currentSource(epoch, target)) sourceError.value = error instanceof ApiError ? error.message : "来源更新失败，请重试。";
   } finally { if (currentSource(epoch, target)) sourceBusy.value = false; }
@@ -497,7 +480,6 @@ async function confirmDispatchAction() {
     selectedDetails.value.clear();
     dispatchPreview.value = null;
     dispatchDialog.value?.close();
-    void loadAudit();
     void loadContracts();
   } catch (error) {
     if (currentDispatch(epoch, target)) dispatchError.value = error instanceof ApiError ? error.message : "派工失败，请重试。";
@@ -511,17 +493,12 @@ watch(() => route.params.orderId, () => {
   sourcePreview.value = null; sourceDialog.value?.close(); sourceError.value = "";
   dispatchPreview.value = null; dispatchDialog.value?.close(); dispatchError.value = "";
   dispatchSourcePreview.value = null; selectedDetails.value.clear();
-  detailDrafts.value = {}; order.value = null; auditLogs.value = []; incomingDifferences.value = []; incomingExpanded.value = false; incomingDrafts.value = {}; incomingError.value = ""; incomingSuccess.value = ""; incomingSaving.value = null;
+  detailDrafts.value = {}; order.value = null; incomingDifferences.value = []; incomingExpanded.value = false; incomingDrafts.value = {}; incomingError.value = ""; incomingSuccess.value = ""; incomingSaving.value = null;
   withdrawalDialog.value?.close(); withdrawalBusy.value = false;
   contractFactories.value = []; pendingAction.value = null; contractDialogOpen.value = false;
   boxLabelDialogOpen.value = false; boxLabels.value = []; boxLabelError.value = "";
   void load();
 });
-const auditLogs = ref<AuditLogList["items"]>([]);
-const loadingAudit = ref(false);
-const auditError = ref("");
-let auditRequest = 0;
-const auditExpanded = ref(false);
 const incomingDifferences = ref<IncomingDifference[]>([]);
 const loadingIncoming = ref(false);
 const incomingLoadError = ref("");
@@ -555,7 +532,6 @@ async function saveIncoming(item: IncomingDifference) {
     incomingDrafts.value[recordId] = signedQuantity(updated.quantity);
     incomingSuccess.value = "保存成功";
     window.setTimeout(() => { if (target === orderId) incomingSuccess.value = ""; }, 3000);
-    void loadAudit();
   } catch (error) {
     if (target !== orderId) return;
     incomingDrafts.value[recordId] = signedQuantity(item.quantity);
@@ -568,7 +544,6 @@ const contractLoadError = ref("");
 let contractRequest = 0;
 const boxLabelDialogOpen = ref(false); const boxLabels = ref<BoxLabelRow[]>([]); const loadingBoxLabels = ref(false); const boxLabelError = ref(""); const exportingBoxLabel = ref<string | null>(null);
 const number = (value: number | null) => value == null ? "—" : value.toLocaleString("zh-CN");
-const dateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
 const pageTitle = computed(() => order.value ? `订单详情 · ${order.value.orderNo}` : "订单详情");
 const contractButtonEnabled = computed(() => contractFactories.value.length > 0 && !loadingContracts.value && !contractLoadError.value);
 const contractButtonTitle = computed(() => loadingContracts.value ? "合同状态加载中…" : contractLoadError.value || (contractFactories.value.length === 0 ? "订单暂无匹配工厂，不能导出加工合同" : "导出加工合同"));
@@ -585,20 +560,11 @@ const sortedDetailRows = computed(() => { const key = detailSortKey.value; if (!
 const modalTitle = computed(() => ({ publish: "发布订单", delete: "删除订单", complete: "确认订单完成", reopen: "撤销完成" }[pendingAction.value ?? "publish"]));
 const modalDescription = computed(() => pendingAction.value === "publish" ? "发布后工厂将看到各自派工任务，确认发布？" : pendingAction.value === "delete" ? "删除后订单不再出现在订单列表和工厂任务中。" : pendingAction.value === "complete" ? "请核对数量摘要。完成状态不会根据发货数量自动产生。" : "撤销后订单恢复为正式订单，并按当前日期重新计算状态。" );
 function statusTone(value: Order) { return value.lifecycle === "DRAFT" ? "is-draft" : value.displayStatus === "已逾期" ? "is-danger" : value.lifecycle === "COMPLETED" ? "is-success" : "is-info"; }
-function isQuantityRollback(action: string) { return action === "shipment_void_approved" || action === "shipment_line_returned"; }
-function sourceTerminalLabel(source: string | null) { const labels: Record<string, string> = { web: "管理员网页", "admin-web": "管理员网页", web_admin: "管理员网页", "admin-mini": "管理员小程序", "factory-mini": "工厂小程序" }; return source ? (labels[source] || source) : "系统"; }
 function toggleDetailSort(key: DetailSortKey) { if (detailSortKey.value === key) detailSortOrder.value = detailSortOrder.value === "asc" ? "desc" : "asc"; else { detailSortKey.value = key; detailSortOrder.value = "asc"; } }
 function sortClass(key: DetailSortKey) { return { "is-sorted": detailSortKey.value === key, "is-sort-desc": detailSortKey.value === key && detailSortOrder.value === "desc" }; }
 function openAction(action: Action) { pendingAction.value = action; reopenReason.value = ""; actionError.value = ""; }
 function localDate() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`; }
 function contractReadyLabel(factory: ContractFactoryStatus) { const labels: Record<string, string> = { factoryCode: "工厂代码", legalName: "单位全称", address: "单位地址", legalRepresentative: "法定代表人" }; return factory.contractReady ? "完整" : `缺少：${factory.missingContractFields.map((field) => labels[field] || field).join("、")}`; }
-async function loadAudit() {
-  const request = ++auditRequest;
-  const signal = readController.signal; loadingAudit.value = true; auditError.value = "";
-  try { const result = await orderApi.auditLogs(orderId, signal); if (!signal.aborted && request === auditRequest) auditLogs.value = result.items; }
-  catch { if (!signal.aborted && request === auditRequest) auditError.value = "操作记录加载失败，请刷新页面重试"; }
-  finally { if (!signal.aborted && request === auditRequest) loadingAudit.value = false; }
-}
 async function loadContracts() {
   if (!order.value) { contractFactories.value = []; return; }
   const request = ++contractRequest;
@@ -616,7 +582,7 @@ async function load() {
     if (signal.aborted) return;
     order.value = result;
     resetDetailDrafts();
-    void Promise.all([loadAudit(), loadContracts(), loadIncoming()]);
+    void Promise.all([loadContracts(), loadIncoming()]);
   } catch (error) {
     if (!signal.aborted) errorMessage.value = error instanceof ApiError && error.status === 404 && route.query?.notificationReturnTo ? "内容已不可查看" : error instanceof ApiError ? error.message : "订单详情加载失败，请刷新页面重试";
   } finally { if (!signal.aborted) loading.value = false; }

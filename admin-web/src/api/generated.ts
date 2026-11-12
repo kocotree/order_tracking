@@ -1745,6 +1745,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/shipment-sync/net-feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Net Feed */
+        get: operations["get_net_feed_api_v1_integrations_shipment_sync_net_feed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -3772,6 +3789,15 @@ export interface components {
             items: components["schemas"]["ShipmentDraftResponse"][];
             /** Total */
             total: number;
+        };
+        /** ShipmentNetFeed */
+        ShipmentNetFeed: {
+            /** Activation */
+            activation: string;
+            /** Cutoff */
+            cutoff: string;
+            /** Snapshots */
+            snapshots: components["schemas"]["ShipmentSyncFeed"][];
         };
         /** ShipmentReturnEventResponse */
         ShipmentReturnEventResponse: {
@@ -7891,6 +7917,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShipmentSyncFeed"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_net_feed_api_v1_integrations_shipment_sync_net_feed_get: {
+        parameters: {
+            query?: {
+                after?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentNetFeed"];
                 };
             };
             /** @description Validation Error */

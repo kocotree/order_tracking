@@ -420,6 +420,7 @@ def create_app(
         table_id=settings.feishu_order_table_id,
         token=settings.shipment_sync_feed_token,
         start=settings.shipment_sync_midnight_from if settings.shipment_sync_feed_enabled else None,
+        returns_from=settings.shipment_sync_returns_from,
     ))
     app.include_router(
         create_notifications_audit_router(notifications_audit_service, identity_service)

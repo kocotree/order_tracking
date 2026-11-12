@@ -24,6 +24,41 @@ FEED = "/api/v1/integrations/shipment-sync/feed"
 TOKEN = "test-integration-token-for-shipment-feed"
 
 
+def test_net_feed_disabled_until_activation_is_explicitly_configured():
+    service = Mock()
+    app = FastAPI()
+    app.include_router(create_shipment_sync_feed_router(
+        service, table_id="tblTest", token=TOKEN, start=date(2026, 11, 9),
+    ))
+    with TestClient(app) as client:
+        assert client.get(FEED.replace('/feed', '/net-feed'), headers={
+            "Authorization": f"Bearer {TOKEN}",
+        }).status_code == 404
+    service.net_feed.assert_not_called()
+
+
+def test_net_feed_authenticates_and_reports_pinned_activation():
+    activation = datetime(2026, 11, 12, 8, tzinfo=UTC)
+    service = Mock()
+    service.net_feed.return_value = {"activation": activation.isoformat(),
+                                     "cutoff": activation.isoformat(), "snapshots": []}
+    app = FastAPI()
+    app.include_router(create_shipment_sync_feed_router(
+        service, table_id="tblTest", token=TOKEN, start=date(2026, 11, 9),
+        returns_from=activation,
+    ))
+    with TestClient(app) as client:
+        endpoint = FEED.replace('/feed', '/net-feed')
+        assert client.get(endpoint).status_code == 401
+        response = client.get(endpoint, headers={"Authorization": f"Bearer {TOKEN}"})
+        assert response.status_code == 200
+        assert response.headers['Cache-Control'] == 'no-store'
+        assert response.json()['activation'] == activation.isoformat()
+        assert client.get(endpoint, params={'after': '2026-11-12T08:00:00'}, headers={
+            "Authorization": f"Bearer {TOKEN}",
+        }).status_code == 422
+
+
 def test_disabled_feed_does_not_query_snapshot():
     service = Mock()
     app = FastAPI()

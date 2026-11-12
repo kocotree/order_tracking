@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     shipment_sync_feed_enabled: bool = False
     shipment_sync_feed_token: str = Field(default="", repr=False)
     shipment_sync_midnight_from: date | None = None
+    shipment_sync_returns_from: datetime | None = None
     shipment_writeback_total_field_id: str = ""
     shipment_writeback_baseline_formula: str = Field(default="", repr=False)
     oss_region: str = ""
@@ -86,6 +87,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_identity_secrets_outside_local_development(self) -> "Settings":
+        activation = self.shipment_sync_returns_from
+        if activation is not None and (
+            not self.shipment_sync_feed_enabled or activation.tzinfo is None or
+            activation != activation.replace(minute=0, second=0, microsecond=0) or
+            self.shipment_sync_midnight_from is None or
+            activation.astimezone(SHANGHAI).date() < self.shipment_sync_midnight_from
+        ):
+            raise ValueError("return sync requires an enabled feed and timezone-aware hour")
         if self.shipment_sync_feed_enabled:
             start = self.shipment_sync_midnight_from
             if len(self.shipment_sync_feed_token.strip()) < 32 or start is None or not all((

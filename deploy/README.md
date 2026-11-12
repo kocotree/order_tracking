@@ -7,6 +7,23 @@ the tag-triggered image CD described below. This directory never stores real cre
 
 ## Environment separation
 
+### Optional prospective return projection
+
+`ORDER_TRACKING_SHIPMENT_SYNC_RETURNS_FROM` is unset by default. With the existing
+dedicated shipment feed enabled, set it only to an approved timezone-aware hour.
+It enables the authenticated read-only `/api/v1/integrations/shipment-sync/net-feed`.
+The response contains the pinned activation, an hourly observation cutoff, and
+absolute per-period snapshots. An optional timezone-aware `after` cursor restricts
+the response to current/closing periods and periods affected since that cursor.
+Late returns amend the original shipment period. First-submitted roots before
+activation and their later returns remain outside the new net calculation.
+
+The consumer must pin the same activation, retain the cursor until every snapshot
+is accepted, preserve manual values, and validate on a copy before activation.
+Do not change an activation after a consumer has pinned it; switching it would
+reclassify historical shipments. Disabling the option does not undo prior values.
+No source DB migration or business-data writes are required by this endpoint.
+
 - Shared test uses `compose.shared-test.yaml` and protected `.env.shared-test`.
 - Production uses `compose.production.yaml` and protected `.env.production`.
 - The examples document required names only. Copy the matching example on the

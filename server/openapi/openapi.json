@@ -5173,6 +5173,32 @@
         "title": "ShipmentListResponse",
         "type": "object"
       },
+      "ShipmentNetFeed": {
+        "properties": {
+          "activation": {
+            "title": "Activation",
+            "type": "string"
+          },
+          "cutoff": {
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/ShipmentSyncFeed"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "activation",
+          "cutoff",
+          "snapshots"
+        ],
+        "title": "ShipmentNetFeed",
+        "type": "object"
+      },
       "ShipmentReturnEventResponse": {
         "properties": {
           "eventId": {
@@ -14472,6 +14498,69 @@
           }
         },
         "summary": "Get Feed"
+      }
+    },
+    "/api/v1/integrations/shipment-sync/net-feed": {
+      "get": {
+        "operationId": "get_net_feed_api_v1_integrations_shipment_sync_net_feed_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentNetFeed"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Net Feed"
       }
     },
     "/api/v1/me": {

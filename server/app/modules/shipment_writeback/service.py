@@ -11,6 +11,9 @@ from app.db.models import (
     BackgroundJob,
     OutboxMessage,
     Shipment,
+    ShipmentLine,
+    ShipmentReturnEvent,
+    ShipmentReturnLine,
     ShipmentWritebackClaim,
     ShipmentWritebackControl,
     ShipmentWritebackFact,
@@ -28,6 +31,62 @@ class ShipmentWriteback:
         self.sessions = sessions
         self.source_scope = source_scope
         self.target = target
+
+    def net_feed(
+        self, *, start: date, activation: datetime, after: datetime | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        from app.modules.shipment_writeback.return_projection import project_returns
+
+        if activation.tzinfo is None or activation != activation.replace(
+            minute=0, second=0, microsecond=0,
+        ):
+            raise ValueError("activation must be a timezone-aware hour")
+        cutoff = (now or datetime.now(UTC)).replace(minute=0, second=0, microsecond=0)
+        if cutoff < activation or (after and (after.tzinfo is None or
+                                               not activation <= after <= cutoff)):
+            raise ValueError("invalid net feed interval")
+        # Replay the old immutable facts at the pinned boundary. Historical
+        # returns and later edits to pre-activation shipments cannot alter it.
+        baseline = self.feed(start=start, now=activation)
+        if baseline is None:
+            raise ValueError("activation baseline unavailable")
+        with self.sessions() as session, session.begin():
+            first_rows = session.execute(select(
+                ShipmentWritebackFact.root_id, func.min(ShipmentWritebackFact.occurred_at),
+            ).where(ShipmentWritebackFact.status == "SHIPPED")
+                .group_by(ShipmentWritebackFact.root_id)
+                .having(func.min(ShipmentWritebackFact.occurred_at) >= utc_naive(activation),
+                        func.min(ShipmentWritebackFact.occurred_at) < utc_naive(cutoff))).all()
+            firsts = {root: at for root, at in first_rows}
+            facts: list[dict[str, Any]] = []
+            returns: list[dict[str, Any]] = []
+            if firsts:
+                for fact in session.scalars(select(ShipmentWritebackFact).where(
+                    ShipmentWritebackFact.root_id.in_(firsts),
+                    ShipmentWritebackFact.occurred_at < utc_naive(cutoff),
+                )):
+                    facts.append(dict(root_id=fact.root_id, id=fact.id, status=fact.status,
+                                      occurred_at=fact.occurred_at.replace(tzinfo=UTC),
+                                      lines=fact.lines))
+                for root, assignment, quantity, occurred in session.execute(select(
+                    ShipmentReturnEvent.shipment_id, ShipmentLine.order_assignment_id,
+                    ShipmentReturnLine.quantity, ShipmentReturnEvent.created_at,
+                ).join(ShipmentReturnLine,
+                       ShipmentReturnLine.event_id == ShipmentReturnEvent.event_id)
+                    .join(ShipmentLine, ShipmentLine.line_id == ShipmentReturnLine.shipment_line_id)
+                    .where(ShipmentReturnEvent.shipment_id.in_(firsts),
+                           ShipmentReturnEvent.created_at < utc_naive(cutoff))):
+                    returns.append(dict(root_id=root, assignment_id=assignment, quantity=quantity,
+                                        occurred_at=occurred.replace(tzinfo=UTC)))
+            snapshots = project_returns(
+                facts=facts, returns=returns,
+                first_submitted={root: at.replace(tzinfo=UTC) for root, at in firsts.items()},
+                activation=activation, cutoff=cutoff, source_scope=self.source_scope,
+                baseline=baseline, after=after,
+            )
+        return dict(activation=activation.isoformat(), cutoff=cutoff.isoformat(),
+                    snapshots=snapshots)
 
     def feed(
         self, *, start: date, now: datetime | None = None, final: bool = False,

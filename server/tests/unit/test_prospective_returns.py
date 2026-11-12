@@ -87,6 +87,13 @@ def test_boundary_is_inclusive_and_returns_share_correct_assignment():
         project(f, [returned()])
 
 
+def test_missing_source_scope_and_identity_stops_projection():
+    f = fact("new", ACTIVATION)
+    f["lines"][0].update(source_scope=None, record_id=None, detail_id=None)
+    with pytest.raises(ValueError, match="identity"):
+        project([f])
+
+
 def test_late_return_from_previous_month_survives_incremental_cursor():
     f = [fact("new", ACTIVATION)]
     at = datetime(2027, 1, 3, 1, tzinfo=UTC)

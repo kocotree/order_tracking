@@ -31,6 +31,8 @@ def project_returns(
     allocation: dict[str, tuple[str, dict[int, dict[str, Any]]]] = {}
 
     def add(stage: str, line: dict[str, Any], quantity: int) -> None:
+        if line.get("source_scope", source_scope) is None:
+            raise ValueError("source identity missing")
         if line.get("source_scope", source_scope) != source_scope:
             return
         if not all(line.get(k) for k in ("record_id", "order_no", "detail_id")):

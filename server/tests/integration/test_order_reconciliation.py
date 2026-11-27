@@ -526,3 +526,46 @@ def test_split_existing_unassigned_target_also_requires_exact_purchase(
     assert service.get(order_id=order_id) == before
     with sessions() as session:
         assert session.get(OrderImportRun, run_id).sync_result["failed_orders"] == 1
+
+
+@pytest.mark.parametrize("override", ["factory", "shipped"])
+def test_split_target_does_not_conflict_with_manual_effective_values(
+    test_database_engine: Engine,
+    override,
+):
+    target = replace(
+        purchase_row("target", factory="测试工厂B", quantity=20, po="PO-B"),
+        contract_ship_date=None,
+    )
+    sessions, source, order_id = setup_dispatch_order(
+        test_database_engine,
+        rows=[purchase_row(), target],
+    )
+    _seed_factory_b(test_database_engine)
+    service = OrderDispatchService(sessions, source=source)
+    service.dispatch_automatically(order_id=order_id, request_id="initial")
+    with sessions() as session, session.begin():
+        detail = session.scalar(select(OrderDetail).where(OrderDetail.sort_order == 2))
+        if override == "factory":
+            detail.factory_override_enabled = True
+            detail.matched_factory_id = "factory-import"
+            detail.factory_name = "测试工厂"
+        else:
+            detail.shipped_override_enabled = True
+            detail.source_shipped_quantity = 10
+    before = service.get(order_id=order_id)
+    source._pages = [
+        [
+            purchase_row(quantity=60),
+            purchase_row(
+                "target",
+                factory="测试工厂B",
+                quantity=60,
+                po="PO-B",
+            ),
+        ]
+    ]
+    run_id = cycle(sessions, source)
+    assert service.get(order_id=order_id) == before
+    with sessions() as session:
+        assert session.get(OrderImportRun, run_id).sync_result["failed_orders"] == 1

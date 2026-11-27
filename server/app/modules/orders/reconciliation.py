@@ -242,6 +242,11 @@ class OrderReconciliationService(OrderDispatchService):
                 for detail in details
                 if detail.dispatch_state == "ASSIGNED" and detail.detail_id in bindings
             }
+            pending_sources = {
+                bindings[detail.detail_id].record_id: detail
+                for detail in details
+                if detail.dispatch_state == "UNASSIGNED" and detail.detail_id in bindings
+            }
             for row in fetched:
                 if row.source_sku_id in split_skus and row.record_id not in assigned_sources:
                     purchase = row.raw_fields.get("_purchase")
@@ -256,6 +261,18 @@ class OrderReconciliationService(OrderDispatchService):
                         or row.shipped_quantity < 0
                     ):
                         raise OrderConflict("拆分新工厂缺少精确采购明细或已发基线")
+                    target = pending_sources.get(row.record_id)
+                    if target is not None and (
+                        (
+                            target.factory_override_enabled
+                            and target.matched_factory_id != factory.factory_id
+                        )
+                        or (
+                            target.shipped_override_enabled
+                            and target.source_shipped_quantity != row.shipped_quantity
+                        )
+                    ):
+                        raise OrderConflict("拆分目标与人工保存的工厂或已发基线冲突")
                 if row.record_id in used:
                     continue
                 if any(

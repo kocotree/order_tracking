@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.errors import ExternalAdapterUnavailable
@@ -16,10 +16,11 @@ from app.db.models import (
     OrderDetail,
     OrderImportCandidate,
     OrderImportRun,
+    OrderImportSourceRecord,
 )
 from app.modules.order_import.service import ACTIVE_KEY, OrderImportService
 from app.modules.orders import OrderConflict, OrderValidationError
-from app.modules.orders.dispatch import OrderDispatchService
+from app.modules.orders.reconciliation import OrderReconciliationService, discovery_fields
 from app.modules.product_sync.service import ProductSyncService
 
 JOB_TYPE = "order_auto_sync"
@@ -36,7 +37,7 @@ class OrderAutoSync:
         self._source = source
         self._clock = clock
         self._importer = OrderImportService(sessions, clock=clock, product_sync=product_sync)
-        self._orders = OrderDispatchService(
+        self._orders = OrderReconciliationService(
             sessions, source=source, clock=clock, product_sync=product_sync,
         )
 
@@ -135,16 +136,43 @@ class OrderAutoSync:
             elif phase == "discover":
                 # 完整视图读取也能重试曾因采购失败或进度门槛跳过的新订单。
                 groups: dict[str, list[str]] = {}
+                observed: dict[str, dict[str, object]] = {}
                 pages = 0
                 for page in self._source.read_pages(include_purchase=False):
                     for row in page:
                         groups.setdefault((row.order_no or "").strip().upper(), []).append(
                             row.record_id
                         )
+                        observed[row.record_id] = discovery_fields(row)
                     pages += 1
                 with self._sessions() as session:
                     existing = set(session.scalars(select(Order.order_no)))
                     existing.update(session.scalars(select(OrderImportCandidate.order_no)))
+                    active = list(session.scalars(select(Order).where(
+                        Order.source == "feishu", Order.deleted_at.is_(None),
+                        Order.lifecycle.in_(["DRAFT", "PUBLISHED"]),
+                        Order.detail_mode.is_(True),
+                    )))
+                    saved: dict[str, dict[str, object]] = {}
+                    for order_id, source in session.execute(select(
+                        OrderDetail.order_id, OrderImportSourceRecord,
+                    ).join(OrderImportSourceRecord,
+                           OrderDetail.source_record_pk == OrderImportSourceRecord.source_record_pk)
+                        .where(OrderDetail.order_id.in_([order.order_id for order in active]))):
+                        saved.setdefault(order_id, {})[source.source_record_id] = (
+                            source.normalized_fields or {}
+                        ).get("reconciliationFields")
+                    state["existing_sources"] = {
+                        order.order_id: groups.get(order.order_no, []) for order in active
+                        if (
+                            set(groups.get(order.order_no, []))
+                            != set(saved.get(order.order_id, {}))
+                            or any(
+                                saved.get(order.order_id, {}).get(record_id) != observed[record_id]
+                                for record_id in groups.get(order.order_no, [])
+                            )
+                        )
+                    }
                 state["new_sources"] = {
                     name: ids for name, ids in sorted(groups.items()) if name not in existing
                 }
@@ -178,17 +206,27 @@ class OrderAutoSync:
                         Order.source == "feishu", Order.deleted_at.is_(None),
                         Order.lifecycle.in_(["DRAFT", "PUBLISHED"]),
                         Order.order_id > state.get("order_cursor", ""),
-                        select(OrderDetail.detail_id).where(
-                            OrderDetail.order_id == Order.order_id,
-                            OrderDetail.dispatch_state == "UNASSIGNED",
-                        ).exists(),
+                        or_(
+                            Order.order_id.in_(list(state.get("existing_sources", {}))),
+                            select(OrderDetail.detail_id).where(
+                                OrderDetail.order_id == Order.order_id,
+                                OrderDetail.dispatch_state == "UNASSIGNED",
+                            ).exists(),
+                        ),
                     ).order_by(Order.order_id).limit(1))
                 if order_id is None:
                     done = True
                 else:
                     target_id = order_id
                     state["order_cursor"] = order_id
-                    self._orders.refresh_automatically(order_id=order_id, request_id=request_id)
+                    record_ids = state.get("existing_sources", {}).get(order_id)
+                    if order_id in state.get("existing_sources", {}):
+                        self._orders.reconcile_automatically(
+                            order_id=order_id, record_ids=record_ids, run_id=run_id,
+                            request_id=request_id,
+                        )
+                    else:
+                        self._orders.refresh_automatically(order_id=order_id, request_id=request_id)
                     state["updated_orders"] += 1
                     changes.update(self._orders.dispatch_automatically(
                         order_id=order_id, request_id=request_id

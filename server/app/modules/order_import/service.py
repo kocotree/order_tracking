@@ -41,6 +41,13 @@ LOCAL_DEPENDENCY_ISSUES = frozenset(
     }
 )
 
+# Only explicitly confirmed names are interchangeable. These resolve an existing
+# factory identity; they never rename, create or merge factory records.
+CONFIRMED_FACTORY_NAME_GROUPS = (
+    ("千与", "邯郸千与"),
+    ("昱斌", "昱斌服饰"),
+)
+
 
 # Python casefold is broader than MySQL LOWER (for example ß -> ss and ς -> σ).
 # Fold only characters that can contribute to the search term, inside SQL.
@@ -1364,12 +1371,20 @@ class OrderImportService:
         )
         if variant is None:
             issues.append("PRODUCT_VARIANT_NOT_MATCHED")
-        factory = session.scalar(
-            select(Factory).where(
-                Factory.factory_name == (factory_name or "").strip(),
-                Factory.is_enabled.is_(True),
-            )
+        source_factory_name = (factory_name or "").strip()
+        factory_names = next(
+            (group for group in CONFIRMED_FACTORY_NAME_GROUPS if source_factory_name in group),
+            (source_factory_name,),
         )
+        factories = list(session.scalars(
+            select(Factory).where(
+                Factory.factory_name.in_(factory_names),
+                Factory.is_enabled.is_(True),
+            ).order_by(Factory.factory_id).limit(2)
+        ))
+        # Even an exact name cannot choose between two active identities in the
+        # same confirmed group: existing execution history must not migrate.
+        factory = factories[0] if len(factories) == 1 else None
         if factory is None:
             issues.append("FACTORY_NOT_MATCHED")
         elif (

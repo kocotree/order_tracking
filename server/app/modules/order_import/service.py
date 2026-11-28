@@ -46,6 +46,7 @@ LOCAL_DEPENDENCY_ISSUES = frozenset(
 CONFIRMED_FACTORY_NAME_GROUPS = (
     ("千与", "邯郸千与"),
     ("昱斌", "昱斌服饰"),
+    ("信阳艾尚", "信阳铂悦"),
 )
 
 

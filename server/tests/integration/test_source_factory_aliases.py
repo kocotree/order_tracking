@@ -38,6 +38,8 @@ ALIASES = [
     ("邯郸千与", "千与"),
     ("昱斌", "昱斌服饰"),
     ("昱斌服饰", "昱斌"),
+    ("信阳艾尚", "信阳铂悦"),
+    ("信阳铂悦", "信阳艾尚"),
 ]
 
 
@@ -94,8 +96,9 @@ def _execution_facts(session: Session):
 
 
 @pytest.mark.parametrize(("stored", "incoming"), ALIASES)
+@pytest.mark.parametrize("manual_override", [False, True])
 def test_scheduled_alias_change_preserves_shipped_assignment_and_frozen_facts(
-    test_database_engine: Engine, stored: str, incoming: str,
+    test_database_engine: Engine, stored: str, incoming: str, manual_override: bool,
 ):
     sessions, source, oid = setup_dispatch_order(test_database_engine, rows=[purchase_row()])
     with sessions() as session, session.begin():
@@ -115,6 +118,8 @@ def test_scheduled_alias_change_preserves_shipped_assignment_and_frozen_facts(
     IncomingDifferenceService(sessions).confirm(
         batch_id=BATCH_ID, workbook_version=1, actor_id="admin-order-import",
     )
+    with sessions() as session, session.begin():
+        session.scalar(select(OrderDetail)).factory_override_enabled = manual_override
     before = service.get(order_id=oid)
     assert before.shipped_quantity == 32
     with sessions() as session:
@@ -130,16 +135,19 @@ def test_scheduled_alias_change_preserves_shipped_assignment_and_frozen_facts(
             assert session.get(OrderImportRun, run_id).sync_result["failed_orders"] == 0
             assert _execution_facts(session) == history
             assert session.scalar(select(OrderDetail.assignment_id)) == assignment_id
+            assert session.scalar(select(OrderDetail.factory_override_enabled)) == manual_override
     factory_view = service.get_visible(actor_id="factory-import-user", order_id=oid)
     assert factory_view.total_quantity == 100 and factory_view.shipped_quantity == 32
 
 
-@pytest.mark.parametrize("incoming", ["千与", "邯郸千与"])
-def test_two_enabled_alias_records_are_ambiguous(test_database_engine: Engine, incoming: str):
+@pytest.mark.parametrize(("stored", "incoming"), ALIASES)
+def test_two_enabled_alias_records_are_ambiguous(
+    test_database_engine: Engine, stored: str, incoming: str,
+):
     _seed_import_dependencies(test_database_engine)
     with Session(test_database_engine) as session, session.begin():
-        session.get(Factory, "factory-import").factory_name = "千与"
-        session.add(Factory(factory_id="duplicate", factory_name="邯郸千与",
+        session.get(Factory, "factory-import").factory_name = stored
+        session.add(Factory(factory_id="duplicate", factory_name=incoming,
                             supplier_number="DUP", factory_code="DUP", is_enabled=True))
     with Session(test_database_engine) as session:
         _, factory, issues = OrderImportService.match_source_row(
